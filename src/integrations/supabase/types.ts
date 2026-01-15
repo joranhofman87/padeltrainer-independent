@@ -212,6 +212,39 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          email_booking_confirmation: boolean
+          email_booking_reminder: boolean
+          email_new_availability: boolean
+          email_review_received: boolean
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_booking_confirmation?: boolean
+          email_booking_reminder?: boolean
+          email_new_availability?: boolean
+          email_review_received?: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_booking_confirmation?: boolean
+          email_booking_reminder?: boolean
+          email_new_availability?: boolean
+          email_review_received?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -290,6 +323,30 @@ export type Database = {
           rating?: number
           trainer_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      trainer_followers: {
+        Row: {
+          created_at: string
+          id: string
+          notify_new_availability: boolean
+          player_id: string
+          trainer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id: string
+          trainer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id?: string
+          trainer_id?: string
         }
         Relationships: []
       }

@@ -23,6 +23,8 @@ import BookingSuccess from "./pages/BookingSuccess";
 import TrainerEarnings from "./pages/TrainerEarnings";
 import TrainerSubscription from "./pages/TrainerSubscription";
 import TrainerAnalytics from "./pages/TrainerAnalytics";
+import NotificationSettings from "./pages/NotificationSettings";
+import FollowingList from "./pages/FollowingList";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +56,8 @@ const App = () => (
             <Route path="/earnings" element={<TrainerEarnings />} />
             <Route path="/subscription" element={<TrainerSubscription />} />
             <Route path="/analytics" element={<TrainerAnalytics />} />
+            <Route path="/settings/notifications" element={<NotificationSettings />} />
+            <Route path="/player/following" element={<FollowingList />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

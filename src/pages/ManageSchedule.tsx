@@ -288,6 +288,20 @@ export default function ManageSchedule() {
       const { error } = await supabase.from('availability_slots').insert(slotsToInsert);
       if (error) throw error;
 
+      // Notify followers about new availability
+      try {
+        await supabase.functions.invoke('notify-followers', {
+          body: {
+            trainer_id: trainerId,
+            slot_count: slotsToInsert.length,
+            date_range: `${format(today, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`,
+          },
+        });
+      } catch (notifyError) {
+        console.log('Failed to notify followers:', notifyError);
+        // Don't fail the whole operation if notifications fail
+      }
+
       toast({
         title: 'Slots generated!',
         description: `Created ${slotsToInsert.length} new availability slots.`,

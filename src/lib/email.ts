@@ -7,7 +7,8 @@ export type EmailType =
   | "review_received"
   | "payment_confirmed_player"
   | "payment_confirmed_trainer"
-  | "new_booking_trainer";
+  | "new_booking_trainer"
+  | "new_availability";
 
 export interface EmailData {
   playerName?: string;

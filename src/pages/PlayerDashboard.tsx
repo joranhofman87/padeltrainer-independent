@@ -7,9 +7,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock } from 'lucide-react';
+import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isAfter } from 'date-fns';
+
+interface FollowedTrainer {
+  id: string;
+  trainer_user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+}
 
 interface FeaturedTrainer {
   id: string;
@@ -47,6 +54,8 @@ export default function PlayerDashboard() {
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
   const [playerStats, setPlayerStats] = useState<PlayerStats>({ totalBookings: 0, completedLessons: 0, upcomingCount: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [followedTrainers, setFollowedTrainers] = useState<FollowedTrainer[]>([]);
+  const [followingLoading, setFollowingLoading] = useState(true);
 
   useEffect(() => {
     if (!loading) {
@@ -67,8 +76,65 @@ export default function PlayerDashboard() {
   useEffect(() => {
     if (profile?.id) {
       fetchPlayerData();
+      fetchFollowedTrainers();
     }
   }, [profile?.id]);
+
+  const fetchFollowedTrainers = async () => {
+    if (!profile?.id) return;
+    setFollowingLoading(true);
+    try {
+      const { data: follows } = await supabase
+        .from('trainer_followers')
+        .select('id, trainer_id')
+        .eq('player_id', profile.id)
+        .limit(5);
+
+      if (!follows || follows.length === 0) {
+        setFollowedTrainers([]);
+        setFollowingLoading(false);
+        return;
+      }
+
+      const trainerIds = follows.map(f => f.trainer_id);
+      const { data: trainers } = await supabase
+        .from('trainer_profiles')
+        .select('id, user_id')
+        .in('id', trainerIds);
+
+      if (!trainers) {
+        setFollowedTrainers([]);
+        setFollowingLoading(false);
+        return;
+      }
+
+      const userIds = trainers.map(t => t.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+      const trainerMap = new Map(trainers.map(t => [t.id, t]));
+
+      const enriched: FollowedTrainer[] = follows.map(f => {
+        const trainer = trainerMap.get(f.trainer_id);
+        const p = trainer ? profileMap.get(trainer.user_id) : null;
+        return {
+          id: f.id,
+          trainer_user_id: trainer?.user_id || '',
+          full_name: p?.full_name || null,
+          avatar_url: p?.avatar_url || null,
+        };
+      });
+
+      setFollowedTrainers(enriched);
+    } catch (error) {
+      console.error('Error fetching followed trainers:', error);
+    } finally {
+      setFollowingLoading(false);
+    }
+  };
 
   const fetchPlayerData = async () => {
     if (!profile?.id) return;
@@ -358,6 +424,40 @@ export default function PlayerDashboard() {
                   </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Following Section */}
+        {followedTrainers.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Following
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/player/following')} className="gap-1">
+                  Manage <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-3">
+                {followedTrainers.map((trainer) => (
+                  <div
+                    key={trainer.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => navigate(`/trainer/${trainer.trainer_user_id}`)}
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={trainer.avatar_url || undefined} />
+                      <AvatarFallback>{trainer.full_name?.[0] || 'T'}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">{trainer.full_name || 'Trainer'}</span>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
