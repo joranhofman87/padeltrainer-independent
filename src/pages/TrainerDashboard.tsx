@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList } from 'lucide-react';
 
 export default function TrainerDashboard() {
   const { user, profile, role, loading } = useAuth();
@@ -158,7 +158,26 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/trainer-bookings')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <ClipboardList className="h-5 w-5 text-blue-600" />
+                </div>
+                <CardTitle className="text-lg">Bookings</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                View and manage player bookings
+              </CardDescription>
+            </CardContent>
+          </Card>
+
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/lessons')}
@@ -234,27 +253,26 @@ export default function TrainerDashboard() {
               </CardDescription>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Settings Card */}
-        <Card 
-          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50 mb-8"
-          onClick={() => navigate('/profile/edit')}
-        >
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gray-500/10">
-                <Settings className="h-5 w-5 text-gray-600" />
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/profile/edit')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gray-500/10">
+                  <Settings className="h-5 w-5 text-gray-600" />
+                </div>
+                <CardTitle className="text-lg">Profile Settings</CardTitle>
               </div>
-              <CardTitle className="text-lg">Profile Settings</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <CardDescription>
-              Update your trainer profile, certifications, and payment settings
-            </CardDescription>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Update your profile and payment settings
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Setup Checklist */}
         <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
@@ -278,19 +296,19 @@ export default function TrainerDashboard() {
                 <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
                   2
                 </div>
-                <span>Add your certifications and experience</span>
+                <span>Create your first lesson</span>
               </div>
               <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
                 <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
                   3
                 </div>
-                <span>Set up payment with Stripe Connect</span>
+                <span>Set your availability</span>
               </div>
               <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
                 <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
                   4
                 </div>
-                <span>Create your first lesson</span>
+                <span>Set up payments with Stripe Connect</span>
               </div>
             </div>
           </CardContent>

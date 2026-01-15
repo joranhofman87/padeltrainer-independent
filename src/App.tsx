@@ -15,6 +15,7 @@ import EditProfile from "./pages/EditProfile";
 import ManageLessons from "./pages/ManageLessons";
 import ManageAvailability from "./pages/ManageAvailability";
 import PlayerBookings from "./pages/PlayerBookings";
+import TrainerBookings from "./pages/TrainerBookings";
 import BookLesson from "./pages/BookLesson";
 import Checkout from "./pages/Checkout";
 import TrainerEarnings from "./pages/TrainerEarnings";
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/lessons" element={<ManageLessons />} />
             <Route path="/availability" element={<ManageAvailability />} />
             <Route path="/bookings" element={<PlayerBookings />} />
+            <Route path="/trainer-bookings" element={<TrainerBookings />} />
             <Route path="/book/:trainerId" element={<BookLesson />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/earnings" element={<TrainerEarnings />} />

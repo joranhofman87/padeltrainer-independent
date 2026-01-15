@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -17,8 +18,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Trash2, Clock, CalendarDays } from 'lucide-react';
-import { format, addHours, parseISO, isSameDay } from 'date-fns';
+import { ArrowLeft, Plus, Trash2, Clock, CalendarDays, Repeat, Wand2 } from 'lucide-react';
+import { format, addHours, parseISO, isSameDay, addDays, addWeeks, addMonths, setDay, setDate } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { createAvailabilitySlot, getTrainerAvailability, deleteAvailabilitySlot, type AvailabilitySlot, type Lesson } from '@/lib/lessons';
 
@@ -36,7 +37,9 @@ export default function ManageAvailability() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
   // Form state
@@ -46,6 +49,9 @@ export default function ManageAvailability() {
     endTime: '10:00',
     lessonId: '',
   });
+
+  // Get recurring lessons
+  const recurringLessons = lessons.filter(l => l.is_recurring);
 
   useEffect(() => {
     if (!loading) {
@@ -156,6 +162,96 @@ export default function ManageAvailability() {
     }
   };
 
+  // Generate slots from recurring lessons
+  const handleGenerateSlots = async (lessonId: string) => {
+    if (!trainerId) return;
+    
+    const lesson = recurringLessons.find(l => l.id === lessonId);
+    if (!lesson || !lesson.recurrence_time || !lesson.recurrence_count) {
+      toast({ title: 'Error', description: 'Invalid recurring lesson configuration', variant: 'destructive' });
+      return;
+    }
+
+    setGenerating(true);
+    
+    try {
+      const slotsToCreate: Array<{ start_time: string; end_time: string; lesson_id: string }> = [];
+      let currentDate = new Date();
+      const [hours, minutes] = lesson.recurrence_time.split(':').map(Number);
+      const duration = lesson.duration_minutes;
+      
+      for (let i = 0; i < lesson.recurrence_count; i++) {
+        let slotDate: Date;
+        
+        if (lesson.recurrence_type === 'daily') {
+          slotDate = addDays(currentDate, i);
+        } else if (lesson.recurrence_type === 'weekly') {
+          // Find the next occurrence of the specified day
+          const targetDay = lesson.recurrence_day || 0;
+          slotDate = addWeeks(setDay(currentDate, targetDay, { weekStartsOn: 0 }), i);
+          if (slotDate < currentDate) {
+            slotDate = addWeeks(slotDate, 1);
+          }
+        } else if (lesson.recurrence_type === 'monthly') {
+          const targetDate = lesson.recurrence_day || 1;
+          slotDate = addMonths(setDate(currentDate, targetDate), i);
+          if (slotDate < currentDate) {
+            slotDate = addMonths(slotDate, 1);
+          }
+        } else {
+          continue;
+        }
+
+        // Set the time
+        slotDate.setHours(hours, minutes, 0, 0);
+        
+        // Check if slot is in the future and before end date
+        if (slotDate > new Date()) {
+          if (lesson.recurrence_end_date && slotDate > new Date(lesson.recurrence_end_date)) {
+            break;
+          }
+          
+          const endDate = new Date(slotDate);
+          endDate.setMinutes(endDate.getMinutes() + duration);
+          
+          slotsToCreate.push({
+            start_time: slotDate.toISOString(),
+            end_time: endDate.toISOString(),
+            lesson_id: lesson.id,
+          });
+        }
+      }
+
+      if (slotsToCreate.length === 0) {
+        toast({ title: 'No slots to create', description: 'All dates are in the past', variant: 'destructive' });
+        return;
+      }
+
+      // Create all slots
+      const { error } = await supabase
+        .from('availability_slots')
+        .insert(slotsToCreate.map(slot => ({
+          trainer_id: trainerId,
+          ...slot,
+          is_recurring: true,
+          recurrence_rule: `${lesson.recurrence_type}:${lesson.id}`,
+        })));
+
+      if (error) throw error;
+
+      toast({ 
+        title: 'Slots Generated!', 
+        description: `Created ${slotsToCreate.length} availability slots for "${lesson.title}"` 
+      });
+      setGenerateDialogOpen(false);
+      fetchData();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to generate slots', variant: 'destructive' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const slotsForSelectedDate = slots.filter(slot =>
     selectedDate && isSameDay(parseISO(slot.start_time), selectedDate)
   );
@@ -186,6 +282,60 @@ export default function ManageAvailability() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Generate from Recurring Lessons */}
+        {recurringLessons.length > 0 && (
+          <Card className="mb-6 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Wand2 className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <p className="font-medium">Auto-generate from Recurring Lessons</p>
+                    <p className="text-sm text-muted-foreground">Create time slots automatically from your recurring lesson schedules</p>
+                  </div>
+                </div>
+                <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="gap-2">
+                      <Repeat className="h-4 w-4" />
+                      Generate Slots
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Generate Recurring Slots</DialogTitle>
+                      <DialogDescription>
+                        Select a recurring lesson to automatically create availability slots
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      {recurringLessons.map(lesson => (
+                        <Card key={lesson.id} className="cursor-pointer hover:border-primary" onClick={() => handleGenerateSlots(lesson.id)}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{lesson.title}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {lesson.recurrence_type === 'weekly' && `Every ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][lesson.recurrence_day || 0]}`}
+                                  {lesson.recurrence_type === 'daily' && 'Daily'}
+                                  {lesson.recurrence_type === 'monthly' && `Day ${lesson.recurrence_day} of each month`}
+                                  {' at '}{lesson.recurrence_time} • {lesson.recurrence_count} sessions
+                                </p>
+                              </div>
+                              <Badge variant="outline">€{lesson.price}</Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                    {generating && <p className="text-center text-muted-foreground">Generating slots...</p>}
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="flex justify-end mb-6">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
