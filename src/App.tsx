@@ -9,6 +9,9 @@ import Auth from "./pages/Auth";
 import SelectRole from "./pages/SelectRole";
 import PlayerDashboard from "./pages/PlayerDashboard";
 import TrainerDashboard from "./pages/TrainerDashboard";
+import Trainers from "./pages/Trainers";
+import TrainerProfile from "./pages/TrainerProfile";
+import EditProfile from "./pages/EditProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +29,9 @@ const App = () => (
             <Route path="/select-role" element={<SelectRole />} />
             <Route path="/player" element={<PlayerDashboard />} />
             <Route path="/trainer" element={<TrainerDashboard />} />
+            <Route path="/trainers" element={<Trainers />} />
+            <Route path="/trainer/:trainerId" element={<TrainerProfile />} />
+            <Route path="/profile/edit" element={<EditProfile />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
