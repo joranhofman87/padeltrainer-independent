@@ -91,7 +91,7 @@ export default function TrainerDashboard() {
               Manage your lessons, view bookings, and grow your padel training business
             </p>
           </div>
-          <Button className="hidden md:flex gap-2">
+          <Button className="hidden md:flex gap-2" onClick={() => navigate('/lessons')}>
             <Plus className="h-4 w-4" />
             Create Lesson
           </Button>
@@ -158,7 +158,10 @@ export default function TrainerDashboard() {
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/lessons')}
+          >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
