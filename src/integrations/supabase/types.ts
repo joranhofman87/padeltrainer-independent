@@ -74,6 +74,8 @@ export type Database = {
           player_id: string
           slot_id: string
           status: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
           updated_at: string
         }
         Insert: {
@@ -87,6 +89,8 @@ export type Database = {
           player_id: string
           slot_id: string
           status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -100,6 +104,8 @@ export type Database = {
           player_id?: string
           slot_id?: string
           status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -328,6 +334,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      trainer_stripe_accounts: {
+        Row: {
+          charges_enabled: boolean
+          created_at: string
+          id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          stripe_account_id: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
