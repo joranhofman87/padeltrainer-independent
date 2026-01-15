@@ -7,8 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight } from 'lucide-react';
+import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { format, isAfter } from 'date-fns';
 
 interface FeaturedTrainer {
   id: string;
@@ -23,12 +24,29 @@ interface FeaturedTrainer {
   } | null;
 }
 
+interface UpcomingBooking {
+  id: string;
+  lessonTitle: string;
+  trainerName: string;
+  startTime: Date;
+  location: string | null;
+}
+
+interface PlayerStats {
+  totalBookings: number;
+  completedLessons: number;
+  upcomingCount: number;
+}
+
 export default function PlayerDashboard() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [featuredTrainers, setFeaturedTrainers] = useState<FeaturedTrainer[]>([]);
   const [loadingTrainers, setLoadingTrainers] = useState(true);
+  const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStats>({ totalBookings: 0, completedLessons: 0, upcomingCount: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     if (!loading) {
@@ -45,6 +63,79 @@ export default function PlayerDashboard() {
   useEffect(() => {
     fetchFeaturedTrainers();
   }, []);
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchPlayerData();
+    }
+  }, [profile?.id]);
+
+  const fetchPlayerData = async () => {
+    if (!profile?.id) return;
+    setStatsLoading(true);
+
+    try {
+      const now = new Date();
+
+      // Fetch all bookings for this player
+      const { data: bookings } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          status,
+          availability_slots(
+            start_time,
+            trainer_id,
+            trainer_profiles(
+              user_id,
+              profiles(full_name)
+            )
+          ),
+          lessons(title, location)
+        `)
+        .eq('player_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (bookings) {
+        const confirmed = bookings.filter(b => b.status === 'confirmed');
+        const upcoming = confirmed.filter(b => {
+          const slot = b.availability_slots as any;
+          return slot?.start_time && isAfter(new Date(slot.start_time), now);
+        });
+        const completed = confirmed.filter(b => {
+          const slot = b.availability_slots as any;
+          return slot?.start_time && !isAfter(new Date(slot.start_time), now);
+        });
+
+        setPlayerStats({
+          totalBookings: bookings.length,
+          completedLessons: completed.length,
+          upcomingCount: upcoming.length,
+        });
+
+        // Format upcoming bookings for display (max 3)
+        const upcomingFormatted: UpcomingBooking[] = upcoming.slice(0, 3).map(b => {
+          const slot = b.availability_slots as any;
+          const lesson = b.lessons as any;
+          const trainerProfile = slot?.trainer_profiles as any;
+          const trainerUserProfile = trainerProfile?.profiles as any;
+          return {
+            id: b.id,
+            lessonTitle: lesson?.title || 'Training Session',
+            trainerName: trainerUserProfile?.full_name || 'Trainer',
+            startTime: new Date(slot.start_time),
+            location: lesson?.location || null,
+          };
+        });
+
+        setUpcomingBookings(upcomingFormatted);
+      }
+    } catch (error) {
+      console.error('Error fetching player data:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
   const fetchFeaturedTrainers = async () => {
     const { data: trainerProfiles } = await supabase
@@ -185,6 +276,91 @@ export default function PlayerDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Stats Cards */}
+        <div className="grid sm:grid-cols-3 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {statsLoading ? '...' : playerStats.upcomingCount}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Upcoming</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-green-100 dark:bg-green-900">
+                  <Star className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {statsLoading ? '...' : playerStats.completedLessons}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Completed</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900">
+                  <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {statsLoading ? '...' : playerStats.totalBookings}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Total Bookings</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Upcoming Bookings */}
+        {upcomingBookings.length > 0 && (
+          <Card className="mb-8 border-primary/30 bg-primary/5">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  Next Up
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/bookings')} className="gap-1">
+                  All Bookings <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {upcomingBookings.map((booking) => (
+                <div key={booking.id} className="flex items-center gap-4 p-3 bg-background rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{booking.lessonTitle}</p>
+                    <p className="text-sm text-muted-foreground">
+                      with {booking.trainerName}
+                      {booking.location && ` • ${booking.location}`}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-medium">{format(booking.startTime, 'EEE, MMM d')}</p>
+                    <p className="text-sm text-muted-foreground">{format(booking.startTime, 'HH:mm')}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-3 gap-4 mb-8">
