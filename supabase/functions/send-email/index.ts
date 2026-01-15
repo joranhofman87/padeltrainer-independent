@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability";
   to: string;
   data: {
     playerName?: string;
@@ -23,6 +23,8 @@ interface EmailRequest {
     rating?: number;
     platformFee?: number;
     netAmount?: number;
+    slotCount?: number;
+    dateRange?: string;
   };
 }
 
@@ -174,6 +176,31 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Price:</strong> €${data.price}</p>
             </div>
             <p>Payment is pending - you'll be notified once payment is confirmed.</p>
+            <p>Best regards,<br>PadelTrainer Team</p>
+          </div>
+        `,
+      };
+
+    case "new_availability":
+      return {
+        subject: `New Training Slots Available from ${data.trainerName}! 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">New Availability Alert! 📅</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>Great news! <strong>${data.trainerName}</strong> has just added new training slots.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p style="font-size: 24px; font-weight: bold; color: #16a34a; margin: 0;">${data.slotCount} New Slots</p>
+              <p style="color: #6b7280; margin-top: 8px;">Available: ${data.dateRange}</p>
+            </div>
+            <p>Don't miss out – book your spot before they fill up!</p>
+            <p style="margin-top: 24px;">
+              <a href="https://padeltrainer.app/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
+            </p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
+              You're receiving this because you follow ${data.trainerName}. 
+              <a href="https://padeltrainer.app/settings/notifications">Manage notification preferences</a>
+            </p>
             <p>Best regards,<br>PadelTrainer Team</p>
           </div>
         `,

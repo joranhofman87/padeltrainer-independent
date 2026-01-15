@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useFollowTrainer } from '@/hooks/useFollowTrainer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -9,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
   ArrowLeft, MapPin, Star, Clock, Award, Mail, Phone, 
-  Calendar, Users, CheckCircle 
+  Calendar, Users, CheckCircle, UserPlus, UserCheck
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { StarRating } from '@/components/reviews/StarRating';
@@ -43,6 +44,7 @@ export default function TrainerProfile() {
   const [reviewCount, setReviewCount] = useState(0);
   const navigate = useNavigate();
   const { user, role } = useAuth();
+  const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
 
   useEffect(() => {
     if (trainerId) {
@@ -187,9 +189,30 @@ export default function TrainerProfile() {
 
               <div className="flex flex-col gap-2 min-w-[160px]">
                 {user && role === 'player' && (
-                  <Button size="lg" className="w-full">
+                  <Button size="lg" className="w-full" onClick={() => navigate(`/book/${trainerId}`)}>
                     <Calendar className="h-4 w-4 mr-2" />
                     Book Lesson
+                  </Button>
+                )}
+                {canFollow && (
+                  <Button
+                    variant={isFollowing ? 'secondary' : 'outline'}
+                    size="lg"
+                    className="w-full"
+                    onClick={toggleFollow}
+                    disabled={followLoading}
+                  >
+                    {isFollowing ? (
+                      <>
+                        <UserCheck className="h-4 w-4 mr-2" />
+                        Following
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Follow
+                      </>
+                    )}
                   </Button>
                 )}
                 <Button variant="outline" size="lg" className="w-full">
