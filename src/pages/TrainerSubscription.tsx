@@ -181,7 +181,9 @@ export default function TrainerSubscription() {
       if (error) throw error;
 
       if (data?.url) {
+        // Don't reset processing state - we're navigating away
         window.location.href = data.url;
+        return;
       } else {
         throw new Error('No checkout URL returned');
       }
@@ -192,7 +194,6 @@ export default function TrainerSubscription() {
         description: 'Failed to start checkout. Please try again.',
         variant: 'destructive',
       });
-    } finally {
       setProcessingPlan(null);
     }
   };
