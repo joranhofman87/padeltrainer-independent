@@ -141,6 +141,23 @@ export default function TrainerBookings() {
     }
   };
 
+  const handleMarkCancelled = async (bookingId: string) => {
+    if (!confirm('Mark this lesson as cancelled? Payment will be waived.')) return;
+    
+    // Update both status and payment_status
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'cancelled', payment_status: 'waived' })
+      .eq('id', bookingId);
+      
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to mark as cancelled', variant: 'destructive' });
+    } else {
+      toast({ title: 'Lesson Cancelled', description: 'Payment has been waived for this lesson' });
+      fetchBookings();
+    }
+  };
+
   const handleComplete = async (bookingId: string) => {
     const { error } = await updateBookingStatus(bookingId, 'completed');
     if (error) {
@@ -166,12 +183,18 @@ export default function TrainerBookings() {
     }
   };
 
-  const getPaymentBadge = (paymentStatus: string, paymentTiming: string) => {
+  const getPaymentBadge = (paymentStatus: string, paymentTiming: string, bookingStatus: string) => {
     if (paymentStatus === 'paid') {
       return <Badge variant="outline" className="border-green-300 text-green-600"><CreditCard className="h-3 w-3 mr-1" />Paid</Badge>;
     }
+    if (paymentStatus === 'waived') {
+      return <Badge variant="outline" className="border-gray-300 text-gray-600">Waived</Badge>;
+    }
     if (paymentTiming === 'after') {
-      return <Badge variant="outline" className="border-orange-300 text-orange-600">Pay After</Badge>;
+      if (bookingStatus === 'cancelled') {
+        return <Badge variant="outline" className="border-gray-300 text-gray-600">No Charge</Badge>;
+      }
+      return <Badge variant="outline" className="border-orange-300 text-orange-600">Due After</Badge>;
     }
     return <Badge variant="outline" className="border-yellow-300 text-yellow-600">Payment Pending</Badge>;
   };
@@ -284,6 +307,7 @@ export default function TrainerBookings() {
                   booking={booking}
                   onComplete={handleComplete}
                   onCancel={handleCancel}
+                  onMarkCancelled={handleMarkCancelled}
                   getStatusBadge={getStatusBadge}
                   getPaymentBadge={getPaymentBadge}
                   showCompleteAction
@@ -322,8 +346,9 @@ interface BookingCardProps {
   onConfirm?: (id: string) => void;
   onCancel?: (id: string) => void;
   onComplete?: (id: string) => void;
+  onMarkCancelled?: (id: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
-  getPaymentBadge: (paymentStatus: string, paymentTiming: string) => React.ReactNode;
+  getPaymentBadge: (paymentStatus: string, paymentTiming: string, bookingStatus: string) => React.ReactNode;
   showActions?: boolean;
   showCompleteAction?: boolean;
   isPast?: boolean;
@@ -334,6 +359,7 @@ function BookingCard({
   onConfirm, 
   onCancel,
   onComplete,
+  onMarkCancelled,
   getStatusBadge,
   getPaymentBadge,
   showActions,
@@ -365,11 +391,10 @@ function BookingCard({
             </div>
           </div>
 
-          {/* Lesson Info */}
           <div className="flex-1 md:px-6">
             <div className="flex items-center gap-2 mb-2">
               {getStatusBadge(booking.status)}
-              {getPaymentBadge(booking.payment_status, booking.lessons?.payment_timing || 'upfront')}
+              {getPaymentBadge(booking.payment_status, booking.lessons?.payment_timing || 'upfront', booking.status)}
             </div>
             {booking.lessons && (
               <p className="font-medium">{booking.lessons.title}</p>
@@ -419,6 +444,12 @@ function BookingCard({
 
             {showCompleteAction && (
               <div className="flex gap-2">
+                {booking.lessons?.payment_timing === 'after' && (
+                  <Button size="sm" variant="destructive" onClick={() => onMarkCancelled?.(booking.id)}>
+                    <XCircle className="h-4 w-4 mr-1" />
+                    Cancelled
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => onCancel?.(booking.id)}>
                   Cancel
                 </Button>

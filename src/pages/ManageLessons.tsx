@@ -499,7 +499,7 @@ export default function ManageLessons() {
                       <Label htmlFor="after" className="cursor-pointer flex-1">
                         <div className="font-medium">Pay After Lesson</div>
                         <p className="text-sm text-muted-foreground">
-                          Collect payment after the lesson. Useful if lessons might be cancelled.
+                          Payment expected after lesson completes. Mark as cancelled to waive payment.
                         </p>
                       </Label>
                     </div>
