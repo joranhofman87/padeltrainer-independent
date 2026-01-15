@@ -181,8 +181,9 @@ export default function TrainerSubscription() {
       if (error) throw error;
 
       if (data?.url) {
-        // Don't reset processing state - we're navigating away
-        window.location.href = data.url;
+        // Open in new tab to handle iframe restrictions
+        window.open(data.url, '_blank');
+        setProcessingPlan(null);
         return;
       } else {
         throw new Error('No checkout URL returned');
