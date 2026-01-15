@@ -11,6 +11,7 @@ import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check } from 'lucide-re
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { createBooking } from '@/lib/lessons';
+import { sendBookingConfirmation } from '@/lib/email';
 
 interface SlotWithDetails {
   id: string;
@@ -157,6 +158,21 @@ export default function BookLesson() {
       );
 
       if (error) throw error;
+
+      // Send confirmation email
+      if (profile.email && trainer.profiles.full_name) {
+        const lesson = selectedSlot.lessons;
+        sendBookingConfirmation(
+          profile.email,
+          profile.full_name || 'Player',
+          trainer.profiles.full_name,
+          lesson?.title || 'Training Session',
+          format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy'),
+          format(parseISO(selectedSlot.start_time), 'HH:mm'),
+          lesson?.location || null,
+          lesson?.price || trainer.hourly_rate || 50
+        );
+      }
 
       setBooked(true);
       toast({ title: 'Success', description: 'Lesson booked successfully!' });
