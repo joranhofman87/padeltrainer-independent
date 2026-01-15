@@ -180,12 +180,28 @@ export async function getTrainerBookings(trainerId: string) {
 }
 
 export async function updateBookingStatus(bookingId: string, status: Booking['status']) {
-  return supabase
+  const result = await supabase
     .from('bookings')
     .update({ status })
     .eq('id', bookingId)
     .select()
     .single();
+
+  // Trigger calendar sync for status changes
+  if (result.data && (status === 'confirmed' || status === 'cancelled')) {
+    try {
+      await supabase.functions.invoke('sync-calendar-event', {
+        body: { 
+          booking_id: bookingId, 
+          action: status === 'confirmed' ? 'create' : 'delete' 
+        },
+      });
+    } catch (e) {
+      console.error('Calendar sync failed (non-blocking):', e);
+    }
+  }
+
+  return result;
 }
 
 export async function cancelBooking(bookingId: string) {

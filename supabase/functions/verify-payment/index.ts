@@ -210,6 +210,22 @@ serve(async (req) => {
             logStep("Failed to send trainer email", { error: emailError });
           }
         }
+
+        // Trigger calendar sync for both player and trainer
+        try {
+          logStep("Triggering calendar sync", { bookingId });
+          await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/sync-calendar-event`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({ booking_id: bookingId, action: 'create' }),
+          });
+          logStep("Calendar sync triggered");
+        } catch (calendarError) {
+          logStep("Failed to trigger calendar sync (non-blocking)", { error: calendarError });
+        }
       }
 
       return new Response(JSON.stringify({ 
