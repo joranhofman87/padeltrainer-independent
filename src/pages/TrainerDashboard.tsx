@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3 } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock } from 'lucide-react';
 
 export default function TrainerDashboard() {
   const { user, profile, role, loading } = useAuth();
@@ -177,18 +177,21 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/availability')}
+          >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-green-500/10">
-                  <Users className="h-5 w-5 text-green-600" />
+                  <Clock className="h-5 w-5 text-green-600" />
                 </div>
-                <CardTitle className="text-lg">My Students</CardTitle>
+                <CardTitle className="text-lg">My Availability</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                View your students, manage ratings, and track their progress
+                Set your available time slots for players to book lessons
               </CardDescription>
             </CardContent>
           </Card>
