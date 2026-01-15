@@ -12,6 +12,29 @@ export interface Lesson {
   max_skill_rating: number | null;
   location: string | null;
   is_active: boolean;
+  // Recurring lesson fields
+  is_recurring: boolean;
+  recurrence_type: 'daily' | 'weekly' | 'monthly' | null;
+  recurrence_day: number | null; // 0-6 for weekly (0 = Sunday), 1-31 for monthly
+  recurrence_time: string | null; // HH:MM format
+  recurrence_count: number | null; // Number of sessions
+  recurrence_end_date: string | null;
+  // Payment settings
+  payment_timing: 'upfront' | 'after';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Booking {
+  id: string;
+  slot_id: string;
+  player_id: string;
+  lesson_id: string | null;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  notes: string | null;
+  payment_status: 'pending' | 'paid' | 'refunded' | 'waived';
+  payment_amount: number | null;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,17 +48,6 @@ export interface AvailabilitySlot {
   is_recurring: boolean;
   recurrence_rule: string | null;
   created_at: string;
-}
-
-export interface Booking {
-  id: string;
-  slot_id: string;
-  player_id: string;
-  lesson_id: string | null;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 // Lesson CRUD

@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -17,9 +20,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, Repeat, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
+
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function ManageLessons() {
   const { user, profile, role, loading } = useAuth();
@@ -38,11 +43,20 @@ export default function ManageLessons() {
     description: '',
     duration_minutes: 60,
     price: 50,
-    max_participants: 1,
+    max_participants: 4,
     min_skill_rating: '',
     max_skill_rating: '',
     location: '',
     is_active: true,
+    // Recurring fields
+    is_recurring: false,
+    recurrence_type: 'weekly' as 'daily' | 'weekly' | 'monthly',
+    recurrence_day: 1, // Monday by default
+    recurrence_time: '09:00',
+    recurrence_count: 10,
+    recurrence_end_date: '',
+    // Payment
+    payment_timing: 'upfront' as 'upfront' | 'after',
   });
 
   useEffect(() => {
@@ -90,11 +104,18 @@ export default function ManageLessons() {
       description: '',
       duration_minutes: 60,
       price: 50,
-      max_participants: 1,
+      max_participants: 4,
       min_skill_rating: '',
       max_skill_rating: '',
       location: '',
       is_active: true,
+      is_recurring: false,
+      recurrence_type: 'weekly',
+      recurrence_day: 1,
+      recurrence_time: '09:00',
+      recurrence_count: 10,
+      recurrence_end_date: '',
+      payment_timing: 'upfront',
     });
     setEditingLesson(null);
   };
@@ -111,6 +132,13 @@ export default function ManageLessons() {
       max_skill_rating: lesson.max_skill_rating?.toString() || '',
       location: lesson.location || '',
       is_active: lesson.is_active,
+      is_recurring: lesson.is_recurring || false,
+      recurrence_type: lesson.recurrence_type || 'weekly',
+      recurrence_day: lesson.recurrence_day || 1,
+      recurrence_time: lesson.recurrence_time || '09:00',
+      recurrence_count: lesson.recurrence_count || 10,
+      recurrence_end_date: lesson.recurrence_end_date || '',
+      payment_timing: lesson.payment_timing || 'upfront',
     });
     setDialogOpen(true);
   };
@@ -148,6 +176,15 @@ export default function ManageLessons() {
         max_skill_rating: formData.max_skill_rating ? parseFloat(formData.max_skill_rating) : null,
         location: formData.location || null,
         is_active: formData.is_active,
+        // Recurring fields
+        is_recurring: formData.is_recurring,
+        recurrence_type: formData.is_recurring ? formData.recurrence_type : null,
+        recurrence_day: formData.is_recurring ? formData.recurrence_day : null,
+        recurrence_time: formData.is_recurring ? formData.recurrence_time : null,
+        recurrence_count: formData.is_recurring ? formData.recurrence_count : null,
+        recurrence_end_date: formData.is_recurring && formData.recurrence_end_date ? formData.recurrence_end_date : null,
+        // Payment
+        payment_timing: formData.payment_timing,
       };
 
       if (editingLesson) {
@@ -331,7 +368,146 @@ export default function ManageLessons() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
+                {/* Recurring Lesson Section */}
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Repeat className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <Label htmlFor="recurring">Recurring Lesson</Label>
+                        <p className="text-sm text-muted-foreground">Schedule this lesson to repeat</p>
+                      </div>
+                    </div>
+                    <Switch
+                      id="recurring"
+                      checked={formData.is_recurring}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_recurring: checked })}
+                    />
+                  </div>
+
+                  {formData.is_recurring && (
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      <div className="space-y-2">
+                        <Label>Repeat</Label>
+                        <Select
+                          value={formData.recurrence_type}
+                          onValueChange={(value: 'daily' | 'weekly' | 'monthly') => setFormData({ ...formData, recurrence_type: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {formData.recurrence_type === 'weekly' && (
+                        <div className="space-y-2">
+                          <Label>Day of Week</Label>
+                          <Select
+                            value={formData.recurrence_day.toString()}
+                            onValueChange={(value) => setFormData({ ...formData, recurrence_day: parseInt(value) })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DAYS_OF_WEEK.map((day, index) => (
+                                <SelectItem key={index} value={index.toString()}>
+                                  {day}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {formData.recurrence_type === 'monthly' && (
+                        <div className="space-y-2">
+                          <Label>Day of Month</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={formData.recurrence_day}
+                            onChange={(e) => setFormData({ ...formData, recurrence_day: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Time</Label>
+                          <Input
+                            type="time"
+                            value={formData.recurrence_time}
+                            onChange={(e) => setFormData({ ...formData, recurrence_time: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Number of Sessions</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            value={formData.recurrence_count}
+                            onChange={(e) => setFormData({ ...formData, recurrence_count: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>End Date (optional)</Label>
+                        <Input
+                          type="date"
+                          value={formData.recurrence_end_date}
+                          onChange={(e) => setFormData({ ...formData, recurrence_end_date: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to use number of sessions instead
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment Timing Section */}
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <Label>Payment Timing</Label>
+                  </div>
+                  <RadioGroup
+                    value={formData.payment_timing}
+                    onValueChange={(value: 'upfront' | 'after') => setFormData({ ...formData, payment_timing: value })}
+                    className="space-y-3"
+                  >
+                    <div className="flex items-start space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <RadioGroupItem value="upfront" id="upfront" className="mt-1" />
+                      <Label htmlFor="upfront" className="cursor-pointer flex-1">
+                        <div className="font-medium">Pay Upfront</div>
+                        <p className="text-sm text-muted-foreground">
+                          Players pay when booking. Recommended for most lessons.
+                        </p>
+                      </Label>
+                    </div>
+                    <div className="flex items-start space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <RadioGroupItem value="after" id="after" className="mt-1" />
+                      <Label htmlFor="after" className="cursor-pointer flex-1">
+                        <div className="font-medium">Pay After Lesson</div>
+                        <p className="text-sm text-muted-foreground">
+                          Collect payment after the lesson. Useful if lessons might be cancelled.
+                        </p>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {/* Active Toggle */}
+                <div className="flex items-center justify-between border-t pt-4 mt-4">
                   <div>
                     <Label htmlFor="active">Active</Label>
                     <p className="text-sm text-muted-foreground">Visible to players</p>
@@ -374,13 +550,27 @@ export default function ManageLessons() {
               <Card key={lesson.id} className={!lesson.is_active ? 'opacity-60' : ''}>
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div>
+                    <div className="space-y-1">
                       <CardTitle className="text-lg">{lesson.title}</CardTitle>
-                      {!lesson.is_active && (
-                        <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded">
-                          Inactive
-                        </span>
-                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {!lesson.is_active && (
+                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                        )}
+                        {lesson.is_recurring && (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Repeat className="h-3 w-3" />
+                            {lesson.recurrence_type === 'weekly' && DAYS_OF_WEEK[lesson.recurrence_day || 0]}
+                            {lesson.recurrence_type === 'daily' && 'Daily'}
+                            {lesson.recurrence_type === 'monthly' && `Day ${lesson.recurrence_day}`}
+                          </Badge>
+                        )}
+                        <Badge 
+                          variant="outline" 
+                          className={`text-xs ${lesson.payment_timing === 'after' ? 'border-orange-300 text-orange-600' : 'border-green-300 text-green-600'}`}
+                        >
+                          Pay {lesson.payment_timing === 'after' ? 'After' : 'Upfront'}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       <Button
@@ -426,6 +616,14 @@ export default function ManageLessons() {
                       </div>
                     )}
                   </div>
+                  {lesson.is_recurring && lesson.recurrence_time && (
+                    <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        {lesson.recurrence_time} • {lesson.recurrence_count} sessions
+                      </div>
+                    </div>
+                  )}
                   {(lesson.min_skill_rating || lesson.max_skill_rating) && (
                     <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
                       Rating: {lesson.min_skill_rating || '0'} - {lesson.max_skill_rating || '10'}
