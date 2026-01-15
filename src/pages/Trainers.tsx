@@ -20,6 +20,7 @@ interface TrainerWithProfile {
   certifications: string[] | null;
   specializations: string[] | null;
   is_verified: boolean;
+  knltb_rating: number | null;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
@@ -53,7 +54,7 @@ export default function Trainers() {
     // Fetch trainer profiles with their general profiles
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles')
-      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified');
+      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating');
     
     if (trainerError) {
       console.error('Error fetching trainers:', trainerError);
@@ -112,6 +113,7 @@ export default function Trainers() {
     if (filters.minExperience > 0) count++;
     if (filters.specializations.length > 0) count++;
     if (filters.verifiedOnly) count++;
+    if (filters.minKnltbRating > 0) count++;
     return count;
   }, [filters]);
 
@@ -142,11 +144,15 @@ export default function Trainers() {
       const matchesSpecializations = filters.specializations.length === 0 ||
         filters.specializations.some(s => trainer.specializations?.includes(s));
       
+      // KNLTB Rating filter
+      const trainerKnltb = trainer.knltb_rating || 0;
+      const matchesKnltbRating = trainerKnltb >= filters.minKnltbRating;
+      
       // Verified filter
       const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
       
       return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
-             matchesExperience && matchesSpecializations && matchesVerified;
+             matchesExperience && matchesSpecializations && matchesKnltbRating && matchesVerified;
     });
 
     // Sort
@@ -254,6 +260,9 @@ export default function Trainers() {
               {filters.specializations.map(spec => (
                 <Badge key={spec} variant="secondary">{spec}</Badge>
               ))}
+              {filters.minKnltbRating > 0 && (
+                <Badge variant="secondary">KNLTB {filters.minKnltbRating}+</Badge>
+              )}
               {filters.verifiedOnly && (
                 <Badge variant="secondary">Verified only</Badge>
               )}
@@ -351,11 +360,18 @@ export default function Trainers() {
                         €{trainer.hourly_rate}/hour
                       </span>
                     )}
-                    {trainer.experience_years && (
-                      <span className="text-muted-foreground">
-                        {trainer.experience_years} years exp.
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      {trainer.knltb_rating && (
+                        <span className="font-medium text-foreground">
+                          KNLTB {trainer.knltb_rating}
+                        </span>
+                      )}
+                      {trainer.experience_years && (
+                        <span>
+                          {trainer.experience_years}y exp.
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {trainer.specializations && trainer.specializations.length > 0 && (

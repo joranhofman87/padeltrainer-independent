@@ -292,6 +292,7 @@ export type Database = {
           hourly_rate: number | null
           id: string
           is_verified: boolean | null
+          knltb_rating: number | null
           specializations: string[] | null
           stripe_account_id: string | null
           subscription_status: string | null
@@ -305,6 +306,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           is_verified?: boolean | null
+          knltb_rating?: number | null
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
@@ -318,6 +320,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           is_verified?: boolean | null
+          knltb_rating?: number | null
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
