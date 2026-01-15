@@ -7,12 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { StarRating } from './StarRating';
 import { createReview } from '@/lib/reviews';
 import { useToast } from '@/hooks/use-toast';
+import { sendReviewNotification } from '@/lib/email';
 
 interface ReviewFormProps {
   bookingId: string;
   playerId: string;
   trainerId: string;
   trainerName: string;
+  trainerEmail?: string;
+  playerName?: string;
+  lessonTitle?: string;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -22,6 +26,9 @@ export function ReviewForm({
   playerId,
   trainerId,
   trainerName,
+  trainerEmail,
+  playerName,
+  lessonTitle,
   onSuccess,
   onCancel,
 }: ReviewFormProps) {
@@ -64,6 +71,18 @@ export function ReviewForm({
         title: 'Review submitted',
         description: 'Thank you for your feedback!',
       });
+      
+      // Send notification to trainer
+      if (trainerEmail) {
+        sendReviewNotification(
+          trainerEmail,
+          trainerName,
+          playerName || 'A player',
+          lessonTitle || 'Training Session',
+          rating
+        );
+      }
+      
       onSuccess?.();
     }
     setSubmitting(false);

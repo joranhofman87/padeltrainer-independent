@@ -29,6 +29,7 @@ interface BookingWithDetails {
       profiles: {
         full_name: string;
         avatar_url: string | null;
+        email: string | null;
       };
     };
   };
@@ -80,7 +81,7 @@ export default function PlayerBookings() {
           trainer_profiles(
             id,
             user_id,
-            profiles(full_name, avatar_url)
+            profiles(full_name, avatar_url, email)
           )
         ),
         lessons(title, price, location)
@@ -310,6 +311,9 @@ export default function PlayerBookings() {
                                   playerId={profile!.id}
                                   trainerId={booking.availability_slots.trainer_profiles.id}
                                   trainerName={booking.availability_slots.trainer_profiles.profiles.full_name}
+                                  trainerEmail={booking.availability_slots.trainer_profiles.profiles.email || undefined}
+                                  playerName={profile!.full_name || undefined}
+                                  lessonTitle={booking.lessons?.title || undefined}
                                   onSuccess={() => {
                                     setReviewDialogOpen(null);
                                     fetchBookings();
