@@ -9,11 +9,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { knltbNumber } = await req.json();
+    const { knltbNumber, profileUrl: providedUrl } = await req.json();
 
-    if (!knltbNumber) {
+    if (!knltbNumber && !providedUrl) {
       return new Response(
-        JSON.stringify({ success: false, error: 'KNLTB number is required' }),
+        JSON.stringify({ success: false, error: 'KNLTB number or profile URL is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -27,12 +27,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // KNLTB player profile URL pattern
-    const profileUrl = `https://mijnknltb.toernooi.nl/player/${knltbNumber}`;
-    
-    console.log('Scraping KNLTB profile:', profileUrl);
+    // If a profile URL was provided, extract UUID and use it
+    let profileUrl = providedUrl;
+    if (profileUrl && profileUrl.includes('player-profile/')) {
+      // User provided their profile URL directly
+      console.log('Using provided profile URL:', profileUrl);
+    } else if (knltbNumber) {
+      // Try to search for the player - but this is limited due to cookie consent
+      // For now, inform user they need to provide their profile URL
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Automatic lookup is not available due to KNLTB website restrictions.',
+          suggestion: 'Please provide your KNLTB profile URL or enter your rating manually.',
+          instructions: 'Go to mijnknltb.toernooi.nl, search for yourself, and copy your profile URL',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    if (!profileUrl) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Profile URL is required for rating lookup',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Scraping profile:', profileUrl);
+
+    // Scrape the profile page
+    const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -41,70 +68,66 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         url: profileUrl,
         formats: ['markdown'],
-        onlyMainContent: true,
-        waitFor: 3000, // Wait for dynamic content to load
+        onlyMainContent: false,
+        waitFor: 5000,
       }),
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('Firecrawl API error:', data);
+    const scrapeData = await scrapeResponse.json();
+    
+    if (!scrapeResponse.ok) {
+      console.error('Scrape failed:', scrapeData);
       return new Response(
-        JSON.stringify({ success: false, error: data.error || 'Failed to scrape profile' }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: false, 
+          error: scrapeData.error || 'Failed to scrape profile' 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Parse the markdown content to extract rating
-    const markdown = data.data?.markdown || data.markdown || '';
     
-    // Look for padel rating patterns in the content
-    // Common patterns: "Padel: 7.0", "Rating: 7.0", "Enkelspel: 7.0"
-    const ratingPatterns = [
-      /padel[:\s]+(\d+\.?\d*)/i,
-      /rating[:\s]+(\d+\.?\d*)/i,
-      /enkelspel[:\s]+(\d+\.?\d*)/i,
-      /dubbelspel[:\s]+(\d+\.?\d*)/i,
-      /speelsterkte[:\s]+(\d+\.?\d*)/i,
-      /(\d+\.\d+)\s*(?:padel|rating)/i,
-    ];
-
-    let rating: number | null = null;
-    for (const pattern of ratingPatterns) {
-      const match = markdown.match(pattern);
-      if (match && match[1]) {
-        const parsed = parseFloat(match[1]);
-        if (parsed >= 1 && parsed <= 10) {
-          rating = parsed;
-          break;
-        }
-      }
+    const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+    
+    console.log('Profile scraped, content length:', markdown.length);
+    console.log('Content sample:', markdown.substring(0, 500));
+    
+    // Check if we hit the cookie consent page
+    if (markdown.toLowerCase().includes('cookies') && markdown.toLowerCase().includes('akkoord')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'The KNLTB website requires cookie consent which blocks automated access.',
+          suggestion: 'Please enter your padel dubbel rating manually (e.g., 4.48)',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
+    
+    const rating = extractPadelRating(markdown);
+    
     if (rating) {
-      console.log('Found KNLTB rating:', rating);
+      console.log('Found padel rating:', rating);
       return new Response(
         JSON.stringify({
           success: true,
           data: {
-            knltbNumber,
+            knltbNumber: knltbNumber || 'unknown',
             rating,
             source: 'knltb',
+            profileUrl,
             scrapedAt: new Date().toISOString(),
           }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // If we couldn't parse a rating, return the raw content for debugging
-    console.log('Could not parse rating from content');
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: 'Could not find rating in profile',
-        debug: markdown.substring(0, 500), // First 500 chars for debugging
+        error: 'Could not find padel dubbel rating on profile. The page may require login.',
+        suggestion: 'Please enter your rating manually',
+        debug: markdown.substring(0, 500),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -118,3 +141,41 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+function extractPadelRating(markdown: string): number | null {
+  // Normalize the text
+  const normalized = markdown
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // Various patterns for finding padel dubbel ratings
+  // Format: "4,4803" (European decimal) - we want 4.48
+  const patterns = [
+    // "Padel Dubbel" followed by rating
+    /padel\s*dubbel[:\s\|]*(\d+)[,.](\d+)/i,
+    // Table row format with dubbel
+    /dubbel[:\s\|]*(\d+)[,.](\d+)/i,
+    // Generic padel rating
+    /padel[:\s]*(\d+)[,.](\d+)/i,
+    // Speelsterkte rating
+    /speelsterkte[:\s]*(\d+)[,.](\d+)/i,
+    // Rating in a table context
+    /(\d+)[,.](\d{4})/i, // Matches 4,4803 format specifically
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match && match[1] && match[2]) {
+      const intPart = parseInt(match[1]);
+      const decPart = match[2];
+      // For rating like 4,4803 - the rating is 4.48 (first 2 decimal places)
+      const rating = parseFloat(`${intPart}.${decPart.substring(0, 2)}`);
+      
+      if (rating >= 1 && rating <= 10) {
+        return rating;
+      }
+    }
+  }
+
+  return null;
+}
