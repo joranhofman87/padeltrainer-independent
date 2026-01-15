@@ -1,17 +1,34 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, TrendingUp } from 'lucide-react';
+import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+
+interface FeaturedTrainer {
+  id: string;
+  hourly_rate: number | null;
+  experience_years: number | null;
+  specializations: string[] | null;
+  is_verified: boolean;
+  profile: {
+    full_name: string | null;
+    avatar_url: string | null;
+    location: string | null;
+  } | null;
+}
 
 export default function PlayerDashboard() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [featuredTrainers, setFeaturedTrainers] = useState<FeaturedTrainer[]>([]);
+  const [loadingTrainers, setLoadingTrainers] = useState(true);
 
   useEffect(() => {
     if (!loading) {
@@ -24,6 +41,55 @@ export default function PlayerDashboard() {
       }
     }
   }, [user, role, loading, navigate]);
+
+  useEffect(() => {
+    fetchFeaturedTrainers();
+  }, []);
+
+  const fetchFeaturedTrainers = async () => {
+    const { data: trainerProfiles } = await supabase
+      .from('trainer_profiles')
+      .select('id, user_id, hourly_rate, experience_years, specializations, is_verified')
+      .eq('is_verified', true)
+      .limit(4);
+
+    if (trainerProfiles && trainerProfiles.length > 0) {
+      const userIds = trainerProfiles.map(t => t.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url, location')
+        .in('user_id', userIds);
+
+      const combined: FeaturedTrainer[] = trainerProfiles.map(trainer => ({
+        ...trainer,
+        profile: profiles?.find(p => p.user_id === trainer.user_id) || null
+      }));
+
+      setFeaturedTrainers(combined);
+    } else {
+      // If no verified trainers, get any trainers
+      const { data: anyTrainers } = await supabase
+        .from('trainer_profiles')
+        .select('id, user_id, hourly_rate, experience_years, specializations, is_verified')
+        .limit(4);
+
+      if (anyTrainers && anyTrainers.length > 0) {
+        const userIds = anyTrainers.map(t => t.user_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, avatar_url, location')
+          .in('user_id', userIds);
+
+        const combined: FeaturedTrainer[] = anyTrainers.map(trainer => ({
+          ...trainer,
+          profile: profiles?.find(p => p.user_id === trainer.user_id) || null
+        }));
+
+        setFeaturedTrainers(combined);
+      }
+    }
+    setLoadingTrainers(false);
+  };
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -51,6 +117,11 @@ export default function PlayerDashboard() {
     .map((n) => n[0])
     .join('')
     .toUpperCase() || 'U';
+
+  const getTrainerInitials = (name: string | null) => {
+    if (!name) return 'T';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
@@ -175,22 +246,89 @@ export default function PlayerDashboard() {
           </Card>
         </div>
 
-        {/* Featured Trainers Placeholder */}
+        {/* Featured Trainers */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-yellow-500" />
-              Featured Trainers
-            </CardTitle>
-            <CardDescription>
-              Top-rated trainers in your area
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5 text-yellow-500" />
+                  Featured Trainers
+                </CardTitle>
+                <CardDescription>
+                  Top-rated trainers in your area
+                </CardDescription>
+              </div>
+              <Button variant="ghost" onClick={() => navigate('/trainers')} className="gap-1">
+                View All <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <p>Trainer discovery coming soon!</p>
-              <p className="text-sm">You'll be able to browse and book trainers here.</p>
-            </div>
+            {loadingTrainers ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : featuredTrainers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No trainers available yet</p>
+                <p className="text-sm">Check back soon for new trainers!</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {featuredTrainers.map((trainer) => (
+                  <Card 
+                    key={trainer.id}
+                    className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50"
+                    onClick={() => navigate(`/book/${trainer.id}`)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                          <AvatarFallback>
+                            {getTrainerInitials(trainer.profile?.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold truncate">
+                            {trainer.profile?.full_name || 'Trainer'}
+                          </p>
+                          {trainer.profile?.location && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                              <MapPin className="h-3 w-3 shrink-0" />
+                              {trainer.profile.location}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        {trainer.hourly_rate && (
+                          <span className="text-sm font-semibold text-primary">
+                            €{trainer.hourly_rate}/hr
+                          </span>
+                        )}
+                        {trainer.is_verified && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Star className="h-3 w-3 mr-1" />
+                            Verified
+                          </Badge>
+                        )}
+                      </div>
+                      {trainer.specializations && trainer.specializations.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {trainer.specializations.slice(0, 2).map((spec, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {spec}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
