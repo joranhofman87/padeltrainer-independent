@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
@@ -14,6 +15,13 @@ interface DashboardStats {
   upcomingLessons: number;
   totalStudents: number;
   monthlyEarnings: number;
+}
+
+interface SetupStatus {
+  profileComplete: boolean;
+  hasLessons: boolean;
+  hasAvailability: boolean;
+  stripeComplete: boolean;
 }
 
 export default function TrainerDashboard() {
@@ -26,6 +34,17 @@ export default function TrainerDashboard() {
     monthlyEarnings: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>({
+    profileComplete: false,
+    hasLessons: false,
+    hasAvailability: false,
+    stripeComplete: false,
+  });
+  const [setupLoading, setSetupLoading] = useState(true);
+  const [isSetupExpanded, setIsSetupExpanded] = useState(() => {
+    const stored = localStorage.getItem('trainer_setup_expanded');
+    return stored !== null ? stored === 'true' : true;
+  });
 
   useEffect(() => {
     if (!loading) {
@@ -42,8 +61,76 @@ export default function TrainerDashboard() {
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchStats();
+      fetchSetupStatus();
     }
   }, [user, role]);
+
+  useEffect(() => {
+    localStorage.setItem('trainer_setup_expanded', String(isSetupExpanded));
+  }, [isSetupExpanded]);
+
+  const fetchSetupStatus = async () => {
+    try {
+      // Get trainer profile
+      const { data: trainerProfile } = await supabase
+        .from('trainer_profiles')
+        .select('id, hourly_rate')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (!trainerProfile) {
+        setSetupLoading(false);
+        return;
+      }
+
+      // Check profile: bio from profiles table
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('bio')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      const profileComplete = !!(trainerProfile.hourly_rate && profileData?.bio);
+
+      const trainerId = trainerProfile.id;
+
+      // Check lessons exist
+      const { count: lessonCount } = await supabase
+        .from('lessons')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', trainerId);
+
+      const hasLessons = (lessonCount || 0) > 0;
+
+      // Check availability slots exist
+      const { count: slotCount } = await supabase
+        .from('availability_slots')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', trainerId);
+
+      const hasAvailability = (slotCount || 0) > 0;
+
+      // Check Stripe status
+      const { data: stripeData } = await supabase
+        .from('trainer_stripe_accounts')
+        .select('onboarding_complete, charges_enabled')
+        .eq('trainer_id', trainerId)
+        .maybeSingle();
+
+      const stripeComplete = !!(stripeData?.onboarding_complete && stripeData?.charges_enabled);
+
+      setSetupStatus({
+        profileComplete,
+        hasLessons,
+        hasAvailability,
+        stripeComplete,
+      });
+    } catch (error) {
+      console.error('Error fetching setup status:', error);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -174,7 +261,7 @@ export default function TrainerDashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {/* Welcome Section */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold mb-2">
               Welcome back, Coach {profile?.full_name?.split(' ')[0] || ''}! 💪
@@ -188,6 +275,16 @@ export default function TrainerDashboard() {
             Create Lesson
           </Button>
         </div>
+
+        {/* Setup Checklist - Only show if not all complete */}
+        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete) && (
+          <SetupChecklist
+            setupStatus={setupStatus}
+            isExpanded={isSetupExpanded}
+            onToggle={() => setIsSetupExpanded(!isSetupExpanded)}
+            onNavigate={navigate}
+          />
+        )}
 
         {/* Stats Cards */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -373,46 +470,97 @@ export default function TrainerDashboard() {
           </Card>
         </div>
 
-        {/* Setup Checklist */}
-        <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
-              🚀 Complete Your Setup
-            </CardTitle>
-            <CardDescription>
-              Finish setting up your trainer profile to start receiving bookings
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
-                <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
-                  1
-                </div>
-                <span>Complete your profile information</span>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
-                <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
-                  2
-                </div>
-                <span>Create your first lesson</span>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
-                <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
-                  3
-                </div>
-                <span>Set your availability</span>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-background rounded-lg">
-                <div className="h-6 w-6 rounded-full border-2 border-muted-foreground flex items-center justify-center text-xs">
-                  4
-                </div>
-                <span>Set up payments with Stripe Connect</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </main>
     </div>
+  );
+}
+
+// Setup Checklist Component
+interface SetupChecklistProps {
+  setupStatus: SetupStatus;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onNavigate: (path: string) => void;
+}
+
+function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: SetupChecklistProps) {
+  const steps = [
+    { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
+    { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
+    { key: 'hasAvailability', label: 'Set your availability', route: '/schedule', complete: setupStatus.hasAvailability },
+    { key: 'stripeComplete', label: 'Set up payments with Stripe Connect', route: '/earnings', complete: setupStatus.stripeComplete },
+  ];
+
+  const completedCount = steps.filter(s => s.complete).length;
+  const totalSteps = steps.length;
+
+  return (
+    <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20 mb-8">
+      <Collapsible open={isExpanded} onOpenChange={onToggle}>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-orange-100/50 dark:hover:bg-orange-900/20 transition-colors rounded-t-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🚀</span>
+                <div>
+                  <CardTitle className="text-orange-700 dark:text-orange-400">
+                    Complete Your Setup
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    {completedCount}/{totalSteps} steps complete
+                  </CardDescription>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" className="shrink-0">
+                {isExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-orange-600" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-orange-600" />
+                )}
+              </Button>
+            </div>
+            {/* Progress bar */}
+            <div className="mt-3 h-2 bg-orange-200 dark:bg-orange-900 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-orange-500 transition-all duration-300"
+                style={{ width: `${(completedCount / totalSteps) * 100}%` }}
+              />
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            <p className="text-sm text-muted-foreground mb-4">
+              Finish setting up your trainer profile to start receiving bookings
+            </p>
+            <div className="space-y-2">
+              {steps.map((step, index) => (
+                <button
+                  key={step.key}
+                  onClick={() => onNavigate(step.route)}
+                  className="w-full flex items-center justify-between gap-3 p-3 bg-background rounded-lg hover:bg-muted/50 transition-colors text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    {step.complete ? (
+                      <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
+                        <Check className="h-4 w-4 text-white" />
+                      </div>
+                    ) : (
+                      <div className="h-6 w-6 rounded-full border-2 border-orange-400 flex items-center justify-center text-xs font-medium text-orange-600">
+                        {index + 1}
+                      </div>
+                    )}
+                    <span className={step.complete ? 'text-muted-foreground line-through' : ''}>
+                      {step.label}
+                    </span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
