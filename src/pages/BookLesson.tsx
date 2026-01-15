@@ -10,8 +10,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import { createBooking } from '@/lib/lessons';
-import { sendBookingConfirmation } from '@/lib/email';
 
 interface SlotWithDetails {
   id: string;
@@ -123,7 +121,7 @@ export default function BookLesson() {
   };
 
   const handleBook = async () => {
-    if (!selectedSlot || !profile?.id) return;
+    if (!selectedSlot || !profile?.id || !trainer) return;
 
     // Check skill rating requirements
     const lesson = selectedSlot.lessons;
@@ -150,39 +148,53 @@ export default function BookLesson() {
     setBooking(true);
 
     try {
-      const { error } = await createBooking(
-        profile.id,
-        selectedSlot.id,
-        selectedSlot.lesson_id,
-        notes || undefined
-      );
+      // Create the booking first
+      const { data: bookingData, error } = await supabase
+        .from('bookings')
+        .insert({
+          player_id: profile.id,
+          slot_id: selectedSlot.id,
+          lesson_id: selectedSlot.lesson_id,
+          notes: notes || null,
+          status: 'pending',
+          payment_status: 'pending',
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Send confirmation email
-      if (profile.email && trainer.profiles.full_name) {
-        const lesson = selectedSlot.lessons;
-        sendBookingConfirmation(
-          profile.email,
-          profile.full_name || 'Player',
-          trainer.profiles.full_name,
-          lesson?.title || 'Training Session',
-          format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy'),
-          format(parseISO(selectedSlot.start_time), 'HH:mm'),
-          lesson?.location || null,
-          lesson?.price || trainer.hourly_rate || 50
-        );
-      }
+      const price = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
 
-      setBooked(true);
-      toast({ title: 'Success', description: 'Lesson booked successfully!' });
+      // Create Stripe checkout session
+      const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
+        'create-checkout-session',
+        {
+          body: {
+            bookingId: bookingData.id,
+            lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+            trainerName: trainer.profiles.full_name,
+            price,
+            trainerId: trainer.id,
+          },
+        }
+      );
+
+      if (checkoutError) throw checkoutError;
+
+      if (checkoutData?.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = checkoutData.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
     } catch (error: any) {
+      console.error('Booking error:', error);
       toast({
         title: 'Booking Failed',
         description: error.message || 'Could not complete booking',
         variant: 'destructive',
       });
-    } finally {
       setBooking(false);
     }
   };

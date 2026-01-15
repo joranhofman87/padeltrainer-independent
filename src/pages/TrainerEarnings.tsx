@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -13,7 +13,11 @@ import {
   CreditCard,
   Clock,
   CheckCircle2,
-  Calendar
+  Calendar,
+  ExternalLink,
+  Wallet,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,13 +43,28 @@ interface EarningsBooking {
   } | null;
 }
 
+interface ConnectStatus {
+  connected: boolean;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+  onboardingComplete?: boolean;
+  balance?: {
+    available: number;
+    pending: number;
+    currency: string;
+  };
+}
+
 export default function TrainerEarnings() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
   const { toast } = useToast();
   
   const [bookings, setBookings] = useState<EarningsBooking[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
+  const [connectLoading, setConnectLoading] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -60,8 +79,20 @@ export default function TrainerEarnings() {
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchEarnings();
+      checkConnectStatus();
     }
   }, [user, role]);
+
+  // Handle return from Stripe Connect onboarding
+  useEffect(() => {
+    if (searchParams.get('connected') === 'true') {
+      toast({ title: 'Stripe Connected!', description: 'Your account is now set up to receive payments' });
+      checkConnectStatus();
+    }
+    if (searchParams.get('refresh') === 'true') {
+      checkConnectStatus();
+    }
+  }, [searchParams]);
 
   const fetchEarnings = async () => {
     const { data: trainerProfile } = await supabase
@@ -101,6 +132,34 @@ export default function TrainerEarnings() {
     setLoadingData(false);
   };
 
+  const checkConnectStatus = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('check-connect-status');
+      if (error) throw error;
+      setConnectStatus(data);
+    } catch (err) {
+      console.error('Error checking connect status:', err);
+      setConnectStatus({ connected: false });
+    }
+  };
+
+  const handleConnectStripe = async () => {
+    setConnectLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('connect-trainer');
+      if (error) throw error;
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to connect Stripe',
+        variant: 'destructive',
+      });
+      setConnectLoading(false);
+    }
+  };
   const handleMarkPaid = async (bookingId: string, amount: number) => {
     const { error } = await supabase
       .from('bookings')
@@ -181,6 +240,99 @@ export default function TrainerEarnings() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Stripe Connect Card */}
+        {connectStatus && !connectStatus.chargesEnabled && (
+          <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <Wallet className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Connect Your Bank Account</CardTitle>
+                  <CardDescription>
+                    Receive payments directly to your bank account with Stripe
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    Automatic payouts to your bank
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    Accept iDEAL, cards, and Bancontact
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    Platform fee: 10% per transaction
+                  </div>
+                </div>
+                <Button onClick={handleConnectStripe} disabled={connectLoading} size="lg">
+                  {connectLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                  )}
+                  Connect with Stripe
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Stripe Balance Card */}
+        {connectStatus?.chargesEnabled && connectStatus.balance && (
+          <Card className="mb-8 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
+                    <Wallet className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Stripe Balance</p>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-2xl font-bold text-green-600">
+                        €{connectStatus.balance.available.toFixed(2)}
+                      </span>
+                      <span className="text-sm text-muted-foreground">available</span>
+                      {connectStatus.balance.pending > 0 && (
+                        <span className="text-sm text-orange-600">
+                          +€{connectStatus.balance.pending.toFixed(2)} pending
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <Badge variant="outline" className="border-green-300 text-green-600">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Stripe Connected
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pending onboarding warning */}
+        {connectStatus?.connected && !connectStatus.onboardingComplete && (
+          <Card className="mb-8 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your Stripe setup</p>
+                <p className="text-sm text-orange-600 dark:text-orange-300">Finish onboarding to start receiving payments</p>
+              </div>
+              <Button variant="outline" onClick={handleConnectStripe} disabled={connectLoading}>
+                Continue Setup
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">

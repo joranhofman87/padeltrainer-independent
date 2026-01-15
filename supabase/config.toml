@@ -2,3 +2,15 @@ project_id = "ppkbhdiiqdusdeatgdft"
 
 [functions.scrape-knltb-rating]
 verify_jwt = false
+
+[functions.create-checkout-session]
+verify_jwt = false
+
+[functions.verify-payment]
+verify_jwt = false
+
+[functions.connect-trainer]
+verify_jwt = false
+
+[functions.check-connect-status]
+verify_jwt = false
