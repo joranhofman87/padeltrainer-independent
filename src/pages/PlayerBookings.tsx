@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Calendar, Clock, MapPin, User } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, User, Star } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { cancelBooking } from '@/lib/lessons';
+import { ReviewForm } from '@/components/reviews/ReviewForm';
+import { getPlayerReview } from '@/lib/reviews';
 
 interface BookingWithDetails {
   id: string;
@@ -19,8 +22,10 @@ interface BookingWithDetails {
   availability_slots: {
     start_time: string;
     end_time: string;
+    trainer_id: string;
     trainer_profiles: {
       id: string;
+      user_id: string;
       profiles: {
         full_name: string;
         avatar_url: string | null;
@@ -32,6 +37,7 @@ interface BookingWithDetails {
     price: number;
     location: string | null;
   } | null;
+  hasReview?: boolean;
 }
 
 export default function PlayerBookings() {
@@ -41,6 +47,7 @@ export default function PlayerBookings() {
 
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -69,8 +76,10 @@ export default function PlayerBookings() {
         availability_slots(
           start_time,
           end_time,
+          trainer_id,
           trainer_profiles(
             id,
+            user_id,
             profiles(full_name, avatar_url)
           )
         ),
@@ -80,8 +89,24 @@ export default function PlayerBookings() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      setBookings(data as unknown as BookingWithDetails[]);
+      // Check which bookings have reviews
+      const bookingsWithReviewStatus = await Promise.all(
+        (data as unknown as BookingWithDetails[]).map(async (booking) => {
+          const { data: review } = await getPlayerReview(booking.id);
+          return { ...booking, hasReview: !!review };
+        })
+      );
+      setBookings(bookingsWithReviewStatus);
     }
+    if (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load bookings',
+        variant: 'destructive',
+      });
+    }
+    setLoadingBookings(false);
+  };
     if (error) {
       toast({
         title: 'Error',
@@ -242,39 +267,72 @@ export default function PlayerBookings() {
               </Card>
             ) : (
               <div className="space-y-4">
-                {pastBookings.map((booking) => (
-                  <Card key={booking.id} className="opacity-75">
-                    <CardContent className="p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-lg font-semibold">
-                              {booking.lessons?.title || 'Training Session'}
-                            </h3>
-                            {getStatusBadge(booking.status)}
-                          </div>
-                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {format(parseISO(booking.availability_slots.start_time), 'EEEE, MMM d, yyyy')}
+                {pastBookings.map((booking) => {
+                  const canReview = booking.status === 'completed' && !booking.hasReview;
+                  
+                  return (
+                    <Card key={booking.id} className="opacity-90">
+                      <CardContent className="p-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <h3 className="text-lg font-semibold">
+                                {booking.lessons?.title || 'Training Session'}
+                              </h3>
+                              {getStatusBadge(booking.status)}
+                              {booking.hasReview && (
+                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                  <Star className="h-3 w-3 mr-1 fill-yellow-500" />
+                                  Reviewed
+                                </Badge>
+                              )}
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} -
-                              {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
+                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {format(parseISO(booking.availability_slots.start_time), 'EEEE, MMM d, yyyy')}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="h-4 w-4" />
+                                {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} -
+                                {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span>
+                                Coach {booking.availability_slots.trainer_profiles.profiles.full_name}
+                              </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              Coach {booking.availability_slots.trainer_profiles.profiles.full_name}
-                            </span>
-                          </div>
+                          {canReview && (
+                            <Dialog open={reviewDialogOpen === booking.id} onOpenChange={(open) => setReviewDialogOpen(open ? booking.id : null)}>
+                              <DialogTrigger asChild>
+                                <Button variant="outline" className="gap-2">
+                                  <Star className="h-4 w-4" />
+                                  Leave Review
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <ReviewForm
+                                  bookingId={booking.id}
+                                  playerId={profile!.id}
+                                  trainerId={booking.availability_slots.trainer_profiles.id}
+                                  trainerName={booking.availability_slots.trainer_profiles.profiles.full_name}
+                                  onSuccess={() => {
+                                    setReviewDialogOpen(null);
+                                    fetchBookings();
+                                  }}
+                                  onCancel={() => setReviewDialogOpen(null)}
+                                />
+                              </DialogContent>
+                            </Dialog>
+                          )}
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </TabsContent>

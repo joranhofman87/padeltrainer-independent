@@ -11,8 +11,12 @@ import {
   ArrowLeft, MapPin, Star, Clock, Award, Mail, Phone, 
   Calendar, Users, CheckCircle 
 } from 'lucide-react';
+import { TrainerReviews } from '@/components/reviews/TrainerReviews';
+import { StarRating } from '@/components/reviews/StarRating';
+import { getTrainerAverageRating } from '@/lib/reviews';
 
 interface TrainerData {
+  id: string;
   user_id: string;
   hourly_rate: number | null;
   experience_years: number | null;
@@ -35,6 +39,8 @@ export default function TrainerProfile() {
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [averageRating, setAverageRating] = useState<number | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
   const navigate = useNavigate();
   const { user, role } = useAuth();
 
@@ -64,6 +70,10 @@ export default function TrainerProfile() {
       console.error('Error fetching trainer:', trainerResult.error);
     } else {
       setTrainer(trainerResult.data);
+      // Fetch reviews for this trainer
+      const ratingRes = await getTrainerAverageRating(trainerResult.data.id);
+      setAverageRating(ratingRes.average);
+      setReviewCount(ratingRes.count);
     }
 
     if (profileResult.error) {
@@ -166,6 +176,12 @@ export default function TrainerProfile() {
                       {trainer.experience_years} years experience
                     </div>
                   )}
+                  {averageRating !== null && (
+                    <div className="flex items-center gap-1">
+                      <StarRating rating={averageRating} size="sm" />
+                      <span className="text-muted-foreground">({reviewCount})</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -243,7 +259,7 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Upcoming Lessons Placeholder */}
+            {/* Available Lessons Placeholder */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -262,6 +278,9 @@ export default function TrainerProfile() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Reviews Section */}
+            {trainer && <TrainerReviews trainerId={trainer.id} />}
           </div>
 
           {/* Sidebar */}
@@ -293,7 +312,9 @@ export default function TrainerProfile() {
                     <Star className="h-4 w-4" />
                     Rating
                   </span>
-                  <span className="font-semibold">—</span>
+                  <span className="font-semibold">
+                    {averageRating !== null ? `${averageRating} ★` : '—'}
+                  </span>
                 </div>
               </CardContent>
             </Card>

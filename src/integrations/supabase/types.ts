@@ -248,6 +248,42 @@ export type Database = {
         }
         Relationships: []
       }
+      reviews: {
+        Row: {
+          booking_id: string
+          comment: string | null
+          created_at: string
+          id: string
+          is_public: boolean
+          player_id: string
+          rating: number
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          player_id: string
+          rating: number
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          is_public?: boolean
+          player_id?: string
+          rating?: number
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trainer_profiles: {
         Row: {
           certifications: string[] | null
