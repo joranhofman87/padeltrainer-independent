@@ -200,19 +200,19 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/availability')}
+            onClick={() => navigate('/schedule')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-green-500/10">
                   <Clock className="h-5 w-5 text-green-600" />
                 </div>
-                <CardTitle className="text-lg">Availability</CardTitle>
+                <CardTitle className="text-lg">Working Hours</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Set your available time slots
+                Set your weekly schedule and generate slots
               </CardDescription>
             </CardContent>
           </Card>
