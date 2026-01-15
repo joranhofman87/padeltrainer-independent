@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown } from 'lucide-react';
 
 export default function TrainerDashboard() {
   const { user, profile, role, loading } = useAuth();
@@ -127,7 +127,7 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/earnings')}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -138,6 +138,7 @@ export default function TrainerDashboard() {
                   <DollarSign className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">Click to view earnings →</p>
             </CardContent>
           </Card>
 
@@ -157,7 +158,7 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/lessons')}
@@ -172,7 +173,7 @@ export default function TrainerDashboard() {
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Create and manage your training sessions, set schedules and requirements
+                Create and manage your training sessions
               </CardDescription>
             </CardContent>
           </Card>
@@ -186,35 +187,74 @@ export default function TrainerDashboard() {
                 <div className="p-2 rounded-lg bg-green-500/10">
                   <Clock className="h-5 w-5 text-green-600" />
                 </div>
-                <CardTitle className="text-lg">My Availability</CardTitle>
+                <CardTitle className="text-lg">Availability</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Set your available time slots for players to book lessons
+                Set your available time slots
               </CardDescription>
             </CardContent>
           </Card>
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/profile/edit')}
+            onClick={() => navigate('/earnings')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-orange-500/10">
-                  <Settings className="h-5 w-5 text-orange-600" />
+                  <CreditCard className="h-5 w-5 text-orange-600" />
                 </div>
-                <CardTitle className="text-lg">Profile Settings</CardTitle>
+                <CardTitle className="text-lg">Earnings</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Update your trainer profile, certifications, and payment settings
+                View payouts and transaction history
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/subscription')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Crown className="h-5 w-5 text-purple-600" />
+                </div>
+                <CardTitle className="text-lg">Subscription</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Upgrade your plan for more features
               </CardDescription>
             </CardContent>
           </Card>
         </div>
+
+        {/* Settings Card */}
+        <Card 
+          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50 mb-8"
+          onClick={() => navigate('/profile/edit')}
+        >
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gray-500/10">
+                <Settings className="h-5 w-5 text-gray-600" />
+              </div>
+              <CardTitle className="text-lg">Profile Settings</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              Update your trainer profile, certifications, and payment settings
+            </CardDescription>
+          </CardContent>
+        </Card>
 
         {/* Setup Checklist */}
         <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
