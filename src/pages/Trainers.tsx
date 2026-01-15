@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,9 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, Filter } from 'lucide-react';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp } from 'lucide-react';
+import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
+import { getTrainerAverageRating } from '@/lib/reviews';
 
 interface TrainerWithProfile {
+  id: string;
   user_id: string;
   hourly_rate: number | null;
   experience_years: number | null;
@@ -23,14 +26,20 @@ interface TrainerWithProfile {
     bio: string | null;
     location: string | null;
   } | null;
+  averageRating: number;
+  reviewCount: number;
 }
+
+type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
 
 export default function Trainers() {
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [locationFilter, setLocationFilter] = useState<string>('all');
+  const [filters, setFilters] = useState<TrainerFiltersState>(DEFAULT_FILTERS);
+  const [sortBy, setSortBy] = useState<SortOption>('rating');
   const [locations, setLocations] = useState<string[]>([]);
+  const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -44,7 +53,7 @@ export default function Trainers() {
     // Fetch trainer profiles with their general profiles
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles')
-      .select('user_id, hourly_rate, experience_years, certifications, specializations, is_verified');
+      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified');
     
     if (trainerError) {
       console.error('Error fetching trainers:', trainerError);
@@ -65,13 +74,20 @@ export default function Trainers() {
       return;
     }
 
-    // Combine trainer profiles with general profiles
-    const combined: TrainerWithProfile[] = trainerProfiles.map(trainer => ({
-      ...trainer,
-      profile: profiles.find(p => p.user_id === trainer.user_id) || null
-    }));
+    // Fetch ratings for all trainers
+    const trainersWithRatings = await Promise.all(
+      trainerProfiles.map(async (trainer) => {
+        const { average, count } = await getTrainerAverageRating(trainer.id);
+        return {
+          ...trainer,
+          profile: profiles.find(p => p.user_id === trainer.user_id) || null,
+          averageRating: average || 0,
+          reviewCount: count,
+        };
+      })
+    );
 
-    setTrainers(combined);
+    setTrainers(trainersWithRatings);
     
     // Extract unique locations for filter
     const uniqueLocations = [...new Set(profiles
@@ -79,21 +95,78 @@ export default function Trainers() {
       .filter((loc): loc is string => Boolean(loc))
     )];
     setLocations(uniqueLocations);
+
+    // Extract unique specializations
+    const specs = trainerProfiles.flatMap(t => t.specializations || []);
+    const uniqueSpecs = [...new Set(specs)].sort();
+    setAllSpecializations(uniqueSpecs);
     
     setLoading(false);
   };
 
-  const filteredTrainers = trainers.filter(trainer => {
-    const matchesSearch = !searchQuery || 
-      trainer.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trainer.profile?.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trainer.specializations?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesLocation = locationFilter === 'all' || 
-      trainer.profile?.location === locationFilter;
-    
-    return matchesSearch && matchesLocation;
-  });
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.location !== 'all') count++;
+    if (filters.priceRange[0] > 0 || filters.priceRange[1] < 200) count++;
+    if (filters.minRating > 0) count++;
+    if (filters.minExperience > 0) count++;
+    if (filters.specializations.length > 0) count++;
+    if (filters.verifiedOnly) count++;
+    return count;
+  }, [filters]);
+
+  const filteredAndSortedTrainers = useMemo(() => {
+    let result = trainers.filter(trainer => {
+      // Search query
+      const matchesSearch = !searchQuery || 
+        trainer.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        trainer.profile?.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        trainer.specializations?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      // Location filter
+      const matchesLocation = filters.location === 'all' || 
+        trainer.profile?.location === filters.location;
+      
+      // Price range filter
+      const rate = trainer.hourly_rate || 0;
+      const matchesPrice = rate >= filters.priceRange[0] && rate <= filters.priceRange[1];
+      
+      // Rating filter
+      const matchesRating = trainer.averageRating >= filters.minRating;
+      
+      // Experience filter
+      const experience = trainer.experience_years || 0;
+      const matchesExperience = experience >= filters.minExperience;
+      
+      // Specializations filter
+      const matchesSpecializations = filters.specializations.length === 0 ||
+        filters.specializations.some(s => trainer.specializations?.includes(s));
+      
+      // Verified filter
+      const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
+      
+      return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
+             matchesExperience && matchesSpecializations && matchesVerified;
+    });
+
+    // Sort
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating':
+          return b.averageRating - a.averageRating;
+        case 'price-low':
+          return (a.hourly_rate || 0) - (b.hourly_rate || 0);
+        case 'price-high':
+          return (b.hourly_rate || 0) - (a.hourly_rate || 0);
+        case 'experience':
+          return (b.experience_years || 0) - (a.experience_years || 0);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [trainers, searchQuery, filters, sortBy]);
 
   const getInitials = (name: string | null) => {
     if (!name) return 'T';
@@ -121,7 +194,7 @@ export default function Trainers() {
       <main className="container mx-auto px-4 py-8">
         {/* Search and Filters */}
         <div className="mb-8 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -131,21 +204,72 @@ export default function Trainers() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map(loc => (
-                  <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <TrainerFilters
+                filters={filters}
+                onChange={setFilters}
+                locations={locations}
+                allSpecializations={allSpecializations}
+                activeFilterCount={activeFilterCount}
+              />
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[160px]">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rating">Top Rated</SelectItem>
+                  <SelectItem value="price-low">Price: Low to High</SelectItem>
+                  <SelectItem value="price-high">Price: High to Low</SelectItem>
+                  <SelectItem value="experience">Most Experienced</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {/* Active filters display */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-sm text-muted-foreground">Active filters:</span>
+              {filters.location !== 'all' && (
+                <Badge variant="secondary" className="gap-1">
+                  <MapPin className="h-3 w-3" /> {filters.location}
+                </Badge>
+              )}
+              {(filters.priceRange[0] > 0 || filters.priceRange[1] < 200) && (
+                <Badge variant="secondary">
+                  €{filters.priceRange[0]} - €{filters.priceRange[1]}
+                </Badge>
+              )}
+              {filters.minRating > 0 && (
+                <Badge variant="secondary" className="gap-1">
+                  {filters.minRating}+ <Star className="h-3 w-3 fill-current" />
+                </Badge>
+              )}
+              {filters.minExperience > 0 && (
+                <Badge variant="secondary">
+                  {filters.minExperience}+ years
+                </Badge>
+              )}
+              {filters.specializations.map(spec => (
+                <Badge key={spec} variant="secondary">{spec}</Badge>
+              ))}
+              {filters.verifiedOnly && (
+                <Badge variant="secondary">Verified only</Badge>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 text-xs"
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+              >
+                Clear all
+              </Button>
+            </div>
+          )}
+
           <p className="text-sm text-muted-foreground">
-            {filteredTrainers.length} trainer{filteredTrainers.length !== 1 ? 's' : ''} found
+            {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
           </p>
         </div>
 
@@ -154,26 +278,26 @@ export default function Trainers() {
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : filteredTrainers.length === 0 ? (
+        ) : filteredAndSortedTrainers.length === 0 ? (
           <Card className="text-center py-12">
             <CardContent>
               <p className="text-muted-foreground mb-4">No trainers found</p>
-              {searchQuery || locationFilter !== 'all' ? (
-                <Button variant="outline" onClick={() => { setSearchQuery(''); setLocationFilter('all'); }}>
+              {searchQuery || activeFilterCount > 0 ? (
+                <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
                   Clear Filters
                 </Button>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Be the first trainer to join PadelMatch!
+                  Be the first trainer to join!
                 </p>
               )}
             </CardContent>
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTrainers.map((trainer) => (
+            {filteredAndSortedTrainers.map((trainer) => (
               <Card 
-                key={trainer.user_id} 
+                key={trainer.id} 
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
                 onClick={() => navigate(`/trainer/${trainer.user_id}`)}
               >
@@ -186,13 +310,12 @@ export default function Trainers() {
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <CardTitle className="text-lg truncate">
                           {trainer.profile?.full_name || 'Trainer'}
                         </CardTitle>
                         {trainer.is_verified && (
                           <Badge variant="secondary" className="shrink-0">
-                            <Star className="h-3 w-3 mr-1" />
                             Verified
                           </Badge>
                         )}
@@ -202,6 +325,15 @@ export default function Trainers() {
                           <MapPin className="h-3 w-3" />
                           {trainer.profile.location}
                         </CardDescription>
+                      )}
+                      {trainer.reviewCount > 0 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                          <span className="font-medium">{trainer.averageRating.toFixed(1)}</span>
+                          <span className="text-sm text-muted-foreground">
+                            ({trainer.reviewCount} review{trainer.reviewCount !== 1 ? 's' : ''})
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
