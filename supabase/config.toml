@@ -1,1 +1,4 @@
 project_id = "ppkbhdiiqdusdeatgdft"
+
+[functions.scrape-knltb-rating]
+verify_jwt = false
