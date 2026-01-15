@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -20,9 +22,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, Repeat, CreditCard } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, Repeat, CreditCard, CalendarIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -55,6 +59,7 @@ export default function ManageLessons() {
     recurrence_time: '09:00',
     recurrence_count: 10,
     recurrence_end_date: '',
+    start_date: null as Date | null,
     // Payment
     payment_timing: 'upfront' as 'upfront' | 'after',
   });
@@ -115,6 +120,7 @@ export default function ManageLessons() {
       recurrence_time: '09:00',
       recurrence_count: 10,
       recurrence_end_date: '',
+      start_date: null,
       payment_timing: 'upfront',
     });
     setEditingLesson(null);
@@ -138,6 +144,7 @@ export default function ManageLessons() {
       recurrence_time: lesson.recurrence_time || '09:00',
       recurrence_count: lesson.recurrence_count || 10,
       recurrence_end_date: lesson.recurrence_end_date || '',
+      start_date: lesson.start_date ? new Date(lesson.start_date) : null,
       payment_timing: lesson.payment_timing || 'upfront',
     });
     setDialogOpen(true);
@@ -148,6 +155,15 @@ export default function ManageLessons() {
       toast({
         title: 'Validation Error',
         description: 'Please fill in all required fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (formData.is_recurring && !formData.start_date) {
+      toast({
+        title: 'Start Date Required',
+        description: 'Please select a start date for the recurring lesson cycle',
         variant: 'destructive',
       });
       return;
@@ -183,6 +199,7 @@ export default function ManageLessons() {
         recurrence_time: formData.is_recurring ? formData.recurrence_time : null,
         recurrence_count: formData.is_recurring ? formData.recurrence_count : null,
         recurrence_end_date: formData.is_recurring && formData.recurrence_end_date ? formData.recurrence_end_date : null,
+        start_date: formData.is_recurring && formData.start_date ? format(formData.start_date, 'yyyy-MM-dd') : null,
         // Payment
         payment_timing: formData.payment_timing,
       };
@@ -387,6 +404,38 @@ export default function ManageLessons() {
 
                   {formData.is_recurring && (
                     <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      {/* Start Date - Most important for recurring */}
+                      <div className="space-y-2">
+                        <Label>Start Date *</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !formData.start_date && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {formData.start_date ? format(formData.start_date, "PPP") : <span>Pick a start date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={formData.start_date || undefined}
+                              onSelect={(date) => setFormData({ ...formData, start_date: date || null })}
+                              disabled={(date) => date < new Date()}
+                              initialFocus
+                              className={cn("p-3 pointer-events-auto")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <p className="text-xs text-muted-foreground">
+                          When should the first lesson of this cycle start?
+                        </p>
+                      </div>
+
                       <div className="space-y-2">
                         <Label>Repeat</Label>
                         <Select

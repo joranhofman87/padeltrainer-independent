@@ -151,6 +151,7 @@ export type Database = {
           recurrence_end_date: string | null
           recurrence_time: string | null
           recurrence_type: string | null
+          start_date: string | null
           title: string
           trainer_id: string
           updated_at: string
@@ -173,6 +174,7 @@ export type Database = {
           recurrence_end_date?: string | null
           recurrence_time?: string | null
           recurrence_type?: string | null
+          start_date?: string | null
           title: string
           trainer_id: string
           updated_at?: string
@@ -195,6 +197,7 @@ export type Database = {
           recurrence_end_date?: string | null
           recurrence_time?: string | null
           recurrence_type?: string | null
+          start_date?: string | null
           title?: string
           trainer_id?: string
           updated_at?: string
