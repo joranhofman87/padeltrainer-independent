@@ -132,6 +132,30 @@ export type Database = {
           },
         ]
       }
+      calendar_events: {
+        Row: {
+          booking_id: string
+          created_at: string
+          google_event_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          google_event_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          google_event_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lessons: {
         Row: {
           created_at: string
@@ -482,6 +506,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_calendar_connections: {
+        Row: {
+          access_token: string
+          calendar_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          provider: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          calendar_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          calendar_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
