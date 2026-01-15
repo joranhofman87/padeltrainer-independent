@@ -1,17 +1,31 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { startOfMonth, endOfMonth } from 'date-fns';
+
+interface DashboardStats {
+  upcomingLessons: number;
+  totalStudents: number;
+  monthlyEarnings: number;
+}
 
 export default function TrainerDashboard() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [stats, setStats] = useState<DashboardStats>({
+    upcomingLessons: 0,
+    totalStudents: 0,
+    monthlyEarnings: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     if (!loading) {
@@ -24,6 +38,84 @@ export default function TrainerDashboard() {
       }
     }
   }, [user, role, loading, navigate]);
+
+  useEffect(() => {
+    if (user && role === 'trainer') {
+      fetchStats();
+    }
+  }, [user, role]);
+
+  const fetchStats = async () => {
+    try {
+      // Get trainer profile ID
+      const { data: trainerProfile } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (!trainerProfile) {
+        setStatsLoading(false);
+        return;
+      }
+
+      const trainerId = trainerProfile.id;
+      const now = new Date();
+      const monthStart = startOfMonth(now);
+      const monthEnd = endOfMonth(now);
+
+      // 1. Upcoming lessons (confirmed bookings in future)
+      const { data: upcomingBookings } = await supabase
+        .from('availability_slots')
+        .select(`
+          id,
+          start_time,
+          bookings!inner(id, status)
+        `)
+        .eq('trainer_id', trainerId)
+        .gte('start_time', now.toISOString())
+        .eq('bookings.status', 'confirmed');
+
+      // 2. Unique students (distinct player_ids from all confirmed bookings)
+      const { data: allBookings } = await supabase
+        .from('bookings')
+        .select(`
+          player_id,
+          availability_slots!inner(trainer_id)
+        `)
+        .eq('availability_slots.trainer_id', trainerId)
+        .eq('status', 'confirmed');
+
+      const uniqueStudents = new Set(allBookings?.map(b => b.player_id) || []);
+
+      // 3. Monthly earnings (sum of payment_amount for paid bookings this month)
+      const { data: monthlyBookings } = await supabase
+        .from('bookings')
+        .select(`
+          payment_amount,
+          paid_at,
+          availability_slots!inner(trainer_id)
+        `)
+        .eq('availability_slots.trainer_id', trainerId)
+        .eq('payment_status', 'paid')
+        .gte('paid_at', monthStart.toISOString())
+        .lte('paid_at', monthEnd.toISOString());
+
+      const totalEarnings = monthlyBookings?.reduce((sum, b) => sum + (b.payment_amount || 0), 0) || 0;
+      // Apply platform fee (trainer gets 90%)
+      const netEarnings = totalEarnings * 0.9;
+
+      setStats({
+        upcomingLessons: upcomingBookings?.length || 0,
+        totalStudents: uniqueStudents.size,
+        monthlyEarnings: netEarnings,
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -104,7 +196,9 @@ export default function TrainerDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Upcoming Lessons</p>
-                  <p className="text-3xl font-bold">0</p>
+                  <p className="text-3xl font-bold">
+                    {statsLoading ? '...' : stats.upcomingLessons}
+                  </p>
                 </div>
                 <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
                   <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -118,7 +212,9 @@ export default function TrainerDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Students</p>
-                  <p className="text-3xl font-bold">0</p>
+                  <p className="text-3xl font-bold">
+                    {statsLoading ? '...' : stats.totalStudents}
+                  </p>
                 </div>
                 <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -132,7 +228,9 @@ export default function TrainerDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">This Month</p>
-                  <p className="text-3xl font-bold">€0</p>
+                  <p className="text-3xl font-bold">
+                    {statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}
+                  </p>
                 </div>
                 <div className="p-3 rounded-full bg-orange-100 dark:bg-orange-900">
                   <DollarSign className="h-5 w-5 text-orange-600 dark:text-orange-400" />
