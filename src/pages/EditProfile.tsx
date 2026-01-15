@@ -9,8 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, Search, Loader2 } from 'lucide-react';
-import { fetchKnltbRating } from '@/lib/knltb';
+import { ArrowLeft, Save, User } from 'lucide-react';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -25,7 +24,7 @@ export default function EditProfile() {
   const { toast } = useToast();
   
   const [saving, setSaving] = useState(false);
-  const [lookingUpRating, setLookingUpRating] = useState(false);
+  
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -89,45 +88,6 @@ export default function EditProfile() {
       setCertificationsInput((data.certifications || []).join(', '));
       setSpecializationsInput((data.specializations || []).join(', '));
     }
-  };
-
-  const handleLookupRating = async () => {
-    if (!formData.knltb_number.trim()) {
-      toast({
-        title: 'KNLTB Number Required',
-        description: 'Please enter your KNLTB number first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setLookingUpRating(true);
-    
-    try {
-      const result = await fetchKnltbRating(formData.knltb_number.trim());
-      
-      if (result.success && result.data) {
-        setFormData({ ...formData, skill_rating: result.data.rating.toString() });
-        toast({
-          title: 'Rating Found!',
-          description: `Your KNLTB rating is ${result.data.rating}`,
-        });
-      } else {
-        toast({
-          title: 'Could not find rating',
-          description: result.error || 'Please enter your rating manually',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      toast({
-        title: 'Lookup failed',
-        description: 'Could not connect to KNLTB. Please enter manually.',
-        variant: 'destructive',
-      });
-    }
-    
-    setLookingUpRating(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -320,49 +280,31 @@ export default function EditProfile() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="knltb_number">KNLTB Number</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="knltb_number"
-                      value={formData.knltb_number}
-                      onChange={(e) => setFormData({ ...formData, knltb_number: e.target.value })}
-                      placeholder="12345678"
-                      className="flex-1"
-                    />
-                    <Button 
-                      type="button" 
-                      variant="outline"
-                      onClick={handleLookupRating}
-                      disabled={lookingUpRating || !formData.knltb_number.trim()}
-                    >
-                      {lookingUpRating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Search className="h-4 w-4 mr-2" />
-                          Lookup Rating
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  <Input
+                    id="knltb_number"
+                    value={formData.knltb_number}
+                    onChange={(e) => setFormData({ ...formData, knltb_number: e.target.value })}
+                    placeholder="12345678"
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Enter your KNLTB number and click "Lookup Rating" to automatically fetch your skill rating
+                    Your official KNLTB registration number
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="skill_rating">Skill Rating (1-10)</Label>
+                  <Label htmlFor="skill_rating">Padel Dubbel Rating</Label>
                   <Input
                     id="skill_rating"
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="1"
                     max="10"
                     value={formData.skill_rating}
                     onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
-                    placeholder="5.0"
+                    placeholder="4.48"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Or enter your rating manually if automatic lookup doesn't work
+                    Enter your current padel dubbel rating from KNLTB (e.g., 4.48)
                   </p>
                 </div>
               </CardContent>
