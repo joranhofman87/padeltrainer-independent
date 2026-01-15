@@ -19,6 +19,7 @@ export interface Lesson {
   recurrence_time: string | null; // HH:MM format
   recurrence_count: number | null; // Number of sessions
   recurrence_end_date: string | null;
+  start_date: string | null; // When the recurring cycle begins
   // Payment settings
   payment_timing: 'upfront' | 'after';
   created_at: string;
