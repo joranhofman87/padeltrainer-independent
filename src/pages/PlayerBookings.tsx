@@ -107,15 +107,6 @@ export default function PlayerBookings() {
     }
     setLoadingBookings(false);
   };
-    if (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load bookings',
-        variant: 'destructive',
-      });
-    }
-    setLoadingBookings(false);
-  };
 
   const handleCancel = async (bookingId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
