@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.check-connect-status]
 verify_jwt = false
+
+[functions.create-trainer-checkout]
+verify_jwt = false
+
+[functions.check-trainer-subscription]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
