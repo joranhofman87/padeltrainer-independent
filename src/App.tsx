@@ -14,6 +14,7 @@ import TrainerProfile from "./pages/TrainerProfile";
 import EditProfile from "./pages/EditProfile";
 import ManageLessons from "./pages/ManageLessons";
 import ManageAvailability from "./pages/ManageAvailability";
+import ManageSchedule from "./pages/ManageSchedule";
 import PlayerBookings from "./pages/PlayerBookings";
 import TrainerBookings from "./pages/TrainerBookings";
 import BookLesson from "./pages/BookLesson";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/profile/edit" element={<EditProfile />} />
             <Route path="/lessons" element={<ManageLessons />} />
             <Route path="/availability" element={<ManageAvailability />} />
+            <Route path="/schedule" element={<ManageSchedule />} />
             <Route path="/bookings" element={<PlayerBookings />} />
             <Route path="/trainer-bookings" element={<TrainerBookings />} />
             <Route path="/book/:trainerId" element={<BookLesson />} />

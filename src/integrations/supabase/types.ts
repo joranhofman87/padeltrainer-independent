@@ -302,6 +302,9 @@ export type Database = {
           id: string
           is_verified: boolean | null
           knltb_rating: number | null
+          schedule_weeks_ahead: number
+          slot_duration_minutes: number
+          slot_gap_minutes: number
           specializations: string[] | null
           stripe_account_id: string | null
           subscription_status: string | null
@@ -316,6 +319,9 @@ export type Database = {
           id?: string
           is_verified?: boolean | null
           knltb_rating?: number | null
+          schedule_weeks_ahead?: number
+          slot_duration_minutes?: number
+          slot_gap_minutes?: number
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
@@ -330,6 +336,9 @@ export type Database = {
           id?: string
           is_verified?: boolean | null
           knltb_rating?: number | null
+          schedule_weeks_ahead?: number
+          slot_duration_minutes?: number
+          slot_gap_minutes?: number
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
@@ -374,6 +383,44 @@ export type Database = {
             foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: true
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trainer_working_hours: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          is_active: boolean
+          start_time: string
+          trainer_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          is_active?: boolean
+          start_time: string
+          trainer_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_active?: boolean
+          start_time?: string
+          trainer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_working_hours_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
             referencedRelation: "trainer_profiles"
             referencedColumns: ["id"]
           },
