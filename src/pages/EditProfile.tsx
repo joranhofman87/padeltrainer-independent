@@ -16,6 +16,7 @@ interface TrainerProfileData {
   experience_years: number | null;
   certifications: string[];
   specializations: string[];
+  knltb_rating: number | null;
 }
 
 export default function EditProfile() {
@@ -40,6 +41,7 @@ export default function EditProfile() {
     experience_years: null,
     certifications: [],
     specializations: [],
+    knltb_rating: null,
   });
   
   const [certificationsInput, setCertificationsInput] = useState('');
@@ -74,7 +76,7 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('hourly_rate, experience_years, certifications, specializations')
+      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating')
       .eq('user_id', user!.id)
       .single();
     
@@ -84,6 +86,7 @@ export default function EditProfile() {
         experience_years: data.experience_years,
         certifications: data.certifications || [],
         specializations: data.specializations || [],
+        knltb_rating: data.knltb_rating,
       });
       setCertificationsInput((data.certifications || []).join(', '));
       setSpecializationsInput((data.specializations || []).join(', '));
@@ -130,6 +133,7 @@ export default function EditProfile() {
             experience_years: trainerData.experience_years,
             certifications,
             specializations,
+            knltb_rating: trainerData.knltb_rating,
           })
           .eq('user_id', user.id);
         
@@ -349,6 +353,26 @@ export default function EditProfile() {
                       placeholder="5"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="knltb_rating">KNLTB Rating</Label>
+                  <Input
+                    id="knltb_rating"
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    max="10"
+                    value={trainerData.knltb_rating || ''}
+                    onChange={(e) => setTrainerData({ 
+                      ...trainerData, 
+                      knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
+                    })}
+                    placeholder="7.5"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Your official KNLTB tennis rating (e.g., 7.5)
+                  </p>
                 </div>
 
                 <div className="space-y-2">

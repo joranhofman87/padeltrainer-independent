@@ -30,6 +30,7 @@ export interface TrainerFiltersState {
   minExperience: number;
   location: string;
   verifiedOnly: boolean;
+  minKnltbRating: number;
 }
 
 interface TrainerFiltersProps {
@@ -47,6 +48,7 @@ const DEFAULT_FILTERS: TrainerFiltersState = {
   minExperience: 0,
   location: 'all',
   verifiedOnly: false,
+  minKnltbRating: 0,
 };
 
 export function TrainerFilters({
@@ -191,6 +193,26 @@ export function TrainerFilters({
                 </Button>
               ))}
             </div>
+          </div>
+
+          {/* Minimum KNLTB Rating */}
+          <div className="space-y-3">
+            <Label>Minimum Trainer KNLTB Rating</Label>
+            <div className="flex gap-2 flex-wrap">
+              {[0, 5, 6, 7, 8].map((rating) => (
+                <Button
+                  key={rating}
+                  variant={localFilters.minKnltbRating === rating ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setLocalFilters(prev => ({ ...prev, minKnltbRating: rating }))}
+                >
+                  {rating === 0 ? 'Any' : `${rating}+`}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Filter by trainer's official KNLTB tennis rating
+            </p>
           </div>
 
           {/* Minimum Experience */}
