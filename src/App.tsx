@@ -20,6 +20,7 @@ import BookLesson from "./pages/BookLesson";
 import Checkout from "./pages/Checkout";
 import TrainerEarnings from "./pages/TrainerEarnings";
 import TrainerSubscription from "./pages/TrainerSubscription";
+import TrainerAnalytics from "./pages/TrainerAnalytics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/earnings" element={<TrainerEarnings />} />
             <Route path="/subscription" element={<TrainerSubscription />} />
+            <Route path="/analytics" element={<TrainerAnalytics />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -142,17 +142,18 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Profile Views</p>
-                  <p className="text-3xl font-bold">0</p>
+                  <p className="text-sm text-muted-foreground">Analytics</p>
+                  <p className="text-3xl font-bold">📊</p>
                 </div>
                 <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900">
                   <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">View detailed stats →</p>
             </CardContent>
           </Card>
         </div>
