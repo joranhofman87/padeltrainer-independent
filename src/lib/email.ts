@@ -4,10 +4,14 @@ export type EmailType =
   | "booking_confirmation" 
   | "booking_reminder" 
   | "booking_cancelled" 
-  | "review_received";
+  | "review_received"
+  | "payment_confirmed_player"
+  | "payment_confirmed_trainer"
+  | "new_booking_trainer";
 
 export interface EmailData {
   playerName?: string;
+  playerEmail?: string;
   trainerName?: string;
   lessonTitle?: string;
   lessonDate?: string;
@@ -15,6 +19,8 @@ export interface EmailData {
   location?: string;
   price?: number;
   rating?: number;
+  platformFee?: number;
+  netAmount?: number;
 }
 
 export const sendEmail = async (

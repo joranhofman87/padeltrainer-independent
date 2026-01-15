@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+// Note: Resend is used directly via fetch API for emails
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +11,25 @@ const corsHeaders = {
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[VERIFY-PAYMENT] ${step}${detailsStr}`);
+};
+
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+};
+
+const formatTime = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: false 
+  });
 };
 
 serve(async (req) => {
@@ -22,6 +42,8 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+
+    const resendKey = Deno.env.get("RESEND_API_KEY");
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -52,6 +74,8 @@ serve(async (req) => {
     logStep("Session retrieved", { status: session.payment_status, paymentIntent: session.payment_intent });
 
     if (session.payment_status === 'paid') {
+      const amount = (session.amount_total || 0) / 100;
+
       // Update booking status
       const { error: updateError } = await supabaseClient
         .from('bookings')
@@ -59,7 +83,7 @@ serve(async (req) => {
           payment_status: 'paid',
           status: 'confirmed',
           stripe_payment_intent_id: session.payment_intent as string,
-          payment_amount: (session.amount_total || 0) / 100,
+          payment_amount: amount,
           paid_at: new Date().toISOString(),
         })
         .eq('id', bookingId);
@@ -71,11 +95,128 @@ serve(async (req) => {
 
       logStep("Booking updated successfully", { bookingId });
 
+      // Fetch booking details for email
+      const { data: bookingData } = await supabaseClient
+        .from('bookings')
+        .select(`
+          id,
+          notes,
+          availability_slots!inner(
+            start_time,
+            end_time,
+            trainer_id,
+            lessons(title, price, location)
+          ),
+          player:profiles!bookings_player_id_fkey(full_name, email)
+        `)
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingData && resendKey) {
+        logStep("Fetched booking for emails", { bookingData });
+
+        const slot = bookingData.availability_slots as any;
+        const trainerId = slot?.trainer_id;
+
+        // Get trainer info
+        const { data: trainerData } = await supabaseClient
+          .from('trainer_profiles')
+          .select('id, user_id, profiles(full_name, email)')
+          .eq('id', trainerId)
+          .single();
+
+        const lesson = slot?.lessons as any;
+        const player = bookingData.player as any;
+        const trainer = (trainerData?.profiles as any);
+
+        const lessonTitle = lesson?.title || 'Training Session';
+        const lessonDate = formatDate(slot?.start_time);
+        const lessonTime = formatTime(slot?.start_time);
+        const location = lesson?.location || 'TBD';
+        const platformFee = amount * 0.1;
+        const netAmount = amount * 0.9;
+
+        // Helper function to send email via Resend API
+        const sendEmail = async (to: string, subject: string, html: string) => {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${resendKey}`,
+            },
+            body: JSON.stringify({
+              from: "PadelTrainer <onboarding@resend.dev>",
+              to: [to],
+              subject,
+              html,
+            }),
+          });
+          return res.json();
+        };
+
+        // Send email to player
+        if (player?.email) {
+          try {
+            const playerHtml = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #16a34a;">Payment Successful! 💳</h1>
+                <p>Hi ${player.full_name || 'there'},</p>
+                <p>Your payment has been confirmed and your lesson is booked!</p>
+                <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <h3 style="margin-top: 0;">${lessonTitle}</h3>
+                  <p><strong>Trainer:</strong> ${trainer?.full_name || 'Your trainer'}</p>
+                  <p><strong>Date:</strong> ${lessonDate}</p>
+                  <p><strong>Time:</strong> ${lessonTime}</p>
+                  <p><strong>Location:</strong> ${location}</p>
+                  <p style="font-size: 18px; color: #16a34a;"><strong>Amount Paid:</strong> €${amount.toFixed(2)}</p>
+                </div>
+                <p>Get ready for your lesson! 🎾</p>
+                <p>Best regards,<br>PadelTrainer Team</p>
+              </div>
+            `;
+            await sendEmail(player.email, `Payment Confirmed: ${lessonTitle} ✅`, playerHtml);
+            logStep("Player email sent", { to: player.email });
+          } catch (emailError) {
+            logStep("Failed to send player email", { error: emailError });
+          }
+        }
+
+        // Send email to trainer
+        if (trainer?.email) {
+          try {
+            const trainerHtml = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #16a34a;">You've Got a New Booking! 🎉</h1>
+                <p>Hi ${trainer.full_name || 'there'},</p>
+                <p>Great news! <strong>${player?.full_name || 'A player'}</strong> has just paid for a lesson with you.</p>
+                <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <h3 style="margin-top: 0;">${lessonTitle}</h3>
+                  <p><strong>Player:</strong> ${player?.full_name || 'Player'}</p>
+                  <p><strong>Date:</strong> ${lessonDate}</p>
+                  <p><strong>Time:</strong> ${lessonTime}</p>
+                  <p><strong>Location:</strong> ${location}</p>
+                  <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
+                  <p><strong>Lesson Price:</strong> €${amount.toFixed(2)}</p>
+                  <p><strong>Platform Fee (10%):</strong> -€${platformFee.toFixed(2)}</p>
+                  <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${netAmount.toFixed(2)}</p>
+                </div>
+                <p>The payment will be transferred to your connected bank account automatically.</p>
+                <p>Best regards,<br>PadelTrainer Team</p>
+              </div>
+            `;
+            await sendEmail(trainer.email, `New Paid Booking: ${lessonTitle} 💰`, trainerHtml);
+            logStep("Trainer email sent", { to: trainer.email });
+          } catch (emailError) {
+            logStep("Failed to send trainer email", { error: emailError });
+          }
+        }
+      }
+
       return new Response(JSON.stringify({ 
         success: true, 
         paid: true,
         bookingId,
-        amount: (session.amount_total || 0) / 100,
+        amount,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
