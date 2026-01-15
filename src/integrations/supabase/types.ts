@@ -68,6 +68,9 @@ export type Database = {
           id: string
           lesson_id: string | null
           notes: string | null
+          paid_at: string | null
+          payment_amount: number | null
+          payment_status: string
           player_id: string
           slot_id: string
           status: string
@@ -78,6 +81,9 @@ export type Database = {
           id?: string
           lesson_id?: string | null
           notes?: string | null
+          paid_at?: string | null
+          payment_amount?: number | null
+          payment_status?: string
           player_id: string
           slot_id: string
           status?: string
@@ -88,6 +94,9 @@ export type Database = {
           id?: string
           lesson_id?: string | null
           notes?: string | null
+          paid_at?: string | null
+          payment_amount?: number | null
+          payment_status?: string
           player_id?: string
           slot_id?: string
           status?: string
@@ -124,11 +133,18 @@ export type Database = {
           duration_minutes: number
           id: string
           is_active: boolean
+          is_recurring: boolean
           location: string | null
           max_participants: number
           max_skill_rating: number | null
           min_skill_rating: number | null
+          payment_timing: string
           price: number
+          recurrence_count: number | null
+          recurrence_day: number | null
+          recurrence_end_date: string | null
+          recurrence_time: string | null
+          recurrence_type: string | null
           title: string
           trainer_id: string
           updated_at: string
@@ -139,11 +155,18 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
+          is_recurring?: boolean
           location?: string | null
           max_participants?: number
           max_skill_rating?: number | null
           min_skill_rating?: number | null
+          payment_timing?: string
           price: number
+          recurrence_count?: number | null
+          recurrence_day?: number | null
+          recurrence_end_date?: string | null
+          recurrence_time?: string | null
+          recurrence_type?: string | null
           title: string
           trainer_id: string
           updated_at?: string
@@ -154,11 +177,18 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
+          is_recurring?: boolean
           location?: string | null
           max_participants?: number
           max_skill_rating?: number | null
           min_skill_rating?: number | null
+          payment_timing?: string
           price?: number
+          recurrence_count?: number | null
+          recurrence_day?: number | null
+          recurrence_end_date?: string | null
+          recurrence_time?: string | null
+          recurrence_type?: string | null
           title?: string
           trainer_id?: string
           updated_at?: string
