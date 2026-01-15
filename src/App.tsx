@@ -12,6 +12,10 @@ import TrainerDashboard from "./pages/TrainerDashboard";
 import Trainers from "./pages/Trainers";
 import TrainerProfile from "./pages/TrainerProfile";
 import EditProfile from "./pages/EditProfile";
+import ManageLessons from "./pages/ManageLessons";
+import ManageAvailability from "./pages/ManageAvailability";
+import PlayerBookings from "./pages/PlayerBookings";
+import BookLesson from "./pages/BookLesson";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,7 +36,10 @@ const App = () => (
             <Route path="/trainers" element={<Trainers />} />
             <Route path="/trainer/:trainerId" element={<TrainerProfile />} />
             <Route path="/profile/edit" element={<EditProfile />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/lessons" element={<ManageLessons />} />
+            <Route path="/availability" element={<ManageAvailability />} />
+            <Route path="/bookings" element={<PlayerBookings />} />
+            <Route path="/book/:trainerId" element={<BookLesson />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
