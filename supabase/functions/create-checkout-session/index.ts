@@ -12,6 +12,47 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CREATE-CHECKOUT] ${step}${detailsStr}`);
 };
 
+// Subscription tier product IDs -> platform fee percentages
+const TIER_FEES: Record<string, number> = {
+  // Professional tier products
+  'prod_TnaKMqklQL0csZ': 5, // Professional Monthly
+  'prod_TnaK7n69g3z1go': 5, // Professional Yearly
+  // Academy tier products
+  'prod_TnaKlteqteiFWb': 2.5, // Academy Monthly
+  'prod_TnaLKqo3OnQCOd': 2.5, // Academy Yearly
+};
+
+const STARTER_FEE = 10; // 10% for starter/free tier
+
+async function getTrainerPlatformFee(stripe: Stripe, trainerEmail: string): Promise<number> {
+  try {
+    // Find trainer's Stripe customer
+    const customers = await stripe.customers.list({ email: trainerEmail, limit: 1 });
+    if (customers.data.length === 0) {
+      return STARTER_FEE;
+    }
+
+    const customerId = customers.data[0].id;
+
+    // Check for active subscription
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "active",
+      limit: 1,
+    });
+
+    if (subscriptions.data.length === 0) {
+      return STARTER_FEE;
+    }
+
+    const productId = subscriptions.data[0].items.data[0].price.product as string;
+    return TIER_FEES[productId] ?? STARTER_FEE;
+  } catch (error) {
+    console.error('Error getting trainer platform fee:', error);
+    return STARTER_FEE;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -58,6 +99,7 @@ serve(async (req) => {
     // Check if trainer has a connected Stripe account
     let transferDestination: string | undefined;
     let applicationFee: number | undefined;
+    let platformFeePercent = STARTER_FEE;
     
     if (trainerId) {
       const { data: stripeAccount } = await supabaseClient
@@ -68,9 +110,22 @@ serve(async (req) => {
 
       if (stripeAccount?.charges_enabled && stripeAccount?.stripe_account_id) {
         transferDestination = stripeAccount.stripe_account_id;
-        // Platform takes 10% fee
-        applicationFee = Math.round(price * 10);
-        logStep("Trainer has connected account", { transferDestination, applicationFee });
+        
+        // Get trainer's email to check their subscription tier
+        const { data: trainerProfile } = await supabaseClient
+          .from('profiles')
+          .select('email')
+          .eq('id', trainerId)
+          .single();
+
+        if (trainerProfile?.email) {
+          platformFeePercent = await getTrainerPlatformFee(stripe, trainerProfile.email);
+          logStep("Got trainer platform fee", { email: trainerProfile.email, feePercent: platformFeePercent });
+        }
+
+        // Calculate platform fee based on trainer's subscription tier
+        applicationFee = Math.round(price * platformFeePercent);
+        logStep("Trainer has connected account", { transferDestination, applicationFee, platformFeePercent });
       }
     }
 
@@ -101,6 +156,7 @@ serve(async (req) => {
       metadata: {
         booking_id: bookingId,
         trainer_id: trainerId || '',
+        platform_fee_percent: platformFeePercent.toString(),
       },
     };
 

@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,39 +16,48 @@ import {
   MessageSquare,
   Shield,
   Star,
-  Sparkles
+  Sparkles,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { SUBSCRIPTION_TIERS, STARTER_TIER, SubscriptionTier } from '@/lib/subscription';
 
 interface PricingPlan {
-  id: string;
+  id: SubscriptionTier;
   name: string;
   price: number;
+  yearlyPrice: number;
   period: string;
   description: string;
   features: string[];
   highlighted?: boolean;
   badge?: string;
+  priceIdMonthly?: string;
+  priceIdYearly?: string;
 }
 
 const pricingPlans: PricingPlan[] = [
   {
     id: 'starter',
     name: 'Starter',
-    price: 0,
+    price: STARTER_TIER.monthlyPrice,
+    yearlyPrice: STARTER_TIER.yearlyPrice,
     period: 'month',
     description: 'Perfect for getting started',
     features: [
-      'Create up to 3 lessons',
+      `Create up to ${STARTER_TIER.maxLessons} lessons`,
       'Basic profile page',
       'Accept bookings',
-      '10% platform fee',
+      `${STARTER_TIER.platformFeePercent}% platform fee`,
     ],
   },
   {
     id: 'professional',
     name: 'Professional',
-    price: 29,
+    price: SUBSCRIPTION_TIERS.professional.monthlyPrice,
+    yearlyPrice: SUBSCRIPTION_TIERS.professional.yearlyPrice,
     period: 'month',
     description: 'Everything you need to grow',
     features: [
@@ -57,16 +65,19 @@ const pricingPlans: PricingPlan[] = [
       'Priority in search results',
       'Advanced analytics',
       'Custom availability',
-      '5% platform fee',
+      `${SUBSCRIPTION_TIERS.professional.platformFeePercent}% platform fee`,
       'Priority support',
     ],
     highlighted: true,
     badge: 'Most Popular',
+    priceIdMonthly: SUBSCRIPTION_TIERS.professional.priceIdMonthly,
+    priceIdYearly: SUBSCRIPTION_TIERS.professional.priceIdYearly,
   },
   {
     id: 'academy',
     name: 'Academy',
-    price: 79,
+    price: SUBSCRIPTION_TIERS.academy.monthlyPrice,
+    yearlyPrice: SUBSCRIPTION_TIERS.academy.yearlyPrice,
     period: 'month',
     description: 'For clubs and academies',
     features: [
@@ -74,20 +85,47 @@ const pricingPlans: PricingPlan[] = [
       'Multiple trainer accounts',
       'Group management',
       'Branded booking page',
-      '2.5% platform fee',
+      `${SUBSCRIPTION_TIERS.academy.platformFeePercent}% platform fee`,
       'Dedicated account manager',
       'API access',
     ],
     badge: 'Best Value',
+    priceIdMonthly: SUBSCRIPTION_TIERS.academy.priceIdMonthly,
+    priceIdYearly: SUBSCRIPTION_TIERS.academy.priceIdYearly,
   },
 ];
 
 export default function TrainerSubscription() {
   const navigate = useNavigate();
-  const { user, role, loading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, role, loading, subscription, refreshSubscription, session } = useAuth();
   const { toast } = useToast();
-  const [currentPlan, setCurrentPlan] = useState('starter');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
+  const [loadingPortal, setLoadingPortal] = useState(false);
+
+  // Handle success/cancel from Stripe checkout
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const canceled = searchParams.get('canceled');
+
+    if (success === 'true') {
+      toast({
+        title: 'Subscription Activated! 🎉',
+        description: 'Your subscription is now active. Enjoy your new features!',
+      });
+      refreshSubscription();
+      // Clean up URL
+      window.history.replaceState({}, '', '/subscription');
+    } else if (canceled === 'true') {
+      toast({
+        title: 'Checkout Canceled',
+        description: 'Your subscription was not changed.',
+        variant: 'destructive',
+      });
+      window.history.replaceState({}, '', '/subscription');
+    }
+  }, [searchParams, toast, refreshSubscription]);
 
   useEffect(() => {
     if (!loading) {
@@ -107,16 +145,94 @@ export default function TrainerSubscription() {
     );
   }
 
-  const handleSelectPlan = (planId: string) => {
-    toast({
-      title: 'Subscription UI Ready',
-      description: 'Stripe integration required to process subscriptions',
-    });
-    setCurrentPlan(planId);
+  const currentPlan = subscription?.tier || 'starter';
+
+  const handleSelectPlan = async (plan: PricingPlan) => {
+    if (plan.id === 'starter') {
+      // Can't upgrade to starter - they need to cancel via portal
+      toast({
+        title: 'Use Manage Billing',
+        description: 'To downgrade, please use the Manage Billing option.',
+      });
+      return;
+    }
+
+    if (!plan.priceIdMonthly || !plan.priceIdYearly) {
+      toast({
+        title: 'Configuration Error',
+        description: 'This plan is not properly configured.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const priceId = billingCycle === 'monthly' ? plan.priceIdMonthly : plan.priceIdYearly;
+
+    setProcessingPlan(plan.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-trainer-checkout', {
+        body: { priceId },
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to start checkout. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingPlan(null);
+    }
   };
 
-  const getYearlyPrice = (monthlyPrice: number) => {
-    return Math.round(monthlyPrice * 12 * 0.8); // 20% discount for yearly
+  const handleManageBilling = async () => {
+    setLoadingPortal(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-portal', {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      } else {
+        throw new Error('No portal URL returned');
+      }
+    } catch (err) {
+      console.error('Portal error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to open billing portal. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPortal(false);
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return null;
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
   };
 
   return (
@@ -153,13 +269,27 @@ export default function TrainerSubscription() {
                   <p className="text-sm text-muted-foreground">
                     {currentPlan === 'starter' 
                       ? 'Upgrade to unlock more features and lower fees'
-                      : 'Your next billing date is January 15, 2025'
+                      : subscription?.subscriptionEnd
+                        ? `Next billing date: ${formatDate(subscription.subscriptionEnd)}`
+                        : 'Your subscription is active'
                     }
                   </p>
                 </div>
               </div>
               {currentPlan !== 'starter' && (
-                <Button variant="outline" size="sm">Manage Billing</Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleManageBilling}
+                  disabled={loadingPortal}
+                >
+                  {loadingPortal ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                  )}
+                  Manage Billing
+                </Button>
               )}
             </div>
           </CardContent>
@@ -204,12 +334,19 @@ export default function TrainerSubscription() {
                   </Badge>
                 </div>
               )}
+              {currentPlan === plan.id && (
+                <div className="absolute -top-3 right-4">
+                  <Badge variant="outline" className="bg-background border-primary text-primary">
+                    Your Plan
+                  </Badge>
+                </div>
+              )}
               <CardHeader className="text-center pt-8">
                 <CardTitle className="text-2xl">{plan.name}</CardTitle>
                 <CardDescription>{plan.description}</CardDescription>
                 <div className="pt-4">
                   <span className="text-4xl font-bold">
-                    €{billingCycle === 'yearly' ? getYearlyPrice(plan.price) : plan.price}
+                    €{billingCycle === 'yearly' ? plan.yearlyPrice : plan.price}
                   </span>
                   <span className="text-muted-foreground">
                     /{billingCycle === 'yearly' ? 'year' : 'month'}
@@ -231,10 +368,21 @@ export default function TrainerSubscription() {
                 <Button 
                   className="w-full" 
                   variant={plan.highlighted ? 'default' : 'outline'}
-                  disabled={currentPlan === plan.id}
-                  onClick={() => handleSelectPlan(plan.id)}
+                  disabled={currentPlan === plan.id || processingPlan !== null}
+                  onClick={() => handleSelectPlan(plan)}
                 >
-                  {currentPlan === plan.id ? 'Current Plan' : plan.price === 0 ? 'Get Started' : 'Upgrade'}
+                  {processingPlan === plan.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Processing...
+                    </>
+                  ) : currentPlan === plan.id ? (
+                    'Current Plan'
+                  ) : plan.price === 0 ? (
+                    'Free Plan'
+                  ) : (
+                    'Upgrade'
+                  )}
                 </Button>
               </CardFooter>
             </Card>
