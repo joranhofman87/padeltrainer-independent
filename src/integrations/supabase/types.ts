@@ -65,13 +65,14 @@ export type Database = {
       bookings: {
         Row: {
           created_at: string
+          guest_player_id: string | null
           id: string
           lesson_id: string | null
           notes: string | null
           paid_at: string | null
           payment_amount: number | null
           payment_status: string
-          player_id: string
+          player_id: string | null
           slot_id: string
           status: string
           stripe_payment_intent_id: string | null
@@ -80,13 +81,14 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
           notes?: string | null
           paid_at?: string | null
           payment_amount?: number | null
           payment_status?: string
-          player_id: string
+          player_id?: string | null
           slot_id: string
           status?: string
           stripe_payment_intent_id?: string | null
@@ -95,13 +97,14 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
           notes?: string | null
           paid_at?: string | null
           payment_amount?: number | null
           payment_status?: string
-          player_id?: string
+          player_id?: string | null
           slot_id?: string
           status?: string
           stripe_payment_intent_id?: string | null
@@ -109,6 +112,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bookings_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bookings_lesson_id_fkey"
             columns: ["lesson_id"]
@@ -155,6 +165,60 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      guest_players: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          linked_profile_id: string | null
+          notes: string | null
+          phone: string
+          skill_rating: number | null
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          linked_profile_id?: string | null
+          notes?: string | null
+          phone: string
+          skill_rating?: number | null
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          linked_profile_id?: string | null
+          notes?: string | null
+          phone?: string
+          skill_rating?: number | null
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_players_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lessons: {
         Row: {

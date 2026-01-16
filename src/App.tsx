@@ -36,6 +36,7 @@ import TrainerEarnings from "./pages/TrainerEarnings";
 import TrainerSubscription from "./pages/TrainerSubscription";
 import TrainerAnalytics from "./pages/TrainerAnalytics";
 import TrainerCalendar from "./pages/TrainerCalendar";
+import TrainerPlayers from "./pages/TrainerPlayers";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
 import FollowingList from "./pages/FollowingList";
@@ -82,6 +83,7 @@ const App = () => (
             <Route path="/subscription" element={<TrainerSubscription />} />
             <Route path="/analytics" element={<TrainerAnalytics />} />
             <Route path="/trainer/calendar" element={<TrainerCalendar />} />
+            <Route path="/trainer/players" element={<TrainerPlayers />} />
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
             <Route path="/player/following" element={<FollowingList />} />

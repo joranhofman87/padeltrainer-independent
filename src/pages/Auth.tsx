@@ -15,6 +15,7 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
@@ -33,9 +34,19 @@ export default function Auth() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!phone.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Phone number is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsLoading(true);
 
-    const { error } = await signUpWithEmail(email, password, fullName);
+    const { error } = await signUpWithEmail(email, password, fullName, phone);
 
     if (error) {
       toast({
@@ -199,6 +210,17 @@ export default function Auth() {
                     placeholder="your@email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-phone">Phone Number</Label>
+                  <Input
+                    id="signup-phone"
+                    type="tel"
+                    placeholder="+31 6 12345678"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                     required
                   />
                 </div>

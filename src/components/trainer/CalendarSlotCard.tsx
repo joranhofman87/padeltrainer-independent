@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Users } from "lucide-react";
+import { Users, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -52,15 +52,17 @@ const statusTextColors: Record<SlotStatus, string> = {
 interface CalendarSlotCardProps {
   slot: SlotWithBookings;
   compact?: boolean;
+  onBookForPlayer?: (slot: SlotWithBookings) => void;
 }
 
-export function CalendarSlotCard({ slot, compact = false }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, onBookForPlayer }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
   const spotsLeft = slot.max_participants - slot.active_bookings;
+  const hasSpots = spotsLeft > 0;
 
   const statusLabel = {
     free: t("calendar.available"),
@@ -150,6 +152,18 @@ export function CalendarSlotCard({ slot, compact = false }: CalendarSlotCardProp
               onClick={() => navigate("/trainer-bookings")}
             >
               {t("bookings.title")}
+            </Button>
+          )}
+
+          {hasSpots && onBookForPlayer && (
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full"
+              onClick={() => onBookForPlayer(slot)}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              {t("bookings.bookForPlayer")}
             </Button>
           )}
         </div>
