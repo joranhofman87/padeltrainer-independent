@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -32,9 +32,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -54,6 +56,8 @@ interface BulkSlotConfig {
   recurrenceWeeks: number;
   lessonId: string | null;
   cyclusName: string;
+  addPlayers: boolean;
+  selectedPlayers: string[];
 }
 
 interface AddSlotDialogProps {
@@ -258,6 +262,24 @@ export function BulkCreateSheet({
 
   const [bulkSlots, setBulkSlots] = useState<BulkSlotConfig[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [players, setPlayers] = useState<GuestPlayer[]>([]);
+  const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (open && trainerId) {
+      fetchPlayers();
+    }
+  }, [open, trainerId]);
+
+  const fetchPlayers = async () => {
+    if (!trainerId) return;
+    const { data } = await supabase
+      .from("guest_players")
+      .select("*")
+      .eq("trainer_id", trainerId)
+      .order("full_name");
+    setPlayers(data || []);
+  };
 
   const getNextMonday = () => {
     const today = new Date();
@@ -286,6 +308,8 @@ export function BulkCreateSheet({
         recurrenceWeeks: defaultWeeks,
         lessonId: null,
         cyclusName: generateCyclusName(newStartDate, newStartTime, null),
+        addPlayers: false,
+        selectedPlayers: [],
       },
     ]);
   };
@@ -393,8 +417,83 @@ export function BulkCreateSheet({
         return;
       }
 
-      const { error } = await supabase.from("availability_slots").insert(slotsToInsert);
+      const { data: insertedSlots, error } = await supabase
+        .from("availability_slots")
+        .insert(slotsToInsert)
+        .select("id, cyclus_id");
       if (error) throw error;
+
+      // Create bookings for selected players
+      let totalBookingsCreated = 0;
+      for (const config of bulkSlots) {
+        if (config.addPlayers && config.selectedPlayers.length > 0) {
+          // Find slots that belong to this config's cyclus
+          const configCyclusSlots = insertedSlots?.filter((slot) => {
+            // Match by cyclus_id - we need to find which cyclus_id was generated for this config
+            return slotsToInsert.some(
+              (s) =>
+                s.cyclus_name === config.cyclusName &&
+                insertedSlots.some((is) => is.cyclus_id === slot.cyclus_id)
+            );
+          });
+
+          // Group inserted slots by cyclus_id to find the right ones
+          const cyclusGroups = new Map<string, typeof insertedSlots>();
+          insertedSlots?.forEach((slot) => {
+            if (slot.cyclus_id) {
+              if (!cyclusGroups.has(slot.cyclus_id)) {
+                cyclusGroups.set(slot.cyclus_id, []);
+              }
+              cyclusGroups.get(slot.cyclus_id)!.push(slot);
+            }
+          });
+
+          // Find the cyclus that matches this config's expected session count
+          let matchingSlots: typeof insertedSlots = [];
+          cyclusGroups.forEach((slots, cyclusId) => {
+            if (slots.length === config.recurrenceWeeks) {
+              matchingSlots = slots;
+            }
+          });
+
+          if (matchingSlots.length > 0) {
+            const bookingsToInsert = [];
+            for (const slot of matchingSlots) {
+              for (const playerId of config.selectedPlayers) {
+                if (playerId) {
+                  bookingsToInsert.push({
+                    slot_id: slot.id,
+                    guest_player_id: playerId,
+                    lesson_id: config.lessonId,
+                    status: "confirmed",
+                    payment_status: "pending",
+                  });
+                }
+              }
+            }
+
+            if (bookingsToInsert.length > 0) {
+              const { error: bookingError } = await supabase
+                .from("bookings")
+                .insert(bookingsToInsert);
+              if (bookingError) {
+                console.error("Error creating bookings:", bookingError);
+              } else {
+                totalBookingsCreated += bookingsToInsert.length;
+              }
+            }
+          }
+        }
+      }
+
+      if (totalBookingsCreated > 0) {
+        toast({
+          title: t("calendar.playersAddedToCyclus", {
+            count: bulkSlots.reduce((acc, s) => acc + s.selectedPlayers.filter(Boolean).length, 0),
+            sessions: totalSessions,
+          }),
+        });
+      }
 
       // Notify followers
       try {
@@ -613,6 +712,80 @@ export function BulkCreateSheet({
                     />
                   </div>
 
+                  {/* Add Players Checkbox */}
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`add-players-${index}`}
+                        checked={slot.addPlayers}
+                        onCheckedChange={(checked) =>
+                          updateBulkSlot(index, { 
+                            addPlayers: !!checked,
+                            selectedPlayers: checked ? slot.selectedPlayers : []
+                          })
+                        }
+                      />
+                      <Label htmlFor={`add-players-${index}`} className="text-sm cursor-pointer">
+                        {t("calendar.addPlayersToSlot")}
+                      </Label>
+                    </div>
+
+                    {slot.addPlayers && (
+                      <div className="space-y-2 pl-6 border-l-2 border-primary/20">
+                        {[0, 1, 2, 3].map((playerIndex) => (
+                          <div key={playerIndex} className="flex items-center gap-2">
+                            <Label className="text-xs w-16 shrink-0">
+                              {t("calendar.player")} {playerIndex + 1}:
+                            </Label>
+                            <Select
+                              value={slot.selectedPlayers[playerIndex] || "none"}
+                              onValueChange={(v) => {
+                                const newPlayers = [...slot.selectedPlayers];
+                                if (v === "none") {
+                                  newPlayers[playerIndex] = "";
+                                } else {
+                                  newPlayers[playerIndex] = v;
+                                }
+                                updateBulkSlot(index, { 
+                                  selectedPlayers: newPlayers 
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="h-8 flex-1">
+                                <SelectValue placeholder={t("calendar.selectPlayer")} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">-</SelectItem>
+                                {players.map((player) => (
+                                  <SelectItem
+                                    key={player.id}
+                                    value={player.id}
+                                    disabled={
+                                      slot.selectedPlayers.includes(player.id) &&
+                                      slot.selectedPlayers[playerIndex] !== player.id
+                                    }
+                                  >
+                                    {player.full_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAddPlayerDialogOpen(true)}
+                          className="gap-1 text-xs"
+                        >
+                          <UserPlus className="h-3 w-3" />
+                          {t("players.addPlayer")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
                     {t("calendar.recurringSummary", {
                       count: slot.recurrenceWeeks,
@@ -661,6 +834,17 @@ export function BulkCreateSheet({
             </div>
           )}
         </div>
+
+        <AddPlayerDialog
+          open={addPlayerDialogOpen}
+          onOpenChange={setAddPlayerDialogOpen}
+          trainerId={trainerId}
+          onPlayerCreated={(player) => {
+            setPlayers((prev) => [...prev, player].sort((a, b) => 
+              a.full_name.localeCompare(b.full_name)
+            ));
+          }}
+        />
       </SheetContent>
     </Sheet>
   );
