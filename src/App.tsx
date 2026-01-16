@@ -4,7 +4,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import Index from "./pages/Index";
+
+// Marketing pages
+import Home from "./pages/marketing/Home";
+import Pricing from "./pages/marketing/Pricing";
+import About from "./pages/marketing/About";
+import Blog from "./pages/marketing/Blog";
+import BlogPost from "./pages/marketing/BlogPost";
+
+// App pages
 import Auth from "./pages/Auth";
 import SelectRole from "./pages/SelectRole";
 import PlayerDashboard from "./pages/PlayerDashboard";
@@ -38,7 +46,14 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Index />} />
+            {/* Marketing routes */}
+            <Route path="/" element={<Home />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
+            
+            {/* App routes */}
             <Route path="/auth" element={<Auth />} />
             <Route path="/select-role" element={<SelectRole />} />
             <Route path="/player" element={<PlayerDashboard />} />
