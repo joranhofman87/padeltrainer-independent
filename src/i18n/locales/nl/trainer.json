@@ -183,5 +183,19 @@
     "revenue": "Omzet",
     "newStudents": "Nieuwe Studenten",
     "repeatRate": "Terugkeer Percentage"
+  },
+  "calendar": {
+    "title": "Agenda",
+    "weekView": "Week",
+    "monthView": "Maand",
+    "today": "Vandaag",
+    "available": "Beschikbaar",
+    "booked": "Geboekt",
+    "fullyBooked": "Volgeboekt",
+    "pending": "In afwachting",
+    "past": "Afgelopen",
+    "spotsLeft": "{{count}} plekken vrij",
+    "noSlotsThisWeek": "Geen slots gepland deze week",
+    "clickToViewDetails": "Klik voor details"
   }
 }

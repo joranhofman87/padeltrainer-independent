@@ -183,5 +183,19 @@
     "revenue": "Revenue",
     "newStudents": "New Students",
     "repeatRate": "Repeat Rate"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "weekView": "Week",
+    "monthView": "Month",
+    "today": "Today",
+    "available": "Available",
+    "booked": "Booked",
+    "fullyBooked": "Fully Booked",
+    "pending": "Pending",
+    "past": "Past",
+    "spotsLeft": "{{count}} spots left",
+    "noSlotsThisWeek": "No slots scheduled this week",
+    "clickToViewDetails": "Click to view details"
   }
 }

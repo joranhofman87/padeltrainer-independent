@@ -357,6 +357,25 @@ export default function TrainerDashboard() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/trainer/calendar')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/10">
+                  <Calendar className="h-5 w-5 text-indigo-600" />
+                </div>
+                <CardTitle className="text-lg">Calendar</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                View your schedule at a glance
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/trainer-bookings')}
           >
             <CardHeader className="pb-2">
