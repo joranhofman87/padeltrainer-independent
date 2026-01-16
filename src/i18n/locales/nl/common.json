@@ -1,0 +1,71 @@
+{
+  "appName": "PadelTrainer.ai",
+  "loading": "Laden...",
+  "error": "Fout",
+  "success": "Gelukt",
+  "save": "Opslaan",
+  "cancel": "Annuleren",
+  "delete": "Verwijderen",
+  "edit": "Bewerken",
+  "back": "Terug",
+  "next": "Volgende",
+  "submit": "Verzenden",
+  "search": "Zoeken",
+  "filter": "Filter",
+  "filters": "Filters",
+  "clearFilters": "Filters wissen",
+  "clearAll": "Alles wissen",
+  "viewAll": "Alles bekijken",
+  "learnMore": "Meer informatie",
+  "getStarted": "Aan de slag",
+  "signIn": "Inloggen",
+  "signUp": "Registreren",
+  "signOut": "Uitloggen",
+  "toggleTheme": "Thema wisselen",
+  "theme": {
+    "light": "Licht",
+    "dark": "Donker",
+    "system": "Systeem"
+  },
+  "navigation": {
+    "home": "Home",
+    "pricing": "Prijzen",
+    "about": "Over ons",
+    "blog": "Blog",
+    "trainers": "Trainers",
+    "dashboard": "Dashboard",
+    "profile": "Profiel",
+    "settings": "Instellingen"
+  },
+  "footer": {
+    "description": "We verbinden padelspelers met toptrainers in heel Nederland.",
+    "platform": "Platform",
+    "legal": "Juridisch",
+    "privacy": "Privacybeleid",
+    "terms": "Algemene voorwaarden",
+    "rights": "Alle rechten voorbehouden."
+  },
+  "validation": {
+    "required": "Dit veld is verplicht",
+    "invalidEmail": "Ongeldig e-mailadres",
+    "passwordMinLength": "Wachtwoord moet minimaal 6 tekens bevatten"
+  },
+  "time": {
+    "minutes": "minuten",
+    "hours": "uur",
+    "days": "dagen",
+    "minRead": "{{count}} min lezen"
+  },
+  "currency": "€{{amount}}",
+  "perHour": "/uur",
+  "perMonth": "/maand",
+  "yearsExperience": "{{count}}j ervaring",
+  "reviews": "{{count}} review",
+  "reviews_plural": "{{count}} reviews",
+  "verified": "Geverifieerd",
+  "upcoming": "Aankomend",
+  "completed": "Voltooid",
+  "pending": "In afwachting",
+  "confirmed": "Bevestigd",
+  "cancelled": "Geannuleerd"
+}

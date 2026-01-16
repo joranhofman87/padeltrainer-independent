@@ -1,0 +1,246 @@
+{
+  "home": {
+    "hero": {
+      "title": "Find Your Perfect",
+      "titleHighlight": "Padel Trainer",
+      "subtitle": "Connect with certified padel trainers across the Netherlands. Book lessons that match your skill level and start improving your game today.",
+      "cta": "Find a Trainer",
+      "ctaSecondary": "I'm a Trainer"
+    },
+    "stats": {
+      "trainers": "Verified Trainers",
+      "lessons": "Lessons Booked",
+      "rating": "Average Rating",
+      "cities": "Cities Covered"
+    },
+    "features": {
+      "title": "Why PadelTrainer.ai?",
+      "subtitle": "Everything you need to find the perfect trainer and book lessons",
+      "verified": {
+        "title": "Verified Trainers",
+        "description": "All trainers are verified with KNLTB certification and experience"
+      },
+      "booking": {
+        "title": "Easy Booking",
+        "description": "Book lessons in seconds with our streamlined booking system"
+      },
+      "payments": {
+        "title": "Secure Payments",
+        "description": "Pay securely with iDEAL or card, protected by Stripe"
+      },
+      "matching": {
+        "title": "Skill Matching",
+        "description": "Find trainers that match your current skill level and goals"
+      }
+    },
+    "howItWorks": {
+      "title": "How It Works",
+      "subtitle": "Get started in minutes",
+      "step1": {
+        "title": "Browse Trainers",
+        "description": "Search and filter trainers by location, specialization, and rating"
+      },
+      "step2": {
+        "title": "Book a Lesson",
+        "description": "Choose a time that works for you and book instantly"
+      },
+      "step3": {
+        "title": "Play & Improve",
+        "description": "Meet your trainer and start improving your padel skills"
+      }
+    },
+    "testimonials": {
+      "title": "What Players Say",
+      "subtitle": "Join thousands of happy players"
+    },
+    "cta": {
+      "title": "Ready to improve your game?",
+      "subtitle": "Join thousands of players finding their perfect trainer",
+      "button": "Find a Trainer Now"
+    }
+  },
+  "pricing": {
+    "hero": {
+      "title": "Simple, transparent pricing",
+      "subtitle": "Free for players. Flexible plans for trainers to grow their business."
+    },
+    "players": {
+      "badge": "For Players",
+      "title": "Always Free",
+      "description": "No subscription fees. Just pay for the lessons you book.",
+      "cta": "Get Started Free",
+      "features": {
+        "browse": "Browse all verified trainers",
+        "reviews": "Read reviews and ratings",
+        "book": "Book lessons online",
+        "payments": "Secure iDEAL & card payments",
+        "calendar": "Google Calendar sync",
+        "notifications": "Email notifications",
+        "tracking": "Track your bookings"
+      }
+    },
+    "trainers": {
+      "badge": "For Trainers",
+      "title": "Choose your plan",
+      "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
+      "platformFee": "platform fee",
+      "feeTooltip": "Fee deducted from each lesson payment",
+      "mostPopular": "Most Popular",
+      "plans": {
+        "starter": {
+          "name": "Starter",
+          "price": "Free",
+          "description": "Perfect for getting started",
+          "cta": "Start Free",
+          "features": {
+            "lessons": "Up to 3 active lessons",
+            "profile": "Basic profile page",
+            "bookings": "Accept online bookings",
+            "notifications": "Email notifications",
+            "calendar": "Calendar sync",
+            "analytics": "Analytics dashboard",
+            "support": "Priority support",
+            "multiTrainer": "Multi-trainer support"
+          }
+        },
+        "professional": {
+          "name": "Professional",
+          "price": "€29",
+          "period": "/month",
+          "yearlyPrice": "€278/year (save 20%)",
+          "description": "For serious trainers",
+          "cta": "Get Professional",
+          "features": {
+            "lessons": "Unlimited active lessons",
+            "profile": "Enhanced profile page",
+            "bookings": "Accept online bookings",
+            "notifications": "Email notifications",
+            "calendar": "Google Calendar sync",
+            "analytics": "Analytics dashboard",
+            "support": "Priority support",
+            "multiTrainer": "Multi-trainer support"
+          }
+        },
+        "academy": {
+          "name": "Academy",
+          "price": "€79",
+          "period": "/month",
+          "yearlyPrice": "€758/year (save 20%)",
+          "description": "For clubs & academies",
+          "cta": "Contact Sales",
+          "features": {
+            "lessons": "Unlimited active lessons",
+            "profile": "Premium profile page",
+            "bookings": "Accept online bookings",
+            "notifications": "Email notifications",
+            "calendar": "Google Calendar sync",
+            "analytics": "Advanced analytics",
+            "support": "Dedicated support",
+            "multiTrainer": "Multi-trainer support"
+          }
+        }
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "questions": {
+        "platformFee": {
+          "q": "How does the platform fee work?",
+          "a": "The platform fee is automatically deducted from each lesson payment. For example, if you charge €50 for a lesson on the Professional plan (5% fee), you receive €47.50."
+        },
+        "changePlans": {
+          "q": "Can I change plans later?",
+          "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+        },
+        "contract": {
+          "q": "Is there a contract or commitment?",
+          "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+        },
+        "payouts": {
+          "q": "How do payouts work?",
+          "a": "Payments are processed through Stripe Connect. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+        }
+      }
+    }
+  },
+  "about": {
+    "hero": {
+      "title": "Making padel training",
+      "titleHighlight": "accessible to everyone",
+      "subtitle": "We're on a mission to connect every padel player in the Netherlands with the perfect trainer to help them improve their game."
+    },
+    "story": {
+      "title": "Our Story",
+      "p1": "PadelTrainer.ai was born from a simple frustration: finding a good padel trainer shouldn't be this hard. As padel exploded in popularity across the Netherlands, we saw players struggling to find quality training, while talented trainers had no easy way to reach new students.",
+      "p2": "We set out to build the platform we wished existed. One where players could easily find verified trainers matched to their skill level, and where trainers could grow their business without the hassle of managing bookings, payments, and scheduling.",
+      "p3": "Today, PadelTrainer.ai connects hundreds of trainers with thousands of players across the Netherlands. We're proud to be part of the growing padel community and excited about where we're heading next."
+    },
+    "values": {
+      "title": "Our Values",
+      "subtitle": "The principles that guide everything we do",
+      "quality": {
+        "title": "Quality First",
+        "description": "We verify every trainer to ensure players get the best possible experience."
+      },
+      "playerFocused": {
+        "title": "Player Focused",
+        "description": "Every feature we build starts with the question: how does this help players improve?"
+      },
+      "community": {
+        "title": "Community Driven",
+        "description": "We believe in the power of the padel community to help each other grow."
+      },
+      "simplicity": {
+        "title": "Simplicity",
+        "description": "Booking a lesson should be as easy as sending a text message."
+      }
+    },
+    "stats": {
+      "founded": "Founded",
+      "trainers": "Trainers",
+      "cities": "Cities"
+    },
+    "cta": {
+      "title": "Join our community",
+      "subtitle": "Whether you're a player looking to improve or a trainer looking to grow, we'd love to have you.",
+      "getStarted": "Get Started",
+      "contact": "Contact Us"
+    }
+  },
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Tips, insights, and stories from the Dutch padel community",
+    "recentArticles": "Recent Articles",
+    "categories": {
+      "tips": "Tips & Advice",
+      "industry": "Industry",
+      "training": "Training",
+      "spotlight": "Spotlight",
+      "guides": "Guides"
+    },
+    "newsletter": {
+      "title": "Stay in the loop",
+      "subtitle": "Get the latest padel tips and platform updates delivered to your inbox.",
+      "placeholder": "Enter your email",
+      "subscribe": "Subscribe"
+    },
+    "notFound": {
+      "title": "Article not found",
+      "description": "The article you're looking for doesn't exist or has been moved.",
+      "backToBlog": "Back to Blog"
+    },
+    "share": "Share",
+    "backToBlog": "Back to Blog",
+    "readyToFind": "Ready to find your perfect trainer?",
+    "browseTrainers": "Browse verified trainers matched to your skill level.",
+    "findTrainers": "Find Trainers"
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "lastUpdated": "Last updated: {{date}}"
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "lastUpdated": "Last updated: {{date}}"
+  }
+}

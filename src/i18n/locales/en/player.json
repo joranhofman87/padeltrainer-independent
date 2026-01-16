@@ -1,0 +1,133 @@
+{
+  "dashboard": {
+    "welcome": "Welcome back, {{name}}! 👋",
+    "subtitle": "Find your next training session and improve your padel skills",
+    "skillRating": {
+      "title": "Your Skill Rating",
+      "knltb": "KNLTB",
+      "noRating": "Add your KNLTB rating or ask a trainer to set your level"
+    },
+    "stats": {
+      "upcoming": "Upcoming",
+      "completed": "Completed",
+      "totalBookings": "Total Bookings"
+    },
+    "nextUp": "Next Up",
+    "allBookings": "All Bookings",
+    "with": "with",
+    "following": "Following",
+    "manage": "Manage",
+    "quickActions": {
+      "findTrainers": {
+        "title": "Find Trainers",
+        "description": "Browse all available trainers and find the perfect match for your skill level"
+      },
+      "myBookings": {
+        "title": "My Bookings",
+        "description": "View and manage your upcoming and past training sessions"
+      },
+      "editProfile": {
+        "title": "Edit Profile",
+        "description": "Update your profile, skill rating, and KNLTB number"
+      }
+    },
+    "featuredTrainers": {
+      "title": "Featured Trainers",
+      "viewAll": "View All Trainers",
+      "book": "Book"
+    }
+  },
+  "trainers": {
+    "title": "Find Trainers",
+    "searchPlaceholder": "Search trainers by name, specialty...",
+    "sort": {
+      "label": "Sort by",
+      "topRated": "Top Rated",
+      "priceLow": "Price: Low to High",
+      "priceHigh": "Price: High to Low",
+      "experience": "Most Experienced"
+    },
+    "filters": {
+      "activeFilters": "Active filters:",
+      "location": "Location",
+      "allLocations": "All Locations",
+      "priceRange": "Price Range",
+      "minRating": "Min Rating",
+      "anyRating": "Any rating",
+      "stars": "{{count}}+ stars",
+      "experience": "Experience",
+      "anyExperience": "Any experience",
+      "yearsPlus": "{{count}}+ years",
+      "specializations": "Specializations",
+      "knltbRating": "KNLTB Rating",
+      "anyKnltb": "Any rating",
+      "ratingPlus": "{{count}}+",
+      "verifiedOnly": "Verified Only",
+      "applyFilters": "Apply Filters",
+      "resetFilters": "Reset Filters"
+    },
+    "results": "{{count}} trainer found",
+    "results_plural": "{{count}} trainers found",
+    "noResults": "No trainers found",
+    "beFirst": "Be the first trainer to join!"
+  },
+  "trainerProfile": {
+    "about": "About",
+    "experience": "Experience",
+    "yearsExperience": "{{count}} years experience",
+    "certifications": "Certifications",
+    "specializations": "Specializations",
+    "knltbRating": "KNLTB Rating",
+    "lessons": "Available Lessons",
+    "noLessons": "No lessons available at this time",
+    "bookLesson": "Book Lesson",
+    "reviews": "Reviews",
+    "noReviews": "No reviews yet",
+    "follow": "Follow",
+    "following": "Following",
+    "followers": "{{count}} followers"
+  },
+  "booking": {
+    "title": "Book a Lesson",
+    "selectSlot": "Select a Time Slot",
+    "noSlots": "No available slots for this lesson",
+    "notes": "Notes for the trainer (optional)",
+    "notesPlaceholder": "Any special requests or information for the trainer...",
+    "summary": "Booking Summary",
+    "lesson": "Lesson",
+    "trainer": "Trainer",
+    "date": "Date",
+    "time": "Time",
+    "duration": "Duration",
+    "price": "Price",
+    "confirmAndPay": "Confirm & Pay",
+    "processing": "Processing...",
+    "success": {
+      "title": "Booking Confirmed!",
+      "description": "Your lesson has been booked successfully."
+    }
+  },
+  "bookings": {
+    "title": "My Bookings",
+    "empty": "No bookings yet",
+    "emptyDescription": "Book your first lesson to get started!",
+    "findTrainer": "Find a Trainer",
+    "tabs": {
+      "upcoming": "Upcoming",
+      "past": "Past"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "cancelled": "Cancelled"
+    },
+    "cancelBooking": "Cancel Booking"
+  },
+  "followingList": {
+    "title": "Following",
+    "empty": "You're not following any trainers yet",
+    "emptyDescription": "Follow trainers to get notified when they add new availability.",
+    "browseTrainers": "Browse Trainers",
+    "notifyAvailability": "Notify me of new availability"
+  }
+}
