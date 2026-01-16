@@ -234,7 +234,14 @@
     "noSlotsThisWeek": "No slots scheduled this week",
     "clickToViewDetails": "Click to view details",
     "addSlot": "Add Slot",
-    "bulkCreate": "Bulk Create",
+    "createCyclus": "Create Cyclus",
+    "cyclus": "Cyclus",
+    "cyclusTitle": "Create Training Cyclus",
+    "cyclusDescription": "Create a recurring training cycle with linked time slots",
+    "cyclusName": "Cyclus Name",
+    "cyclusNamePlaceholder": "e.g., Monday Evening Group",
+    "noCyclusConfigured": "No cyclus configured. Add your first recurring slot.",
+    "sessions": "sessions",
     "addSlotTitle": "Add Time Slot",
     "addSlotDescription": "Create a new availability slot for lessons",
     "bulkCreateTitle": "Bulk Create Slots",
@@ -259,7 +266,11 @@
     "generateSlots": "Generate Slots",
     "noNewSlots": "No new slots to create",
     "noNewSlotsDescription": "All slots already exist or are in the past",
-    "slotsGenerated": "Slots generated!",
-    "slotsGeneratedDescription": "Created {{count}} recurring slots ({{total}} total sessions)"
+    "slotsGenerated": "Cyclus generated!",
+    "slotsGeneratedDescription": "Created {{count}} recurring slots ({{total}} total sessions)",
+    "bookingScope": "Booking Scope",
+    "singleSlot": "This slot only",
+    "entireCyclus": "Entire training cyclus",
+    "entireCyclusDescription": "Book all {{count}} remaining sessions"
   }
 }

@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Users, UserPlus } from "lucide-react";
+import { Users, UserPlus, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -7,6 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -21,6 +22,8 @@ export interface SlotWithBookings {
   active_bookings: number;
   pending_bookings: number;
   is_past: boolean;
+  cyclus_id: string | null;
+  cyclus_name: string | null;
 }
 
 type SlotStatus = "free" | "pending" | "partial" | "full" | "past";
@@ -52,10 +55,11 @@ const statusTextColors: Record<SlotStatus, string> = {
 interface CalendarSlotCardProps {
   slot: SlotWithBookings;
   compact?: boolean;
+  cyclusSessions?: number;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
 }
 
-export function CalendarSlotCard({ slot, compact = false, onBookForPlayer }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -80,8 +84,11 @@ export function CalendarSlotCard({ slot, compact = false, onBookForPlayer }: Cal
         compact && "p-1"
       )}
     >
-      <div className={cn("font-medium", statusTextColors[status])}>
+      <div className={cn("font-medium flex items-center gap-1", statusTextColors[status])}>
         {startTime} - {endTime}
+        {!compact && slot.cyclus_id && (
+          <Repeat className="h-3 w-3 opacity-60" />
+        )}
       </div>
       {!compact && slot.lesson_title && (
         <div className="text-foreground/80 truncate mt-0.5">
@@ -116,6 +123,18 @@ export function CalendarSlotCard({ slot, compact = false, onBookForPlayer }: Cal
               {format(new Date(slot.start_time), "EEEE, MMMM d")}
             </div>
           </div>
+
+          {slot.cyclus_id && slot.cyclus_name && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              <Repeat className="h-3 w-3" />
+              {slot.cyclus_name}
+              {cyclusSessions && cyclusSessions > 1 && (
+                <span className="text-muted-foreground ml-1">
+                  ({cyclusSessions} {t("calendar.sessions")})
+                </span>
+              )}
+            </Badge>
+          )}
 
           {slot.lesson_title && (
             <div>

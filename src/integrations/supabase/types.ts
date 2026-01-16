@@ -17,6 +17,8 @@ export type Database = {
       availability_slots: {
         Row: {
           created_at: string
+          cyclus_id: string | null
+          cyclus_name: string | null
           end_time: string
           id: string
           is_recurring: boolean
@@ -27,6 +29,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          cyclus_id?: string | null
+          cyclus_name?: string | null
           end_time: string
           id?: string
           is_recurring?: boolean
@@ -37,6 +41,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          cyclus_id?: string | null
+          cyclus_name?: string | null
           end_time?: string
           id?: string
           is_recurring?: boolean

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,7 @@ interface BulkSlotConfig {
   durationMinutes: number;
   recurrenceWeeks: number;
   lessonId: string | null;
+  cyclusName: string;
 }
 
 interface AddSlotDialogProps {
@@ -264,22 +266,49 @@ export function BulkCreateSheet({
     return startOfDay(addMinutes(today, daysUntilMonday * 24 * 60));
   };
 
+  const generateCyclusName = (startDate: Date, startTime: string, lessonId: string | null) => {
+    const lesson = lessons.find((l) => l.id === lessonId);
+    const dayName = format(startDate, "EEEE");
+    return lesson 
+      ? `${lesson.title} - ${dayName} ${startTime}` 
+      : `${t("calendar.cyclus")} ${dayName} ${startTime}`;
+  };
+
   const addBulkSlotConfig = () => {
+    const newStartDate = getNextMonday();
+    const newStartTime = "09:00";
     setBulkSlots([
       ...bulkSlots,
       {
-        startDate: getNextMonday(),
-        startTime: "09:00",
+        startDate: newStartDate,
+        startTime: newStartTime,
         durationMinutes: defaultDuration,
         recurrenceWeeks: defaultWeeks,
         lessonId: null,
+        cyclusName: generateCyclusName(newStartDate, newStartTime, null),
       },
     ]);
   };
 
   const updateBulkSlot = (index: number, updates: Partial<BulkSlotConfig>) => {
     setBulkSlots((prev) =>
-      prev.map((slot, i) => (i === index ? { ...slot, ...updates } : slot))
+      prev.map((slot, i) => {
+        if (i !== index) return slot;
+        const updated = { ...slot, ...updates };
+        // Auto-regenerate cyclus name if relevant fields changed and name wasn't manually edited
+        if (updates.startDate || updates.startTime || updates.lessonId) {
+          const autoName = generateCyclusName(
+            updates.startDate || slot.startDate,
+            updates.startTime || slot.startTime,
+            updates.lessonId !== undefined ? updates.lessonId : slot.lessonId
+          );
+          // Only update name if it looks auto-generated
+          if (slot.cyclusName.includes(" - ") || slot.cyclusName.startsWith(t("calendar.cyclus"))) {
+            updated.cyclusName = autoName;
+          }
+        }
+        return updated;
+      })
     );
   };
 
@@ -298,6 +327,8 @@ export function BulkCreateSheet({
         start_time: string;
         end_time: string;
         lesson_id: string | null;
+        cyclus_id: string | null;
+        cyclus_name: string | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -321,6 +352,9 @@ export function BulkCreateSheet({
           slotStart = addWeeks(slotStart, weeksToAdd);
         }
 
+        // Generate a unique cyclus ID for this recurring slot configuration
+        const cyclusId = crypto.randomUUID();
+
         // Generate slots for each week in the recurrence period
         for (let week = 0; week < config.recurrenceWeeks; week++) {
           const currentSlotStart = addWeeks(slotStart, week);
@@ -341,6 +375,8 @@ export function BulkCreateSheet({
             start_time: currentSlotStart.toISOString(),
             end_time: currentSlotEnd.toISOString(),
             lesson_id: config.lessonId,
+            cyclus_id: cyclusId,
+            cyclus_name: config.cyclusName,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -410,10 +446,10 @@ export function BulkCreateSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Repeat className="h-5 w-5" />
-            {t("calendar.bulkCreateTitle")}
+            {t("calendar.cyclusTitle")}
           </SheetTitle>
           <SheetDescription>
-            {t("calendar.bulkCreateDescription")}
+            {t("calendar.cyclusDescription")}
           </SheetDescription>
         </SheetHeader>
 
@@ -421,7 +457,7 @@ export function BulkCreateSheet({
           {bulkSlots.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Repeat className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="mb-4">{t("calendar.noSlotsConfigured")}</p>
+              <p className="mb-4">{t("calendar.noCyclusConfigured")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -564,6 +600,17 @@ export function BulkCreateSheet({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Cyclus Name */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("calendar.cyclusName")}</Label>
+                    <Input
+                      value={slot.cyclusName}
+                      onChange={(e) => updateBulkSlot(index, { cyclusName: e.target.value })}
+                      placeholder={t("calendar.cyclusNamePlaceholder")}
+                      className="h-8"
+                    />
                   </div>
 
                   <p className="text-xs text-muted-foreground">
