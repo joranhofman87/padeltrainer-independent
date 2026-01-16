@@ -47,7 +47,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Price:</strong> €${data.price}</p>
             </div>
             <p>See you on the court!</p>
-            <p>Best regards,<br>TennisTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -67,8 +67,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Time:</strong> ${data.lessonTime}</p>
               <p><strong>Location:</strong> ${data.location || "TBD"}</p>
             </div>
-            <p>Don't forget your tennis gear!</p>
-            <p>Best regards,<br>TennisTrainer Team</p>
+            <p>Don't forget your padel gear!</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -88,7 +88,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Time:</strong> ${data.lessonTime}</p>
             </div>
             <p>If you have any questions, please contact the trainer.</p>
-            <p>Best regards,<br>TennisTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -106,7 +106,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Rating:</strong> ${"⭐".repeat(data.rating || 0)}</p>
             </div>
             <p>Keep up the great work!</p>
-            <p>Best regards,<br>TennisTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -195,11 +195,11 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>Don't miss out – book your spot before they fill up!</p>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.app/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
+              <a href="https://padeltrainer.ai/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
-              <a href="https://padeltrainer.app/settings/notifications">Manage notification preferences</a>
+              <a href="https://padeltrainer.ai/settings/notifications">Manage notification preferences</a>
             </p>
             <p>Best regards,<br>PadelTrainer Team</p>
           </div>
@@ -246,7 +246,7 @@ const handler = async (req: Request): Promise<Response> => {
         Authorization: `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "TennisTrainer <onboarding@resend.dev>",
+        from: "PadelTrainer.ai <noreply@padeltrainer.ai>",
         to: [to],
         subject,
         html,
