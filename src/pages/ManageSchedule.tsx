@@ -209,14 +209,14 @@ export default function ManageSchedule() {
 
   const calculateSlotCount = () => {
     const activeDays = workingHours.filter((wh) => wh.is_active);
-    let totalSlots = 0;
+    let recurringSlots = 0;
+    let totalSessions = 0;
 
     // Calculate days in the cycle period
     const today = startOfDay(new Date());
     const effectiveStart = isAfter(cycleStartDate, today) ? cycleStartDate : today;
     const endDate = addWeeks(cycleStartDate, settings.schedule_weeks_ahead);
-    const daysInPeriod = Math.max(0, Math.ceil((endDate.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)));
-    const weeksApprox = Math.ceil(daysInPeriod / 7);
+    const weeksInCycle = settings.schedule_weeks_ahead;
 
     activeDays.forEach((day) => {
       const [startH, startM] = day.start_time.split(':').map(Number);
@@ -226,10 +226,11 @@ export default function ManageSchedule() {
       const availableMinutes = endMinutes - startMinutes;
       const slotWithGap = settings.slot_duration_minutes + settings.slot_gap_minutes;
       const slotsPerDay = Math.floor(availableMinutes / slotWithGap);
-      totalSlots += slotsPerDay * weeksApprox;
+      recurringSlots += slotsPerDay; // One recurring slot per time slot
+      totalSessions += slotsPerDay * weeksInCycle; // Total sessions = slots × weeks
     });
 
-    return totalSlots;
+    return { recurringSlots, totalSessions, weeksInCycle };
   };
 
   const generateSlots = async () => {
@@ -247,6 +248,8 @@ export default function ManageSchedule() {
         start_time: string;
         end_time: string;
         lesson_id: string | null;
+        is_recurring: boolean;
+        recurrence_rule: string | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -258,38 +261,74 @@ export default function ManageSchedule() {
 
       const existingTimes = new Set(existingSlots?.map((s) => s.start_time) || []);
 
-      let currentDate = cycleStartDate;
-      while (isBefore(currentDate, endDate)) {
-        const dayOfWeek = getDay(currentDate);
-        const dayConfig = activeDays.find((d) => d.day_of_week === dayOfWeek);
+      // Generate recurring slots - one for each time slot per active day
+      // Each slot recurs weekly for the duration of the cycle
+      const recurrenceCount = settings.schedule_weeks_ahead;
+      const recurrenceEndDate = format(endDate, 'yyyy-MM-dd');
 
-        if (dayConfig) {
-          const [startH, startM] = dayConfig.start_time.split(':').map(Number);
-          const [endH, endM] = dayConfig.end_time.split(':').map(Number);
-
-          let slotStart = setMinutes(setHours(currentDate, startH), startM);
-          const dayEnd = setMinutes(setHours(currentDate, endH), endM);
-
-          while (isBefore(addMinutes(slotStart, settings.slot_duration_minutes), dayEnd) || 
-                 addMinutes(slotStart, settings.slot_duration_minutes).getTime() === dayEnd.getTime()) {
-            const slotEnd = addMinutes(slotStart, settings.slot_duration_minutes);
-            const startTimeISO = slotStart.toISOString();
-
-            // Only add slots that are in the future and don't already exist
-            if (!existingTimes.has(startTimeISO) && isAfter(slotStart, new Date())) {
-              slotsToInsert.push({
-                trainer_id: trainerId,
-                start_time: startTimeISO,
-                end_time: slotEnd.toISOString(),
-                lesson_id: lessonId,
-              });
-            }
-
-            slotStart = addMinutes(slotEnd, settings.slot_gap_minutes);
-          }
+      // Find the first occurrence of each active day starting from cycleStartDate
+      for (const dayConfig of activeDays) {
+        // Find the first occurrence of this day of week on or after cycleStartDate
+        let firstOccurrence = cycleStartDate;
+        while (getDay(firstOccurrence) !== dayConfig.day_of_week) {
+          firstOccurrence = addDays(firstOccurrence, 1);
         }
 
-        currentDate = addDays(currentDate, 1);
+        // Skip if first occurrence is beyond the end date
+        if (!isBefore(firstOccurrence, endDate)) continue;
+
+        // Generate slots for this day
+        const [startH, startM] = dayConfig.start_time.split(':').map(Number);
+        const [endH, endM] = dayConfig.end_time.split(':').map(Number);
+
+        let slotStart = setMinutes(setHours(firstOccurrence, startH), startM);
+        const dayEnd = setMinutes(setHours(firstOccurrence, endH), endM);
+
+        while (isBefore(addMinutes(slotStart, settings.slot_duration_minutes), dayEnd) || 
+               addMinutes(slotStart, settings.slot_duration_minutes).getTime() === dayEnd.getTime()) {
+          const slotEnd = addMinutes(slotStart, settings.slot_duration_minutes);
+          
+          // Check if this slot or any of its recurrences already exists
+          let slotExists = false;
+          let checkDate = slotStart;
+          while (isBefore(checkDate, endDate)) {
+            if (existingTimes.has(checkDate.toISOString())) {
+              slotExists = true;
+              break;
+            }
+            checkDate = addWeeks(checkDate, 1);
+          }
+
+          // Only add if the first occurrence is in the future and doesn't exist
+          const firstSlotIsInFuture = isAfter(slotStart, new Date()) || 
+            (isBefore(slotStart, new Date()) && isAfter(addWeeks(slotStart, 1), new Date()));
+          
+          if (!slotExists && firstSlotIsInFuture) {
+            // Use the first future occurrence as the start time
+            let actualStart = slotStart;
+            let actualEnd = slotEnd;
+            while (isBefore(actualStart, new Date()) && isBefore(actualStart, endDate)) {
+              actualStart = addWeeks(actualStart, 1);
+              actualEnd = addWeeks(actualEnd, 1);
+            }
+
+            if (isBefore(actualStart, endDate)) {
+              // Calculate remaining weeks from actual start to end
+              const weeksRemaining = Math.ceil((endDate.getTime() - actualStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+              
+              slotsToInsert.push({
+                trainer_id: trainerId,
+                start_time: actualStart.toISOString(),
+                end_time: actualEnd.toISOString(),
+                lesson_id: lessonId,
+                is_recurring: weeksRemaining > 1,
+                recurrence_rule: weeksRemaining > 1 ? `FREQ=WEEKLY;COUNT=${weeksRemaining};UNTIL=${recurrenceEndDate}` : null,
+              });
+            }
+          }
+
+          slotStart = addMinutes(slotEnd, settings.slot_gap_minutes);
+        }
       }
 
       if (slotsToInsert.length === 0) {
@@ -302,12 +341,21 @@ export default function ManageSchedule() {
       const { error } = await supabase.from('availability_slots').insert(slotsToInsert);
       if (error) throw error;
 
+      // Calculate total slot instances (recurring slots × weeks)
+      const totalInstances = slotsToInsert.reduce((acc, slot) => {
+        if (slot.is_recurring && slot.recurrence_rule) {
+          const countMatch = slot.recurrence_rule.match(/COUNT=(\d+)/);
+          return acc + (countMatch ? parseInt(countMatch[1]) : 1);
+        }
+        return acc + 1;
+      }, 0);
+
       // Notify followers about new availability
       try {
         await supabase.functions.invoke('notify-followers', {
           body: {
             trainer_id: trainerId,
-            slot_count: slotsToInsert.length,
+            slot_count: totalInstances,
             date_range: `${format(effectiveStart, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`,
           },
         });
@@ -317,8 +365,8 @@ export default function ManageSchedule() {
       }
 
       toast({
-        title: 'Slots generated!',
-        description: `Created ${slotsToInsert.length} new availability slots.`,
+        title: 'Recurring slots generated!',
+        description: `Created ${slotsToInsert.length} recurring slots (${totalInstances} total sessions over ${settings.schedule_weeks_ahead} weeks).`,
       });
     } catch (error: any) {
       toast({
@@ -575,16 +623,15 @@ export default function ManageSchedule() {
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h3 className="font-semibold text-lg mb-1">Generate Availability Slots</h3>
+                <h3 className="font-semibold text-lg mb-1">Generate Recurring Availability Slots</h3>
                 <p className="text-muted-foreground text-sm">
-                  This will create approximately <strong>{estimatedSlots}</strong> slots based on your
-                  schedule. Existing slots won't be duplicated.
+                  This will create <strong>{estimatedSlots.recurringSlots}</strong> recurring slots, each repeating weekly for <strong>{estimatedSlots.weeksInCycle} weeks</strong> ({estimatedSlots.totalSessions} total sessions). Existing slots won't be duplicated.
                 </p>
               </div>
               <Button
                 size="lg"
                 onClick={generateSlots}
-                disabled={isGenerating || estimatedSlots === 0}
+                disabled={isGenerating || estimatedSlots.recurringSlots === 0}
                 className="gap-2"
               >
                 <RefreshCw className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
