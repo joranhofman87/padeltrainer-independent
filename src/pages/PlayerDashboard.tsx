@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings } from 'lucide-react';
+import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isAfter } from 'date-fns';
 
@@ -517,6 +517,25 @@ export default function PlayerDashboard() {
             <CardContent>
               <CardDescription>
                 Update your profile, add your KNLTB rating, and manage preferences
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/settings/calendar')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <CalendarSync className="h-5 w-5 text-blue-600" />
+                </div>
+                <CardTitle className="text-lg">Calendar Sync</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Connect Google Calendar to sync your training sessions
               </CardDescription>
             </CardContent>
           </Card>

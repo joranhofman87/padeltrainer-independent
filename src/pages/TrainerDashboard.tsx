@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, CalendarSync } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
@@ -465,6 +465,25 @@ export default function TrainerDashboard() {
             <CardContent>
               <CardDescription>
                 Update your profile and payment settings
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/settings/calendar')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <CalendarSync className="h-5 w-5 text-blue-600" />
+                </div>
+                <CardTitle className="text-lg">Calendar Sync</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Connect Google Calendar for automatic booking sync
               </CardDescription>
             </CardContent>
           </Card>
