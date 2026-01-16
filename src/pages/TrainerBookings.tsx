@@ -6,6 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, 
@@ -17,7 +25,9 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquare,
-  CreditCard
+  CreditCard,
+  RefreshCw,
+  Bell
 } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -59,6 +69,10 @@ export default function TrainerBookings() {
   
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellingBooking, setCancellingBooking] = useState<BookingWithDetails | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [trainerId, setTrainerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -88,6 +102,8 @@ export default function TrainerBookings() {
       setLoadingBookings(false);
       return;
     }
+
+    setTrainerId(trainerProfile.id);
 
     // Fetch bookings with all related data
     const { data, error } = await supabase
@@ -129,15 +145,72 @@ export default function TrainerBookings() {
     }
   };
 
-  const handleCancel = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to cancel this booking?')) return;
+  const openCancelDialog = (booking: BookingWithDetails) => {
+    setCancellingBooking(booking);
+    setCancelDialogOpen(true);
+  };
+
+  const handleCancelAndClose = async () => {
+    if (!cancellingBooking) return;
+    setIsCancelling(true);
     
-    const { error } = await updateBookingStatus(bookingId, 'cancelled');
+    const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
     if (error) {
       toast({ title: 'Error', description: 'Failed to cancel booking', variant: 'destructive' });
     } else {
-      toast({ title: 'Booking Cancelled', description: 'The booking has been cancelled' });
+      toast({ title: 'Booking Cancelled', description: 'The booking has been cancelled and the slot is now closed.' });
       fetchBookings();
+    }
+    
+    setIsCancelling(false);
+    setCancelDialogOpen(false);
+    setCancellingBooking(null);
+  };
+
+  const handleCancelAndReopen = async () => {
+    if (!cancellingBooking || !trainerId) return;
+    setIsCancelling(true);
+    
+    try {
+      // Cancel the booking
+      const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
+      if (error) throw error;
+
+      // Notify followers about the reopened slot
+      const slotDate = format(parseISO(cancellingBooking.availability_slots.start_time), 'EEE, MMM d');
+      const slotTime = format(parseISO(cancellingBooking.availability_slots.start_time), 'HH:mm');
+      
+      await supabase.functions.invoke('notify-followers', {
+        body: {
+          trainer_id: trainerId,
+          slot_count: 1,
+          date_range: slotDate,
+          single_slot: {
+            date: slotDate,
+            time: slotTime,
+          },
+        },
+      });
+
+      toast({ 
+        title: 'Slot Reopened!', 
+        description: 'The booking was cancelled and followers have been notified about the available slot.' 
+      });
+      fetchBookings();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to cancel and reopen', variant: 'destructive' });
+    }
+    
+    setIsCancelling(false);
+    setCancelDialogOpen(false);
+    setCancellingBooking(null);
+  };
+
+  const handleCancel = async (bookingId: string) => {
+    // Find the booking and open dialog
+    const booking = bookings.find(b => b.id === bookingId);
+    if (booking) {
+      openCancelDialog(booking);
     }
   };
 
@@ -337,6 +410,73 @@ export default function TrainerBookings() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Cancel Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Booking</DialogTitle>
+            <DialogDescription>
+              How would you like to handle this cancellation?
+            </DialogDescription>
+          </DialogHeader>
+          
+          {cancellingBooking && (
+            <div className="py-4">
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg mb-4">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">
+                    {format(parseISO(cancellingBooking.availability_slots.start_time), 'EEEE, MMMM d')}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {format(parseISO(cancellingBooking.availability_slots.start_time), 'HH:mm')} - {format(parseISO(cancellingBooking.availability_slots.end_time), 'HH:mm')}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-3"
+                  onClick={handleCancelAndClose}
+                  disabled={isCancelling}
+                >
+                  <XCircle className="h-5 w-5 text-destructive" />
+                  <div className="text-left">
+                    <p className="font-medium">Cancel & Close Slot</p>
+                    <p className="text-xs text-muted-foreground">
+                      Cancel this booking and remove the time slot
+                    </p>
+                  </div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-3 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
+                  onClick={handleCancelAndReopen}
+                  disabled={isCancelling}
+                >
+                  <RefreshCw className="h-5 w-5 text-green-600" />
+                  <div className="text-left">
+                    <p className="font-medium text-green-700 dark:text-green-400">Cancel & Reopen for Others</p>
+                    <p className="text-xs text-muted-foreground">
+                      <Bell className="h-3 w-3 inline mr-1" />
+                      Keep slot available and notify followers
+                    </p>
+                  </div>
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCancelDialogOpen(false)} disabled={isCancelling}>
+              Keep Booking
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

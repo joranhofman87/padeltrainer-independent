@@ -376,6 +376,25 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/schedule')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <Clock className="h-5 w-5 text-green-600" />
+                </div>
+                <CardTitle className="text-lg">Working Hours</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Set your training cycle and generate slots
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/lessons')}
           >
             <CardHeader className="pb-2">
@@ -395,19 +414,19 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/schedule')}
+            onClick={() => navigate('/availability')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <Clock className="h-5 w-5 text-green-600" />
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Plus className="h-5 w-5 text-purple-600" />
                 </div>
-                <CardTitle className="text-lg">Working Hours</CardTitle>
+                <CardTitle className="text-lg">Individual Slots</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Set your weekly schedule and generate slots
+                Add one-off time slots manually
               </CardDescription>
             </CardContent>
           </Card>
