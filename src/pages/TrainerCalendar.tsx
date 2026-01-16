@@ -20,20 +20,24 @@ import {
   ArrowLeft,
   Plus,
   Repeat,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
+import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
 interface Lesson {
   id: string;
   title: string;
+  price: number;
+  location: string | null;
 }
 
 interface ScheduleSettings {
@@ -60,6 +64,11 @@ export default function TrainerCalendar() {
   // Dialog states
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
+  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
+  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
 
@@ -97,10 +106,10 @@ export default function TrainerCalendar() {
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
       });
 
-      // Fetch lessons
+      // Fetch lessons with more details
       const { data: lessonData } = await supabase
         .from("lessons")
-        .select("id, title")
+        .select("id, title, price, location")
         .eq("trainer_id", trainerProfile.id)
         .eq("is_active", true);
 
@@ -277,6 +286,23 @@ export default function TrainerCalendar() {
     fetchSlots();
   };
 
+  const handleBookForPlayer = (slot: SlotWithBookings) => {
+    setSelectedSlot(slot);
+    // Find the lesson for this slot
+    if (slot.lesson_id) {
+      const lesson = lessons.find(l => l.id === slot.lesson_id);
+      setSelectedLesson(lesson || null);
+    } else {
+      setSelectedLesson(null);
+    }
+    setBookForPlayerOpen(true);
+  };
+
+  const handleDuplicateCyclus = (cyclusId: string) => {
+    setPreselectedCyclusId(cyclusId);
+    setDuplicateCyclusOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -303,6 +329,18 @@ export default function TrainerCalendar() {
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPreselectedCyclusId(undefined);
+                setDuplicateCyclusOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.duplicateCyclus")}</span>
             </Button>
             <Button
               size="sm"
@@ -396,6 +434,8 @@ export default function TrainerCalendar() {
                 currentDate={currentDate}
                 view={view}
                 onCellClick={handleCellClick}
+                onBookForPlayer={handleBookForPlayer}
+                onDuplicateCyclus={handleDuplicateCyclus}
               />
             )}
           </CardContent>
@@ -424,6 +464,45 @@ export default function TrainerCalendar() {
         defaultDuration={settings.slot_duration_minutes}
         defaultWeeks={settings.schedule_weeks_ahead}
         onSlotsCreated={handleSlotsCreated}
+      />
+
+      {/* Book for Player Dialog */}
+      {selectedSlot && (
+        <BookForPlayerDialog
+          open={bookForPlayerOpen}
+          onOpenChange={(open) => {
+            setBookForPlayerOpen(open);
+            if (!open) {
+              setSelectedSlot(null);
+              setSelectedLesson(null);
+            }
+          }}
+          trainerId={trainerId!}
+          slot={{
+            id: selectedSlot.id,
+            start_time: selectedSlot.start_time,
+            end_time: selectedSlot.end_time,
+            lesson_id: selectedSlot.lesson_id,
+            cyclus_id: selectedSlot.cyclus_id,
+            cyclus_name: selectedSlot.cyclus_name,
+          }}
+          lesson={selectedLesson}
+          onBookingCreated={handleSlotsCreated}
+        />
+      )}
+
+      {/* Duplicate Cyclus Dialog */}
+      <DuplicateCyclusDialog
+        open={duplicateCyclusOpen}
+        onOpenChange={(open) => {
+          setDuplicateCyclusOpen(open);
+          if (!open) {
+            setPreselectedCyclusId(undefined);
+          }
+        }}
+        trainerId={trainerId || ""}
+        preselectedCyclusId={preselectedCyclusId}
+        onCyclusCreated={handleSlotsCreated}
       />
     </div>
   );

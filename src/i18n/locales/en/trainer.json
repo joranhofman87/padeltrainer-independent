@@ -271,6 +271,16 @@
     "bookingScope": "Booking Scope",
     "singleSlot": "This slot only",
     "entireCyclus": "Entire training cyclus",
-    "entireCyclusDescription": "Book all {{count}} remaining sessions"
+    "entireCyclusDescription": "Book all {{count}} remaining sessions",
+    "duplicateCyclus": "Duplicate Cyclus",
+    "duplicateCyclusTitle": "Duplicate Training Cycle",
+    "duplicateCyclusDescription": "Create a new cycle based on an existing one",
+    "selectCyclus": "Select Cyclus",
+    "newStartDate": "New Start Date",
+    "numberOfSessions": "Number of Sessions",
+    "includeExistingPlayers": "Include existing players",
+    "includePlayersDescription": "Copy {{count}} player booking(s) to the new cycle",
+    "cyclusDuplicated": "Cyclus duplicated successfully",
+    "noExistingCyclus": "No training cycles found"
   }
 }

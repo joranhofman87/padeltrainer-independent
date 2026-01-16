@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { format, startOfWeek, addDays, isToday, isBefore, startOfDay } from "date-fns";
+import { format, startOfWeek, addDays, isToday, isBefore } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
 import { useTranslation } from "react-i18next";
@@ -10,6 +10,8 @@ interface TrainerCalendarGridProps {
   currentDate: Date;
   view: "week" | "month";
   onCellClick?: (date: Date, hour: number) => void;
+  onBookForPlayer?: (slot: SlotWithBookings) => void;
+  onDuplicateCyclus?: (cyclusId: string) => void;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
@@ -19,6 +21,8 @@ export function TrainerCalendarGrid({
   currentDate,
   view,
   onCellClick,
+  onBookForPlayer,
+  onDuplicateCyclus,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
 
@@ -52,7 +56,7 @@ export function TrainerCalendarGrid({
   }, [slots, weekDays]);
 
   if (view === "month") {
-    return <MonthView slots={slots} currentDate={currentDate} />;
+    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} />;
   }
 
   return (
@@ -115,7 +119,12 @@ export function TrainerCalendarGrid({
                       }}
                     >
                       {slotsInCell.map((slot) => (
-                        <CalendarSlotCard key={slot.id} slot={slot} />
+                        <CalendarSlotCard 
+                          key={slot.id} 
+                          slot={slot} 
+                          onBookForPlayer={onBookForPlayer}
+                          onDuplicateCyclus={onDuplicateCyclus}
+                        />
                       ))}
                       {!isPastCell && slotsInCell.length === 0 && onCellClick && (
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -147,9 +156,11 @@ export function TrainerCalendarGrid({
 interface MonthViewProps {
   slots: SlotWithBookings[];
   currentDate: Date;
+  onBookForPlayer?: (slot: SlotWithBookings) => void;
+  onDuplicateCyclus?: (cyclusId: string) => void;
 }
 
-function MonthView({ slots, currentDate }: MonthViewProps) {
+function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus }: MonthViewProps) {
   const { t } = useTranslation("trainer");
 
   const monthDays = useMemo(() => {
@@ -210,7 +221,13 @@ function MonthView({ slots, currentDate }: MonthViewProps) {
             </div>
             <div className="space-y-0.5 max-h-[80px] overflow-y-auto">
               {daySlots.slice(0, 3).map((slot) => (
-                <CalendarSlotCard key={slot.id} slot={slot} compact />
+                <CalendarSlotCard 
+                  key={slot.id} 
+                  slot={slot} 
+                  compact 
+                  onBookForPlayer={onBookForPlayer}
+                  onDuplicateCyclus={onDuplicateCyclus}
+                />
               ))}
               {daySlots.length > 3 && (
                 <div className="text-xs text-muted-foreground text-center">
