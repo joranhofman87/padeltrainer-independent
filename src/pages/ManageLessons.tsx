@@ -357,7 +357,9 @@ export default function ManageLessons() {
                       id="minRating"
                       type="number"
                       step={0.1}
-                      placeholder="e.g., 5.0"
+                      min={0.1}
+                      max={9.9}
+                      placeholder="e.g., 3.0"
                       value={formData.min_skill_rating}
                       onChange={(e) => setFormData({ ...formData, min_skill_rating: e.target.value })}
                     />
@@ -368,7 +370,9 @@ export default function ManageLessons() {
                       id="maxRating"
                       type="number"
                       step={0.1}
-                      placeholder="e.g., 8.0"
+                      min={0.1}
+                      max={9.9}
+                      placeholder="e.g., 7.0"
                       value={formData.max_skill_rating}
                       onChange={(e) => setFormData({ ...formData, max_skill_rating: e.target.value })}
                     />
