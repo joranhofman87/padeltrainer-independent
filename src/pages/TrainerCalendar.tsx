@@ -18,6 +18,8 @@ import {
   CalendarDays,
   LayoutGrid,
   ArrowLeft,
+  Plus,
+  Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,8 +27,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
+import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+
+interface Lesson {
+  id: string;
+  title: string;
+}
+
+interface ScheduleSettings {
+  slot_duration_minutes: number;
+  schedule_weeks_ahead: number;
+}
 
 export default function TrainerCalendar() {
   const { t } = useTranslation("trainer");
@@ -37,6 +50,18 @@ export default function TrainerCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trainerId, setTrainerId] = useState<string | null>(null);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [settings, setSettings] = useState<ScheduleSettings>({
+    slot_duration_minutes: 60,
+    schedule_weeks_ahead: 4,
+  });
+
+  // Dialog states
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
+  const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,9 +71,44 @@ export default function TrainerCalendar() {
 
   useEffect(() => {
     if (user) {
+      fetchTrainerData();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (trainerId) {
       fetchSlots();
     }
-  }, [user, currentDate, view]);
+  }, [trainerId, currentDate, view]);
+
+  const fetchTrainerData = async () => {
+    try {
+      const { data: trainerProfile } = await supabase
+        .from("trainer_profiles")
+        .select("id, slot_duration_minutes, schedule_weeks_ahead")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
+      if (!trainerProfile) return;
+
+      setTrainerId(trainerProfile.id);
+      setSettings({
+        slot_duration_minutes: trainerProfile.slot_duration_minutes || 60,
+        schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
+      });
+
+      // Fetch lessons
+      const { data: lessonData } = await supabase
+        .from("lessons")
+        .select("id, title")
+        .eq("trainer_id", trainerProfile.id)
+        .eq("is_active", true);
+
+      setLessons(lessonData || []);
+    } catch (error) {
+      console.error("Error fetching trainer data:", error);
+    }
+  };
 
   const fetchSlots = async () => {
     setLoading(true);
@@ -203,6 +263,16 @@ export default function TrainerCalendar() {
     );
   }
 
+  const handleCellClick = (date: Date, hour: number) => {
+    setDefaultSlotDate(date);
+    setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
+    setAddSlotOpen(true);
+  };
+
+  const handleSlotsCreated = () => {
+    fetchSlots();
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -216,7 +286,29 @@ export default function TrainerCalendar() {
               <h1 className="text-xl font-bold">{t("calendar.title")}</h1>
             </div>
           </div>
-          <Badge variant="secondary">{t("badge")}</Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDefaultSlotDate(undefined);
+                setDefaultSlotTime(undefined);
+                setAddSlotOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setBulkCreateOpen(true)}
+              className="gap-2"
+            >
+              <Repeat className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.bulkCreate")}</span>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -299,11 +391,36 @@ export default function TrainerCalendar() {
                 slots={slots}
                 currentDate={currentDate}
                 view={view}
+                onCellClick={handleCellClick}
               />
             )}
           </CardContent>
         </Card>
       </main>
+
+      {/* Add Slot Dialog */}
+      <AddSlotDialog
+        open={addSlotOpen}
+        onOpenChange={setAddSlotOpen}
+        trainerId={trainerId}
+        lessons={lessons}
+        defaultDate={defaultSlotDate}
+        defaultTime={defaultSlotTime}
+        defaultDuration={settings.slot_duration_minutes}
+        defaultWeeks={settings.schedule_weeks_ahead}
+        onSlotsCreated={handleSlotsCreated}
+      />
+
+      {/* Bulk Create Sheet */}
+      <BulkCreateSheet
+        open={bulkCreateOpen}
+        onOpenChange={setBulkCreateOpen}
+        trainerId={trainerId}
+        lessons={lessons}
+        defaultDuration={settings.slot_duration_minutes}
+        defaultWeeks={settings.schedule_weeks_ahead}
+        onSlotsCreated={handleSlotsCreated}
+      />
     </div>
   );
 }

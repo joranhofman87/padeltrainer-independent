@@ -142,19 +142,6 @@
       "keepBooking": "Keep Booking"
     }
   },
-  "bookings": {
-    "title": "Bookings",
-    "empty": "No bookings yet",
-    "emptyDescription": "Bookings will appear here when players book your lessons.",
-    "tabs": {
-      "upcoming": "Upcoming",
-      "past": "Past",
-      "all": "All"
-    },
-    "player": "Player",
-    "confirmBooking": "Confirm",
-    "cancelBooking": "Cancel"
-  },
   "earnings": {
     "title": "Earnings",
     "totalEarnings": "Total Earnings",
@@ -196,6 +183,34 @@
     "past": "Past",
     "spotsLeft": "{{count}} spots left",
     "noSlotsThisWeek": "No slots scheduled this week",
-    "clickToViewDetails": "Click to view details"
+    "clickToViewDetails": "Click to view details",
+    "addSlot": "Add Slot",
+    "bulkCreate": "Bulk Create",
+    "addSlotTitle": "Add Time Slot",
+    "addSlotDescription": "Create a new availability slot for lessons",
+    "bulkCreateTitle": "Bulk Create Slots",
+    "bulkCreateDescription": "Create multiple recurring slots at once",
+    "date": "Date",
+    "time": "Time",
+    "duration": "Duration",
+    "linkLesson": "Link to Lesson",
+    "noLesson": "No lesson linked",
+    "slotCreated": "Slot created successfully",
+    "noSlotsConfigured": "No slots configured. Add your first recurring slot.",
+    "slot": "Slot",
+    "remove": "Remove",
+    "startDate": "Start Date",
+    "repeatFor": "Repeat for",
+    "weeks": "weeks",
+    "recurringSummary": "Creates {{count}} sessions every {{day}} at {{time}}, from {{startDate}} to {{endDate}}",
+    "addRecurringSlot": "Add Recurring Slot",
+    "generateCycle": "Generate Training Cycle",
+    "generateCycleDescription": "This will create {{slotCount}} recurring slot(s) with {{sessionCount}} total sessions",
+    "generating": "Generating...",
+    "generateSlots": "Generate Slots",
+    "noNewSlots": "No new slots to create",
+    "noNewSlotsDescription": "All slots already exist or are in the past",
+    "slotsGenerated": "Slots generated!",
+    "slotsGeneratedDescription": "Created {{count}} recurring slots ({{total}} total sessions)"
   }
 }
