@@ -234,7 +234,14 @@
     "noSlotsThisWeek": "Geen slots gepland deze week",
     "clickToViewDetails": "Klik voor details",
     "addSlot": "Slot Toevoegen",
-    "bulkCreate": "Bulk Aanmaken",
+    "createCyclus": "Cyclus Aanmaken",
+    "cyclus": "Cyclus",
+    "cyclusTitle": "Trainingscyclus Aanmaken",
+    "cyclusDescription": "Maak een terugkerende trainingscyclus met gekoppelde tijdslots",
+    "cyclusName": "Cyclusnaam",
+    "cyclusNamePlaceholder": "bijv. Maandagavond Groep",
+    "noCyclusConfigured": "Geen cyclus geconfigureerd. Voeg je eerste terugkerende slot toe.",
+    "sessions": "sessies",
     "addSlotTitle": "Tijdslot Toevoegen",
     "addSlotDescription": "Maak een nieuw beschikbaarheidsslot aan",
     "bulkCreateTitle": "Slots in Bulk Aanmaken",
@@ -259,7 +266,11 @@
     "generateSlots": "Slots Genereren",
     "noNewSlots": "Geen nieuwe slots te maken",
     "noNewSlotsDescription": "Alle slots bestaan al of zijn in het verleden",
-    "slotsGenerated": "Slots gegenereerd!",
-    "slotsGeneratedDescription": "{{count}} terugkerende slots aangemaakt ({{total}} totale sessies)"
+    "slotsGenerated": "Cyclus gegenereerd!",
+    "slotsGeneratedDescription": "{{count}} terugkerende slots aangemaakt ({{total}} totale sessies)",
+    "bookingScope": "Boekingsomvang",
+    "singleSlot": "Alleen dit slot",
+    "entireCyclus": "Gehele trainingscyclus",
+    "entireCyclusDescription": "Boek alle {{count}} resterende sessies"
   }
 }

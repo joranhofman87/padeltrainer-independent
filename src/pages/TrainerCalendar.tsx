@@ -148,6 +148,8 @@ export default function TrainerCalendar() {
           start_time,
           end_time,
           lesson_id,
+          cyclus_id,
+          cyclus_name,
           lessons:lesson_id (
             title,
             max_participants,
@@ -204,6 +206,8 @@ export default function TrainerCalendar() {
             active_bookings: counts.confirmed,
             pending_bookings: counts.pending,
             is_past: new Date(slot.start_time) < now,
+            cyclus_id: slot.cyclus_id || null,
+            cyclus_name: slot.cyclus_name || null,
           };
         }
       );
@@ -306,7 +310,7 @@ export default function TrainerCalendar() {
               className="gap-2"
             >
               <Repeat className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.bulkCreate")}</span>
+              <span className="hidden sm:inline">{t("calendar.createCyclus")}</span>
             </Button>
           </div>
         </div>
