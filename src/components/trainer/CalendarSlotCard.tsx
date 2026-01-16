@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -57,9 +57,10 @@ interface CalendarSlotCardProps {
   compact?: boolean;
   cyclusSessions?: number;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
+  onDuplicateCyclus?: (cyclusId: string) => void;
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -183,6 +184,18 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             >
               <UserPlus className="mr-2 h-4 w-4" />
               {t("bookings.bookForPlayer")}
+            </Button>
+          )}
+
+          {slot.cyclus_id && onDuplicateCyclus && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => onDuplicateCyclus(slot.cyclus_id!)}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              {t("calendar.duplicateCyclus")}
             </Button>
           )}
         </div>

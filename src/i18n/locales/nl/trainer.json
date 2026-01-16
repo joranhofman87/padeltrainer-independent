@@ -271,6 +271,16 @@
     "bookingScope": "Boekingsomvang",
     "singleSlot": "Alleen dit slot",
     "entireCyclus": "Gehele trainingscyclus",
-    "entireCyclusDescription": "Boek alle {{count}} resterende sessies"
+    "entireCyclusDescription": "Boek alle {{count}} resterende sessies",
+    "duplicateCyclus": "Cyclus Dupliceren",
+    "duplicateCyclusTitle": "Trainingscyclus Dupliceren",
+    "duplicateCyclusDescription": "Maak een nieuwe cyclus op basis van een bestaande",
+    "selectCyclus": "Selecteer Cyclus",
+    "newStartDate": "Nieuwe Startdatum",
+    "numberOfSessions": "Aantal Sessies",
+    "includeExistingPlayers": "Bestaande spelers meenemen",
+    "includePlayersDescription": "Kopieer {{count}} spelerboeking(en) naar de nieuwe cyclus",
+    "cyclusDuplicated": "Cyclus succesvol gedupliceerd",
+    "noExistingCyclus": "Geen trainingscyclussen gevonden"
   }
 }
