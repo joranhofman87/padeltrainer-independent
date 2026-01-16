@@ -34,8 +34,34 @@ export default function BookingSuccess() {
 
   const verifyPayment = async () => {
     try {
+      // First, get the trainer's connected account ID from the booking
+      const { data: bookingData } = await supabase
+        .from('bookings')
+        .select(`
+          availability_slots!inner(
+            trainer_id
+          )
+        `)
+        .eq('id', bookingId)
+        .single();
+
+      let connectedAccountId: string | undefined;
+      
+      if (bookingData?.availability_slots) {
+        const trainerId = (bookingData.availability_slots as any).trainer_id;
+        if (trainerId) {
+          const { data: stripeAccount } = await supabase
+            .from('trainer_stripe_accounts')
+            .select('stripe_account_id')
+            .eq('trainer_id', trainerId)
+            .single();
+          
+          connectedAccountId = stripeAccount?.stripe_account_id;
+        }
+      }
+
       const { data, error: fnError } = await supabase.functions.invoke('verify-payment', {
-        body: { sessionId, bookingId },
+        body: { sessionId, bookingId, connectedAccountId },
       });
 
       if (fnError) throw fnError;

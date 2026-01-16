@@ -96,9 +96,11 @@ serve(async (req) => {
       logStep("Found existing Stripe customer", { customerId });
     }
 
-    // Check if trainer has a connected Stripe account
-    let transferDestination: string | undefined;
-    let applicationFee: number | undefined;
+    const priceInCents = Math.round(price * 100);
+
+    // Check if trainer has a connected Stripe account (REQUIRED for direct charges)
+    let connectedAccountId: string | undefined;
+    let applicationFeeAmount: number | undefined;
     let platformFeePercent = STARTER_FEE;
     
     if (trainerId) {
@@ -108,38 +110,44 @@ serve(async (req) => {
         .eq('trainer_id', trainerId)
         .single();
 
-      if (stripeAccount?.charges_enabled && stripeAccount?.stripe_account_id) {
-        transferDestination = stripeAccount.stripe_account_id;
-        
-        // Get trainer's email to check their subscription tier
-        const { data: trainerProfile } = await supabaseClient
-          .from('profiles')
-          .select('email')
-          .eq('id', trainerId)
-          .single();
-
-        if (trainerProfile?.email) {
-          platformFeePercent = await getTrainerPlatformFee(stripe, trainerProfile.email);
-          logStep("Got trainer platform fee", { email: trainerProfile.email, feePercent: platformFeePercent });
-        }
-
-        // Calculate platform fee based on trainer's subscription tier
-        applicationFee = Math.round(price * platformFeePercent);
-        logStep("Trainer has connected account", { transferDestination, applicationFee, platformFeePercent });
+      if (!stripeAccount?.charges_enabled || !stripeAccount?.stripe_account_id) {
+        throw new Error("Trainer has not connected their Stripe account. Please ask them to set up payouts first.");
       }
+
+      connectedAccountId = stripeAccount.stripe_account_id;
+      
+      // Get trainer's email to check their subscription tier
+      const { data: trainerProfile } = await supabaseClient
+        .from('profiles')
+        .select('email')
+        .eq('id', trainerId)
+        .single();
+
+      if (trainerProfile?.email) {
+        platformFeePercent = await getTrainerPlatformFee(stripe, trainerProfile.email);
+        logStep("Got trainer platform fee", { email: trainerProfile.email, feePercent: platformFeePercent });
+      }
+
+      // Calculate platform fee in cents based on trainer's subscription tier
+      applicationFeeAmount = Math.round(priceInCents * (platformFeePercent / 100));
+      logStep("Trainer connected account ready for direct charge", { 
+        connectedAccountId, 
+        applicationFeeAmount, 
+        platformFeePercent 
+      });
+    } else {
+      throw new Error("Trainer ID is required for booking");
     }
 
-    const priceInCents = Math.round(price * 100);
     const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
 
-    // Create checkout session with optional Connect split
+    // Create checkout session with DIRECT CHARGE on connected account
+    // This places liability with the trainer (connected account pays Stripe fees)
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      customer: customerId,
-      customer_email: customerId ? undefined : user.email,
       payment_method_types: ['ideal', 'card', 'bancontact'],
       mode: 'payment',
       success_url: `${origin}/booking-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${bookingId}`,
-      cancel_url: `${origin}/book/${trainerId || ''}`,
+      cancel_url: `${origin}/book/${trainerId}`,
       line_items: [
         {
           price_data: {
@@ -155,22 +163,21 @@ serve(async (req) => {
       ],
       metadata: {
         booking_id: bookingId,
-        trainer_id: trainerId || '',
+        trainer_id: trainerId,
         platform_fee_percent: platformFeePercent.toString(),
+        connected_account_id: connectedAccountId,
+      },
+      payment_intent_data: {
+        application_fee_amount: applicationFeeAmount,
       },
     };
 
-    // Add Connect split if trainer has connected account
-    if (transferDestination && applicationFee) {
-      sessionParams.payment_intent_data = {
-        application_fee_amount: applicationFee,
-        transfer_data: {
-          destination: transferDestination,
-        },
-      };
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    // Create session ON the connected account (direct charge model)
+    // Trainer pays Stripe fees, platform collects application fee
+    const session = await stripe.checkout.sessions.create(
+      sessionParams,
+      { stripeAccount: connectedAccountId }
+    );
     logStep("Checkout session created", { sessionId: session.id, url: session.url });
 
     // Update booking with session ID

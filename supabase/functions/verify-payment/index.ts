@@ -60,8 +60,8 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
-    const { sessionId, bookingId } = await req.json();
-    logStep("Request payload", { sessionId, bookingId });
+    const { sessionId, bookingId, connectedAccountId } = await req.json();
+    logStep("Request payload", { sessionId, bookingId, connectedAccountId });
 
     if (!sessionId || !bookingId) {
       throw new Error("Missing required fields: sessionId and bookingId");
@@ -69,8 +69,42 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Retrieve the checkout session
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    // Retrieve the checkout session from the connected account (direct charges)
+    // If connectedAccountId is provided, retrieve from that account
+    let session;
+    if (connectedAccountId) {
+      session = await stripe.checkout.sessions.retrieve(
+        sessionId,
+        { stripeAccount: connectedAccountId }
+      );
+    } else {
+      // Fallback: try to get connected account from booking metadata
+      const { data: bookingMeta } = await supabaseClient
+        .from('bookings')
+        .select('trainer_id')
+        .eq('id', bookingId)
+        .single();
+      
+      if (bookingMeta?.trainer_id) {
+        const { data: stripeAccount } = await supabaseClient
+          .from('trainer_stripe_accounts')
+          .select('stripe_account_id')
+          .eq('trainer_id', bookingMeta.trainer_id)
+          .single();
+        
+        if (stripeAccount?.stripe_account_id) {
+          session = await stripe.checkout.sessions.retrieve(
+            sessionId,
+            { stripeAccount: stripeAccount.stripe_account_id }
+          );
+        }
+      }
+      
+      // Last resort: try without connected account (legacy bookings)
+      if (!session) {
+        session = await stripe.checkout.sessions.retrieve(sessionId);
+      }
+    }
     logStep("Session retrieved", { status: session.payment_status, paymentIntent: session.payment_intent });
 
     if (session.payment_status === 'paid') {
@@ -133,8 +167,11 @@ serve(async (req) => {
         const lessonDate = formatDate(slot?.start_time);
         const lessonTime = formatTime(slot?.start_time);
         const location = lesson?.location || 'TBD';
-        const platformFee = amount * 0.1;
-        const netAmount = amount * 0.9;
+        
+        // Use actual platform fee from session metadata (tier-based)
+        const platformFeePercent = parseFloat(session.metadata?.platform_fee_percent || '10');
+        const platformFee = amount * (platformFeePercent / 100);
+        const netAmount = amount - platformFee;
 
         // Helper function to send email via Resend API
         const sendEmail = async (to: string, subject: string, html: string) => {
@@ -197,7 +234,7 @@ serve(async (req) => {
                   <p><strong>Location:</strong> ${location}</p>
                   <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
                   <p><strong>Lesson Price:</strong> €${amount.toFixed(2)}</p>
-                  <p><strong>Platform Fee (10%):</strong> -€${platformFee.toFixed(2)}</p>
+                  <p><strong>Platform Fee (${platformFeePercent}%):</strong> -€${platformFee.toFixed(2)}</p>
                   <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${netAmount.toFixed(2)}</p>
                 </div>
                 <p>The payment will be transferred to your connected bank account automatically.</p>
