@@ -5,10 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Clock, RefreshCw, CalendarDays, Settings } from 'lucide-react';
-import { format, addWeeks, startOfDay, addMinutes, setHours, setMinutes, isAfter, isBefore, addDays, getDay } from 'date-fns';
+import { ArrowLeft, Clock, RefreshCw, CalendarDays, Settings, CalendarIcon } from 'lucide-react';
+import { format, addWeeks, startOfDay, addMinutes, setHours, setMinutes, isAfter, isBefore, addDays, getDay, subWeeks } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface WorkingHour {
   id?: string;
@@ -56,6 +59,7 @@ export default function ManageSchedule() {
   const [lessonId, setLessonId] = useState<string | null>(null);
   const [lessons, setLessons] = useState<{ id: string; title: string }[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [cycleStartDate, setCycleStartDate] = useState<Date>(startOfDay(new Date()));
 
   useEffect(() => {
     if (!loading) {
@@ -207,6 +211,13 @@ export default function ManageSchedule() {
     const activeDays = workingHours.filter((wh) => wh.is_active);
     let totalSlots = 0;
 
+    // Calculate days in the cycle period
+    const today = startOfDay(new Date());
+    const effectiveStart = isAfter(cycleStartDate, today) ? cycleStartDate : today;
+    const endDate = addWeeks(cycleStartDate, settings.schedule_weeks_ahead);
+    const daysInPeriod = Math.max(0, Math.ceil((endDate.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)));
+    const weeksApprox = Math.ceil(daysInPeriod / 7);
+
     activeDays.forEach((day) => {
       const [startH, startM] = day.start_time.split(':').map(Number);
       const [endH, endM] = day.end_time.split(':').map(Number);
@@ -215,7 +226,7 @@ export default function ManageSchedule() {
       const availableMinutes = endMinutes - startMinutes;
       const slotWithGap = settings.slot_duration_minutes + settings.slot_gap_minutes;
       const slotsPerDay = Math.floor(availableMinutes / slotWithGap);
-      totalSlots += slotsPerDay * settings.schedule_weeks_ahead;
+      totalSlots += slotsPerDay * weeksApprox;
     });
 
     return totalSlots;
@@ -227,7 +238,9 @@ export default function ManageSchedule() {
 
     try {
       const today = startOfDay(new Date());
-      const endDate = addWeeks(today, settings.schedule_weeks_ahead);
+      // Use cycleStartDate as the base, but skip any past slots
+      const effectiveStart = isBefore(cycleStartDate, today) ? today : cycleStartDate;
+      const endDate = addWeeks(cycleStartDate, settings.schedule_weeks_ahead);
       const activeDays = workingHours.filter((wh) => wh.is_active);
       const slotsToInsert: {
         trainer_id: string;
@@ -241,11 +254,11 @@ export default function ManageSchedule() {
         .from('availability_slots')
         .select('start_time')
         .eq('trainer_id', trainerId)
-        .gte('start_time', today.toISOString());
+        .gte('start_time', effectiveStart.toISOString());
 
       const existingTimes = new Set(existingSlots?.map((s) => s.start_time) || []);
 
-      let currentDate = today;
+      let currentDate = cycleStartDate;
       while (isBefore(currentDate, endDate)) {
         const dayOfWeek = getDay(currentDate);
         const dayConfig = activeDays.find((d) => d.day_of_week === dayOfWeek);
@@ -262,6 +275,7 @@ export default function ManageSchedule() {
             const slotEnd = addMinutes(slotStart, settings.slot_duration_minutes);
             const startTimeISO = slotStart.toISOString();
 
+            // Only add slots that are in the future and don't already exist
             if (!existingTimes.has(startTimeISO) && isAfter(slotStart, new Date())) {
               slotsToInsert.push({
                 trainer_id: trainerId,
@@ -294,7 +308,7 @@ export default function ManageSchedule() {
           body: {
             trainer_id: trainerId,
             slot_count: slotsToInsert.length,
-            date_range: `${format(today, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`,
+            date_range: `${format(effectiveStart, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`,
           },
         });
       } catch (notifyError) {
@@ -349,11 +363,52 @@ export default function ManageSchedule() {
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2">Set Your Weekly Schedule</h1>
+          <h1 className="text-2xl font-bold mb-2">Training Cycle Setup</h1>
           <p className="text-muted-foreground">
-            Define your regular working hours and generate availability slots automatically.
+            Define your regular working hours and bulk generate availability slots for your training cycle.
           </p>
         </div>
+
+        {/* Cycle Start Date */}
+        <Card className="mb-6 border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Cycle Start Date
+            </CardTitle>
+            <CardDescription>
+              Choose when your training cycle begins. Slots will be generated from this date forward.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full sm:w-[280px] justify-start text-left font-normal",
+                    !cycleStartDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {cycleStartDate ? format(cycleStartDate, "PPP") : "Pick a start date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={cycleStartDate}
+                  onSelect={(date) => date && setCycleStartDate(startOfDay(date))}
+                  disabled={(date) => isBefore(date, subWeeks(startOfDay(new Date()), 2))}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-muted-foreground mt-2">
+              You can start up to 2 weeks in the past. Past slots will be skipped automatically.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Weekly Schedule */}
         <Card className="mb-6">

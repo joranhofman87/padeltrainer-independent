@@ -11,6 +11,10 @@ interface NotifyRequest {
   trainer_id: string;
   slot_count: number;
   date_range: string;
+  single_slot?: {
+    date: string;
+    time: string;
+  };
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -19,7 +23,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { trainer_id, slot_count, date_range }: NotifyRequest = await req.json();
+    const { trainer_id, slot_count, date_range, single_slot }: NotifyRequest = await req.json();
 
     if (!trainer_id || !slot_count) {
       return new Response(
@@ -27,6 +31,8 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    const isReopenedSlot = !!single_slot;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -113,6 +119,9 @@ const handler = async (req: Request): Promise<Response> => {
     let sentCount = 0;
     const errors: string[] = [];
 
+    // Determine email type based on whether it's a reopened slot
+    const emailType = isReopenedSlot ? "slot_reopened" : "new_availability";
+
     for (const player of playersToNotify) {
       if (!player.email) continue;
 
@@ -124,13 +133,17 @@ const handler = async (req: Request): Promise<Response> => {
             Authorization: `Bearer ${supabaseServiceKey}`,
           },
           body: JSON.stringify({
-            type: "new_availability",
+            type: emailType,
             to: player.email,
             data: {
               playerName: player.full_name || "Player",
               trainerName,
               slotCount: slot_count,
               dateRange: date_range,
+              ...(single_slot && {
+                slotDate: single_slot.date,
+                slotTime: single_slot.time,
+              }),
             },
           }),
         });
@@ -146,7 +159,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`Notified ${sentCount} followers about new availability`);
+    console.log(`Notified ${sentCount} followers about ${isReopenedSlot ? 'reopened slot' : 'new availability'}`);
     if (errors.length > 0) {
       console.error("Email errors:", errors);
     }
@@ -155,6 +168,7 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({ 
         message: `Notified ${sentCount} followers`, 
         sent: sentCount,
+        type: isReopenedSlot ? 'reopened_slot' : 'new_availability',
         errors: errors.length > 0 ? errors : undefined 
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }

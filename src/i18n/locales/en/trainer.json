@@ -93,14 +93,18 @@
     }
   },
   "availability": {
-    "title": "Manage Availability",
+    "title": "Individual Slots",
+    "subtitle": "Add one-off time slots outside your regular schedule",
     "addSlot": "Add Slot",
     "noSlots": "No availability slots set",
-    "noSlotsDescription": "Add time slots when you're available for lessons."
+    "noSlotsDescription": "Add time slots when you're available for lessons.",
+    "goToSchedule": "Need regular schedule? Use Working Hours"
   },
   "schedule": {
-    "title": "Working Hours",
-    "subtitle": "Set your weekly recurring schedule",
+    "title": "Training Cycle Setup",
+    "subtitle": "Define your working hours and bulk generate slots",
+    "cycleStartDate": "Cycle Start Date",
+    "cycleStartDescription": "Choose when your training cycle begins",
     "days": {
       "monday": "Monday",
       "tuesday": "Tuesday",
@@ -115,6 +119,28 @@
     "weeksAhead": "Weeks Ahead",
     "slotDuration": "Slot Duration",
     "slotGap": "Gap Between Slots"
+  },
+  "bookings": {
+    "title": "Bookings",
+    "empty": "No bookings yet",
+    "emptyDescription": "Bookings will appear here when players book your lessons.",
+    "tabs": {
+      "upcoming": "Upcoming",
+      "past": "Past",
+      "all": "All"
+    },
+    "player": "Player",
+    "confirmBooking": "Confirm",
+    "cancelBooking": "Cancel",
+    "cancelDialog": {
+      "title": "Cancel Booking",
+      "description": "How would you like to handle this cancellation?",
+      "cancelAndClose": "Cancel & Close Slot",
+      "cancelAndCloseDescription": "Cancel this booking and remove the time slot",
+      "cancelAndReopen": "Cancel & Reopen for Others",
+      "cancelAndReopenDescription": "Keep slot available and notify followers",
+      "keepBooking": "Keep Booking"
+    }
   },
   "bookings": {
     "title": "Bookings",

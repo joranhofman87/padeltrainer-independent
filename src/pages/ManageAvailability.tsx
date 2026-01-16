@@ -275,13 +275,31 @@ export default function ManageAvailability() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Manage Availability</h1>
-            <p className="text-sm text-muted-foreground">Set when you're available for lessons</p>
+            <h1 className="text-xl font-bold">Individual Slots</h1>
+            <p className="text-sm text-muted-foreground">Add one-off time slots outside your regular schedule</p>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Link to Working Hours */}
+        <Card className="mb-6 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Clock className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="font-medium">Need to set up your regular schedule?</p>
+                  <p className="text-sm text-muted-foreground">Use Working Hours to bulk generate slots for your training cycle</p>
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => navigate('/schedule')} className="gap-2">
+                <CalendarDays className="h-4 w-4" />
+                Working Hours
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         {/* Generate from Recurring Lessons */}
         {recurringLessons.length > 0 && (
           <Card className="mb-6 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">

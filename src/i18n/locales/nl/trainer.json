@@ -93,14 +93,18 @@
     }
   },
   "availability": {
-    "title": "Beschikbaarheid Beheren",
+    "title": "Losse Slots",
+    "subtitle": "Voeg eenmalige tijdslots toe buiten je reguliere schema",
     "addSlot": "Slot Toevoegen",
     "noSlots": "Geen beschikbaarheidsslots ingesteld",
-    "noSlotsDescription": "Voeg tijdslots toe wanneer je beschikbaar bent voor lessen."
+    "noSlotsDescription": "Voeg tijdslots toe wanneer je beschikbaar bent voor lessen.",
+    "goToSchedule": "Regulier schema nodig? Gebruik Werktijden"
   },
   "schedule": {
-    "title": "Werktijden",
-    "subtitle": "Stel je wekelijks terugkerend schema in",
+    "title": "Trainingscyclus Setup",
+    "subtitle": "Stel je werktijden in en genereer slots in bulk",
+    "cycleStartDate": "Cyclus Startdatum",
+    "cycleStartDescription": "Kies wanneer je trainingscyclus begint",
     "days": {
       "monday": "Maandag",
       "tuesday": "Dinsdag",
@@ -115,6 +119,28 @@
     "weeksAhead": "Weken Vooruit",
     "slotDuration": "Slot Duur",
     "slotGap": "Pauze Tussen Slots"
+  },
+  "bookings": {
+    "title": "Boekingen",
+    "empty": "Nog geen boekingen",
+    "emptyDescription": "Boekingen verschijnen hier wanneer spelers je lessen boeken.",
+    "tabs": {
+      "upcoming": "Aankomend",
+      "past": "Afgelopen",
+      "all": "Alle"
+    },
+    "player": "Speler",
+    "confirmBooking": "Bevestigen",
+    "cancelBooking": "Annuleren",
+    "cancelDialog": {
+      "title": "Boeking Annuleren",
+      "description": "Hoe wil je deze annulering afhandelen?",
+      "cancelAndClose": "Annuleren & Slot Sluiten",
+      "cancelAndCloseDescription": "Annuleer deze boeking en verwijder de tijdslot",
+      "cancelAndReopen": "Annuleren & Heropenen voor Anderen",
+      "cancelAndReopenDescription": "Houd slot beschikbaar en informeer volgers",
+      "keepBooking": "Boeking Behouden"
+    }
   },
   "bookings": {
     "title": "Boekingen",
