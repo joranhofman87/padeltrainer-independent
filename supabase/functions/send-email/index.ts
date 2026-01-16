@@ -128,7 +128,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p style="font-size: 18px; color: #16a34a;"><strong>Amount Paid:</strong> €${data.price}</p>
             </div>
             <p>Get ready for your lesson! 🎾</p>
-            <p>Best regards,<br>PadelTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -153,7 +153,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price * 0.9).toFixed(2) : '0.00')}</p>
             </div>
             <p>The payment will be transferred to your connected bank account automatically.</p>
-            <p>Best regards,<br>PadelTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -176,7 +176,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Price:</strong> €${data.price}</p>
             </div>
             <p>Payment is pending - you'll be notified once payment is confirmed.</p>
-            <p>Best regards,<br>PadelTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
@@ -201,15 +201,15 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               You're receiving this because you follow ${data.trainerName}. 
               <a href="https://padeltrainer.ai/settings/notifications">Manage notification preferences</a>
             </p>
-            <p>Best regards,<br>PadelTrainer Team</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
 
     default:
       return {
-        subject: "PadelTrainer Notification",
-        html: "<p>You have a new notification from PadelTrainer.</p>",
+        subject: "PadelTrainer.ai Notification",
+        html: "<p>You have a new notification from PadelTrainer.ai.</p>",
       };
   }
 };
