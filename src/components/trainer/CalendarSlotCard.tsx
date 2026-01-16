@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -58,9 +58,11 @@ interface CalendarSlotCardProps {
   cyclusSessions?: number;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
+  onEditSlot?: (slot: SlotWithBookings) => void;
+  onDeleteSlot?: (slot: SlotWithBookings) => void;
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -162,6 +164,32 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
               <Users className="h-3 w-3 inline mr-1" />
               {slot.active_bookings}/{slot.max_participants} {t("calendar.booked").toLowerCase()}
             </div>
+          </div>
+
+          {/* Edit & Delete buttons */}
+          <div className="flex gap-2">
+            {onEditSlot && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => onEditSlot(slot)}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                {t("common:edit", "Edit")}
+              </Button>
+            )}
+            {onDeleteSlot && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 text-destructive hover:text-destructive"
+                onClick={() => onDeleteSlot(slot)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("common:delete", "Delete")}
+              </Button>
+            )}
           </div>
 
           {slot.active_bookings > 0 && (
