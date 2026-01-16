@@ -138,13 +138,13 @@ export default function Home() {
               className="flex flex-col sm:flex-row gap-4 justify-center"
             >
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <Link to="/auth">
+                <Link to="/auth?mode=signup">
                   Start as Player
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
-                <Link to="/auth">Join as Trainer</Link>
+                <Link to="/auth?mode=signup">Join as Trainer</Link>
               </Button>
             </motion.div>
 
@@ -331,7 +331,7 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <Link to="/auth">
+                <Link to="/auth?mode=signup">
                   Get Started Free
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
