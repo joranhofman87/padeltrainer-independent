@@ -1,0 +1,71 @@
+{
+  "appName": "PadelTrainer.ai",
+  "loading": "Loading...",
+  "error": "Error",
+  "success": "Success",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit",
+  "back": "Back",
+  "next": "Next",
+  "submit": "Submit",
+  "search": "Search",
+  "filter": "Filter",
+  "filters": "Filters",
+  "clearFilters": "Clear Filters",
+  "clearAll": "Clear all",
+  "viewAll": "View All",
+  "learnMore": "Learn More",
+  "getStarted": "Get Started",
+  "signIn": "Sign In",
+  "signUp": "Sign Up",
+  "signOut": "Sign Out",
+  "toggleTheme": "Toggle theme",
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "navigation": {
+    "home": "Home",
+    "pricing": "Pricing",
+    "about": "About",
+    "blog": "Blog",
+    "trainers": "Trainers",
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "settings": "Settings"
+  },
+  "footer": {
+    "description": "Connecting padel players with top trainers across the Netherlands.",
+    "platform": "Platform",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "rights": "All rights reserved."
+  },
+  "validation": {
+    "required": "This field is required",
+    "invalidEmail": "Invalid email address",
+    "passwordMinLength": "Password must be at least 6 characters"
+  },
+  "time": {
+    "minutes": "minutes",
+    "hours": "hours",
+    "days": "days",
+    "minRead": "{{count}} min read"
+  },
+  "currency": "€{{amount}}",
+  "perHour": "/hour",
+  "perMonth": "/month",
+  "yearsExperience": "{{count}}y exp.",
+  "reviews": "{{count}} review",
+  "reviews_plural": "{{count}} reviews",
+  "verified": "Verified",
+  "upcoming": "Upcoming",
+  "completed": "Completed",
+  "pending": "Pending",
+  "confirmed": "Confirmed",
+  "cancelled": "Cancelled"
+}

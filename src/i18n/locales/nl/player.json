@@ -1,0 +1,133 @@
+{
+  "dashboard": {
+    "welcome": "Welkom terug, {{name}}! 👋",
+    "subtitle": "Vind je volgende trainingssessie en verbeter je padelvaardigheden",
+    "skillRating": {
+      "title": "Jouw Speelniveau",
+      "knltb": "KNLTB",
+      "noRating": "Voeg je KNLTB-rating toe of vraag een trainer om je niveau in te stellen"
+    },
+    "stats": {
+      "upcoming": "Aankomend",
+      "completed": "Voltooid",
+      "totalBookings": "Totaal Boekingen"
+    },
+    "nextUp": "Binnenkort",
+    "allBookings": "Alle Boekingen",
+    "with": "met",
+    "following": "Volgend",
+    "manage": "Beheren",
+    "quickActions": {
+      "findTrainers": {
+        "title": "Vind Trainers",
+        "description": "Bekijk alle beschikbare trainers en vind de perfecte match voor jouw niveau"
+      },
+      "myBookings": {
+        "title": "Mijn Boekingen",
+        "description": "Bekijk en beheer je aankomende en eerdere trainingssessies"
+      },
+      "editProfile": {
+        "title": "Profiel Bewerken",
+        "description": "Werk je profiel, speelniveau en KNLTB-nummer bij"
+      }
+    },
+    "featuredTrainers": {
+      "title": "Uitgelichte Trainers",
+      "viewAll": "Bekijk Alle Trainers",
+      "book": "Boek"
+    }
+  },
+  "trainers": {
+    "title": "Vind Trainers",
+    "searchPlaceholder": "Zoek trainers op naam, specialisatie...",
+    "sort": {
+      "label": "Sorteren op",
+      "topRated": "Hoogst Beoordeeld",
+      "priceLow": "Prijs: Laag naar Hoog",
+      "priceHigh": "Prijs: Hoog naar Laag",
+      "experience": "Meest Ervaren"
+    },
+    "filters": {
+      "activeFilters": "Actieve filters:",
+      "location": "Locatie",
+      "allLocations": "Alle Locaties",
+      "priceRange": "Prijsklasse",
+      "minRating": "Min Beoordeling",
+      "anyRating": "Elke beoordeling",
+      "stars": "{{count}}+ sterren",
+      "experience": "Ervaring",
+      "anyExperience": "Alle ervaring",
+      "yearsPlus": "{{count}}+ jaar",
+      "specializations": "Specialisaties",
+      "knltbRating": "KNLTB Rating",
+      "anyKnltb": "Elke rating",
+      "ratingPlus": "{{count}}+",
+      "verifiedOnly": "Alleen Geverifieerd",
+      "applyFilters": "Filters Toepassen",
+      "resetFilters": "Filters Resetten"
+    },
+    "results": "{{count}} trainer gevonden",
+    "results_plural": "{{count}} trainers gevonden",
+    "noResults": "Geen trainers gevonden",
+    "beFirst": "Wees de eerste trainer die zich aanmeldt!"
+  },
+  "trainerProfile": {
+    "about": "Over",
+    "experience": "Ervaring",
+    "yearsExperience": "{{count}} jaar ervaring",
+    "certifications": "Certificeringen",
+    "specializations": "Specialisaties",
+    "knltbRating": "KNLTB Rating",
+    "lessons": "Beschikbare Lessen",
+    "noLessons": "Momenteel geen lessen beschikbaar",
+    "bookLesson": "Boek Les",
+    "reviews": "Reviews",
+    "noReviews": "Nog geen reviews",
+    "follow": "Volgen",
+    "following": "Volgend",
+    "followers": "{{count}} volgers"
+  },
+  "booking": {
+    "title": "Boek een Les",
+    "selectSlot": "Selecteer een Tijdslot",
+    "noSlots": "Geen beschikbare slots voor deze les",
+    "notes": "Notities voor de trainer (optioneel)",
+    "notesPlaceholder": "Speciale verzoeken of informatie voor de trainer...",
+    "summary": "Boekingsoverzicht",
+    "lesson": "Les",
+    "trainer": "Trainer",
+    "date": "Datum",
+    "time": "Tijd",
+    "duration": "Duur",
+    "price": "Prijs",
+    "confirmAndPay": "Bevestigen & Betalen",
+    "processing": "Verwerken...",
+    "success": {
+      "title": "Boeking Bevestigd!",
+      "description": "Je les is succesvol geboekt."
+    }
+  },
+  "bookings": {
+    "title": "Mijn Boekingen",
+    "empty": "Nog geen boekingen",
+    "emptyDescription": "Boek je eerste les om te beginnen!",
+    "findTrainer": "Vind een Trainer",
+    "tabs": {
+      "upcoming": "Aankomend",
+      "past": "Afgelopen"
+    },
+    "status": {
+      "confirmed": "Bevestigd",
+      "pending": "In afwachting",
+      "cancelled": "Geannuleerd"
+    },
+    "cancelBooking": "Boeking Annuleren"
+  },
+  "followingList": {
+    "title": "Volgend",
+    "empty": "Je volgt nog geen trainers",
+    "emptyDescription": "Volg trainers om meldingen te ontvangen wanneer ze nieuwe beschikbaarheid toevoegen.",
+    "browseTrainers": "Bekijk Trainers",
+    "notifyAvailability": "Meld mij bij nieuwe beschikbaarheid"
+  }
+}

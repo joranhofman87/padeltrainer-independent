@@ -1,0 +1,161 @@
+{
+  "badge": "Trainer",
+  "dashboard": {
+    "welcome": "Welcome back, Coach {{name}}! 💪",
+    "subtitle": "Manage your lessons, view bookings, and grow your padel training business",
+    "createLesson": "Create Lesson",
+    "stats": {
+      "upcomingLessons": "Upcoming Lessons",
+      "totalStudents": "Total Students",
+      "thisMonth": "This Month",
+      "analytics": "Analytics",
+      "viewEarnings": "Click to view earnings →",
+      "viewStats": "View detailed stats →"
+    },
+    "quickActions": {
+      "bookings": {
+        "title": "Bookings",
+        "description": "View and manage player bookings"
+      },
+      "myLessons": {
+        "title": "My Lessons",
+        "description": "Create and manage your training sessions"
+      },
+      "workingHours": {
+        "title": "Working Hours",
+        "description": "Set your weekly schedule and generate slots"
+      },
+      "earnings": {
+        "title": "Earnings",
+        "description": "View payouts and transaction history"
+      },
+      "subscription": {
+        "title": "Subscription",
+        "description": "Upgrade your plan for more features"
+      },
+      "profileSettings": {
+        "title": "Profile Settings",
+        "description": "Update your profile and payment settings"
+      },
+      "calendarSync": {
+        "title": "Calendar Sync",
+        "description": "Sync with Google Calendar"
+      }
+    },
+    "setup": {
+      "title": "Complete Your Setup",
+      "description": "Finish setting up to start receiving bookings",
+      "progress": "{{completed}} of {{total}} complete",
+      "steps": {
+        "profile": {
+          "title": "Complete Profile",
+          "description": "Add bio, photo, and hourly rate"
+        },
+        "lessons": {
+          "title": "Create Lessons",
+          "description": "Add your first lesson type"
+        },
+        "availability": {
+          "title": "Set Availability",
+          "description": "Add available time slots"
+        },
+        "payments": {
+          "title": "Connect Payments",
+          "description": "Set up Stripe to receive payouts"
+        }
+      }
+    }
+  },
+  "lessons": {
+    "title": "My Lessons",
+    "createNew": "Create New Lesson",
+    "empty": "No lessons created yet",
+    "emptyDescription": "Create your first lesson to start receiving bookings.",
+    "form": {
+      "title": "Lesson Title",
+      "titlePlaceholder": "e.g. Beginner Padel Basics",
+      "description": "Description",
+      "descriptionPlaceholder": "Describe what players will learn...",
+      "duration": "Duration (minutes)",
+      "price": "Price (€)",
+      "maxParticipants": "Max Participants",
+      "location": "Location",
+      "locationPlaceholder": "e.g. Padel Club Amsterdam",
+      "skillLevel": "Skill Level Range",
+      "minSkill": "Min Skill",
+      "maxSkill": "Max Skill",
+      "active": "Active",
+      "activeDescription": "Lesson is visible and bookable"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    }
+  },
+  "availability": {
+    "title": "Manage Availability",
+    "addSlot": "Add Slot",
+    "noSlots": "No availability slots set",
+    "noSlotsDescription": "Add time slots when you're available for lessons."
+  },
+  "schedule": {
+    "title": "Working Hours",
+    "subtitle": "Set your weekly recurring schedule",
+    "days": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "notWorking": "Not working",
+    "generateSlots": "Generate Slots",
+    "weeksAhead": "Weeks Ahead",
+    "slotDuration": "Slot Duration",
+    "slotGap": "Gap Between Slots"
+  },
+  "bookings": {
+    "title": "Bookings",
+    "empty": "No bookings yet",
+    "emptyDescription": "Bookings will appear here when players book your lessons.",
+    "tabs": {
+      "upcoming": "Upcoming",
+      "past": "Past",
+      "all": "All"
+    },
+    "player": "Player",
+    "confirmBooking": "Confirm",
+    "cancelBooking": "Cancel"
+  },
+  "earnings": {
+    "title": "Earnings",
+    "totalEarnings": "Total Earnings",
+    "thisMonth": "This Month",
+    "pendingPayouts": "Pending Payouts",
+    "transactions": "Transaction History",
+    "noTransactions": "No transactions yet",
+    "stripeConnect": {
+      "title": "Connect Stripe",
+      "description": "Set up your Stripe account to receive payouts",
+      "connect": "Connect with Stripe",
+      "connected": "Stripe Connected",
+      "viewDashboard": "View Stripe Dashboard"
+    }
+  },
+  "subscription": {
+    "title": "Subscription",
+    "currentPlan": "Current Plan",
+    "changePlan": "Change Plan",
+    "manageSubscription": "Manage Subscription"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "period": "Period",
+    "totalBookings": "Total Bookings",
+    "revenue": "Revenue",
+    "newStudents": "New Students",
+    "repeatRate": "Repeat Rate"
+  }
+}

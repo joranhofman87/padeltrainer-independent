@@ -1,0 +1,161 @@
+{
+  "badge": "Trainer",
+  "dashboard": {
+    "welcome": "Welkom terug, Coach {{name}}! 💪",
+    "subtitle": "Beheer je lessen, bekijk boekingen en laat je padeltraining-bedrijf groeien",
+    "createLesson": "Les Aanmaken",
+    "stats": {
+      "upcomingLessons": "Aankomende Lessen",
+      "totalStudents": "Totaal Studenten",
+      "thisMonth": "Deze Maand",
+      "analytics": "Analytics",
+      "viewEarnings": "Klik om inkomsten te bekijken →",
+      "viewStats": "Bekijk gedetailleerde statistieken →"
+    },
+    "quickActions": {
+      "bookings": {
+        "title": "Boekingen",
+        "description": "Bekijk en beheer spelerboekingen"
+      },
+      "myLessons": {
+        "title": "Mijn Lessen",
+        "description": "Maak en beheer je trainingssessies"
+      },
+      "workingHours": {
+        "title": "Werktijden",
+        "description": "Stel je wekelijkse schema in en genereer slots"
+      },
+      "earnings": {
+        "title": "Inkomsten",
+        "description": "Bekijk uitbetalingen en transactiegeschiedenis"
+      },
+      "subscription": {
+        "title": "Abonnement",
+        "description": "Upgrade je plan voor meer functies"
+      },
+      "profileSettings": {
+        "title": "Profielinstellingen",
+        "description": "Werk je profiel en betalingsinstellingen bij"
+      },
+      "calendarSync": {
+        "title": "Agenda Sync",
+        "description": "Synchroniseer met Google Agenda"
+      }
+    },
+    "setup": {
+      "title": "Voltooi Je Setup",
+      "description": "Maak je setup af om boekingen te ontvangen",
+      "progress": "{{completed}} van {{total}} voltooid",
+      "steps": {
+        "profile": {
+          "title": "Profiel Voltooien",
+          "description": "Voeg bio, foto en uurtarief toe"
+        },
+        "lessons": {
+          "title": "Lessen Aanmaken",
+          "description": "Voeg je eerste lestype toe"
+        },
+        "availability": {
+          "title": "Beschikbaarheid Instellen",
+          "description": "Voeg beschikbare tijdslots toe"
+        },
+        "payments": {
+          "title": "Betalingen Koppelen",
+          "description": "Stel Stripe in om uitbetalingen te ontvangen"
+        }
+      }
+    }
+  },
+  "lessons": {
+    "title": "Mijn Lessen",
+    "createNew": "Nieuwe Les Aanmaken",
+    "empty": "Nog geen lessen aangemaakt",
+    "emptyDescription": "Maak je eerste les aan om boekingen te ontvangen.",
+    "form": {
+      "title": "Lestitel",
+      "titlePlaceholder": "bijv. Padel Basis voor Beginners",
+      "description": "Beschrijving",
+      "descriptionPlaceholder": "Beschrijf wat spelers zullen leren...",
+      "duration": "Duur (minuten)",
+      "price": "Prijs (€)",
+      "maxParticipants": "Max Deelnemers",
+      "location": "Locatie",
+      "locationPlaceholder": "bijv. Padel Club Amsterdam",
+      "skillLevel": "Niveau Bereik",
+      "minSkill": "Min Niveau",
+      "maxSkill": "Max Niveau",
+      "active": "Actief",
+      "activeDescription": "Les is zichtbaar en boekbaar"
+    },
+    "status": {
+      "active": "Actief",
+      "inactive": "Inactief"
+    }
+  },
+  "availability": {
+    "title": "Beschikbaarheid Beheren",
+    "addSlot": "Slot Toevoegen",
+    "noSlots": "Geen beschikbaarheidsslots ingesteld",
+    "noSlotsDescription": "Voeg tijdslots toe wanneer je beschikbaar bent voor lessen."
+  },
+  "schedule": {
+    "title": "Werktijden",
+    "subtitle": "Stel je wekelijks terugkerend schema in",
+    "days": {
+      "monday": "Maandag",
+      "tuesday": "Dinsdag",
+      "wednesday": "Woensdag",
+      "thursday": "Donderdag",
+      "friday": "Vrijdag",
+      "saturday": "Zaterdag",
+      "sunday": "Zondag"
+    },
+    "notWorking": "Niet werkzaam",
+    "generateSlots": "Slots Genereren",
+    "weeksAhead": "Weken Vooruit",
+    "slotDuration": "Slot Duur",
+    "slotGap": "Pauze Tussen Slots"
+  },
+  "bookings": {
+    "title": "Boekingen",
+    "empty": "Nog geen boekingen",
+    "emptyDescription": "Boekingen verschijnen hier wanneer spelers je lessen boeken.",
+    "tabs": {
+      "upcoming": "Aankomend",
+      "past": "Afgelopen",
+      "all": "Alle"
+    },
+    "player": "Speler",
+    "confirmBooking": "Bevestigen",
+    "cancelBooking": "Annuleren"
+  },
+  "earnings": {
+    "title": "Inkomsten",
+    "totalEarnings": "Totale Inkomsten",
+    "thisMonth": "Deze Maand",
+    "pendingPayouts": "Openstaande Uitbetalingen",
+    "transactions": "Transactiegeschiedenis",
+    "noTransactions": "Nog geen transacties",
+    "stripeConnect": {
+      "title": "Stripe Koppelen",
+      "description": "Stel je Stripe-account in om uitbetalingen te ontvangen",
+      "connect": "Verbinden met Stripe",
+      "connected": "Stripe Gekoppeld",
+      "viewDashboard": "Bekijk Stripe Dashboard"
+    }
+  },
+  "subscription": {
+    "title": "Abonnement",
+    "currentPlan": "Huidig Plan",
+    "changePlan": "Plan Wijzigen",
+    "manageSubscription": "Abonnement Beheren"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "period": "Periode",
+    "totalBookings": "Totale Boekingen",
+    "revenue": "Omzet",
+    "newStudents": "Nieuwe Studenten",
+    "repeatRate": "Terugkeer Percentage"
+  }
+}

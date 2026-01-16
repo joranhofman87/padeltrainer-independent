@@ -1,0 +1,246 @@
+{
+  "home": {
+    "hero": {
+      "title": "Vind jouw perfecte",
+      "titleHighlight": "Padeltrainer",
+      "subtitle": "Maak kennis met gecertificeerde padeltrainers in heel Nederland. Boek lessen die passen bij jouw niveau en begin vandaag nog met verbeteren.",
+      "cta": "Vind een Trainer",
+      "ctaSecondary": "Ik ben Trainer"
+    },
+    "stats": {
+      "trainers": "Geverifieerde Trainers",
+      "lessons": "Geboekte Lessen",
+      "rating": "Gemiddelde Beoordeling",
+      "cities": "Steden"
+    },
+    "features": {
+      "title": "Waarom PadelTrainer.ai?",
+      "subtitle": "Alles wat je nodig hebt om de perfecte trainer te vinden en lessen te boeken",
+      "verified": {
+        "title": "Geverifieerde Trainers",
+        "description": "Alle trainers zijn geverifieerd met KNLTB-certificering en ervaring"
+      },
+      "booking": {
+        "title": "Makkelijk Boeken",
+        "description": "Boek lessen in seconden met ons gestroomlijnde boekingssysteem"
+      },
+      "payments": {
+        "title": "Veilige Betalingen",
+        "description": "Betaal veilig met iDEAL of creditcard, beveiligd door Stripe"
+      },
+      "matching": {
+        "title": "Niveau Matching",
+        "description": "Vind trainers die passen bij jouw huidige niveau en doelen"
+      }
+    },
+    "howItWorks": {
+      "title": "Hoe het werkt",
+      "subtitle": "Binnen enkele minuten aan de slag",
+      "step1": {
+        "title": "Bekijk Trainers",
+        "description": "Zoek en filter trainers op locatie, specialisatie en beoordeling"
+      },
+      "step2": {
+        "title": "Boek een Les",
+        "description": "Kies een tijd die bij je past en boek direct"
+      },
+      "step3": {
+        "title": "Speel & Verbeter",
+        "description": "Ontmoet je trainer en begin met het verbeteren van je padelvaardigheden"
+      }
+    },
+    "testimonials": {
+      "title": "Wat Spelers Zeggen",
+      "subtitle": "Sluit je aan bij duizenden tevreden spelers"
+    },
+    "cta": {
+      "title": "Klaar om je spel te verbeteren?",
+      "subtitle": "Sluit je aan bij duizenden spelers die hun perfecte trainer vinden",
+      "button": "Vind Nu een Trainer"
+    }
+  },
+  "pricing": {
+    "hero": {
+      "title": "Eenvoudige, transparante prijzen",
+      "subtitle": "Gratis voor spelers. Flexibele abonnementen voor trainers om hun bedrijf te laten groeien."
+    },
+    "players": {
+      "badge": "Voor Spelers",
+      "title": "Altijd Gratis",
+      "description": "Geen abonnementskosten. Betaal alleen voor de lessen die je boekt.",
+      "cta": "Gratis Beginnen",
+      "features": {
+        "browse": "Bekijk alle geverifieerde trainers",
+        "reviews": "Lees reviews en beoordelingen",
+        "book": "Boek lessen online",
+        "payments": "Veilige iDEAL & kaartbetalingen",
+        "calendar": "Google Agenda synchronisatie",
+        "notifications": "E-mailnotificaties",
+        "tracking": "Volg je boekingen"
+      }
+    },
+    "trainers": {
+      "badge": "Voor Trainers",
+      "title": "Kies je abonnement",
+      "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. Lagere platformkosten bij hogere niveaus.",
+      "platformFee": "platformkosten",
+      "feeTooltip": "Kosten worden afgetrokken van elke lesbetaling",
+      "mostPopular": "Meest Populair",
+      "plans": {
+        "starter": {
+          "name": "Starter",
+          "price": "Gratis",
+          "description": "Perfect om te beginnen",
+          "cta": "Start Gratis",
+          "features": {
+            "lessons": "Tot 3 actieve lessen",
+            "profile": "Basis profielpagina",
+            "bookings": "Ontvang online boekingen",
+            "notifications": "E-mailnotificaties",
+            "calendar": "Agenda synchronisatie",
+            "analytics": "Analytics dashboard",
+            "support": "Prioriteitsondersteuning",
+            "multiTrainer": "Multi-trainer ondersteuning"
+          }
+        },
+        "professional": {
+          "name": "Professional",
+          "price": "€29",
+          "period": "/maand",
+          "yearlyPrice": "€278/jaar (bespaar 20%)",
+          "description": "Voor serieuze trainers",
+          "cta": "Kies Professional",
+          "features": {
+            "lessons": "Onbeperkt actieve lessen",
+            "profile": "Uitgebreide profielpagina",
+            "bookings": "Ontvang online boekingen",
+            "notifications": "E-mailnotificaties",
+            "calendar": "Google Agenda synchronisatie",
+            "analytics": "Analytics dashboard",
+            "support": "Prioriteitsondersteuning",
+            "multiTrainer": "Multi-trainer ondersteuning"
+          }
+        },
+        "academy": {
+          "name": "Academy",
+          "price": "€79",
+          "period": "/maand",
+          "yearlyPrice": "€758/jaar (bespaar 20%)",
+          "description": "Voor clubs & academies",
+          "cta": "Neem Contact Op",
+          "features": {
+            "lessons": "Onbeperkt actieve lessen",
+            "profile": "Premium profielpagina",
+            "bookings": "Ontvang online boekingen",
+            "notifications": "E-mailnotificaties",
+            "calendar": "Google Agenda synchronisatie",
+            "analytics": "Geavanceerde analytics",
+            "support": "Dedicated support",
+            "multiTrainer": "Multi-trainer ondersteuning"
+          }
+        }
+      }
+    },
+    "faq": {
+      "title": "Veelgestelde vragen",
+      "questions": {
+        "platformFee": {
+          "q": "Hoe werken de platformkosten?",
+          "a": "De platformkosten worden automatisch afgetrokken van elke lesbetaling. Als je bijvoorbeeld €50 vraagt voor een les met het Professional-abonnement (5% kosten), ontvang je €47,50."
+        },
+        "changePlans": {
+          "q": "Kan ik later van abonnement wisselen?",
+          "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
+        },
+        "contract": {
+          "q": "Is er een contract of verplichting?",
+          "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
+        },
+        "payouts": {
+          "q": "Hoe werken uitbetalingen?",
+          "a": "Betalingen worden verwerkt via Stripe Connect. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+        }
+      }
+    }
+  },
+  "about": {
+    "hero": {
+      "title": "Padeltraining",
+      "titleHighlight": "toegankelijk voor iedereen",
+      "subtitle": "Onze missie is om elke padelspeler in Nederland te verbinden met de perfecte trainer om hun spel te verbeteren."
+    },
+    "story": {
+      "title": "Ons Verhaal",
+      "p1": "PadelTrainer.ai is ontstaan uit een simpele frustratie: het vinden van een goede padeltrainer zou niet zo moeilijk moeten zijn. Toen padel explosief groeide in Nederland, zagen we spelers worstelen om kwaliteitstraining te vinden, terwijl getalenteerde trainers geen gemakkelijke manier hadden om nieuwe studenten te bereiken.",
+      "p2": "We besloten het platform te bouwen dat we zelf hadden gewild. Een platform waar spelers gemakkelijk geverifieerde trainers kunnen vinden die passen bij hun niveau, en waar trainers hun bedrijf kunnen laten groeien zonder het gedoe van het beheren van boekingen, betalingen en planning.",
+      "p3": "Vandaag verbindt PadelTrainer.ai honderden trainers met duizenden spelers door heel Nederland. We zijn trots om deel uit te maken van de groeiende padelgemeenschap en enthousiast over waar we naartoe gaan."
+    },
+    "values": {
+      "title": "Onze Waarden",
+      "subtitle": "De principes die alles wat we doen sturen",
+      "quality": {
+        "title": "Kwaliteit Eerst",
+        "description": "We verifiëren elke trainer om ervoor te zorgen dat spelers de best mogelijke ervaring krijgen."
+      },
+      "playerFocused": {
+        "title": "Speler Gericht",
+        "description": "Elke functie die we bouwen begint met de vraag: hoe helpt dit spelers verbeteren?"
+      },
+      "community": {
+        "title": "Gemeenschapsgedreven",
+        "description": "We geloven in de kracht van de padelgemeenschap om elkaar te helpen groeien."
+      },
+      "simplicity": {
+        "title": "Eenvoud",
+        "description": "Een les boeken zou zo makkelijk moeten zijn als het sturen van een bericht."
+      }
+    },
+    "stats": {
+      "founded": "Opgericht",
+      "trainers": "Trainers",
+      "cities": "Steden"
+    },
+    "cta": {
+      "title": "Word lid van onze gemeenschap",
+      "subtitle": "Of je nu een speler bent die wil verbeteren of een trainer die wil groeien, we heten je welkom.",
+      "getStarted": "Aan de slag",
+      "contact": "Neem Contact Op"
+    }
+  },
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Tips, inzichten en verhalen uit de Nederlandse padelgemeenschap",
+    "recentArticles": "Recente Artikelen",
+    "categories": {
+      "tips": "Tips & Advies",
+      "industry": "Branche",
+      "training": "Training",
+      "spotlight": "Spotlight",
+      "guides": "Handleidingen"
+    },
+    "newsletter": {
+      "title": "Blijf op de hoogte",
+      "subtitle": "Ontvang de laatste padeltips en platformupdates in je inbox.",
+      "placeholder": "Vul je e-mail in",
+      "subscribe": "Abonneren"
+    },
+    "notFound": {
+      "title": "Artikel niet gevonden",
+      "description": "Het artikel dat je zoekt bestaat niet of is verplaatst.",
+      "backToBlog": "Terug naar Blog"
+    },
+    "share": "Delen",
+    "backToBlog": "Terug naar Blog",
+    "readyToFind": "Klaar om je perfecte trainer te vinden?",
+    "browseTrainers": "Bekijk geverifieerde trainers die passen bij jouw niveau.",
+    "findTrainers": "Vind Trainers"
+  },
+  "privacy": {
+    "title": "Privacybeleid",
+    "lastUpdated": "Laatst bijgewerkt: {{date}}"
+  },
+  "terms": {
+    "title": "Algemene Voorwaarden",
+    "lastUpdated": "Laatst bijgewerkt: {{date}}"
+  }
+}
