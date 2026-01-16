@@ -199,7 +199,7 @@ export function TrainerFilters({
           <div className="space-y-3">
             <Label>Minimum Trainer KNLTB Rating</Label>
             <div className="flex gap-2 flex-wrap">
-              {[0, 5, 6, 7, 8].map((rating) => (
+              {[0, 4, 5, 6, 7, 8].map((rating) => (
                 <Button
                   key={rating}
                   variant={localFilters.minKnltbRating === rating ? 'default' : 'outline'}
@@ -211,7 +211,7 @@ export function TrainerFilters({
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Filter by trainer's official KNLTB tennis rating
+              Filter by trainer's official KNLTB rating (0.1 - 9.9)
             </p>
           </div>
 

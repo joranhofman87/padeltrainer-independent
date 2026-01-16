@@ -300,15 +300,15 @@ export default function EditProfile() {
                   <Input
                     id="skill_rating"
                     type="number"
-                    step="0.01"
-                    min="1"
-                    max="10"
+                    step="0.1"
+                    min="0.1"
+                    max="9.9"
                     value={formData.skill_rating}
                     onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
-                    placeholder="4.48"
+                    placeholder="4.5"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter your current padel dubbel rating from KNLTB (e.g., 4.48)
+                    Enter your current padel dubbel rating from KNLTB (0.1 - 9.9)
                   </p>
                 </div>
               </CardContent>
@@ -360,9 +360,9 @@ export default function EditProfile() {
                   <Input
                     id="knltb_rating"
                     type="number"
-                    step="0.01"
-                    min="1"
-                    max="10"
+                    step="0.1"
+                    min="0.1"
+                    max="9.9"
                     value={trainerData.knltb_rating || ''}
                     onChange={(e) => setTrainerData({ 
                       ...trainerData, 
@@ -371,7 +371,7 @@ export default function EditProfile() {
                     placeholder="7.5"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Your official KNLTB tennis rating (e.g., 7.5)
+                    Your official KNLTB rating (0.1 - 9.9)
                   </p>
                 </div>
 
