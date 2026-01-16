@@ -583,6 +583,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
     }
