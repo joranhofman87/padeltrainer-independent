@@ -9,12 +9,15 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation";
   to: string;
   data: {
     playerName?: string;
     playerEmail?: string;
+    playerPhone?: string;
     trainerName?: string;
+    trainerEmail?: string;
+    trainerPhone?: string;
     lessonTitle?: string;
     lessonDate?: string;
     lessonTime?: string;
@@ -201,6 +204,30 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               You're receiving this because you follow ${data.trainerName}. 
               <a href="https://padeltrainer.ai/settings/notifications">Manage notification preferences</a>
             </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "manual_booking_confirmation":
+      return {
+        subject: `Lesson Booked: ${data.lessonTitle} 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">You're Booked! 🎾</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>Your trainer has booked a lesson for you!</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
+              <p><strong>Date:</strong> ${data.lessonDate}</p>
+              <p><strong>Time:</strong> ${data.lessonTime}</p>
+              ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
+              ${data.price ? `<p><strong>Price:</strong> €${data.price}</p>` : ''}
+            </div>
+            <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e;">
+              <strong>Payment:</strong> Please arrange payment directly with your trainer.
+            </p>
+            <p>See you on the court!</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,

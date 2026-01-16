@@ -31,7 +31,7 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string) {
+export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -39,9 +39,19 @@ export async function signUpWithEmail(email: string, password: string, fullName:
       emailRedirectTo: window.location.origin,
       data: {
         full_name: fullName,
+        phone: phone,
       },
     },
   });
+  
+  // Update profile with phone number after signup
+  if (data.user && phone) {
+    await supabase
+      .from('profiles')
+      .update({ phone })
+      .eq('user_id', data.user.id);
+  }
+  
   return { data, error };
 }
 
