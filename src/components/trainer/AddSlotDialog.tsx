@@ -298,8 +298,6 @@ export function BulkCreateSheet({
         start_time: string;
         end_time: string;
         lesson_id: string | null;
-        is_recurring: boolean;
-        recurrence_rule: string | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -315,7 +313,7 @@ export function BulkCreateSheet({
         const [startH, startM] = config.startTime.split(":").map(Number);
         let slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
-        // Skip if in the past
+        // Skip if first occurrence is in the past, advance to next valid week
         if (isBefore(slotStart, today)) {
           const weeksToAdd = Math.ceil(
             (today.getTime() - slotStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
@@ -323,29 +321,31 @@ export function BulkCreateSheet({
           slotStart = addWeeks(slotStart, weeksToAdd);
         }
 
-        const endDate = addWeeks(config.startDate, config.recurrenceWeeks);
+        // Generate slots for each week in the recurrence period
+        for (let week = 0; week < config.recurrenceWeeks; week++) {
+          const currentSlotStart = addWeeks(slotStart, week);
+          const currentSlotEnd = addMinutes(currentSlotStart, config.durationMinutes);
 
-        if (existingTimes.has(slotStart.toISOString())) {
-          continue;
+          // Skip if this exact time already exists
+          if (existingTimes.has(currentSlotStart.toISOString())) {
+            continue;
+          }
+
+          // Skip if slot is in the past
+          if (isBefore(currentSlotStart, today)) {
+            continue;
+          }
+
+          slotsToInsert.push({
+            trainer_id: trainerId,
+            start_time: currentSlotStart.toISOString(),
+            end_time: currentSlotEnd.toISOString(),
+            lesson_id: config.lessonId,
+          });
+
+          // Add to existing times to prevent duplicates within same batch
+          existingTimes.add(currentSlotStart.toISOString());
         }
-
-        const weeksRemaining = Math.max(
-          1,
-          Math.ceil((endDate.getTime() - slotStart.getTime()) / (7 * 24 * 60 * 60 * 1000))
-        );
-        const recurrenceEndDate = format(endDate, "yyyy-MM-dd");
-
-        slotsToInsert.push({
-          trainer_id: trainerId,
-          start_time: slotStart.toISOString(),
-          end_time: addMinutes(slotStart, config.durationMinutes).toISOString(),
-          lesson_id: config.lessonId,
-          is_recurring: weeksRemaining > 1,
-          recurrence_rule:
-            weeksRemaining > 1
-              ? `FREQ=WEEKLY;COUNT=${weeksRemaining};UNTIL=${recurrenceEndDate}`
-              : null,
-        });
       }
 
       if (slotsToInsert.length === 0) {
@@ -360,27 +360,19 @@ export function BulkCreateSheet({
       const { error } = await supabase.from("availability_slots").insert(slotsToInsert);
       if (error) throw error;
 
-      const totalInstances = slotsToInsert.reduce((acc, slot) => {
-        if (slot.is_recurring && slot.recurrence_rule) {
-          const countMatch = slot.recurrence_rule.match(/COUNT=(\d+)/);
-          return acc + (countMatch ? parseInt(countMatch[1]) : 1);
-        }
-        return acc + 1;
-      }, 0);
-
       // Notify followers
       try {
         const earliestStart = new Date(
           Math.min(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
         );
         const latestEnd = new Date(
-          Math.max(...bulkSlots.map((c) => addWeeks(c.startDate, c.recurrenceWeeks).getTime()))
+          Math.max(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
         );
 
         await supabase.functions.invoke("notify-followers", {
           body: {
             trainer_id: trainerId,
-            slot_count: totalInstances,
+            slot_count: slotsToInsert.length,
             date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
           },
         });
@@ -392,7 +384,7 @@ export function BulkCreateSheet({
         title: t("calendar.slotsGenerated"),
         description: t("calendar.slotsGeneratedDescription", {
           count: slotsToInsert.length,
-          total: totalInstances,
+          total: slotsToInsert.length,
         }),
       });
 
