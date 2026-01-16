@@ -36,6 +36,7 @@ import TrainerAnalytics from "./pages/TrainerAnalytics";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
 import FollowingList from "./pages/FollowingList";
+import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -79,6 +80,7 @@ const App = () => (
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
             <Route path="/player/following" element={<FollowingList />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
