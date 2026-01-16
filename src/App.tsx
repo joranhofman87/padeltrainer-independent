@@ -71,8 +71,8 @@ const App = () => (
             <Route path="/trainer/:trainerId" element={<TrainerProfile />} />
             <Route path="/profile/edit" element={<EditProfile />} />
             <Route path="/lessons" element={<ManageLessons />} />
-            <Route path="/availability" element={<ManageAvailability />} />
-            <Route path="/schedule" element={<ManageSchedule />} />
+            <Route path="/availability" element={<TrainerCalendar />} />
+            <Route path="/schedule" element={<TrainerCalendar />} />
             <Route path="/bookings" element={<PlayerBookings />} />
             <Route path="/trainer-bookings" element={<TrainerBookings />} />
             <Route path="/book/:trainerId" element={<BookLesson />} />

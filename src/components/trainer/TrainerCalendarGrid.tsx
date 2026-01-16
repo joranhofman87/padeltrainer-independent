@@ -1,13 +1,15 @@
 import { useMemo } from "react";
-import { format, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
+import { format, startOfWeek, addDays, isToday, isBefore, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
 import { useTranslation } from "react-i18next";
+import { Plus } from "lucide-react";
 
 interface TrainerCalendarGridProps {
   slots: SlotWithBookings[];
   currentDate: Date;
   view: "week" | "month";
+  onCellClick?: (date: Date, hour: number) => void;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
@@ -16,6 +18,7 @@ export function TrainerCalendarGrid({
   slots,
   currentDate,
   view,
+  onCellClick,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
 
@@ -92,19 +95,37 @@ export function TrainerCalendarGrid({
                 const dayKey = format(day, "yyyy-MM-dd");
                 const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
 
-                return (
-                  <div
-                    key={`${dayKey}-${hour}`}
-                    className={cn(
-                      "border-l p-1 space-y-1",
-                      isToday(day) && "bg-primary/5"
-                    )}
-                  >
-                    {slotsInCell.map((slot) => (
-                      <CalendarSlotCard key={slot.id} slot={slot} />
-                    ))}
-                  </div>
-                );
+                  const isPastCell = isBefore(
+                    new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
+                    new Date()
+                  );
+
+                  return (
+                    <div
+                      key={`${dayKey}-${hour}`}
+                      className={cn(
+                        "border-l p-1 space-y-1 min-h-[80px] group relative",
+                        isToday(day) && "bg-primary/5",
+                        !isPastCell && slotsInCell.length === 0 && onCellClick && "cursor-pointer hover:bg-muted/50"
+                      )}
+                      onClick={() => {
+                        if (!isPastCell && slotsInCell.length === 0 && onCellClick) {
+                          onCellClick(day, hour);
+                        }
+                      }}
+                    >
+                      {slotsInCell.map((slot) => (
+                        <CalendarSlotCard key={slot.id} slot={slot} />
+                      ))}
+                      {!isPastCell && slotsInCell.length === 0 && onCellClick && (
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="bg-primary/10 rounded-md p-2">
+                            <Plus className="h-4 w-4 text-primary" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
               })}
             </div>
           ))}

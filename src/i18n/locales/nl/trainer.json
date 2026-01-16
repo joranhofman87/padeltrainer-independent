@@ -142,19 +142,6 @@
       "keepBooking": "Boeking Behouden"
     }
   },
-  "bookings": {
-    "title": "Boekingen",
-    "empty": "Nog geen boekingen",
-    "emptyDescription": "Boekingen verschijnen hier wanneer spelers je lessen boeken.",
-    "tabs": {
-      "upcoming": "Aankomend",
-      "past": "Afgelopen",
-      "all": "Alle"
-    },
-    "player": "Speler",
-    "confirmBooking": "Bevestigen",
-    "cancelBooking": "Annuleren"
-  },
   "earnings": {
     "title": "Inkomsten",
     "totalEarnings": "Totale Inkomsten",
@@ -196,6 +183,34 @@
     "past": "Afgelopen",
     "spotsLeft": "{{count}} plekken vrij",
     "noSlotsThisWeek": "Geen slots gepland deze week",
-    "clickToViewDetails": "Klik voor details"
+    "clickToViewDetails": "Klik voor details",
+    "addSlot": "Slot Toevoegen",
+    "bulkCreate": "Bulk Aanmaken",
+    "addSlotTitle": "Tijdslot Toevoegen",
+    "addSlotDescription": "Maak een nieuw beschikbaarheidsslot aan",
+    "bulkCreateTitle": "Slots in Bulk Aanmaken",
+    "bulkCreateDescription": "Maak meerdere terugkerende slots tegelijk",
+    "date": "Datum",
+    "time": "Tijd",
+    "duration": "Duur",
+    "linkLesson": "Koppel aan Les",
+    "noLesson": "Geen les gekoppeld",
+    "slotCreated": "Slot succesvol aangemaakt",
+    "noSlotsConfigured": "Geen slots geconfigureerd. Voeg je eerste terugkerende slot toe.",
+    "slot": "Slot",
+    "remove": "Verwijderen",
+    "startDate": "Startdatum",
+    "repeatFor": "Herhaal voor",
+    "weeks": "weken",
+    "recurringSummary": "Maakt {{count}} sessies elke {{day}} om {{time}}, van {{startDate}} tot {{endDate}}",
+    "addRecurringSlot": "Terugkerend Slot Toevoegen",
+    "generateCycle": "Trainingscyclus Genereren",
+    "generateCycleDescription": "Dit maakt {{slotCount}} terugkerende slot(s) met {{sessionCount}} totale sessies",
+    "generating": "Genereren...",
+    "generateSlots": "Slots Genereren",
+    "noNewSlots": "Geen nieuwe slots te maken",
+    "noNewSlotsDescription": "Alle slots bestaan al of zijn in het verleden",
+    "slotsGenerated": "Slots gegenereerd!",
+    "slotsGeneratedDescription": "{{count}} terugkerende slots aangemaakt ({{total}} totale sessies)"
   }
 }
