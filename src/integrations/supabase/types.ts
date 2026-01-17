@@ -21,6 +21,7 @@ export type Database = {
           cyclus_name: string | null
           end_time: string
           id: string
+          is_marked_full: boolean
           is_recurring: boolean
           lesson_id: string | null
           recurrence_rule: string | null
@@ -33,6 +34,7 @@ export type Database = {
           cyclus_name?: string | null
           end_time: string
           id?: string
+          is_marked_full?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
           recurrence_rule?: string | null
@@ -45,6 +47,7 @@ export type Database = {
           cyclus_name?: string | null
           end_time?: string
           id?: string
+          is_marked_full?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
           recurrence_rule?: string | null

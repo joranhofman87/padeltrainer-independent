@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -8,6 +9,9 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -35,12 +39,14 @@ export interface SlotWithBookings {
   cyclus_id: string | null;
   cyclus_name: string | null;
   booked_players: BookedPlayer[];
+  is_marked_full: boolean;
 }
 
-type SlotStatus = "free" | "pending" | "partial" | "full" | "past";
+type SlotStatus = "free" | "pending" | "partial" | "full" | "past" | "private";
 
 function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
+  if (slot.is_marked_full) return "private";
   if (slot.active_bookings >= 4) return "full";
   if (slot.active_bookings > 0) return "partial";
   if (slot.pending_bookings > 0) return "pending";
@@ -53,6 +59,7 @@ const statusColors: Record<SlotStatus, string> = {
   partial: "bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-900/50",
   full: "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-900/50",
   past: "bg-muted/30 border-muted opacity-50",
+  private: "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/50",
 };
 
 const statusTextColors: Record<SlotStatus, string> = {
@@ -61,6 +68,7 @@ const statusTextColors: Record<SlotStatus, string> = {
   partial: "text-orange-700 dark:text-orange-300",
   full: "text-green-700 dark:text-green-300",
   past: "text-muted-foreground",
+  private: "text-purple-700 dark:text-purple-300",
 };
 
 interface CalendarSlotCardProps {
@@ -72,6 +80,7 @@ interface CalendarSlotCardProps {
   onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
+  onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
 }
 
 // Calculate average rating of booked players
@@ -91,7 +100,7 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
   };
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -99,6 +108,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
   const endTime = format(new Date(slot.end_time), "HH:mm");
   const spotsLeft = 4 - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
+
+  // State for apply to cyclus checkbox
+  const [applyToCyclus, setApplyToCyclus] = useState(false);
 
   // Calculate average rating for display
   const ratingInfo = calculateAverageRating(slot.booked_players || []);
@@ -109,6 +121,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
     partial: t("calendar.spotsLeft", { count: spotsLeft }),
     full: t("calendar.fullyBooked"),
     past: t("calendar.past"),
+    private: t("calendar.markedFull"),
   }[status];
 
   const cardContent = (
@@ -123,6 +136,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
         {startTime} - {endTime}
         {!compact && slot.cyclus_id && (
           <Repeat className="h-3 w-3 opacity-60" />
+        )}
+        {!compact && slot.is_marked_full && (
+          <Lock className="h-3 w-3 opacity-60" />
         )}
       </div>
       {!compact && slot.lesson_title && (

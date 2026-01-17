@@ -167,6 +167,7 @@ export default function TrainerCalendar() {
           lesson_id,
           cyclus_id,
           cyclus_name,
+          is_marked_full,
           lessons:lesson_id (
             title,
             max_participants,
@@ -253,6 +254,7 @@ export default function TrainerCalendar() {
             cyclus_id: slot.cyclus_id || null,
             cyclus_name: slot.cyclus_name || null,
             booked_players: counts.players,
+            is_marked_full: slot.is_marked_full || false,
           };
         }
       );
