@@ -264,6 +264,7 @@ export function BulkCreateSheet({
   const [isGenerating, setIsGenerating] = useState(false);
   const [players, setPlayers] = useState<GuestPlayer[]>([]);
   const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
+  const [addPlayerContext, setAddPlayerContext] = useState<{ slotIndex: number; playerIndex: number } | null>(null);
 
   useEffect(() => {
     if (open && trainerId) {
@@ -762,7 +763,10 @@ export function BulkCreateSheet({
                               variant="outline"
                               size="icon"
                               className="h-8 w-8 shrink-0"
-                              onClick={() => setAddPlayerDialogOpen(true)}
+                              onClick={() => {
+                                setAddPlayerContext({ slotIndex: index, playerIndex });
+                                setAddPlayerDialogOpen(true);
+                              }}
                               title={t("players.addPlayer")}
                             >
                               <Plus className="h-4 w-4" />
@@ -824,12 +828,28 @@ export function BulkCreateSheet({
 
         <AddPlayerDialog
           open={addPlayerDialogOpen}
-          onOpenChange={setAddPlayerDialogOpen}
+          onOpenChange={(open) => {
+            setAddPlayerDialogOpen(open);
+            if (!open) setAddPlayerContext(null);
+          }}
           trainerId={trainerId}
           onPlayerCreated={(player) => {
             setPlayers((prev) => [...prev, player].sort((a, b) => 
               a.full_name.localeCompare(b.full_name)
             ));
+            // Auto-fill the player in the slot that triggered the dialog
+            if (addPlayerContext) {
+              const { slotIndex, playerIndex } = addPlayerContext;
+              setBulkSlots((prev) =>
+                prev.map((slot, i) => {
+                  if (i !== slotIndex) return slot;
+                  const newPlayers = [...slot.selectedPlayers];
+                  newPlayers[playerIndex] = player.id;
+                  return { ...slot, selectedPlayers: newPlayers };
+                })
+              );
+              setAddPlayerContext(null);
+            }
           }}
         />
       </SheetContent>
