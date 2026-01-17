@@ -368,14 +368,6 @@ export function BulkCreateSheet({
         const [startH, startM] = config.startTime.split(":").map(Number);
         let slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
-        // Skip if first occurrence is in the past, advance to next valid week
-        if (isBefore(slotStart, today)) {
-          const weeksToAdd = Math.ceil(
-            (today.getTime() - slotStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-          );
-          slotStart = addWeeks(slotStart, weeksToAdd);
-        }
-
         // Generate a unique cyclus ID for this recurring slot configuration
         const cyclusId = crypto.randomUUID();
 
@@ -386,11 +378,6 @@ export function BulkCreateSheet({
 
           // Skip if this exact time already exists
           if (existingTimes.has(currentSlotStart.toISOString())) {
-            continue;
-          }
-
-          // Skip if slot is in the past
-          if (isBefore(currentSlotStart, today)) {
             continue;
           }
 
@@ -605,7 +592,7 @@ export function BulkCreateSheet({
                               date &&
                               updateBulkSlot(index, { startDate: startOfDay(date) })
                             }
-                            disabled={(date) => isBefore(date, startOfDay(new Date()))}
+                            disabled={false}
                             initialFocus
                             className="p-3 pointer-events-auto"
                           />
