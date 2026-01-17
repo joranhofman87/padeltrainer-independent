@@ -112,7 +112,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
         <div className={cn("flex items-center gap-1 mt-1", statusTextColors[status])}>
           <Users className="h-3 w-3" />
           <span>
-            {slot.active_bookings}/{slot.max_participants}
+            {slot.active_bookings}/4
           </span>
         </div>
       )}
