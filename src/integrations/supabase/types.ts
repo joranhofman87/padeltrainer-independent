@@ -342,6 +342,44 @@ export type Database = {
         }
         Relationships: []
       }
+      player_rating_history: {
+        Row: {
+          created_at: string
+          id: string
+          profile_id: string
+          rating: number
+          rating_system: string
+          scraped_at: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          profile_id: string
+          rating: number
+          rating_system?: string
+          scraped_at?: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          profile_id?: string
+          rating?: number
+          rating_system?: string
+          scraped_at?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_rating_history_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
