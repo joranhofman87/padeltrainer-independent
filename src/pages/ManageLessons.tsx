@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard, Copy, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
 
@@ -473,9 +473,13 @@ export default function ManageLessons() {
                     <div className="space-y-1">
                       <CardTitle className="text-lg">{lesson.title}</CardTitle>
                       <div className="flex flex-wrap gap-1">
-                        {!lesson.is_active && (
-                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
-                        )}
+                        <Badge 
+                          variant={lesson.is_active ? "default" : "secondary"}
+                          className={`text-xs gap-1 ${lesson.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ''}`}
+                        >
+                          {lesson.is_active ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                          {lesson.is_active ? 'Visible' : 'Hidden'}
+                        </Badge>
                         <Badge 
                           variant="outline" 
                           className={`text-xs ${lesson.payment_timing === 'after' ? 'border-orange-300 text-orange-600' : 'border-green-300 text-green-600'}`}
