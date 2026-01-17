@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard, Copy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
 
@@ -200,6 +200,52 @@ export default function ManageLessons() {
     } else {
       toast({ title: 'Success', description: 'Lesson deleted' });
       fetchLessons();
+    }
+  };
+
+  const handleDuplicate = async (lesson: Lesson) => {
+    try {
+      const { data: trainerProfile } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', user!.id)
+        .single();
+
+      if (!trainerProfile) {
+        throw new Error('Trainer profile not found');
+      }
+
+      const lessonData = {
+        title: `${lesson.title} (copy)`,
+        description: lesson.description || null,
+        duration_minutes: lesson.duration_minutes,
+        price: lesson.price,
+        max_participants: lesson.max_participants,
+        min_skill_rating: lesson.min_skill_rating,
+        max_skill_rating: lesson.max_skill_rating,
+        location: lesson.location || null,
+        is_active: true,
+        is_recurring: false,
+        recurrence_type: null,
+        recurrence_day: null,
+        recurrence_time: null,
+        recurrence_count: null,
+        recurrence_end_date: null,
+        start_date: null,
+        payment_timing: lesson.payment_timing,
+      };
+
+      const { error } = await createLesson(trainerProfile.id, lessonData);
+      if (error) throw error;
+      
+      toast({ title: 'Success', description: 'Lesson duplicated successfully' });
+      fetchLessons();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to duplicate lesson',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -444,14 +490,25 @@ export default function ManageLessons() {
                         size="icon"
                         className="h-8 w-8"
                         onClick={() => openEditDialog(lesson)}
+                        title="Edit lesson"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleDuplicate(lesson)}
+                        title="Duplicate lesson"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8 text-destructive"
                         onClick={() => handleDelete(lesson.id)}
+                        title="Delete lesson"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
