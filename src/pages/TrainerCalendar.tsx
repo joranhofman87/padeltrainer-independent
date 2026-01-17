@@ -508,6 +508,7 @@ export default function TrainerCalendar() {
             lesson_id: selectedSlot.lesson_id,
             cyclus_id: selectedSlot.cyclus_id,
             cyclus_name: selectedSlot.cyclus_name,
+            booked_players: selectedSlot.booked_players,
           }}
           lesson={selectedLesson}
           onBookingCreated={handleSlotsCreated}

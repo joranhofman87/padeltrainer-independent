@@ -21,9 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X } from "lucide-react";
+import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X, Check, Users } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
+import { BookedPlayer } from "./CalendarSlotCard";
+import { cn } from "@/lib/utils";
 
 interface Lesson {
   id: string;
@@ -39,6 +41,7 @@ interface Slot {
   lesson_id: string | null;
   cyclus_id?: string | null;
   cyclus_name?: string | null;
+  booked_players?: BookedPlayer[];
 }
 
 interface BookForPlayerDialogProps {
@@ -367,6 +370,47 @@ export function BookForPlayerDialog({
               </>
             )}
           </div>
+
+          {/* Already Booked Players */}
+          {slot.booked_players && slot.booked_players.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <Label>{t("calendar.alreadyBooked")}</Label>
+              </div>
+              <div className="space-y-1">
+                {slot.booked_players.map((player) => (
+                  <div
+                    key={player.id}
+                    className={cn(
+                      "flex items-center gap-2 text-sm px-3 py-2 rounded-md",
+                      player.status === "confirmed"
+                        ? "bg-green-50 dark:bg-green-900/20"
+                        : "bg-yellow-50 dark:bg-yellow-900/20"
+                    )}
+                  >
+                    {player.status === "confirmed" ? (
+                      <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <Clock className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
+                    )}
+                    <span className={cn(
+                      player.status === "confirmed"
+                        ? "text-green-700 dark:text-green-300"
+                        : "text-yellow-700 dark:text-yellow-300"
+                    )}>
+                      {player.name}
+                    </span>
+                    {player.isGuest && (
+                      <span className="text-xs text-muted-foreground">
+                        ({t("calendar.guest")})
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Multi-player selection */}
