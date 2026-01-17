@@ -198,6 +198,10 @@
     "playerDeletedDescription": "De speler is verwijderd",
     "deleteConfirmTitle": "Speler Verwijderen?",
     "deleteConfirmDescription": "Weet je zeker dat je {{name}} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "linkedToProfile": "Gekoppeld aan geregistreerde speler",
+    "duplicateEmail": "Speler bestaat al",
+    "duplicateEmailDescription": "Een speler met dit e-mailadres staat al in je lijst",
+    "autoFilledFromProfile": "Speelsterkte automatisch ingevuld vanuit spelersprofiel",
     "import": {
       "button": "CSV Importeren",
       "title": "Spelers Importeren uit CSV",

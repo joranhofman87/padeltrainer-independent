@@ -29,8 +29,10 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
+  Link2,
 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ImportPlayersDialogProps {
   open: boolean;
@@ -47,6 +49,15 @@ interface ParsedPlayer {
   notes: string | null;
   isValid: boolean;
   errors: string[];
+  linked_profile_id?: string | null;
+  linked_profile_name?: string | null;
+}
+
+interface ProfileMatch {
+  id: string;
+  email: string;
+  full_name: string | null;
+  skill_rating: number | null;
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
@@ -200,7 +211,7 @@ export function ImportPlayersDialog({
     return result;
   };
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     if (!file.name.endsWith(".csv")) {
       toast({
         title: t("players.import.invalidFile"),
@@ -211,11 +222,42 @@ export function ImportPlayersDialog({
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
       const players = parseCSV(content);
       
       if (players.length > 0) {
+        // Batch lookup for matching profiles
+        const validEmails = players
+          .filter(p => p.email && validateEmail(p.email))
+          .map(p => p.email.toLowerCase());
+
+        if (validEmails.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, email, full_name, skill_rating")
+            .in("email", validEmails);
+
+          if (profiles && profiles.length > 0) {
+            const profileMap = new Map<string, ProfileMatch>(
+              profiles.map(p => [p.email?.toLowerCase() || "", p as ProfileMatch])
+            );
+
+            // Update players with linked profile info
+            for (const player of players) {
+              const matchedProfile = profileMap.get(player.email.toLowerCase());
+              if (matchedProfile) {
+                player.linked_profile_id = matchedProfile.id;
+                player.linked_profile_name = matchedProfile.full_name;
+                // Auto-fill skill rating if not provided in CSV
+                if (!player.skill_rating && matchedProfile.skill_rating) {
+                  player.skill_rating = matchedProfile.skill_rating;
+                }
+              }
+            }
+          }
+        }
+
         setParsedPlayers(players);
         setStep("preview");
       }
@@ -252,15 +294,22 @@ export function ImportPlayersDialog({
           .insert({
             trainer_id: trainerId,
             full_name: player.full_name,
-            email: player.email,
+            email: player.email.toLowerCase(),
             phone: player.phone,
             skill_rating: player.skill_rating,
             notes: player.notes,
+            linked_profile_id: player.linked_profile_id || null,
           })
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          // Handle unique constraint violation (duplicate email)
+          if (error.code === "23505") {
+            console.warn("Duplicate email skipped:", player.email);
+          }
+          throw error;
+        }
         imported.push(data as GuestPlayer);
       } catch (error) {
         console.error("Failed to import player:", player.email, error);
@@ -397,45 +446,66 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
 
             {/* Preview table */}
             <ScrollArea className="flex-1 border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]"></TableHead>
-                    <TableHead>{t("players.name")}</TableHead>
-                    <TableHead>{t("players.email")}</TableHead>
-                    <TableHead>{t("players.phone")}</TableHead>
-                    <TableHead>{t("players.skillRating")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {parsedPlayers.map((player, index) => (
-                    <TableRow key={index} className={!player.isValid ? "bg-destructive/5" : ""}>
-                      <TableCell>
-                        {player.isValid ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <span className="font-medium">{player.full_name || "—"}</span>
-                          {player.errors.length > 0 && (
-                            <div className="text-xs text-destructive">
-                              {player.errors.join(", ")}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{player.email || "—"}</TableCell>
-                      <TableCell>{player.phone || "—"}</TableCell>
-                      <TableCell>
-                        {player.skill_rating ? player.skill_rating.toFixed(1) : "—"}
-                      </TableCell>
+              <TooltipProvider>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead>{t("players.name")}</TableHead>
+                      <TableHead>{t("players.email")}</TableHead>
+                      <TableHead>{t("players.phone")}</TableHead>
+                      <TableHead>{t("players.skillRating")}</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {parsedPlayers.map((player, index) => (
+                      <TableRow key={index} className={!player.isValid ? "bg-destructive/5" : ""}>
+                        <TableCell>
+                          {player.isValid ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <AlertTriangle className="h-4 w-4 text-destructive" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{player.full_name || "—"}</span>
+                            {player.errors.length > 0 && (
+                              <div className="text-xs text-destructive">
+                                {player.errors.join(", ")}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span>{player.email || "—"}</span>
+                            {player.linked_profile_id && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Link2 className="h-3 w-3 text-green-600 flex-shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t("players.linkedToProfile")}</p>
+                                  {player.linked_profile_name && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {player.linked_profile_name}
+                                    </p>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{player.phone || "—"}</TableCell>
+                        <TableCell>
+                          {player.skill_rating ? player.skill_rating.toFixed(1) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
             </ScrollArea>
 
             {/* Actions */}

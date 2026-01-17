@@ -198,6 +198,10 @@
     "playerDeletedDescription": "The player has been removed",
     "deleteConfirmTitle": "Delete Player?",
     "deleteConfirmDescription": "Are you sure you want to delete {{name}}? This action cannot be undone.",
+    "linkedToProfile": "Linked to registered player",
+    "duplicateEmail": "Player already exists",
+    "duplicateEmailDescription": "A player with this email is already in your list",
+    "autoFilledFromProfile": "Skill rating auto-filled from player profile",
     "import": {
       "button": "Import CSV",
       "title": "Import Players from CSV",
