@@ -5,15 +5,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
+import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft } from 'lucide-react';
+import { GraduationCap, ArrowLeft } from 'lucide-react';
+import { z } from 'zod';
 
-export default function Auth() {
+const signupSchema = z.object({
+  fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
+  email: z.string().trim().email('Please enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+export default function TrainerSignup() {
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
@@ -24,30 +33,54 @@ export default function Auth() {
       if (role) {
         navigate(role === 'trainer' ? '/trainer' : '/player');
       } else {
-        // User without role - check for pending role from signup
-        const pendingRole = sessionStorage.getItem('pendingRole');
-        if (pendingRole) {
-          navigate(`/onboarding/${pendingRole}`);
-        } else {
-          // Fallback to select-role for edge cases
-          navigate('/select-role');
-        }
+        // New user - redirect to complete onboarding
+        navigate('/onboarding/trainer');
       }
     }
   }, [user, role, loading, navigate]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const validateForm = () => {
+    try {
+      signupSchema.parse({ fullName, email, password });
+      setErrors({});
+      return true;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const newErrors: { [key: string]: string } = {};
+        error.errors.forEach((err) => {
+          if (err.path[0]) {
+            newErrors[err.path[0] as string] = err.message;
+          }
+        });
+        setErrors(newErrors);
+      }
+      return false;
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) return;
+    
     setIsLoading(true);
 
-    const { error } = await signInWithEmail(email, password);
+    const { error } = await signUpWithEmail(email, password, fullName);
 
     if (error) {
       toast({
-        title: t('signIn.error', 'Error'),
+        title: t('signUp.error', 'Error'),
         description: error.message,
         variant: 'destructive',
       });
+    } else {
+      // Store role preference in sessionStorage for onboarding
+      sessionStorage.setItem('pendingRole', 'trainer');
+      toast({
+        title: t('signUp.success'),
+        description: t('signUp.successDescription'),
+      });
+      navigate('/onboarding/trainer');
     }
 
     setIsLoading(false);
@@ -55,11 +88,14 @@ export default function Auth() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
+    // Store role preference before OAuth redirect
+    sessionStorage.setItem('pendingRole', 'trainer');
+    
     const { error } = await signInWithGoogle();
 
     if (error) {
       toast({
-        title: t('signIn.error', 'Error'),
+        title: t('signUp.error', 'Error'),
         description: error.message,
         variant: 'destructive',
       });
@@ -86,12 +122,12 @@ export default function Auth() {
             <ArrowLeft className="h-4 w-4" />
             {t('backToHome', 'Back to home')}
           </Link>
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <span className="text-3xl">🎾</span>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900">
+            <GraduationCap className="h-8 w-8 text-orange-600 dark:text-orange-400" />
           </div>
-          <CardTitle className="text-2xl font-bold">{t('title')}</CardTitle>
+          <CardTitle className="text-2xl font-bold">{t('trainerSignup.title', 'Join as a Trainer')}</CardTitle>
           <CardDescription>
-            {t('subtitle')}
+            {t('trainerSignup.subtitle', 'Grow your business and connect with players')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -132,47 +168,71 @@ export default function Auth() {
             </div>
           </div>
 
-          <form onSubmit={handleSignIn} className="space-y-4">
+          <form onSubmit={handleSignUp} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="signin-email">{t('form.email')}</Label>
+              <Label htmlFor="signup-name">{t('form.fullName')}</Label>
               <Input
-                id="signin-email"
+                id="signup-name"
+                type="text"
+                placeholder={t('form.fullNamePlaceholder')}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className={errors.fullName ? 'border-destructive' : ''}
+                required
+              />
+              {errors.fullName && (
+                <p className="text-sm text-destructive">{errors.fullName}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="signup-email">{t('form.email')}</Label>
+              <Input
+                id="signup-email"
                 type="email"
                 placeholder={t('form.emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className={errors.email ? 'border-destructive' : ''}
                 required
               />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="signin-password">{t('form.password')}</Label>
+              <Label htmlFor="signup-password">{t('form.password')}</Label>
               <Input
-                id="signin-password"
+                id="signup-password"
                 type="password"
                 placeholder={t('form.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className={errors.password ? 'border-destructive' : ''}
                 required
+                minLength={6}
               />
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password}</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? t('signIn.loading') : t('signIn.button')}
+              {isLoading ? t('signUp.loading') : t('signUp.button')}
             </Button>
           </form>
 
-          <div className="space-y-3 pt-4 border-t">
-            <p className="text-center text-sm text-muted-foreground">
-              {t('signIn.noAccount', "Don't have an account?")}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" asChild>
-                <Link to="/signup/player">{t('signIn.signupPlayer', 'Join as Player')}</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/signup/trainer">{t('signIn.signupTrainer', 'Join as Trainer')}</Link>
-              </Button>
-            </div>
-          </div>
+          <p className="text-center text-sm text-muted-foreground">
+            {t('trainerSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
+            <Link to="/auth" className="text-primary hover:underline">
+              {t('signIn.button')}
+            </Link>
+          </p>
+          
+          <p className="text-center text-sm text-muted-foreground">
+            {t('trainerSignup.wantToPlay', 'Looking for a trainer instead?')}{' '}
+            <Link to="/signup/player" className="text-primary hover:underline">
+              {t('trainerSignup.joinAsPlayer', 'Join as Player')}
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

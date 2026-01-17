@@ -52,13 +52,12 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               ))}
             </nav>
 
-            {/* CTA Buttons */}
             <div className="hidden md:flex items-center gap-3">
               <Button variant="ghost" asChild>
                 <Link to="/auth">Sign In</Link>
               </Button>
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/auth">Get Started</Link>
+                <Link to="/signup/player">Get Started</Link>
               </Button>
             </div>
 
@@ -99,7 +98,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <Link to="/auth">Sign In</Link>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <Link to="/auth">Get Started</Link>
+                    <Link to="/signup/player">Get Started</Link>
                   </Button>
                 </div>
               </nav>
