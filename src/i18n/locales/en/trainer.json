@@ -319,6 +319,7 @@
     "players": "Players",
     "guest": "guest",
     "noPlayers": "No players booked yet",
+    "alreadyBooked": "Already booked",
     "duplicateCyclusTitle": "Duplicate Training Cycle",
     "duplicateCyclusDescription": "Create a new cycle based on an existing one",
     "selectCyclus": "Select Cyclus",
