@@ -337,6 +337,7 @@
     "includeExistingPlayers": "Include existing players",
     "includePlayersDescription": "Copy {{count}} player booking(s) to the new cycle",
     "cyclusDuplicated": "Cyclus duplicated successfully",
-    "noExistingCyclus": "No training cycles found"
+    "noExistingCyclus": "No training cycles found",
+    "averageLevel": "Avg. Level"
   }
 }

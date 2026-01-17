@@ -337,6 +337,7 @@
     "includeExistingPlayers": "Bestaande spelers meenemen",
     "includePlayersDescription": "Kopieer {{count}} spelerboeking(en) naar de nieuwe cyclus",
     "cyclusDuplicated": "Cyclus succesvol gedupliceerd",
-    "noExistingCyclus": "Geen trainingscyclussen gevonden"
+    "noExistingCyclus": "Geen trainingscyclussen gevonden",
+    "averageLevel": "Gem. Niveau"
   }
 }

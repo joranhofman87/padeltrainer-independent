@@ -188,8 +188,8 @@ export default function TrainerCalendar() {
           status,
           player_id,
           guest_player_id,
-          profiles:player_id (full_name),
-          guest_players:guest_player_id (full_name)
+          profiles:player_id (full_name, skill_rating, rating_system),
+          guest_players:guest_player_id (full_name, skill_rating, rating_system)
         `)
         .in("slot_id", slotIds.length > 0 ? slotIds : ["none"]);
 
@@ -210,10 +210,12 @@ export default function TrainerCalendar() {
           bookingCounts[b.slot_id].pending++;
         }
         
-        // Add player info
-        const profile = b.profiles as { full_name: string | null } | null;
-        const guestPlayer = b.guest_players as { full_name: string | null } | null;
+        // Add player info with skill ratings
+        const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+        const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
         const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
+        const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
+        const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
         
         if (b.status === "confirmed" || b.status === "pending") {
           bookingCounts[b.slot_id].players.push({
@@ -222,6 +224,8 @@ export default function TrainerCalendar() {
             name: playerName,
             status: b.status as "confirmed" | "pending",
             isGuest: !!b.guest_player_id,
+            skillRating,
+            ratingSystem,
           });
         }
       });

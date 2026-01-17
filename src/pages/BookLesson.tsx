@@ -7,15 +7,25 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+
+interface BookedPlayerInfo {
+  skillRating: number | null;
+  ratingSystem: string;
+}
 
 interface SlotWithDetails {
   id: string;
   start_time: string;
   end_time: string;
   lesson_id: string | null;
+  bookedPlayers?: BookedPlayerInfo[];
+  averageRating?: number | null;
+  ratingSystem?: string;
+  spotsLeft?: number;
   lessons?: {
     id: string;
     title: string;
@@ -104,17 +114,63 @@ export default function BookLesson() {
       .order('start_time', { ascending: true });
 
     if (slotsData) {
-      // Filter out fully booked slots
+      // Fetch bookings with player ratings for each slot
       const slotIds = slotsData.map((s) => s.id);
       const { data: bookingsData } = await supabase
         .from('bookings')
-        .select('slot_id')
+        .select(`
+          slot_id,
+          status,
+          profiles:player_id (skill_rating, rating_system),
+          guest_players:guest_player_id (skill_rating, rating_system)
+        `)
         .in('slot_id', slotIds)
         .in('status', ['pending', 'confirmed']);
 
-      const bookedSlotIds = new Set(bookingsData?.map((b) => b.slot_id) || []);
-      const availableSlots = slotsData.filter((s) => !bookedSlotIds.has(s.id));
-      setSlots(availableSlots as SlotWithDetails[]);
+      // Count bookings per slot and calculate average ratings
+      const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
+      bookingsData?.forEach((b) => {
+        if (!slotBookingInfo[b.slot_id]) {
+          slotBookingInfo[b.slot_id] = { count: 0, ratings: [] };
+        }
+        slotBookingInfo[b.slot_id].count++;
+        
+        const profile = b.profiles as { skill_rating: number | null; rating_system: string } | null;
+        const guestPlayer = b.guest_players as { skill_rating: number | null; rating_system: string } | null;
+        const rating = profile?.skill_rating ?? guestPlayer?.skill_rating;
+        const system = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
+        
+        if (rating != null) {
+          slotBookingInfo[b.slot_id].ratings.push({ rating, system });
+        }
+      });
+
+      // Only show slots that have available spots (max 4 per slot)
+      const availableSlots = slotsData
+        .filter((s) => (slotBookingInfo[s.id]?.count || 0) < 4)
+        .map((s) => {
+          const info = slotBookingInfo[s.id];
+          const bookingCount = info?.count || 0;
+          const ratings = info?.ratings || [];
+          
+          let averageRating: number | null = null;
+          let ratingSystem: string | undefined = undefined;
+          
+          if (ratings.length > 0) {
+            const sum = ratings.reduce((acc, r) => acc + r.rating, 0);
+            averageRating = sum / ratings.length;
+            ratingSystem = ratings[0].system;
+          }
+          
+          return {
+            ...s,
+            spotsLeft: 4 - bookingCount,
+            averageRating,
+            ratingSystem,
+          } as SlotWithDetails;
+        });
+      
+      setSlots(availableSlots);
     }
 
     setLoadingData(false);
@@ -348,6 +404,23 @@ export default function BookLesson() {
                             </div>
                           </div>
                         )}
+                        {/* Spots left and Average Level */}
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Users className="h-4 w-4" />
+                            <span>{slot.spotsLeft || 4}/4 spots left</span>
+                          </div>
+                          {slot.averageRating !== null && slot.averageRating !== undefined && (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary" className="text-xs">
+                                Avg: {slot.averageRating.toFixed(1)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground uppercase">
+                                {slot.ratingSystem || 'knltb'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
