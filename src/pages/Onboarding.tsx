@@ -40,6 +40,7 @@ export default function Onboarding() {
 
   const triggerRatingScrape = async (profileId: string, knltb: string) => {
     try {
+      console.log('Triggering rating scrape for profile:', profileId, 'KNLTB:', knltb);
       const { data, error } = await supabase.functions.invoke('scrape-knltb-rating', {
         body: {
           knltbNumber: knltb,
@@ -52,6 +53,13 @@ export default function Onboarding() {
         console.error('Rating scrape error:', error);
       } else if (data?.success) {
         console.log('Rating scraped successfully:', data.data?.rating);
+        toast({
+          title: t('onboarding.ratingFound', 'Rating Found!'),
+          description: t('onboarding.ratingFoundDescription', 'Your KNLTB rating has been automatically retrieved.'),
+        });
+      } else {
+        console.log('Rating scrape did not find rating:', data?.error);
+        // Silently fail - user can enter manually later
       }
     } catch (err) {
       console.error('Failed to trigger rating scrape:', err);
