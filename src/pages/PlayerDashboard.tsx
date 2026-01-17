@@ -326,9 +326,9 @@ export default function PlayerDashboard() {
                   <span className="text-4xl font-bold">
                     {profile?.skill_rating || '—'}
                   </span>
-                  {profile?.knltb_number && (
+                  {profile?.skill_rating && (
                     <span className="text-xs bg-white/20 px-2 py-1 rounded">
-                      KNLTB
+                      {((profile as any)?.rating_system || 'knltb').toUpperCase()}
                     </span>
                   )}
                 </div>
@@ -337,7 +337,7 @@ export default function PlayerDashboard() {
             </div>
             {!profile?.skill_rating && (
               <p className="text-blue-100 text-sm mt-3">
-                Add your KNLTB rating or ask a trainer to set your level
+                Add your rating or ask a trainer to set your level
               </p>
             )}
           </CardContent>

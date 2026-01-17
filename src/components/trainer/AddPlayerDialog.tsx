@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2 } from "lucide-react";
+import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from "@/lib/ratingSystem";
 
 interface AddPlayerDialogProps {
   open: boolean;
@@ -29,6 +31,7 @@ export interface GuestPlayer {
   email: string;
   phone: string;
   skill_rating: number | null;
+  rating_system: string;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -54,6 +57,7 @@ export function AddPlayerDialog({
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [ratingSystem, setRatingSystem] = useState<RatingSystem>(DEFAULT_RATING_SYSTEM);
   const [skillRating, setSkillRating] = useState("");
   const [notes, setNotes] = useState("");
   const [linkedProfile, setLinkedProfile] = useState<LinkedProfile | null>(null);
@@ -63,6 +67,7 @@ export function AddPlayerDialog({
     setFullName("");
     setEmail("");
     setPhone("");
+    setRatingSystem(DEFAULT_RATING_SYSTEM);
     setSkillRating("");
     setNotes("");
     setLinkedProfile(null);
@@ -84,18 +89,20 @@ export function AddPlayerDialog({
     try {
       const { data } = await supabase
         .from("profiles")
-        .select("id, full_name, skill_rating")
+        .select("id, full_name, skill_rating, rating_system")
         .eq("email", trimmedEmail)
         .maybeSingle();
 
       if (data) {
         setLinkedProfile(data);
-        // Auto-fill skill rating if empty and profile has it
+        // Auto-fill skill rating and system if empty and profile has it
         if (!skillRating && data.skill_rating) {
+          const profileRatingSystem = (data.rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM;
+          setRatingSystem(profileRatingSystem);
           setSkillRating(data.skill_rating.toString());
           toast({
             title: t("players.autoFilledFromProfile"),
-            description: t("players.skillRating") + ": " + data.skill_rating.toFixed(1),
+            description: `${t("players.skillRating")}: ${data.skill_rating.toFixed(1)} (${profileRatingSystem.toUpperCase()})`,
           });
         }
       } else {
@@ -122,6 +129,7 @@ export function AddPlayerDialog({
           email: email.trim().toLowerCase(),
           phone: phone.trim(),
           skill_rating: skillRating ? parseFloat(skillRating) : null,
+          rating_system: ratingSystem,
           notes: notes.trim() || null,
           linked_profile_id: linkedProfile?.id || null,
         })
@@ -233,17 +241,42 @@ export function AddPlayerDialog({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="ratingSystem">{t("players.ratingSystem")}</Label>
+            <Select
+              value={ratingSystem}
+              onValueChange={(value: RatingSystem) => {
+                setRatingSystem(value);
+                setSkillRating("");
+              }}
+            >
+              <SelectTrigger id="ratingSystem">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.values(RATING_SYSTEMS).map((system) => (
+                  <SelectItem key={system.id} value={system.id}>
+                    {system.name} ({system.min} - {system.max})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="skillRating">{t("players.skillRating")}</Label>
             <Input
               id="skillRating"
               type="number"
-              step="0.1"
-              min="1"
-              max="10"
+              step={getRatingSystemConfig(ratingSystem).step}
+              min={getRatingSystemConfig(ratingSystem).min}
+              max={getRatingSystemConfig(ratingSystem).max}
               value={skillRating}
               onChange={(e) => setSkillRating(e.target.value)}
               placeholder={t("players.skillRatingPlaceholder")}
             />
+            <p className="text-xs text-muted-foreground">
+              {getRatingSystemConfig(ratingSystem).min} - {getRatingSystemConfig(ratingSystem).max}
+            </p>
           </div>
 
           <div className="space-y-2">

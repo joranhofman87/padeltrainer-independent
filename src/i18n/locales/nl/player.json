@@ -1,11 +1,17 @@
 {
+  "ratingSystem": {
+    "label": "Beoordelingssysteem",
+    "knltb": "KNLTB",
+    "playtomic": "Playtomic",
+    "description": "Selecteer welk beoordelingssysteem je gebruikt",
+    "range": "{{min}} - {{max}}"
+  },
   "dashboard": {
     "welcome": "Welkom terug, {{name}}! 👋",
     "subtitle": "Vind je volgende trainingssessie en verbeter je padelvaardigheden",
     "skillRating": {
       "title": "Jouw Speelniveau",
-      "knltb": "KNLTB",
-      "noRating": "Voeg je KNLTB-rating toe of vraag een trainer om je niveau in te stellen"
+      "noRating": "Voeg je rating toe of vraag een trainer om je niveau in te stellen"
     },
     "stats": {
       "upcoming": "Aankomend",

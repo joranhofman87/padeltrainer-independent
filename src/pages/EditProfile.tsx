@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -8,8 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, User } from 'lucide-react';
+import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from '@/lib/ratingSystem';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -23,6 +26,7 @@ export default function EditProfile() {
   const { user, profile, role, loading, refreshAuth } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation('player');
   
   const [saving, setSaving] = useState(false);
   
@@ -33,6 +37,7 @@ export default function EditProfile() {
     location: '',
     bio: '',
     skill_rating: '',
+    rating_system: DEFAULT_RATING_SYSTEM as RatingSystem,
     knltb_number: '',
   });
   
@@ -62,6 +67,7 @@ export default function EditProfile() {
         location: profile.location || '',
         bio: profile.bio || '',
         skill_rating: profile.skill_rating?.toString() || '',
+        rating_system: ((profile as any).rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM,
         knltb_number: profile.knltb_number || '',
       });
     }
@@ -109,6 +115,7 @@ export default function EditProfile() {
           location: formData.location,
           bio: formData.bio,
           skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
+          rating_system: formData.rating_system,
           knltb_number: formData.knltb_number,
         })
         .eq('user_id', user.id);
@@ -296,19 +303,46 @@ export default function EditProfile() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="skill_rating">Padel Dubbel Rating</Label>
+                  <Label htmlFor="rating_system">{t('ratingSystem.label')}</Label>
+                  <Select
+                    value={formData.rating_system}
+                    onValueChange={(value: RatingSystem) => {
+                      setFormData({ ...formData, rating_system: value, skill_rating: '' });
+                    }}
+                  >
+                    <SelectTrigger id="rating_system">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.values(RATING_SYSTEMS).map((system) => (
+                        <SelectItem key={system.id} value={system.id}>
+                          {t(`ratingSystem.${system.id}`)} ({t('ratingSystem.range', { min: system.min, max: system.max })})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {t('ratingSystem.description')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="skill_rating">Padel Rating</Label>
                   <Input
                     id="skill_rating"
                     type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="9.9"
+                    step={getRatingSystemConfig(formData.rating_system).step}
+                    min={getRatingSystemConfig(formData.rating_system).min}
+                    max={getRatingSystemConfig(formData.rating_system).max}
                     value={formData.skill_rating}
                     onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
-                    placeholder="4.5"
+                    placeholder={getRatingSystemConfig(formData.rating_system).max.toString()}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter your current padel dubbel rating from KNLTB (0.1 - 9.9)
+                    {t('ratingSystem.range', { 
+                      min: getRatingSystemConfig(formData.rating_system).min, 
+                      max: getRatingSystemConfig(formData.rating_system).max 
+                    })}
                   </p>
                 </div>
               </CardContent>

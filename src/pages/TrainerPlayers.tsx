@@ -306,9 +306,14 @@ export default function TrainerPlayers() {
                       </TableCell>
                       <TableCell>
                         {player.skill_rating ? (
-                          <Badge variant="secondary">
-                            {player.skill_rating.toFixed(1)}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge variant="secondary">
+                              {player.skill_rating.toFixed(1)}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground uppercase">
+                              {(player as any).rating_system || 'knltb'}
+                            </span>
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

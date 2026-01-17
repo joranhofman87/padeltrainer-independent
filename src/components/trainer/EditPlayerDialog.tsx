@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
+import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from "@/lib/ratingSystem";
 
 interface EditPlayerDialogProps {
   open: boolean;
@@ -36,6 +38,9 @@ export function EditPlayerDialog({
   const [fullName, setFullName] = useState(player.full_name);
   const [email, setEmail] = useState(player.email);
   const [phone, setPhone] = useState(player.phone);
+  const [ratingSystem, setRatingSystem] = useState<RatingSystem>(
+    (player.rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM
+  );
   const [skillRating, setSkillRating] = useState(
     player.skill_rating?.toString() || ""
   );
@@ -53,6 +58,7 @@ export function EditPlayerDialog({
           email: email.trim().toLowerCase(),
           phone: phone.trim(),
           skill_rating: skillRating ? parseFloat(skillRating) : null,
+          rating_system: ratingSystem,
           notes: notes.trim() || null,
         })
         .eq("id", player.id)
@@ -127,17 +133,42 @@ export function EditPlayerDialog({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="edit-ratingSystem">{t("players.ratingSystem")}</Label>
+            <Select
+              value={ratingSystem}
+              onValueChange={(value: RatingSystem) => {
+                setRatingSystem(value);
+                setSkillRating("");
+              }}
+            >
+              <SelectTrigger id="edit-ratingSystem">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.values(RATING_SYSTEMS).map((system) => (
+                  <SelectItem key={system.id} value={system.id}>
+                    {system.name} ({system.min} - {system.max})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="edit-skillRating">{t("players.skillRating")}</Label>
             <Input
               id="edit-skillRating"
               type="number"
-              step="0.1"
-              min="1"
-              max="10"
+              step={getRatingSystemConfig(ratingSystem).step}
+              min={getRatingSystemConfig(ratingSystem).min}
+              max={getRatingSystemConfig(ratingSystem).max}
               value={skillRating}
               onChange={(e) => setSkillRating(e.target.value)}
               placeholder={t("players.skillRatingPlaceholder")}
             />
+            <p className="text-xs text-muted-foreground">
+              {getRatingSystemConfig(ratingSystem).min} - {getRatingSystemConfig(ratingSystem).max}
+            </p>
           </div>
 
           <div className="space-y-2">
