@@ -56,12 +56,16 @@
           "description": "Voeg je eerste lestype toe"
         },
         "availability": {
-          "title": "Beschikbaarheid Instellen",
-          "description": "Voeg beschikbare tijdslots toe"
+          "title": "Planning Maken",
+          "description": "Voeg trainingscyclus of individuele slots toe"
         },
         "payments": {
           "title": "Betalingen Koppelen",
           "description": "Stel Stripe in om uitbetalingen te ontvangen"
+        },
+        "players": {
+          "title": "Spelers Toevoegen",
+          "description": "Voeg je eerste speler toe aan je lijst"
         }
       }
     }
