@@ -342,6 +342,15 @@
     "includePlayersDescription": "Copy {{count}} player booking(s) to the new cycle",
     "cyclusDuplicated": "Cyclus duplicated successfully",
     "noExistingCyclus": "No training cycles found",
-    "averageLevel": "Avg. Level"
+    "averageLevel": "Avg. Level",
+    "markAsFull": "Mark as Full",
+    "markedFull": "Private",
+    "openToPlayers": "Open to Players",
+    "applyToEntireCyclus": "Apply to entire cyclus",
+    "slotMarkedFull": "Slot marked as private",
+    "slotMarkedOpen": "Slot opened to players",
+    "cyclusMarkedFull": "Cyclus marked as private",
+    "cyclusMarkedOpen": "Cyclus opened to players",
+    "privateBadge": "Private"
   }
 }

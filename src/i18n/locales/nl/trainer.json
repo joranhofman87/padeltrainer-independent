@@ -342,6 +342,15 @@
     "includePlayersDescription": "Kopieer {{count}} spelerboeking(en) naar de nieuwe cyclus",
     "cyclusDuplicated": "Cyclus succesvol gedupliceerd",
     "noExistingCyclus": "Geen trainingscyclussen gevonden",
-    "averageLevel": "Gem. Niveau"
+    "averageLevel": "Gem. Niveau",
+    "markAsFull": "Markeer als Vol",
+    "markedFull": "Privé",
+    "openToPlayers": "Open voor Spelers",
+    "applyToEntireCyclus": "Toepassen op hele cyclus",
+    "slotMarkedFull": "Slot als privé gemarkeerd",
+    "slotMarkedOpen": "Slot geopend voor spelers",
+    "cyclusMarkedFull": "Cyclus als privé gemarkeerd",
+    "cyclusMarkedOpen": "Cyclus geopend voor spelers",
+    "privateBadge": "Privé"
   }
 }
