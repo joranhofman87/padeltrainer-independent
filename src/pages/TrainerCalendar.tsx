@@ -35,6 +35,7 @@ import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 interface Lesson {
   id: string;
@@ -52,6 +53,7 @@ export default function TrainerCalendar() {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
 
   const [view, setView] = useState<"week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -384,6 +386,50 @@ export default function TrainerCalendar() {
     }
   };
 
+  const handleToggleMarkedFull = async (
+    slotId: string,
+    value: boolean,
+    applyToCyclus?: boolean
+  ) => {
+    try {
+      if (applyToCyclus) {
+        // Get the cyclus_id from the slot
+        const slot = slots.find((s) => s.id === slotId);
+        if (slot?.cyclus_id) {
+          const { error } = await supabase
+            .from("availability_slots")
+            .update({ is_marked_full: value })
+            .eq("cyclus_id", slot.cyclus_id)
+            .gte("start_time", new Date().toISOString());
+
+          if (error) throw error;
+
+          toast({
+            title: value
+              ? t("calendar.cyclusMarkedFull")
+              : t("calendar.cyclusMarkedOpen"),
+          });
+        }
+      } else {
+        const { error } = await supabase
+          .from("availability_slots")
+          .update({ is_marked_full: value })
+          .eq("id", slotId);
+
+        if (error) throw error;
+
+        toast({
+          title: value
+            ? t("calendar.slotMarkedFull")
+            : t("calendar.slotMarkedOpen"),
+        });
+      }
+      fetchSlots();
+    } catch (error) {
+      console.error("Error toggling marked full:", error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -519,6 +565,7 @@ export default function TrainerCalendar() {
                 onDuplicateCyclus={handleDuplicateCyclus}
                 onDeleteSlot={handleDeleteSlot}
                 onEditBooking={handleEditBooking}
+                onToggleMarkedFull={handleToggleMarkedFull}
               />
             )}
           </CardContent>

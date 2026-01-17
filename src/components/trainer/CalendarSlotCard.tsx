@@ -310,6 +310,39 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             </div>
           </div>
 
+          {/* Mark as Full Toggle */}
+          {onToggleMarkedFull && !slot.is_past && (
+            <div className="space-y-2 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2 cursor-pointer text-sm">
+                  {slot.is_marked_full ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+                  {t("calendar.markAsFull")}
+                </Label>
+                <Switch
+                  checked={slot.is_marked_full}
+                  onCheckedChange={(checked) => {
+                    onToggleMarkedFull(slot.id, checked, slot.cyclus_id && applyToCyclus ? true : false);
+                  }}
+                />
+              </div>
+              {slot.cyclus_id && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`apply-cyclus-toggle-${slot.id}`}
+                    checked={applyToCyclus}
+                    onCheckedChange={(c) => setApplyToCyclus(!!c)}
+                  />
+                  <Label htmlFor={`apply-cyclus-toggle-${slot.id}`} className="text-xs cursor-pointer">
+                    {t("calendar.applyToEntireCyclus")}
+                  </Label>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {slot.is_marked_full ? t("calendar.markedFull") : t("calendar.openToPlayers")}
+              </p>
+            </div>
+          )}
+
           {/* Action icons row */}
           <div className="flex items-center justify-between pt-1 border-t">
             <div className="flex gap-1">
