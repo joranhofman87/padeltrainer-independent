@@ -43,10 +43,12 @@ import {
   Calendar,
   Mail,
   Phone,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AddPlayerDialog, GuestPlayer } from "@/components/trainer/AddPlayerDialog";
 import { EditPlayerDialog } from "@/components/trainer/EditPlayerDialog";
+import { ImportPlayersDialog } from "@/components/trainer/ImportPlayersDialog";
 
 export default function TrainerPlayers() {
   const { t } = useTranslation("trainer");
@@ -60,6 +62,7 @@ export default function TrainerPlayers() {
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [showImportPlayers, setShowImportPlayers] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<GuestPlayer | null>(null);
   const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -143,6 +146,14 @@ export default function TrainerPlayers() {
     setShowAddPlayer(false);
   };
 
+  const handlePlayersImported = (importedPlayers: GuestPlayer[]) => {
+    setPlayers(
+      [...players, ...importedPlayers].sort((a, b) =>
+        a.full_name.localeCompare(b.full_name)
+      )
+    );
+  };
+
   const handlePlayerUpdated = (updatedPlayer: GuestPlayer) => {
     setPlayers(
       players
@@ -207,10 +218,16 @@ export default function TrainerPlayers() {
               <p className="text-muted-foreground">{t("players.subtitle")}</p>
             </div>
           </div>
-          <Button onClick={() => setShowAddPlayer(true)}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            {t("players.addPlayer")}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowImportPlayers(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              {t("players.import.button")}
+            </Button>
+            <Button onClick={() => setShowAddPlayer(true)}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              {t("players.addPlayer")}
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -353,6 +370,16 @@ export default function TrainerPlayers() {
           onOpenChange={(open) => !open && setEditingPlayer(null)}
           player={editingPlayer}
           onPlayerUpdated={handlePlayerUpdated}
+        />
+      )}
+
+      {/* Import Players Dialog */}
+      {trainerId && (
+        <ImportPlayersDialog
+          open={showImportPlayers}
+          onOpenChange={setShowImportPlayers}
+          trainerId={trainerId}
+          onPlayersImported={handlePlayersImported}
         />
       )}
 

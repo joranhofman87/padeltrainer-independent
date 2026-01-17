@@ -197,7 +197,38 @@
     "playerDeleted": "Player Deleted",
     "playerDeletedDescription": "The player has been removed",
     "deleteConfirmTitle": "Delete Player?",
-    "deleteConfirmDescription": "Are you sure you want to delete {{name}}? This action cannot be undone."
+    "deleteConfirmDescription": "Are you sure you want to delete {{name}}? This action cannot be undone.",
+    "import": {
+      "button": "Import CSV",
+      "title": "Import Players from CSV",
+      "description": "Upload a CSV file to add multiple players at once",
+      "dropHere": "Drop your CSV file here",
+      "orClickToSelect": "or click to select a file",
+      "selectFile": "Select CSV File",
+      "needTemplate": "Need a template?",
+      "templateDescription": "Download our CSV template with the correct format",
+      "downloadTemplate": "Download Template",
+      "requiredColumns": "Required columns",
+      "optionalColumns": "Optional columns",
+      "invalidFile": "Invalid File",
+      "csvOnly": "Please upload a CSV file",
+      "noDataRows": "The file contains no data rows",
+      "missingColumns": "Missing required columns: name and email",
+      "validRows": "{{count}} valid",
+      "invalidRows": "{{count}} invalid",
+      "errors": {
+        "nameMissing": "Name is required",
+        "emailMissing": "Email is required",
+        "emailInvalid": "Invalid email format",
+        "skillOutOfRange": "Skill rating must be 1-10"
+      },
+      "chooseAnotherFile": "Choose Another File",
+      "importPlayers": "Import {{count}} Players",
+      "importing": "Importing players...",
+      "complete": "Import Complete!",
+      "importedCount": "{{count}} players have been added",
+      "failedCount": "{{count}} failed to import"
+    }
   },
   "earnings": {
     "title": "Earnings",
