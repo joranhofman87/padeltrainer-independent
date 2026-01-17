@@ -62,7 +62,7 @@ export default function SelectRole() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <span className="text-3xl">🎾</span>
           </div>
-          <h1 className="text-3xl font-bold">Welcome to PadelMatch!</h1>
+          <h1 className="text-3xl font-bold">Welcome to PadelTrainer.ai!</h1>
           <p className="text-muted-foreground">
             Choose how you want to use the platform
           </p>
