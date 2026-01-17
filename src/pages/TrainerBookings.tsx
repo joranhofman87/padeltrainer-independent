@@ -176,19 +176,22 @@ export default function TrainerBookings() {
       const { error } = await updateBookingStatus(cancellingBooking.id, 'cancelled');
       if (error) throw error;
 
-      // Notify followers about the reopened slot
+      // Notify followers about the reopened slot with authentication
       const slotDate = format(parseISO(cancellingBooking.availability_slots.start_time), 'EEE, MMM d');
       const slotTime = format(parseISO(cancellingBooking.availability_slots.start_time), 'HH:mm');
       
+      const { data: { session } } = await supabase.auth.getSession();
       await supabase.functions.invoke('notify-followers', {
         body: {
-          trainer_id: trainerId,
           slot_count: 1,
           date_range: slotDate,
           single_slot: {
             date: slotDate,
             time: slotTime,
           },
+        },
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
         },
       });
 

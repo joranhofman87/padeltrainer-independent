@@ -483,7 +483,7 @@ export function BulkCreateSheet({
         });
       }
 
-      // Notify followers
+      // Notify followers with authentication
       try {
         const earliestStart = new Date(
           Math.min(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
@@ -492,11 +492,14 @@ export function BulkCreateSheet({
           Math.max(...slotsToInsert.map((s) => new Date(s.start_time).getTime()))
         );
 
+        const { data: { session } } = await supabase.auth.getSession();
         await supabase.functions.invoke("notify-followers", {
           body: {
-            trainer_id: trainerId,
             slot_count: slotsToInsert.length,
             date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
+          },
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
           },
         });
       } catch (notifyError) {

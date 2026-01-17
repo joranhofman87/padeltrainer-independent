@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -9,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened";
   to: string;
   data: {
     playerName?: string;
@@ -28,6 +29,8 @@ interface EmailRequest {
     netAmount?: number;
     slotCount?: number;
     dateRange?: string;
+    slotDate?: string;
+    slotTime?: string;
   };
 }
 
@@ -209,6 +212,31 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         `,
       };
 
+    case "slot_reopened":
+      return {
+        subject: `Slot Available: ${data.trainerName} has an opening! 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Slot Just Opened! 📅</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>A training slot with <strong>${data.trainerName}</strong> just became available!</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Date:</strong> ${data.slotDate}</p>
+              <p><strong>Time:</strong> ${data.slotTime}</p>
+            </div>
+            <p>Book now before someone else does!</p>
+            <p style="margin-top: 24px;">
+              <a href="https://padeltrainer.ai/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
+            </p>
+            <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
+              You're receiving this because you follow ${data.trainerName}. 
+              <a href="https://padeltrainer.ai/settings/notifications">Manage notification preferences</a>
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
     case "manual_booking_confirmation":
       return {
         subject: `Lesson Booked: ${data.lessonTitle} 🎾`,
@@ -247,6 +275,42 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Create client to verify user token
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const token = authHeader.replace("Bearer ", "");
+    
+    // Allow service role key to bypass user auth check (for internal calls)
+    const isServiceRole = token === supabaseServiceKey;
+    
+    if (!isServiceRole) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      
+      if (authError || !user) {
+        console.error("Authentication failed:", authError?.message);
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      
+      console.log("Email request from authenticated user:", user.id);
+    } else {
+      console.log("Email request from service role (internal call)");
+    }
+
     const { type, to, data }: EmailRequest = await req.json();
 
     if (!to || !type) {

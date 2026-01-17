@@ -208,10 +208,11 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
-        // Send email notifications to all players
+        // Send email notifications to all players with authentication
         const firstSlot = cyclusSlots[0];
         const lastSlot = cyclusSlots[cyclusSlots.length - 1];
         
+        const { data: { session } } = await supabase.auth.getSession();
         await Promise.all(
           selectedPlayers.map(player =>
             supabase.functions.invoke("send-email", {
@@ -226,6 +227,9 @@ export function BookForPlayerDialog({
                   location: lesson?.location,
                   price: lesson?.price ? lesson.price * cyclusSlots.length : null,
                 },
+              },
+              headers: {
+                Authorization: `Bearer ${session?.access_token}`,
               },
             }).catch(err => console.log("Email notification failed:", err))
           )
@@ -258,7 +262,8 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
-        // Send email notifications to all players
+        // Send email notifications to all players with authentication
+        const { data: { session: emailSession } } = await supabase.auth.getSession();
         await Promise.all(
           selectedPlayers.map(player =>
             supabase.functions.invoke("send-email", {
@@ -273,6 +278,9 @@ export function BookForPlayerDialog({
                   location: lesson?.location,
                   price: lesson?.price,
                 },
+              },
+              headers: {
+                Authorization: `Bearer ${emailSession?.access_token}`,
               },
             }).catch(err => console.log("Email notification failed:", err))
           )
