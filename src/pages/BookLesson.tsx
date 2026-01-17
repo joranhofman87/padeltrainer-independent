@@ -99,7 +99,7 @@ export default function BookLesson() {
       setTrainer(trainerData as unknown as TrainerWithProfile);
     }
 
-    // Fetch available slots
+    // Fetch available slots (exclude private slots)
     const { data: slotsData } = await supabase
       .from('availability_slots')
       .select(`
@@ -110,6 +110,7 @@ export default function BookLesson() {
         lessons(id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating)
       `)
       .eq('trainer_id', trainerId)
+      .eq('is_marked_full', false)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true });
 
