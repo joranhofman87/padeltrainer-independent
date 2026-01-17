@@ -19,6 +19,9 @@ import Terms from "./pages/marketing/Terms";
 // App pages
 import Auth from "./pages/Auth";
 import SelectRole from "./pages/SelectRole";
+import PlayerSignup from "./pages/PlayerSignup";
+import TrainerSignup from "./pages/TrainerSignup";
+import Onboarding from "./pages/Onboarding";
 import PlayerDashboard from "./pages/PlayerDashboard";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import Trainers from "./pages/Trainers";
@@ -66,6 +69,9 @@ const App = () => (
             
             {/* App routes */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/signup/player" element={<PlayerSignup />} />
+            <Route path="/signup/trainer" element={<TrainerSignup />} />
+            <Route path="/onboarding/:role" element={<Onboarding />} />
             <Route path="/select-role" element={<SelectRole />} />
             <Route path="/player" element={<PlayerDashboard />} />
             <Route path="/trainer" element={<TrainerDashboard />} />
