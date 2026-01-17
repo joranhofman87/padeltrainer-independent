@@ -39,7 +39,7 @@ type SlotStatus = "free" | "pending" | "partial" | "full" | "past";
 
 function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
-  if (slot.active_bookings >= slot.max_participants) return "full";
+  if (slot.active_bookings >= 4) return "full";
   if (slot.active_bookings > 0) return "partial";
   if (slot.pending_bookings > 0) return "pending";
   return "free";
@@ -78,7 +78,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
-  const spotsLeft = slot.max_participants - slot.active_bookings;
+  const spotsLeft = 4 - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
 
   const statusLabel = {
@@ -170,7 +170,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             </div>
             <div className="text-sm text-muted-foreground">
               <Users className="h-3 w-3 inline mr-1" />
-              {slot.active_bookings}/{slot.max_participants} {t("calendar.booked").toLowerCase()}
+              {slot.active_bookings}/4 {t("calendar.booked").toLowerCase()}
             </div>
           </div>
 
@@ -178,7 +178,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
           <div className="space-y-2">
             <div className="text-sm font-medium">{t("calendar.players")}</div>
             <div className="space-y-1">
-              {Array.from({ length: slot.max_participants }).map((_, index) => {
+              {Array.from({ length: 4 }).map((_, index) => {
                 const player = slot.booked_players?.[index];
                 
                 if (player) {
