@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2 } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+
+export interface BookedPlayer {
+  id: string;
+  name: string;
+  status: "confirmed" | "pending";
+  isGuest: boolean;
+}
 
 export interface SlotWithBookings {
   id: string;
@@ -24,6 +31,7 @@ export interface SlotWithBookings {
   is_past: boolean;
   cyclus_id: string | null;
   cyclus_name: string | null;
+  booked_players: BookedPlayer[];
 }
 
 type SlotStatus = "free" | "pending" | "partial" | "full" | "past";
@@ -165,6 +173,50 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
               {slot.active_bookings}/{slot.max_participants} {t("calendar.booked").toLowerCase()}
             </div>
           </div>
+
+          {/* Booked Players Section */}
+          {(slot.active_bookings > 0 || slot.pending_bookings > 0) && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">{t("calendar.players")}</div>
+              <div className="space-y-1">
+                {slot.booked_players && slot.booked_players.length > 0 ? (
+                  slot.booked_players.map((player) => (
+                    <div
+                      key={player.id}
+                      className={cn(
+                        "flex items-center gap-2 text-sm px-2 py-1.5 rounded-md",
+                        player.status === "confirmed"
+                          ? "bg-green-50 dark:bg-green-900/20"
+                          : "bg-yellow-50 dark:bg-yellow-900/20"
+                      )}
+                    >
+                      {player.status === "confirmed" ? (
+                        <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <Clock className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
+                      )}
+                      <span className={cn(
+                        player.status === "confirmed"
+                          ? "text-green-700 dark:text-green-300"
+                          : "text-yellow-700 dark:text-yellow-300"
+                      )}>
+                        {player.name}
+                      </span>
+                      {player.isGuest && (
+                        <span className="text-xs text-muted-foreground">
+                          ({t("calendar.guest")})
+                        </span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    {t("calendar.noPlayers")}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Edit & Delete buttons */}
           <div className="flex gap-2">
