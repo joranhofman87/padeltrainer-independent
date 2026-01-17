@@ -350,6 +350,7 @@ export type Database = {
           knltb_number: string | null
           location: string | null
           phone: string | null
+          rating_system: string
           skill_rating: number | null
           updated_at: string
           user_id: string
@@ -364,6 +365,7 @@ export type Database = {
           knltb_number?: string | null
           location?: string | null
           phone?: string | null
+          rating_system?: string
           skill_rating?: number | null
           updated_at?: string
           user_id: string
@@ -378,6 +380,7 @@ export type Database = {
           knltb_number?: string | null
           location?: string | null
           phone?: string | null
+          rating_system?: string
           skill_rating?: number | null
           updated_at?: string
           user_id?: string
