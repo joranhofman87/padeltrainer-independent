@@ -288,7 +288,7 @@ export default function PlayerDashboard() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🎾</span>
-            <span className="font-bold text-xl">PadelMatch</span>
+            <span className="font-bold text-xl">PadelTrainer.ai</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">

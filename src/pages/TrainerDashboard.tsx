@@ -249,7 +249,7 @@ export default function TrainerDashboard() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🎾</span>
-            <span className="font-bold text-xl">PadelMatch</span>
+            <span className="font-bold text-xl">PadelTrainer.ai</span>
             <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full">
               Trainer
             </span>
