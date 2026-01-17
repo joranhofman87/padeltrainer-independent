@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
-import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
+import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
@@ -172,28 +172,50 @@ export default function TrainerCalendar() {
 
       if (slotsError) throw slotsError;
 
-      // Fetch bookings for these slots
+      // Fetch bookings for these slots with player names
       const slotIds = availabilitySlots?.map((s) => s.id) || [];
       const { data: bookings, error: bookingsError } = await supabase
         .from("bookings")
-        .select("slot_id, status")
+        .select(`
+          id,
+          slot_id,
+          status,
+          player_id,
+          guest_player_id,
+          profiles:player_id (full_name),
+          guest_players:guest_player_id (full_name)
+        `)
         .in("slot_id", slotIds.length > 0 ? slotIds : ["none"]);
 
       if (bookingsError) throw bookingsError;
 
-      // Aggregate booking counts
+      // Aggregate booking counts and player info
       const bookingCounts: Record<
         string,
-        { confirmed: number; pending: number }
+        { confirmed: number; pending: number; players: BookedPlayer[] }
       > = {};
       bookings?.forEach((b) => {
         if (!bookingCounts[b.slot_id]) {
-          bookingCounts[b.slot_id] = { confirmed: 0, pending: 0 };
+          bookingCounts[b.slot_id] = { confirmed: 0, pending: 0, players: [] };
         }
         if (b.status === "confirmed") {
           bookingCounts[b.slot_id].confirmed++;
         } else if (b.status === "pending") {
           bookingCounts[b.slot_id].pending++;
+        }
+        
+        // Add player info
+        const profile = b.profiles as { full_name: string | null } | null;
+        const guestPlayer = b.guest_players as { full_name: string | null } | null;
+        const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
+        
+        if (b.status === "confirmed" || b.status === "pending") {
+          bookingCounts[b.slot_id].players.push({
+            id: b.id,
+            name: playerName,
+            status: b.status as "confirmed" | "pending",
+            isGuest: !!b.guest_player_id,
+          });
         }
       });
 
@@ -202,7 +224,7 @@ export default function TrainerCalendar() {
       const transformedSlots: SlotWithBookings[] = (availabilitySlots || []).map(
         (slot) => {
           const lesson = slot.lessons as { title: string; max_participants: number; price: number } | null;
-          const counts = bookingCounts[slot.id] || { confirmed: 0, pending: 0 };
+          const counts = bookingCounts[slot.id] || { confirmed: 0, pending: 0, players: [] };
 
           return {
             id: slot.id,
@@ -217,6 +239,7 @@ export default function TrainerCalendar() {
             is_past: new Date(slot.start_time) < now,
             cyclus_id: slot.cyclus_id || null,
             cyclus_name: slot.cyclus_name || null,
+            booked_players: counts.players,
           };
         }
       );
