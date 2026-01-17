@@ -371,54 +371,16 @@ export function BookForPlayerDialog({
             )}
           </div>
 
-          {/* Already Booked Players */}
-          {slot.booked_players && slot.booked_players.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <Label>{t("calendar.alreadyBooked")}</Label>
-              </div>
-              <div className="space-y-1">
-                {slot.booked_players.map((player) => (
-                  <div
-                    key={player.id}
-                    className={cn(
-                      "flex items-center gap-2 text-sm px-3 py-2 rounded-md",
-                      player.status === "confirmed"
-                        ? "bg-green-50 dark:bg-green-900/20"
-                        : "bg-yellow-50 dark:bg-yellow-900/20"
-                    )}
-                  >
-                    {player.status === "confirmed" ? (
-                      <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <Clock className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
-                    )}
-                    <span className={cn(
-                      player.status === "confirmed"
-                        ? "text-green-700 dark:text-green-300"
-                        : "text-yellow-700 dark:text-yellow-300"
-                    )}>
-                      {player.name}
-                    </span>
-                    {player.isGuest && (
-                      <span className="text-xs text-muted-foreground">
-                        ({t("calendar.guest")})
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Multi-player selection */}
+            {/* Unified 4-row player view */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>{t("bookings.selectPlayers")} *</Label>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <Label>{t("bookings.players")}</Label>
+                </div>
                 <span className="text-xs text-muted-foreground">
-                  {t("bookings.upToFourPlayers")}
+                  {(slot.booked_players?.length || 0) + selectedCount}/4 {t("bookings.booked")}
                 </span>
               </div>
               
@@ -430,24 +392,68 @@ export function BookForPlayerDialog({
               ) : (
                 <div className="space-y-2">
                   {[0, 1, 2, 3].map((index) => {
-                    const availablePlayers = getAvailablePlayersForSlot(index);
-                    const isRequired = index === 0;
-                    const currentPlayerId = selectedPlayerIds[index];
+                    const existingBookedPlayer = slot.booked_players?.[index];
+                    const existingBookedCount = slot.booked_players?.length || 0;
+                    
+                    // If this slot has an existing booked player, show it as read-only
+                    if (existingBookedPlayer) {
+                      return (
+                        <div
+                          key={index}
+                          className={cn(
+                            "flex items-center gap-2 text-sm px-3 py-2 rounded-md",
+                            existingBookedPlayer.status === "confirmed"
+                              ? "bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800"
+                              : "bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800"
+                          )}
+                        >
+                          <span className="text-muted-foreground w-20 shrink-0">
+                            {t("bookings.player")} {index + 1}
+                          </span>
+                          <div className="flex items-center gap-2 flex-1">
+                            {existingBookedPlayer.status === "confirmed" ? (
+                              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            ) : (
+                              <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                            )}
+                            <span className={cn(
+                              "font-medium",
+                              existingBookedPlayer.status === "confirmed"
+                                ? "text-green-700 dark:text-green-300"
+                                : "text-yellow-700 dark:text-yellow-300"
+                            )}>
+                              {existingBookedPlayer.name}
+                            </span>
+                            {existingBookedPlayer.isGuest && (
+                              <span className="text-xs text-muted-foreground">
+                                ({t("calendar.guest")})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    // For empty slots, show player selection
+                    const selectionIndex = index - existingBookedCount;
+                    const availablePlayers = getAvailablePlayersForSlot(selectionIndex);
+                    const isFirstEmptySlot = index === existingBookedCount;
+                    const currentPlayerId = selectedPlayerIds[selectionIndex];
                     const currentPlayer = players.find(p => p.id === currentPlayerId);
 
                     return (
                       <div key={index} className="flex gap-2 items-center">
                         <span className="text-sm text-muted-foreground w-20 shrink-0">
                           {t("bookings.player")} {index + 1}
-                          {isRequired && " *"}
+                          {isFirstEmptySlot && " *"}
                         </span>
                         <Select
                           value={currentPlayerId}
-                          onValueChange={(value) => handlePlayerSelect(index, value)}
+                          onValueChange={(value) => handlePlayerSelect(selectionIndex, value)}
                         >
                           <SelectTrigger className="flex-1">
                             <SelectValue placeholder={
-                              isRequired 
+                              isFirstEmptySlot 
                                 ? t("bookings.selectPlayerPlaceholder")
                                 : t("bookings.optionalPlayer")
                             } />
@@ -480,12 +486,12 @@ export function BookForPlayerDialog({
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 shrink-0"
-                            onClick={() => clearPlayerSlot(index)}
+                            onClick={() => clearPlayerSlot(selectionIndex)}
                           >
                             <X className="h-4 w-4" />
                           </Button>
                         )}
-                        {!currentPlayerId && index === 0 && (
+                        {!currentPlayerId && isFirstEmptySlot && (
                           <Button
                             type="button"
                             variant="outline"
@@ -500,8 +506,9 @@ export function BookForPlayerDialog({
                     );
                   })}
                   
-                  {/* Add player button when at least one slot is filled */}
-                  {selectedCount > 0 && selectedCount < 4 && (
+                  {/* Add player button when at least one slot is filled but not all 4 */}
+                  {((slot.booked_players?.length || 0) + selectedCount) > 0 && 
+                   ((slot.booked_players?.length || 0) + selectedCount) < 4 && (
                     <Button
                       type="button"
                       variant="outline"
