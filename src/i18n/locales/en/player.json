@@ -1,11 +1,17 @@
 {
+  "ratingSystem": {
+    "label": "Rating System",
+    "knltb": "KNLTB",
+    "playtomic": "Playtomic",
+    "description": "Select which rating system you use",
+    "range": "{{min}} - {{max}}"
+  },
   "dashboard": {
     "welcome": "Welcome back, {{name}}! 👋",
     "subtitle": "Find your next training session and improve your padel skills",
     "skillRating": {
       "title": "Your Skill Rating",
-      "knltb": "KNLTB",
-      "noRating": "Add your KNLTB rating or ask a trainer to set your level"
+      "noRating": "Add your rating or ask a trainer to set your level"
     },
     "stats": {
       "upcoming": "Upcoming",

@@ -181,6 +181,7 @@ export type Database = {
           linked_profile_id: string | null
           notes: string | null
           phone: string
+          rating_system: string
           skill_rating: number | null
           trainer_id: string
           updated_at: string
@@ -193,6 +194,7 @@ export type Database = {
           linked_profile_id?: string | null
           notes?: string | null
           phone: string
+          rating_system?: string
           skill_rating?: number | null
           trainer_id: string
           updated_at?: string
@@ -205,6 +207,7 @@ export type Database = {
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string
+          rating_system?: string
           skill_rating?: number | null
           trainer_id?: string
           updated_at?: string
