@@ -8,7 +8,6 @@ const corsHeaders = {
 };
 
 interface NotifyRequest {
-  trainer_id: string;
   slot_count: number;
   date_range: string;
   single_slot?: {
@@ -23,34 +22,62 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { trainer_id, slot_count, date_range, single_slot }: NotifyRequest = await req.json();
-
-    if (!trainer_id || !slot_count) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
       return new Response(
-        JSON.stringify({ error: "Missing required fields: trainer_id, slot_count" }),
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Create client to verify user token
+    const supabaseAuth = createClient(supabaseUrl, supabaseServiceKey);
+    const token = authHeader.replace("Bearer ", "");
+    
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+    
+    if (authError || !user) {
+      console.error("Authentication failed:", authError?.message);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Create service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get trainer profile from authenticated user - DO NOT trust trainer_id from request body
+    const { data: trainerProfile, error: trainerError } = await supabase
+      .from("trainer_profiles")
+      .select("id, user_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (trainerError || !trainerProfile) {
+      console.error("User is not a trainer:", trainerError?.message);
+      return new Response(
+        JSON.stringify({ error: "Only trainers can notify followers" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const trainer_id = trainerProfile.id;
+    const { slot_count, date_range, single_slot }: NotifyRequest = await req.json();
+
+    if (!slot_count) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: slot_count" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
     const isReopenedSlot = !!single_slot;
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Get trainer info
-    const { data: trainerProfile } = await supabase
-      .from("trainer_profiles")
-      .select("id, user_id")
-      .eq("id", trainer_id)
-      .single();
-
-    if (!trainerProfile) {
-      return new Response(
-        JSON.stringify({ error: "Trainer not found" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
 
     // Get trainer's name
     const { data: profile } = await supabase

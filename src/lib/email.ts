@@ -8,7 +8,8 @@ export type EmailType =
   | "payment_confirmed_player"
   | "payment_confirmed_trainer"
   | "new_booking_trainer"
-  | "new_availability";
+  | "new_availability"
+  | "manual_booking_confirmation";
 
 export interface EmailData {
   playerName?: string;
@@ -24,14 +25,29 @@ export interface EmailData {
   netAmount?: number;
 }
 
+/**
+ * Sends an email using the send-email edge function.
+ * Automatically includes authentication headers for security.
+ */
 export const sendEmail = async (
   type: EmailType,
   to: string,
   data: EmailData
 ): Promise<{ success: boolean; error?: string }> => {
   try {
+    // Get the current session for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      console.error("No active session for sending email");
+      return { success: false, error: "Authentication required" };
+    }
+
     const { data: response, error } = await supabase.functions.invoke("send-email", {
       body: { type, to, data },
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
     });
 
     if (error) {

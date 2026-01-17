@@ -325,16 +325,19 @@ export default function ManageSchedule() {
         return acc + 1;
       }, 0);
 
-      // Notify followers
+      // Notify followers with authentication
       try {
         const earliestStart = new Date(Math.min(...slotsToInsert.map(s => new Date(s.start_time).getTime())));
         const latestEnd = new Date(Math.max(...bulkSlots.map(c => addWeeks(c.startDate, c.recurrenceWeeks).getTime())));
         
+        const { data: { session } } = await supabase.auth.getSession();
         await supabase.functions.invoke('notify-followers', {
           body: {
-            trainer_id: trainerId,
             slot_count: totalInstances,
             date_range: `${format(earliestStart, 'MMM d')} - ${format(latestEnd, 'MMM d, yyyy')}`,
+          },
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
           },
         });
       } catch (notifyError) {
