@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat } from "lucide-react";
+import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -50,6 +50,8 @@ interface BookForPlayerDialogProps {
   onBookingCreated?: () => void;
 }
 
+const EMPTY_PLAYER_SLOTS = ["", "", "", ""];
+
 export function BookForPlayerDialog({
   open,
   onOpenChange,
@@ -64,7 +66,7 @@ export function BookForPlayerDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [players, setPlayers] = useState<GuestPlayer[]>([]);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(EMPTY_PLAYER_SLOTS);
   const [notes, setNotes] = useState("");
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
@@ -79,9 +81,11 @@ export function BookForPlayerDialog({
     }
   }, [open, trainerId, slot?.cyclus_id]);
 
-  // Reset scope when dialog closes
+  // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
+      setSelectedPlayerIds(EMPTY_PLAYER_SLOTS);
+      setNotes("");
       setBookingScope("single");
       setCyclusSlotsCount(0);
     }
@@ -124,19 +128,49 @@ export function BookForPlayerDialog({
     setPlayers([...players, player].sort((a, b) =>
       a.full_name.localeCompare(b.full_name)
     ));
-    setSelectedPlayerId(player.id);
+    // Add to first empty slot
+    const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
+    if (firstEmptyIndex !== -1) {
+      const newIds = [...selectedPlayerIds];
+      newIds[firstEmptyIndex] = player.id;
+      setSelectedPlayerIds(newIds);
+    }
     setShowAddPlayer(false);
   };
 
+  const handlePlayerSelect = (index: number, playerId: string) => {
+    const newIds = [...selectedPlayerIds];
+    newIds[index] = playerId;
+    setSelectedPlayerIds(newIds);
+  };
+
+  const clearPlayerSlot = (index: number) => {
+    const newIds = [...selectedPlayerIds];
+    newIds[index] = "";
+    setSelectedPlayerIds(newIds);
+  };
+
+  const getAvailablePlayersForSlot = (slotIndex: number) => {
+    // Filter out players already selected in other slots
+    const selectedInOtherSlots = selectedPlayerIds.filter((id, idx) => id && idx !== slotIndex);
+    return players.filter(player => !selectedInOtherSlots.includes(player.id));
+  };
+
+  const selectedCount = selectedPlayerIds.filter(id => id).length;
+  const hasAtLeastOnePlayer = selectedCount > 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slot || !selectedPlayerId) return;
+    if (!slot || !hasAtLeastOnePlayer) return;
 
     setIsLoading(true);
 
     try {
-      const player = players.find((p) => p.id === selectedPlayerId);
-      
+      const selectedPlayers = selectedPlayerIds
+        .filter(id => id)
+        .map(id => players.find(p => p.id === id)!)
+        .filter(Boolean);
+
       if (bookingScope === "cyclus" && slot.cyclus_id) {
         // Get all future slots in this cyclus
         const { data: cyclusSlots, error: cyclusError } = await supabase
@@ -152,10 +186,62 @@ export function BookForPlayerDialog({
           throw new Error("No future slots found in this cyclus");
         }
 
-        // Create bookings for all cyclus slots
-        const bookingsToInsert = cyclusSlots.map((s) => ({
-          slot_id: s.id,
-          guest_player_id: selectedPlayerId,
+        // Create bookings for all cyclus slots for ALL selected players
+        const bookingsToInsert = cyclusSlots.flatMap(s =>
+          selectedPlayers.map(player => ({
+            slot_id: s.id,
+            guest_player_id: player.id,
+            lesson_id: lesson?.id || null,
+            status: "confirmed",
+            payment_status: "pending",
+            payment_amount: lesson?.price || null,
+            notes: notes.trim() || null,
+          }))
+        );
+
+        const { error: bookingError } = await supabase
+          .from("bookings")
+          .insert(bookingsToInsert);
+
+        if (bookingError) throw bookingError;
+
+        // Send email notifications to all players
+        const firstSlot = cyclusSlots[0];
+        const lastSlot = cyclusSlots[cyclusSlots.length - 1];
+        
+        await Promise.all(
+          selectedPlayers.map(player =>
+            supabase.functions.invoke("send-email", {
+              body: {
+                type: "manual_booking_confirmation",
+                to: player.email,
+                data: {
+                  playerName: player.full_name,
+                  lessonTitle: `${slot.cyclus_name || lesson?.title || t("bookings.lesson")} (${cyclusSlots.length} ${t("calendar.sessions")})`,
+                  lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
+                  lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
+                  location: lesson?.location,
+                  price: lesson?.price ? lesson.price * cyclusSlots.length : null,
+                },
+              },
+            }).catch(err => console.log("Email notification failed:", err))
+          )
+        );
+
+        const totalBookings = selectedPlayers.length * cyclusSlots.length;
+        toast({
+          title: t("bookings.bookingCreated"),
+          description: t("bookings.multiBookingCreated", { 
+            players: selectedPlayers.length, 
+            sessions: cyclusSlots.length,
+            total: totalBookings
+          }),
+        });
+      } else {
+        // Single slot booking for all selected players
+        const bookingsToInsert = selectedPlayers.map(player => ({
+          slot_id: slot.id,
+          guest_player_id: player.id,
           lesson_id: lesson?.id || null,
           status: "confirmed",
           payment_status: "pending",
@@ -169,54 +255,10 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
-        // Send email notification for entire cyclus
-        if (player) {
-          try {
-            const firstSlot = cyclusSlots[0];
-            const lastSlot = cyclusSlots[cyclusSlots.length - 1];
-            await supabase.functions.invoke("send-email", {
-              body: {
-                type: "manual_booking_confirmation",
-                to: player.email,
-                data: {
-                  playerName: player.full_name,
-                  lessonTitle: `${slot.cyclus_name || lesson?.title || t("bookings.lesson")} (${cyclusSlots.length} ${t("calendar.sessions")})`,
-                  lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
-                  lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
-                  location: lesson?.location,
-                  price: lesson?.price ? lesson.price * cyclusSlots.length : null,
-                },
-              },
-            });
-          } catch (emailError) {
-            console.log("Email notification failed:", emailError);
-          }
-        }
-
-        toast({
-          title: t("bookings.bookingCreated"),
-          description: `${cyclusSlots.length} ${t("calendar.sessions")} ${t("bookings.bookingCreatedDescription").toLowerCase()}`,
-        });
-      } else {
-        // Single slot booking
-        const { error: bookingError } = await supabase
-          .from("bookings")
-          .insert({
-            slot_id: slot.id,
-            guest_player_id: selectedPlayerId,
-            lesson_id: lesson?.id || null,
-            status: "confirmed",
-            payment_status: "pending",
-            payment_amount: lesson?.price || null,
-            notes: notes.trim() || null,
-          });
-
-        if (bookingError) throw bookingError;
-
-        // Send email notification to guest player
-        if (player) {
-          try {
-            await supabase.functions.invoke("send-email", {
+        // Send email notifications to all players
+        await Promise.all(
+          selectedPlayers.map(player =>
+            supabase.functions.invoke("send-email", {
               body: {
                 type: "manual_booking_confirmation",
                 to: player.email,
@@ -229,19 +271,19 @@ export function BookForPlayerDialog({
                   price: lesson?.price,
                 },
               },
-            });
-          } catch (emailError) {
-            console.log("Email notification failed:", emailError);
-          }
-        }
+            }).catch(err => console.log("Email notification failed:", err))
+          )
+        );
 
         toast({
           title: t("bookings.bookingCreated"),
-          description: t("bookings.bookingCreatedDescription"),
+          description: selectedPlayers.length > 1 
+            ? t("bookings.multiPlayersBooked", { count: selectedPlayers.length })
+            : t("bookings.bookingCreatedDescription"),
         });
       }
 
-      setSelectedPlayerId("");
+      setSelectedPlayerIds(EMPTY_PLAYER_SLOTS);
       setNotes("");
       setBookingScope("single");
       onOpenChange(false);
@@ -262,10 +304,26 @@ export function BookForPlayerDialog({
 
   const hasCyclus = !!slot.cyclus_id && cyclusSlotsCount > 1;
 
+  const getConfirmButtonText = () => {
+    if (bookingScope === "cyclus" && hasCyclus) {
+      if (selectedCount > 1) {
+        return t("bookings.confirmBookingPlayersSessions", { 
+          players: selectedCount, 
+          sessions: cyclusSlotsCount 
+        });
+      }
+      return `${t("bookings.confirmBooking")} (${cyclusSlotsCount} ${t("calendar.sessions")})`;
+    }
+    if (selectedCount > 1) {
+      return t("bookings.confirmBookingPlayers", { players: selectedCount });
+    }
+    return t("bookings.confirmBooking");
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("bookings.bookForPlayer")}</DialogTitle>
             <DialogDescription>
@@ -311,49 +369,106 @@ export function BookForPlayerDialog({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="player">{t("bookings.selectPlayer")} *</Label>
+            {/* Multi-player selection */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>{t("bookings.selectPlayers")} *</Label>
+                <span className="text-xs text-muted-foreground">
+                  {t("bookings.upToFourPlayers")}
+                </span>
+              </div>
+              
               {isFetching ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>{t("common:loading")}</span>
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <Select
-                    value={selectedPlayerId}
-                    onValueChange={setSelectedPlayerId}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder={t("bookings.selectPlayerPlaceholder")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {players.length === 0 ? (
-                        <div className="p-2 text-sm text-muted-foreground text-center">
-                          {t("players.noPlayers")}
-                        </div>
-                      ) : (
-                        players.map((player) => (
-                          <SelectItem key={player.id} value={player.id}>
-                            <div className="flex flex-col">
-                              <span>{player.full_name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {player.email}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowAddPlayer(true)}
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2">
+                  {[0, 1, 2, 3].map((index) => {
+                    const availablePlayers = getAvailablePlayersForSlot(index);
+                    const isRequired = index === 0;
+                    const currentPlayerId = selectedPlayerIds[index];
+                    const currentPlayer = players.find(p => p.id === currentPlayerId);
+
+                    return (
+                      <div key={index} className="flex gap-2 items-center">
+                        <span className="text-sm text-muted-foreground w-20 shrink-0">
+                          {t("bookings.player")} {index + 1}
+                          {isRequired && " *"}
+                        </span>
+                        <Select
+                          value={currentPlayerId}
+                          onValueChange={(value) => handlePlayerSelect(index, value)}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder={
+                              isRequired 
+                                ? t("bookings.selectPlayerPlaceholder")
+                                : t("bookings.optionalPlayer")
+                            } />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availablePlayers.length === 0 ? (
+                              <div className="p-2 text-sm text-muted-foreground text-center">
+                                {players.length === 0 
+                                  ? t("players.noPlayers")
+                                  : t("bookings.allPlayersSelected")
+                                }
+                              </div>
+                            ) : (
+                              availablePlayers.map((player) => (
+                                <SelectItem key={player.id} value={player.id}>
+                                  <div className="flex flex-col">
+                                    <span>{player.full_name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {player.email}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {currentPlayerId && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => clearPlayerSlot(index)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!currentPlayerId && index === 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => setShowAddPlayer(true)}
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Add player button when at least one slot is filled */}
+                  {selectedCount > 0 && selectedCount < 4 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2"
+                      onClick={() => setShowAddPlayer(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      {t("players.addPlayer")}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -411,12 +526,10 @@ export function BookForPlayerDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isLoading || !selectedPlayerId}
+                disabled={isLoading || !hasAtLeastOnePlayer}
               >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {bookingScope === "cyclus" 
-                  ? `${t("bookings.confirmBooking")} (${cyclusSlotsCount})`
-                  : t("bookings.confirmBooking")}
+                {getConfirmButtonText()}
               </Button>
             </div>
           </form>
