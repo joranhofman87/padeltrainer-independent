@@ -13,6 +13,7 @@ interface TrainerCalendarGridProps {
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
+  onEditBooking?: (bookingId: string) => void;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
@@ -25,6 +26,7 @@ export function TrainerCalendarGrid({
   onBookForPlayer,
   onDuplicateCyclus,
   onDeleteSlot,
+  onEditBooking,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
 
@@ -58,7 +60,7 @@ export function TrainerCalendarGrid({
   }, [slots, weekDays]);
 
   if (view === "month") {
-    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} />;
+    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} onEditBooking={onEditBooking} />;
   }
 
   return (
@@ -127,6 +129,7 @@ export function TrainerCalendarGrid({
                           onBookForPlayer={onBookForPlayer}
                           onDuplicateCyclus={onDuplicateCyclus}
                           onDeleteSlot={onDeleteSlot}
+                          onEditBooking={onEditBooking}
                         />
                       ))}
                       {!isPastCell && slotsInCell.length === 0 && onCellClick && (
@@ -162,9 +165,10 @@ interface MonthViewProps {
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
+  onEditBooking?: (bookingId: string) => void;
 }
 
-function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot }: MonthViewProps) {
+function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking }: MonthViewProps) {
   const { t } = useTranslation("trainer");
 
   const monthDays = useMemo(() => {
@@ -232,6 +236,7 @@ function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onD
                   onBookForPlayer={onBookForPlayer}
                   onDuplicateCyclus={onDuplicateCyclus}
                   onDeleteSlot={onDeleteSlot}
+                  onEditBooking={onEditBooking}
                 />
               ))}
               {daySlots.length > 3 && (

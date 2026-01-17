@@ -31,6 +31,7 @@ import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDial
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
+import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -68,8 +69,10 @@ export default function TrainerCalendar() {
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
+  const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
+  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
@@ -214,7 +217,8 @@ export default function TrainerCalendar() {
         
         if (b.status === "confirmed" || b.status === "pending") {
           bookingCounts[b.slot_id].players.push({
-            id: b.id,
+            id: b.player_id || b.guest_player_id || b.id,
+            bookingId: b.id,
             name: playerName,
             status: b.status as "confirmed" | "pending",
             isGuest: !!b.guest_player_id,
@@ -332,6 +336,36 @@ export default function TrainerCalendar() {
   const handleDeleteSlot = (slot: SlotWithBookings) => {
     setSlotToDelete(slot);
     setDeleteSlotOpen(true);
+  };
+
+  const handleEditBooking = async (bookingId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(`
+          id,
+          status,
+          notes,
+          payment_status,
+          payment_amount,
+          guest_player_id,
+          availability_slots (id, start_time, end_time),
+          lessons (id, title, price, location),
+          profiles:player_id (id, full_name, email)
+        `)
+        .eq("id", bookingId)
+        .single();
+
+      if (error) throw error;
+
+      setBookingToEdit({
+        ...data,
+        player: data.profiles,
+      });
+      setEditBookingOpen(true);
+    } catch (error) {
+      console.error("Error fetching booking:", error);
+    }
   };
 
   return (
@@ -468,6 +502,7 @@ export default function TrainerCalendar() {
                 onBookForPlayer={handleBookForPlayer}
                 onDuplicateCyclus={handleDuplicateCyclus}
                 onDeleteSlot={handleDeleteSlot}
+                onEditBooking={handleEditBooking}
               />
             )}
           </CardContent>
@@ -550,6 +585,20 @@ export default function TrainerCalendar() {
         slot={slotToDelete}
         trainerId={trainerId || ""}
         onSlotDeleted={handleSlotsCreated}
+      />
+
+      {/* Edit Booking Dialog */}
+      <EditBookingDialog
+        open={editBookingOpen}
+        onOpenChange={(open) => {
+          setEditBookingOpen(open);
+          if (!open) {
+            setBookingToEdit(null);
+          }
+        }}
+        booking={bookingToEdit}
+        trainerId={trainerId || ""}
+        onBookingUpdated={handleSlotsCreated}
       />
     </div>
   );

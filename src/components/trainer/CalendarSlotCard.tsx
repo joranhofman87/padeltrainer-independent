@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 
 export interface BookedPlayer {
   id: string;
+  bookingId: string;
   name: string;
   status: "confirmed" | "pending";
   isGuest: boolean;
@@ -68,9 +69,10 @@ interface CalendarSlotCardProps {
   onDuplicateCyclus?: (cyclusId: string) => void;
   onEditSlot?: (slot: SlotWithBookings) => void;
   onDeleteSlot?: (slot: SlotWithBookings) => void;
+  onEditBooking?: (bookingId: string) => void;
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -182,28 +184,44 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
                     <div
                       key={player.id}
                       className={cn(
-                        "flex items-center gap-2 text-sm px-2 py-1.5 rounded-md",
+                        "flex items-center justify-between text-sm px-2 py-1.5 rounded-md",
                         player.status === "confirmed"
                           ? "bg-green-50 dark:bg-green-900/20"
                           : "bg-yellow-50 dark:bg-yellow-900/20"
                       )}
                     >
-                      {player.status === "confirmed" ? (
-                        <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <Clock className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
-                      )}
-                      <span className={cn(
-                        player.status === "confirmed"
-                          ? "text-green-700 dark:text-green-300"
-                          : "text-yellow-700 dark:text-yellow-300"
-                      )}>
-                        {player.name}
-                      </span>
-                      {player.isGuest && (
-                        <span className="text-xs text-muted-foreground">
-                          ({t("calendar.guest")})
+                      <div className="flex items-center gap-2">
+                        {player.status === "confirmed" ? (
+                          <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
+                        ) : (
+                          <Clock className="h-3 w-3 text-yellow-600 dark:text-yellow-400" />
+                        )}
+                        <span className={cn(
+                          player.status === "confirmed"
+                            ? "text-green-700 dark:text-green-300"
+                            : "text-yellow-700 dark:text-yellow-300"
+                        )}>
+                          {player.name}
                         </span>
+                        {player.isGuest && (
+                          <span className="text-xs text-muted-foreground">
+                            ({t("calendar.guest")})
+                          </span>
+                        )}
+                      </div>
+                      {onEditBooking && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditBooking(player.bookingId);
+                          }}
+                          title={t("bookings.editBooking", "Edit Booking")}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
                       )}
                     </div>
                   ))
