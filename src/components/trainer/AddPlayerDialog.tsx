@@ -126,8 +126,8 @@ export function AddPlayerDialog({
         .insert({
           trainer_id: trainerId,
           full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
+          email: email.trim().toLowerCase() || "",
+          phone: phone.trim() || "",
           skill_rating: skillRating ? parseFloat(skillRating) : null,
           rating_system: ratingSystem,
           notes: notes.trim() || null,
@@ -192,7 +192,7 @@ export function AddPlayerDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">{t("players.email")} *</Label>
+            <Label htmlFor="email">{t("players.email")}</Label>
             <div className="relative">
               <Input
                 id="email"
@@ -204,7 +204,6 @@ export function AddPlayerDialog({
                 }}
                 onBlur={handleEmailBlur}
                 placeholder={t("players.emailPlaceholder")}
-                required
               />
               {isCheckingEmail && (
                 <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -229,54 +228,49 @@ export function AddPlayerDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">{t("players.phone")} *</Label>
+            <Label htmlFor="phone">{t("players.phone")}</Label>
             <Input
               id="phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder={t("players.phonePlaceholder")}
-              required
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="ratingSystem">{t("players.ratingSystem")}</Label>
-            <Select
-              value={ratingSystem}
-              onValueChange={(value: RatingSystem) => {
-                setRatingSystem(value);
-                setSkillRating("");
-              }}
-            >
-              <SelectTrigger id="ratingSystem">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(RATING_SYSTEMS).map((system) => (
-                  <SelectItem key={system.id} value={system.id}>
-                    {system.name} ({system.min} - {system.max})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="skillRating">{t("players.skillRating")}</Label>
-            <Input
-              id="skillRating"
-              type="number"
-              step={getRatingSystemConfig(ratingSystem).step}
-              min={getRatingSystemConfig(ratingSystem).min}
-              max={getRatingSystemConfig(ratingSystem).max}
-              value={skillRating}
-              onChange={(e) => setSkillRating(e.target.value)}
-              placeholder={t("players.skillRatingPlaceholder")}
-            />
-            <p className="text-xs text-muted-foreground">
-              {getRatingSystemConfig(ratingSystem).min} - {getRatingSystemConfig(ratingSystem).max}
-            </p>
+            <div className="flex items-center gap-2">
+              <Select
+                value={ratingSystem}
+                onValueChange={(value: RatingSystem) => {
+                  setRatingSystem(value);
+                  setSkillRating("");
+                }}
+              >
+                <SelectTrigger className="w-32 shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(RATING_SYSTEMS).map((system) => (
+                    <SelectItem key={system.id} value={system.id}>
+                      {system.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                id="skillRating"
+                type="number"
+                step={getRatingSystemConfig(ratingSystem).step}
+                min={getRatingSystemConfig(ratingSystem).min}
+                max={getRatingSystemConfig(ratingSystem).max}
+                value={skillRating}
+                onChange={(e) => setSkillRating(e.target.value)}
+                placeholder={`${getRatingSystemConfig(ratingSystem).min} - ${getRatingSystemConfig(ratingSystem).max}`}
+                className="flex-1"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
