@@ -243,6 +243,8 @@ interface BulkCreateSheetProps {
   onOpenChange: (open: boolean) => void;
   trainerId: string | null;
   lessons: Lesson[];
+  defaultDate?: Date;
+  defaultTime?: string;
   defaultDuration: number;
   defaultWeeks: number;
   onSlotsCreated: () => void;
@@ -253,6 +255,8 @@ export function BulkCreateSheet({
   onOpenChange,
   trainerId,
   lessons,
+  defaultDate,
+  defaultTime,
   defaultDuration,
   defaultWeeks,
   onSlotsCreated,
@@ -282,11 +286,18 @@ export function BulkCreateSheet({
     setPlayers(data || []);
   };
 
-  const getNextMonday = () => {
+  const getInitialStartDate = () => {
+    if (defaultDate) {
+      return startOfDay(defaultDate);
+    }
     const today = new Date();
     const dayOfWeek = getDay(today);
     const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
     return startOfDay(addMinutes(today, daysUntilMonday * 24 * 60));
+  };
+
+  const getInitialStartTime = () => {
+    return defaultTime || "09:00";
   };
 
   const generateCyclusName = (startDate: Date, startTime: string, lessonId: string | null) => {
@@ -297,9 +308,29 @@ export function BulkCreateSheet({
       : `${t("calendar.cyclus")} ${dayName} ${startTime}`;
   };
 
+  // Auto-add first slot when opened via cell click with default date/time
+  useEffect(() => {
+    if (open && defaultDate && bulkSlots.length === 0) {
+      const newStartDate = getInitialStartDate();
+      const newStartTime = getInitialStartTime();
+      setBulkSlots([
+        {
+          startDate: newStartDate,
+          startTime: newStartTime,
+          durationMinutes: defaultDuration,
+          recurrenceWeeks: defaultWeeks,
+          lessonId: null,
+          cyclusName: generateCyclusName(newStartDate, newStartTime, null),
+          addPlayers: false,
+          selectedPlayers: [],
+        },
+      ]);
+    }
+  }, [open, defaultDate]);
+
   const addBulkSlotConfig = () => {
-    const newStartDate = getNextMonday();
-    const newStartTime = "09:00";
+    const newStartDate = getInitialStartDate();
+    const newStartTime = getInitialStartTime();
     setBulkSlots([
       ...bulkSlots,
       {

@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
@@ -64,6 +65,7 @@ export default function TrainerCalendar() {
   });
 
   // Dialog states
+  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
@@ -313,7 +315,15 @@ export default function TrainerCalendar() {
   const handleCellClick = (date: Date, hour: number) => {
     setDefaultSlotDate(date);
     setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
+    setSlotTypeChoiceOpen(true);
+  };
+
+  const handleChooseSingleSlot = () => {
     setAddSlotOpen(true);
+  };
+
+  const handleChooseCyclus = () => {
+    setBulkCreateOpen(true);
   };
 
   const handleSlotsCreated = () => {
@@ -513,6 +523,14 @@ export default function TrainerCalendar() {
         </Card>
       </main>
 
+      {/* Slot Type Choice Dialog */}
+      <SlotTypeChoiceDialog
+        open={slotTypeChoiceOpen}
+        onOpenChange={setSlotTypeChoiceOpen}
+        onChooseSingleSlot={handleChooseSingleSlot}
+        onChooseCyclus={handleChooseCyclus}
+      />
+
       {/* Add Slot Dialog */}
       <AddSlotDialog
         open={addSlotOpen}
@@ -532,6 +550,8 @@ export default function TrainerCalendar() {
         onOpenChange={setBulkCreateOpen}
         trainerId={trainerId}
         lessons={lessons}
+        defaultDate={defaultSlotDate}
+        defaultTime={defaultSlotTime}
         defaultDuration={settings.slot_duration_minutes}
         defaultWeeks={settings.schedule_weeks_ahead}
         onSlotsCreated={handleSlotsCreated}
