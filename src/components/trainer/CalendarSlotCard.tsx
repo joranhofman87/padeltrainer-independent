@@ -117,9 +117,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
     </div>
   );
 
-  if (slot.is_past) {
-    return cardContent;
-  }
+  // Past slots can now also open popovers
 
   return (
     <Popover>
@@ -218,66 +216,55 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             </div>
           )}
 
-          {/* Edit & Delete buttons */}
-          <div className="flex gap-2">
-            {onEditSlot && (
+          {/* Action icons row */}
+          <div className="flex items-center justify-between pt-1 border-t">
+            <div className="flex gap-1">
+              {onEditSlot && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onEditSlot(slot)}
+                  title={t("common:edit", "Edit")}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
+              {slot.cyclus_id && onDuplicateCyclus && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onDuplicateCyclus(slot.cyclus_id!)}
+                  title={t("calendar.duplicateCyclus")}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              )}
+              {onDeleteSlot && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => onDeleteSlot(slot)}
+                  title={t("common:delete", "Delete")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            
+            {hasSpots && onBookForPlayer && !slot.is_past && (
               <Button
-                variant="outline"
+                variant="default"
                 size="sm"
-                className="flex-1"
-                onClick={() => onEditSlot(slot)}
+                onClick={() => onBookForPlayer(slot)}
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                {t("common:edit", "Edit")}
-              </Button>
-            )}
-            {onDeleteSlot && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 text-destructive hover:text-destructive"
-                onClick={() => onDeleteSlot(slot)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("common:delete", "Delete")}
+                <UserPlus className="mr-2 h-4 w-4" />
+                {t("bookings.bookForPlayer")}
               </Button>
             )}
           </div>
-
-          {slot.active_bookings > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => navigate("/trainer-bookings")}
-            >
-              {t("bookings.title")}
-            </Button>
-          )}
-
-          {hasSpots && onBookForPlayer && (
-            <Button
-              variant="default"
-              size="sm"
-              className="w-full"
-              onClick={() => onBookForPlayer(slot)}
-            >
-              <UserPlus className="mr-2 h-4 w-4" />
-              {t("bookings.bookForPlayer")}
-            </Button>
-          )}
-
-          {slot.cyclus_id && onDuplicateCyclus && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => onDuplicateCyclus(slot.cyclus_id!)}
-            >
-              <Copy className="mr-2 h-4 w-4" />
-              {t("calendar.duplicateCyclus")}
-            </Button>
-          )}
         </div>
       </PopoverContent>
     </Popover>
