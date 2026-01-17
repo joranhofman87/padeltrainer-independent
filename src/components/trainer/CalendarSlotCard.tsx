@@ -174,13 +174,16 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             </div>
           </div>
 
-          {/* Booked Players Section */}
-          {(slot.active_bookings > 0 || slot.pending_bookings > 0) && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">{t("calendar.players")}</div>
-              <div className="space-y-1">
-                {slot.booked_players && slot.booked_players.length > 0 ? (
-                  slot.booked_players.map((player) => (
+          {/* Player Slots Section - Always show max_participants boxes */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium">{t("calendar.players")}</div>
+            <div className="space-y-1">
+              {Array.from({ length: slot.max_participants }).map((_, index) => {
+                const player = slot.booked_players?.[index];
+                
+                if (player) {
+                  // Filled slot
+                  return (
                     <div
                       key={player.id}
                       className={cn(
@@ -224,15 +227,24 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
                         </Button>
                       )}
                     </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    {t("calendar.noPlayers")}
-                  </div>
-                )}
-              </div>
+                  );
+                } else {
+                  // Empty slot
+                  return (
+                    <div
+                      key={`empty-${index}`}
+                      className="flex items-center justify-between text-sm px-2 py-1.5 rounded-md bg-muted/50 border border-dashed border-muted-foreground/30"
+                    >
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="h-3 w-3" />
+                        <span className="italic">{t("calendar.emptySlot", "Empty slot")}</span>
+                      </div>
+                    </div>
+                  );
+                }
+              })}
             </div>
-          )}
+          </div>
 
           {/* Action icons row */}
           <div className="flex items-center justify-between pt-1 border-t">
