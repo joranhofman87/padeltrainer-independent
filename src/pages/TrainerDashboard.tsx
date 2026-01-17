@@ -22,6 +22,7 @@ interface SetupStatus {
   hasLessons: boolean;
   hasAvailability: boolean;
   stripeComplete: boolean;
+  hasPlayers: boolean;
 }
 
 export default function TrainerDashboard() {
@@ -39,6 +40,7 @@ export default function TrainerDashboard() {
     hasLessons: false,
     hasAvailability: false,
     stripeComplete: false,
+    hasPlayers: false,
   });
   const [setupLoading, setSetupLoading] = useState(true);
   const [isSetupExpanded, setIsSetupExpanded] = useState(() => {
@@ -119,11 +121,20 @@ export default function TrainerDashboard() {
 
       const stripeComplete = !!(stripeData?.onboarding_complete && stripeData?.charges_enabled);
 
+      // Check if trainer has players
+      const { count: playerCount } = await supabase
+        .from('guest_players')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', trainerId);
+
+      const hasPlayers = (playerCount || 0) > 0;
+
       setSetupStatus({
         profileComplete,
         hasLessons,
         hasAvailability,
         stripeComplete,
+        hasPlayers,
       });
     } catch (error) {
       console.error('Error fetching setup status:', error);
@@ -277,7 +288,7 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Setup Checklist - Only show if not all complete */}
-        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete) && (
+        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete && setupStatus.hasPlayers) && (
           <SetupChecklist
             setupStatus={setupStatus}
             isExpanded={isSetupExpanded}
@@ -525,8 +536,9 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
   const steps = [
     { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
     { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
-    { key: 'hasAvailability', label: 'Set your availability', route: '/schedule', complete: setupStatus.hasAvailability },
-    { key: 'stripeComplete', label: 'Set up payments with Stripe Connect', route: '/earnings', complete: setupStatus.stripeComplete },
+    { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
+    { key: 'stripeComplete', label: 'Set up payments with Stripe', route: '/earnings', complete: setupStatus.stripeComplete },
+    { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
   ];
 
   const completedCount = steps.filter(s => s.complete).length;

@@ -56,12 +56,16 @@
           "description": "Add your first lesson type"
         },
         "availability": {
-          "title": "Set Availability",
-          "description": "Add available time slots"
+          "title": "Create Schedule",
+          "description": "Add training cyclus or individual slots"
         },
         "payments": {
           "title": "Connect Payments",
           "description": "Set up Stripe to receive payouts"
+        },
+        "players": {
+          "title": "Add Players",
+          "description": "Add your first player to your list"
         }
       }
     }
