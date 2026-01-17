@@ -757,18 +757,18 @@ export function BulkCreateSheet({
                                 ))}
                               </SelectContent>
                             </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => setAddPlayerDialogOpen(true)}
+                              title={t("players.addPlayer")}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
                           </div>
                         ))}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setAddPlayerDialogOpen(true)}
-                          className="gap-1 text-xs"
-                        >
-                          <UserPlus className="h-3 w-3" />
-                          {t("players.addPlayer")}
-                        </Button>
                       </div>
                     )}
                   </div>
