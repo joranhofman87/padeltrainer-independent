@@ -12,6 +12,7 @@ interface TrainerCalendarGridProps {
   onCellClick?: (date: Date, hour: number) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
+  onDeleteSlot?: (slot: SlotWithBookings) => void;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
@@ -23,6 +24,7 @@ export function TrainerCalendarGrid({
   onCellClick,
   onBookForPlayer,
   onDuplicateCyclus,
+  onDeleteSlot,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
 
@@ -56,7 +58,7 @@ export function TrainerCalendarGrid({
   }, [slots, weekDays]);
 
   if (view === "month") {
-    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} />;
+    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} />;
   }
 
   return (
@@ -124,6 +126,7 @@ export function TrainerCalendarGrid({
                           slot={slot} 
                           onBookForPlayer={onBookForPlayer}
                           onDuplicateCyclus={onDuplicateCyclus}
+                          onDeleteSlot={onDeleteSlot}
                         />
                       ))}
                       {!isPastCell && slotsInCell.length === 0 && onCellClick && (
@@ -158,9 +161,10 @@ interface MonthViewProps {
   currentDate: Date;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
+  onDeleteSlot?: (slot: SlotWithBookings) => void;
 }
 
-function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus }: MonthViewProps) {
+function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot }: MonthViewProps) {
   const { t } = useTranslation("trainer");
 
   const monthDays = useMemo(() => {
@@ -227,6 +231,7 @@ function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus }: M
                   compact 
                   onBookForPlayer={onBookForPlayer}
                   onDuplicateCyclus={onDuplicateCyclus}
+                  onDeleteSlot={onDeleteSlot}
                 />
               ))}
               {daySlots.length > 3 && (

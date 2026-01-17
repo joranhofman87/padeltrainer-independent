@@ -30,6 +30,7 @@ import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlo
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -66,7 +67,9 @@ export default function TrainerCalendar() {
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
   const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
+  const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
@@ -326,6 +329,11 @@ export default function TrainerCalendar() {
     setDuplicateCyclusOpen(true);
   };
 
+  const handleDeleteSlot = (slot: SlotWithBookings) => {
+    setSlotToDelete(slot);
+    setDeleteSlotOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -459,6 +467,7 @@ export default function TrainerCalendar() {
                 onCellClick={handleCellClick}
                 onBookForPlayer={handleBookForPlayer}
                 onDuplicateCyclus={handleDuplicateCyclus}
+                onDeleteSlot={handleDeleteSlot}
               />
             )}
           </CardContent>
@@ -527,6 +536,20 @@ export default function TrainerCalendar() {
         trainerId={trainerId || ""}
         preselectedCyclusId={preselectedCyclusId}
         onCyclusCreated={handleSlotsCreated}
+      />
+
+      {/* Delete Slot Dialog */}
+      <DeleteSlotDialog
+        open={deleteSlotOpen}
+        onOpenChange={(open) => {
+          setDeleteSlotOpen(open);
+          if (!open) {
+            setSlotToDelete(null);
+          }
+        }}
+        slot={slotToDelete}
+        trainerId={trainerId || ""}
+        onSlotDeleted={handleSlotsCreated}
       />
     </div>
   );
