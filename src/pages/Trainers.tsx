@@ -62,10 +62,10 @@ export default function Trainers() {
       return;
     }
 
-    // Fetch profiles for all trainers
+    // Fetch profiles for all trainers (using public view to protect PII)
     const userIds = trainerProfiles.map(t => t.user_id);
     const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
+      .from('profiles_public')
       .select('user_id, full_name, avatar_url, bio, location')
       .in('user_id', userIds);
 

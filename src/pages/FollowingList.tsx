@@ -82,10 +82,10 @@ export default function FollowingList() {
         return;
       }
 
-      // Get user profiles
+      // Get user profiles (using public view to protect PII)
       const userIds = trainers.map((t) => t.user_id);
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('profiles_public')
         .select('user_id, full_name, avatar_url, location')
         .in('user_id', userIds);
 
