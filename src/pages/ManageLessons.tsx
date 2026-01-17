@@ -7,11 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -22,13 +19,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, Repeat, CreditCard, CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-
-const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function ManageLessons() {
   const { user, profile, role, loading } = useAuth();
@@ -52,15 +45,6 @@ export default function ManageLessons() {
     max_skill_rating: '',
     location: '',
     is_active: true,
-    // Recurring fields
-    is_recurring: false,
-    recurrence_type: 'weekly' as 'daily' | 'weekly' | 'monthly',
-    recurrence_day: 1, // Monday by default
-    recurrence_time: '09:00',
-    recurrence_count: 10,
-    recurrence_end_date: '',
-    start_date: null as Date | null,
-    // Payment
     payment_timing: 'upfront' as 'upfront' | 'after',
   });
 
@@ -114,13 +98,6 @@ export default function ManageLessons() {
       max_skill_rating: '',
       location: '',
       is_active: true,
-      is_recurring: false,
-      recurrence_type: 'weekly',
-      recurrence_day: 1,
-      recurrence_time: '09:00',
-      recurrence_count: 10,
-      recurrence_end_date: '',
-      start_date: null,
       payment_timing: 'upfront',
     });
     setEditingLesson(null);
@@ -138,13 +115,6 @@ export default function ManageLessons() {
       max_skill_rating: lesson.max_skill_rating?.toString() || '',
       location: lesson.location || '',
       is_active: lesson.is_active,
-      is_recurring: lesson.is_recurring || false,
-      recurrence_type: lesson.recurrence_type || 'weekly',
-      recurrence_day: lesson.recurrence_day || 1,
-      recurrence_time: lesson.recurrence_time || '09:00',
-      recurrence_count: lesson.recurrence_count || 10,
-      recurrence_end_date: lesson.recurrence_end_date || '',
-      start_date: lesson.start_date ? new Date(lesson.start_date) : null,
       payment_timing: lesson.payment_timing || 'upfront',
     });
     setDialogOpen(true);
@@ -155,15 +125,6 @@ export default function ManageLessons() {
       toast({
         title: 'Validation Error',
         description: 'Please fill in all required fields',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (formData.is_recurring && !formData.start_date) {
-      toast({
-        title: 'Start Date Required',
-        description: 'Please select a start date for the recurring lesson cycle',
         variant: 'destructive',
       });
       return;
@@ -192,15 +153,13 @@ export default function ManageLessons() {
         max_skill_rating: formData.max_skill_rating ? parseFloat(formData.max_skill_rating) : null,
         location: formData.location || null,
         is_active: formData.is_active,
-        // Recurring fields
-        is_recurring: formData.is_recurring,
-        recurrence_type: formData.is_recurring ? formData.recurrence_type : null,
-        recurrence_day: formData.is_recurring ? formData.recurrence_day : null,
-        recurrence_time: formData.is_recurring ? formData.recurrence_time : null,
-        recurrence_count: formData.is_recurring ? formData.recurrence_count : null,
-        recurrence_end_date: formData.is_recurring && formData.recurrence_end_date ? formData.recurrence_end_date : null,
-        start_date: formData.is_recurring && formData.start_date ? format(formData.start_date, 'yyyy-MM-dd') : null,
-        // Payment
+        is_recurring: false,
+        recurrence_type: null,
+        recurrence_day: null,
+        recurrence_time: null,
+        recurrence_count: null,
+        recurrence_end_date: null,
+        start_date: null,
         payment_timing: formData.payment_timing,
       };
 
@@ -389,144 +348,6 @@ export default function ManageLessons() {
                   />
                 </div>
 
-                {/* Recurring Lesson Section */}
-                <div className="border-t pt-4 mt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <Label htmlFor="recurring">Recurring Lesson</Label>
-                        <p className="text-sm text-muted-foreground">Schedule this lesson to repeat</p>
-                      </div>
-                    </div>
-                    <Switch
-                      id="recurring"
-                      checked={formData.is_recurring}
-                      onCheckedChange={(checked) => setFormData({ ...formData, is_recurring: checked })}
-                    />
-                  </div>
-
-                  {formData.is_recurring && (
-                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-                      {/* Start Date - Most important for recurring */}
-                      <div className="space-y-2">
-                        <Label>Start Date *</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !formData.start_date && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {formData.start_date ? format(formData.start_date, "PPP") : <span>Pick a start date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={formData.start_date || undefined}
-                              onSelect={(date) => setFormData({ ...formData, start_date: date || null })}
-                              disabled={(date) => date < new Date()}
-                              initialFocus
-                              className={cn("p-3 pointer-events-auto")}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <p className="text-xs text-muted-foreground">
-                          When should the first lesson of this cycle start?
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Repeat</Label>
-                        <Select
-                          value={formData.recurrence_type}
-                          onValueChange={(value: 'daily' | 'weekly' | 'monthly') => setFormData({ ...formData, recurrence_type: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="daily">Daily</SelectItem>
-                            <SelectItem value="weekly">Weekly</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {formData.recurrence_type === 'weekly' && (
-                        <div className="space-y-2">
-                          <Label>Day of Week</Label>
-                          <Select
-                            value={formData.recurrence_day.toString()}
-                            onValueChange={(value) => setFormData({ ...formData, recurrence_day: parseInt(value) })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DAYS_OF_WEEK.map((day, index) => (
-                                <SelectItem key={index} value={index.toString()}>
-                                  {day}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {formData.recurrence_type === 'monthly' && (
-                        <div className="space-y-2">
-                          <Label>Day of Month</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={31}
-                            value={formData.recurrence_day}
-                            onChange={(e) => setFormData({ ...formData, recurrence_day: parseInt(e.target.value) || 1 })}
-                          />
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Time</Label>
-                          <Input
-                            type="time"
-                            value={formData.recurrence_time}
-                            onChange={(e) => setFormData({ ...formData, recurrence_time: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Number of Sessions</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={52}
-                            value={formData.recurrence_count}
-                            onChange={(e) => setFormData({ ...formData, recurrence_count: parseInt(e.target.value) || 1 })}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>End Date (optional)</Label>
-                        <Input
-                          type="date"
-                          value={formData.recurrence_end_date}
-                          onChange={(e) => setFormData({ ...formData, recurrence_end_date: e.target.value })}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Leave empty to use number of sessions instead
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 {/* Payment Timing Section */}
                 <div className="border-t pt-4 mt-4">
                   <div className="flex items-center gap-2 mb-4">
@@ -609,14 +430,6 @@ export default function ManageLessons() {
                         {!lesson.is_active && (
                           <Badge variant="secondary" className="text-xs">Inactive</Badge>
                         )}
-                        {lesson.is_recurring && (
-                          <Badge variant="outline" className="text-xs gap-1">
-                            <Repeat className="h-3 w-3" />
-                            {lesson.recurrence_type === 'weekly' && DAYS_OF_WEEK[lesson.recurrence_day || 0]}
-                            {lesson.recurrence_type === 'daily' && 'Daily'}
-                            {lesson.recurrence_type === 'monthly' && `Day ${lesson.recurrence_day}`}
-                          </Badge>
-                        )}
                         <Badge 
                           variant="outline" 
                           className={`text-xs ${lesson.payment_timing === 'after' ? 'border-orange-300 text-orange-600' : 'border-green-300 text-green-600'}`}
@@ -669,14 +482,6 @@ export default function ManageLessons() {
                       </div>
                     )}
                   </div>
-                  {lesson.is_recurring && lesson.recurrence_time && (
-                    <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3 w-3" />
-                        {lesson.recurrence_time} • {lesson.recurrence_count} sessions
-                      </div>
-                    </div>
-                  )}
                   {(lesson.min_skill_rating || lesson.max_skill_rating) && (
                     <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
                       Rating: {lesson.min_skill_rating || '0'} - {lesson.max_skill_rating || '10'}
