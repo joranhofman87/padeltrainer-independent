@@ -17,6 +17,8 @@ export interface BookedPlayer {
   name: string;
   status: "confirmed" | "pending";
   isGuest: boolean;
+  skillRating?: number | null;
+  ratingSystem?: string;
 }
 
 export interface SlotWithBookings {
@@ -72,6 +74,23 @@ interface CalendarSlotCardProps {
   onEditBooking?: (bookingId: string) => void;
 }
 
+// Calculate average rating of booked players
+function calculateAverageRating(players: BookedPlayer[]): { average: number | null; system: string | null; count: number } {
+  const playersWithRatings = players.filter(p => p.skillRating != null);
+  if (playersWithRatings.length === 0) return { average: null, system: null, count: 0 };
+  
+  // Check if all players use the same system (prioritize showing that)
+  const systems = playersWithRatings.map(p => p.ratingSystem).filter(Boolean);
+  const dominantSystem = systems.length > 0 ? systems[0] : 'knltb';
+  
+  const sum = playersWithRatings.reduce((acc, p) => acc + (p.skillRating || 0), 0);
+  return { 
+    average: sum / playersWithRatings.length, 
+    system: dominantSystem || null,
+    count: playersWithRatings.length 
+  };
+}
+
 export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
@@ -80,6 +99,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
   const endTime = format(new Date(slot.end_time), "HH:mm");
   const spotsLeft = 4 - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
+
+  // Calculate average rating for display
+  const ratingInfo = calculateAverageRating(slot.booked_players || []);
 
   const statusLabel = {
     free: t("calendar.available"),
@@ -158,7 +180,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div
               className={cn(
                 "px-2 py-1 rounded text-xs font-medium",
@@ -173,6 +195,19 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
               {slot.active_bookings}/4 {t("calendar.booked").toLowerCase()}
             </div>
           </div>
+
+          {/* Average Level Badge */}
+          {ratingInfo.average !== null && (
+            <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/10">
+              <div className="text-xs text-muted-foreground">{t("calendar.averageLevel", "Avg. Level")}:</div>
+              <Badge variant="secondary" className="font-semibold">
+                {ratingInfo.average.toFixed(1)}
+              </Badge>
+              <span className="text-xs text-muted-foreground uppercase">
+                {ratingInfo.system || 'knltb'}
+              </span>
+            </div>
+          )}
 
           {/* Player Slots Section - Always show max_participants boxes */}
           <div className="space-y-2">
