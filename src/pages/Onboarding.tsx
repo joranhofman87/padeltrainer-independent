@@ -9,6 +9,7 @@ import { setUserRole, updateProfile, UserRole } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Phone, User, CheckCircle2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
@@ -37,32 +38,64 @@ export default function Onboarding() {
     }
   }, [user, role, loading, navigate, pendingRole]);
 
+  const triggerRatingScrape = async (profileId: string, knltb: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-knltb-rating', {
+        body: {
+          knltbNumber: knltb,
+          profileId: profileId,
+          storeHistory: true,
+        },
+      });
+      
+      if (error) {
+        console.error('Rating scrape error:', error);
+      } else if (data?.success) {
+        console.log('Rating scraped successfully:', data.data?.rating);
+      }
+    } catch (err) {
+      console.error('Failed to trigger rating scrape:', err);
+    }
+  };
+
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!phone.trim()) {
-      toast({
-        title: t('onboarding.error', 'Error'),
-        description: t('onboarding.phoneRequired', 'Phone number is required'),
-        variant: 'destructive',
-      });
-      return;
-    }
 
     if (!user || !pendingRole) return;
 
     setIsLoading(true);
     try {
       // Update profile with phone and optionally KNLTB number
-      const profileUpdates: { phone: string; knltb_number?: string } = { phone };
-      if (pendingRole === 'player' && knltbNumber.trim()) {
-        profileUpdates.knltb_number = knltbNumber.trim();
+      const profileUpdates: { phone?: string; knltb_number?: string; rating_system?: string } = {};
+      
+      if (phone.trim()) {
+        profileUpdates.phone = phone.trim();
       }
       
-      await updateProfile(user.id, profileUpdates);
+      if (pendingRole === 'player' && knltbNumber.trim()) {
+        profileUpdates.knltb_number = knltbNumber.trim();
+        profileUpdates.rating_system = 'knltb';
+      }
+      
+      // Get the profile ID first
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (Object.keys(profileUpdates).length > 0) {
+        await updateProfile(user.id, profileUpdates);
+      }
       
       // Set the user role
       await setUserRole(user.id, pendingRole);
+      
+      // Trigger rating scrape if KNLTB number was provided
+      if (pendingRole === 'player' && knltbNumber.trim() && profileData?.id) {
+        // Don't await - let it run in background
+        triggerRatingScrape(profileData.id, knltbNumber.trim());
+      }
       
       // Clear session storage
       sessionStorage.removeItem('pendingRole');
@@ -111,26 +144,7 @@ export default function Onboarding() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleComplete} className="space-y-6">
-            {/* Phone Number */}
-            <div className="space-y-2">
-              <Label htmlFor="phone" className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                {t('onboarding.phoneLabel', 'Phone Number')}
-              </Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+31 6 12345678"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
-              </p>
-            </div>
-
-            {/* KNLTB Number - Only for players */}
+            {/* KNLTB Number - Only for players, shown first */}
             {isPlayer && (
               <div className="space-y-2">
                 <Label htmlFor="knltb" className="flex items-center gap-2">
@@ -150,6 +164,25 @@ export default function Onboarding() {
                 </p>
               </div>
             )}
+
+            {/* Phone Number - Optional for both */}
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                {t('onboarding.phoneLabel', 'Phone Number')}
+                <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+31 6 12345678"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
+              </p>
+            </div>
 
             {/* Benefits reminder */}
             <div className="bg-accent/50 rounded-lg p-4 space-y-2">
