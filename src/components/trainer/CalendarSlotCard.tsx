@@ -229,16 +229,29 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
                     </div>
                   );
                 } else {
-                  // Empty slot
+                  // Empty slot - clickable to add player
+                  const canBook = hasSpots && onBookForPlayer && !slot.is_past;
                   return (
                     <div
                       key={`empty-${index}`}
-                      className="flex items-center justify-between text-sm px-2 py-1.5 rounded-md bg-muted/50 border border-dashed border-muted-foreground/30"
+                      className={cn(
+                        "flex items-center justify-between text-sm px-2 py-1.5 rounded-md bg-muted/50 border border-dashed border-muted-foreground/30",
+                        canBook && "cursor-pointer hover:bg-muted hover:border-primary/50 transition-colors"
+                      )}
+                      onClick={(e) => {
+                        if (canBook) {
+                          e.stopPropagation();
+                          onBookForPlayer(slot);
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <User className="h-3 w-3" />
                         <span className="italic">{t("calendar.emptySlot", "Empty slot")}</span>
                       </div>
+                      {canBook && (
+                        <UserPlus className="h-3 w-3 text-primary opacity-60" />
+                      )}
                     </div>
                   );
                 }
