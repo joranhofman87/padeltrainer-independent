@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isAfter } from 'date-fns';
+import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 
 interface FollowedTrainer {
   id: string;
@@ -342,6 +343,17 @@ export default function PlayerDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Rating History Chart */}
+        {profile?.id && (
+          <div className="mb-8">
+            <RatingHistoryChart
+              profileId={profile.id}
+              currentRating={profile.skill_rating ?? null}
+              ratingSystem={(profile as any)?.rating_system || 'knltb'}
+            />
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid sm:grid-cols-3 gap-4 mb-8">

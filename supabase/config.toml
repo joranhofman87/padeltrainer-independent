@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.sync-calendar-event]
 verify_jwt = false
+
+[functions.sync-knltb-ratings]
+verify_jwt = false

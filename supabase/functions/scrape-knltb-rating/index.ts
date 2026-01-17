@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,17 +11,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { knltbNumber, profileUrl: providedUrl } = await req.json();
+    const { knltbNumber, profileId, storeHistory = false } = await req.json();
 
-    if (!knltbNumber && !providedUrl) {
+    if (!knltbNumber) {
       return new Response(
-        JSON.stringify({ success: false, error: 'KNLTB number or profile URL is required' }),
+        JSON.stringify({ success: false, error: 'KNLTB number is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!apiKey) {
+    const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
+    const knltbUsername = Deno.env.get('KNLTB_USERNAME');
+    const knltbPassword = Deno.env.get('KNLTB_PASSWORD');
+
+    if (!firecrawlApiKey) {
       console.error('FIRECRAWL_API_KEY not configured');
       return new Response(
         JSON.stringify({ success: false, error: 'Scraper not configured' }),
@@ -27,60 +32,61 @@ Deno.serve(async (req) => {
       );
     }
 
-    // If a profile URL was provided, extract UUID and use it
-    let profileUrl = providedUrl;
-    if (profileUrl && profileUrl.includes('player-profile/')) {
-      // User provided their profile URL directly
-      console.log('Using provided profile URL:', profileUrl);
-    } else if (knltbNumber) {
-      // Try to search for the player - but this is limited due to cookie consent
-      // For now, inform user they need to provide their profile URL
+    if (!knltbUsername || !knltbPassword) {
+      console.error('KNLTB credentials not configured');
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Automatic lookup is not available due to KNLTB website restrictions.',
-          suggestion: 'Please provide your KNLTB profile URL or enter your rating manually.',
-          instructions: 'Go to mijnknltb.toernooi.nl, search for yourself, and copy your profile URL',
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'KNLTB credentials not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!profileUrl) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Profile URL is required for rating lookup',
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log('Scraping KNLTB rating for:', knltbNumber);
 
-    console.log('Scraping profile:', profileUrl);
-
-    // Scrape the profile page
+    // Use Firecrawl with actions to automate login and search
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${firecrawlApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        url: profileUrl,
+        url: 'https://mijnknltb.toernooi.nl/',
         formats: ['markdown'],
         onlyMainContent: false,
-        waitFor: 5000,
+        waitFor: 3000,
+        actions: [
+          // Wait for page load
+          { type: 'wait', milliseconds: 2000 },
+          // Accept cookies if present
+          { type: 'click', selector: 'button[id*="accept"], button[class*="accept"], .cookie-accept, #onetrust-accept-btn-handler', timeout: 3000 },
+          { type: 'wait', milliseconds: 1000 },
+          // Enter username
+          { type: 'write', text: knltbUsername, selector: 'input[name="username"], input[name="email"], input[id="username"], input[type="email"]' },
+          // Enter password  
+          { type: 'write', text: knltbPassword, selector: 'input[name="password"], input[type="password"], input[id="password"]' },
+          // Click login button
+          { type: 'click', selector: 'button[type="submit"], input[type="submit"], button[class*="login"], .login-button' },
+          { type: 'wait', milliseconds: 5000 },
+          // Navigate to search or use search bar
+          { type: 'write', text: knltbNumber, selector: 'input[type="search"], input[name="search"], input[placeholder*="zoek"], input[class*="search"]' },
+          { type: 'click', selector: 'button[type="submit"], .search-button, button[class*="search"]' },
+          { type: 'wait', milliseconds: 5000 },
+          // Click on first search result (player profile link)
+          { type: 'click', selector: 'a[href*="player-profile"], .player-link, .search-result a' },
+          { type: 'wait', milliseconds: 3000 },
+          { type: 'scrape' }
+        ],
       }),
     });
 
     const scrapeData = await scrapeResponse.json();
     
     if (!scrapeResponse.ok) {
-      console.error('Scrape failed:', scrapeData);
+      console.error('Firecrawl scrape failed:', scrapeData);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: scrapeData.error || 'Failed to scrape profile' 
+          error: scrapeData.error || 'Failed to scrape KNLTB profile' 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -88,10 +94,23 @@ Deno.serve(async (req) => {
     
     const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
     
-    console.log('Profile scraped, content length:', markdown.length);
-    console.log('Content sample:', markdown.substring(0, 500));
+    console.log('KNLTB scraped, content length:', markdown.length);
+    console.log('Content sample:', markdown.substring(0, 800));
     
-    // Check if we hit the cookie consent page
+    // Check if we're still on login page
+    if (markdown.toLowerCase().includes('inloggen') && markdown.toLowerCase().includes('wachtwoord')) {
+      console.error('Still on login page - authentication may have failed');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Authentication failed. Please check KNLTB credentials.',
+          suggestion: 'Please enter your rating manually',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Check for cookie consent page
     if (markdown.toLowerCase().includes('cookies') && markdown.toLowerCase().includes('akkoord')) {
       return new Response(
         JSON.stringify({
@@ -107,14 +126,57 @@ Deno.serve(async (req) => {
     
     if (rating) {
       console.log('Found padel rating:', rating);
+      
+      // Store in history if requested and profileId provided
+      if (storeHistory && profileId) {
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          
+          // Insert into rating history
+          const { error: historyError } = await supabase
+            .from('player_rating_history')
+            .insert({
+              profile_id: profileId,
+              rating: rating,
+              rating_system: 'knltb',
+              source: 'knltb_scrape',
+              scraped_at: new Date().toISOString(),
+            });
+          
+          if (historyError) {
+            console.error('Failed to store rating history:', historyError);
+          } else {
+            console.log('Rating history stored successfully');
+          }
+          
+          // Update profile with latest rating
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .update({
+              skill_rating: rating,
+              rating_system: 'knltb',
+            })
+            .eq('id', profileId);
+          
+          if (profileError) {
+            console.error('Failed to update profile:', profileError);
+          } else {
+            console.log('Profile updated with new rating');
+          }
+        } catch (dbError) {
+          console.error('Database error:', dbError);
+        }
+      }
+      
       return new Response(
         JSON.stringify({
           success: true,
           data: {
-            knltbNumber: knltbNumber || 'unknown',
+            knltbNumber,
             rating,
-            source: 'knltb',
-            profileUrl,
+            source: 'knltb_scrape',
             scrapedAt: new Date().toISOString(),
           }
         }),
@@ -125,9 +187,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: 'Could not find padel dubbel rating on profile. The page may require login.',
+        error: 'Could not find padel dubbel rating on profile.',
         suggestion: 'Please enter your rating manually',
-        debug: markdown.substring(0, 500),
+        debug: markdown.substring(0, 1000),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -159,8 +221,10 @@ function extractPadelRating(markdown: string): number | null {
     /padel[:\s]*(\d+)[,.](\d+)/i,
     // Speelsterkte rating
     /speelsterkte[:\s]*(\d+)[,.](\d+)/i,
-    // Rating in a table context
-    /(\d+)[,.](\d{4})/i, // Matches 4,4803 format specifically
+    // Rating in a table context - matches 4,4803 format specifically
+    /(\d+)[,.](\d{4})/i,
+    // Standard rating format like 4.48 or 4,48
+    /rating[:\s]*(\d+)[,.](\d{2,4})/i,
   ];
 
   for (const pattern of patterns) {
