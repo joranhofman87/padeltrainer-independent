@@ -111,7 +111,7 @@ export default function PlayerDashboard() {
 
       const userIds = trainers.map(t => t.user_id);
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('profiles_public')
         .select('user_id, full_name, avatar_url')
         .in('user_id', userIds);
 
@@ -214,7 +214,7 @@ export default function PlayerDashboard() {
     if (trainerProfiles && trainerProfiles.length > 0) {
       const userIds = trainerProfiles.map(t => t.user_id);
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('profiles_public')
         .select('user_id, full_name, avatar_url, location')
         .in('user_id', userIds);
 
@@ -234,7 +234,7 @@ export default function PlayerDashboard() {
       if (anyTrainers && anyTrainers.length > 0) {
         const userIds = anyTrainers.map(t => t.user_id);
         const { data: profiles } = await supabase
-          .from('profiles')
+          .from('profiles_public')
           .select('user_id, full_name, avatar_url, location')
           .in('user_id', userIds);
 

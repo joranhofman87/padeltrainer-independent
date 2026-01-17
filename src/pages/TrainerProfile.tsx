@@ -31,8 +31,6 @@ interface ProfileData {
   avatar_url: string | null;
   bio: string | null;
   location: string | null;
-  email: string | null;
-  phone: string | null;
 }
 
 export default function TrainerProfile() {
@@ -62,8 +60,8 @@ export default function TrainerProfile() {
         .eq('user_id', trainerId)
         .single(),
       supabase
-        .from('profiles')
-        .select('full_name, avatar_url, bio, location, email, phone')
+        .from('profiles_public')
+        .select('full_name, avatar_url, bio, location')
         .eq('user_id', trainerId)
         .single()
     ]);
@@ -348,22 +346,19 @@ export default function TrainerProfile() {
                 <CardTitle className="text-base">Contact Info</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {profile.email && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{profile.email}</span>
-                  </div>
-                )}
-                {profile.phone && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{profile.phone}</span>
-                  </div>
-                )}
-                {!profile.email && !profile.phone && (
-                  <p className="text-sm text-muted-foreground">
-                    Contact info not available
-                  </p>
+                <p className="text-sm text-muted-foreground">
+                  Contact details are shared after booking a lesson.
+                </p>
+                {user && role === 'player' && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => navigate(`/book/${trainerId}`)}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Book to Connect
+                  </Button>
                 )}
               </CardContent>
             </Card>

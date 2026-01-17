@@ -52,10 +52,10 @@ export async function getTrainerReviews(trainerId: string) {
 
   if (error || !reviews) return { data: null, error };
 
-  // Then get player profiles for those reviews
+  // Then get player profiles for those reviews (using public view to protect PII)
   const playerIds = [...new Set(reviews.map(r => r.player_id))];
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('profiles_public')
     .select('id, full_name, avatar_url')
     .in('id', playerIds);
 
