@@ -197,7 +197,38 @@
     "playerDeleted": "Speler Verwijderd",
     "playerDeletedDescription": "De speler is verwijderd",
     "deleteConfirmTitle": "Speler Verwijderen?",
-    "deleteConfirmDescription": "Weet je zeker dat je {{name}} wilt verwijderen? Dit kan niet ongedaan worden gemaakt."
+    "deleteConfirmDescription": "Weet je zeker dat je {{name}} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "import": {
+      "button": "CSV Importeren",
+      "title": "Spelers Importeren uit CSV",
+      "description": "Upload een CSV-bestand om meerdere spelers tegelijk toe te voegen",
+      "dropHere": "Sleep je CSV-bestand hierheen",
+      "orClickToSelect": "of klik om een bestand te selecteren",
+      "selectFile": "Selecteer CSV-bestand",
+      "needTemplate": "Sjabloon nodig?",
+      "templateDescription": "Download ons CSV-sjabloon met het juiste formaat",
+      "downloadTemplate": "Download Sjabloon",
+      "requiredColumns": "Verplichte kolommen",
+      "optionalColumns": "Optionele kolommen",
+      "invalidFile": "Ongeldig Bestand",
+      "csvOnly": "Upload alsjeblieft een CSV-bestand",
+      "noDataRows": "Het bestand bevat geen gegevensrijen",
+      "missingColumns": "Ontbrekende verplichte kolommen: naam en e-mail",
+      "validRows": "{{count}} geldig",
+      "invalidRows": "{{count}} ongeldig",
+      "errors": {
+        "nameMissing": "Naam is verplicht",
+        "emailMissing": "E-mail is verplicht",
+        "emailInvalid": "Ongeldig e-mailformaat",
+        "skillOutOfRange": "Vaardigheidsniveau moet 1-10 zijn"
+      },
+      "chooseAnotherFile": "Kies Ander Bestand",
+      "importPlayers": "Importeer {{count}} Spelers",
+      "importing": "Spelers importeren...",
+      "complete": "Import Voltooid!",
+      "importedCount": "{{count}} spelers zijn toegevoegd",
+      "failedCount": "{{count}} kon niet worden geïmporteerd"
+    }
   },
   "earnings": {
     "title": "Inkomsten",
