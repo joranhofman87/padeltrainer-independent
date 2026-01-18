@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.sync-knltb-ratings]
 verify_jwt = false
+
+[functions.generate-invoice]
+verify_jwt = false

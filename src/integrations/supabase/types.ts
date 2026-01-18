@@ -246,6 +246,113 @@ export type Database = {
           },
         ]
       }
+      invoices: {
+        Row: {
+          booking_ids: string[] | null
+          created_at: string
+          due_date: string
+          guest_player_id: string | null
+          id: string
+          invoice_date: string
+          invoice_number: string
+          line_items: Json
+          notes: string | null
+          paid_at: string | null
+          pdf_url: string | null
+          player_address: string | null
+          player_btw_number: string | null
+          player_id: string | null
+          player_name: string
+          sent_at: string | null
+          status: string
+          subtotal: number
+          total: number
+          trainer_id: string
+          updated_at: string
+          vat_amount: number
+          vat_rate: number
+        }
+        Insert: {
+          booking_ids?: string[] | null
+          created_at?: string
+          due_date: string
+          guest_player_id?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          line_items?: Json
+          notes?: string | null
+          paid_at?: string | null
+          pdf_url?: string | null
+          player_address?: string | null
+          player_btw_number?: string | null
+          player_id?: string | null
+          player_name: string
+          sent_at?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          trainer_id: string
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Update: {
+          booking_ids?: string[] | null
+          created_at?: string
+          due_date?: string
+          guest_player_id?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          line_items?: Json
+          notes?: string | null
+          paid_at?: string | null
+          pdf_url?: string | null
+          player_address?: string | null
+          player_btw_number?: string | null
+          player_id?: string | null
+          player_name?: string
+          sent_at?: string | null
+          status?: string
+          subtotal?: number
+          total?: number
+          trainer_id?: string
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lessons: {
         Row: {
           created_at: string
@@ -558,13 +665,20 @@ export type Database = {
       }
       trainer_profiles: {
         Row: {
+          bic: string | null
+          btw_number: string | null
+          business_address: string | null
+          business_name: string | null
           certifications: string[] | null
           created_at: string
           experience_years: number | null
           hourly_rate: number | null
+          iban: string | null
           id: string
           is_verified: boolean | null
           knltb_rating: number | null
+          kvk_number: string | null
+          payment_terms_days: number | null
           schedule_weeks_ahead: number
           slot_duration_minutes: number
           slot_gap_minutes: number
@@ -572,16 +686,24 @@ export type Database = {
           stripe_account_id: string | null
           subscription_status: string | null
           updated_at: string
+          use_manual_invoicing: boolean | null
           user_id: string
         }
         Insert: {
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
           certifications?: string[] | null
           created_at?: string
           experience_years?: number | null
           hourly_rate?: number | null
+          iban?: string | null
           id?: string
           is_verified?: boolean | null
           knltb_rating?: number | null
+          kvk_number?: string | null
+          payment_terms_days?: number | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
@@ -589,16 +711,24 @@ export type Database = {
           stripe_account_id?: string | null
           subscription_status?: string | null
           updated_at?: string
+          use_manual_invoicing?: boolean | null
           user_id: string
         }
         Update: {
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
           certifications?: string[] | null
           created_at?: string
           experience_years?: number | null
           hourly_rate?: number | null
+          iban?: string | null
           id?: string
           is_verified?: boolean | null
           knltb_rating?: number | null
+          kvk_number?: string | null
+          payment_terms_days?: number | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
@@ -606,6 +736,7 @@ export type Database = {
           stripe_account_id?: string | null
           subscription_status?: string | null
           updated_at?: string
+          use_manual_invoicing?: boolean | null
           user_id?: string
         }
         Relationships: []

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, 
@@ -17,10 +19,15 @@ import {
   ExternalLink,
   Wallet,
   AlertCircle,
-  Loader2
+  Loader2,
+  FileText,
+  Settings
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { CreateInvoiceDialog } from '@/components/trainer/CreateInvoiceDialog';
+import { InvoiceList } from '@/components/trainer/InvoiceList';
+import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 
 interface EarningsBooking {
   id: string;
@@ -40,6 +47,7 @@ interface EarningsBooking {
   } | null;
   player: {
     full_name: string | null;
+    email: string | null;
   } | null;
 }
 
@@ -55,6 +63,18 @@ interface ConnectStatus {
   };
 }
 
+interface TrainerBusinessInfo {
+  id: string;
+  business_name: string | null;
+  business_address: string | null;
+  kvk_number: string | null;
+  btw_number: string | null;
+  iban: string | null;
+  bic: string | null;
+  payment_terms_days: number;
+  use_manual_invoicing: boolean;
+}
+
 export default function TrainerEarnings() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -65,6 +85,11 @@ export default function TrainerEarnings() {
   const [loadingData, setLoadingData] = useState(true);
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
+  const [trainerInfo, setTrainerInfo] = useState<TrainerBusinessInfo | null>(null);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -79,6 +104,7 @@ export default function TrainerEarnings() {
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchEarnings();
+      fetchTrainerInfo();
       checkConnectStatus();
     }
   }, [user, role]);
@@ -93,6 +119,18 @@ export default function TrainerEarnings() {
       checkConnectStatus();
     }
   }, [searchParams]);
+
+  const fetchTrainerInfo = async () => {
+    const { data, error } = await supabase
+      .from('trainer_profiles')
+      .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing')
+      .eq('user_id', user!.id)
+      .single();
+
+    if (data) {
+      setTrainerInfo(data as TrainerBusinessInfo);
+    }
+  };
 
   const fetchEarnings = async () => {
     const { data: trainerProfile } = await supabase
@@ -117,7 +155,7 @@ export default function TrainerEarnings() {
         created_at,
         availability_slots!inner(start_time, end_time, trainer_id),
         lessons(title, price, payment_timing),
-        player:profiles!bookings_player_id_fkey(full_name)
+        player:profiles!bookings_player_id_fkey(full_name, email)
       `)
       .eq('availability_slots.trainer_id', trainerProfile.id)
       .in('status', ['completed', 'confirmed', 'cancelled'])
@@ -160,6 +198,24 @@ export default function TrainerEarnings() {
       setConnectLoading(false);
     }
   };
+
+  const handleToggleManualInvoicing = async (checked: boolean) => {
+    const { error } = await supabase
+      .from('trainer_profiles')
+      .update({ use_manual_invoicing: checked })
+      .eq('user_id', user!.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update settings', variant: 'destructive' });
+    } else {
+      setTrainerInfo(prev => prev ? { ...prev, use_manual_invoicing: checked } : null);
+      toast({ 
+        title: checked ? 'Manual invoicing enabled' : 'Stripe payments enabled',
+        description: checked ? 'You can now create and send invoices manually' : 'Players will pay via Stripe'
+      });
+    }
+  };
+
   const handleMarkPaid = async (bookingId: string, amount: number) => {
     const { error } = await supabase
       .from('bookings')
@@ -176,6 +232,19 @@ export default function TrainerEarnings() {
       toast({ title: 'Payment Recorded', description: 'The booking has been marked as paid' });
       fetchEarnings();
     }
+  };
+
+  const handleCreateInvoice = (booking: EarningsBooking) => {
+    setSelectedBooking({
+      id: booking.id,
+      lessonTitle: booking.lessons?.title || 'Training Session',
+      playerName: booking.player?.full_name || 'Unknown',
+      playerEmail: booking.player?.email || '',
+      date: format(parseISO(booking.availability_slots.start_time), 'yyyy-MM-dd'),
+      time: format(parseISO(booking.availability_slots.start_time), 'HH:mm'),
+      price: booking.lessons?.price || 0,
+    });
+    setInvoiceDialogOpen(true);
   };
 
   // Calculate earnings
@@ -205,7 +274,7 @@ export default function TrainerEarnings() {
 
   const pendingPayments = bookings.filter(b => 
     (b.status === 'completed' || (b.status === 'confirmed' && b.lessons?.payment_timing === 'after')) && 
-    b.payment_status === 'pending'
+    (b.payment_status === 'pending' || b.payment_status === 'invoiced')
   );
   
   const pendingAmount = pendingPayments.reduce((sum, b) => sum + getAmount(b), 0);
@@ -213,6 +282,9 @@ export default function TrainerEarnings() {
   const monthlyGrowth = lastMonthEarnings > 0 
     ? ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings * 100).toFixed(0)
     : thisMonthEarnings > 0 ? '+100' : '0';
+
+  const useManualInvoicing = trainerInfo?.use_manual_invoicing ?? false;
+  const isBusinessInfoComplete = trainerInfo?.business_name && trainerInfo?.business_address && trainerInfo?.kvk_number && trainerInfo?.iban;
 
   if (loading || loadingData) {
     return (
@@ -227,21 +299,91 @@ export default function TrainerEarnings() {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold">Earnings</h1>
-              <p className="text-sm text-muted-foreground">Track your income and payments</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold">Earnings</h1>
+                <p className="text-sm text-muted-foreground">Track your income and payments</p>
+              </div>
             </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              {showSettings ? 'Hide Settings' : 'Invoice Settings'}
+            </Button>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Stripe Connect Card */}
-        {connectStatus && !connectStatus.chargesEnabled && (
+        {/* Payment Mode Toggle */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  {useManualInvoicing ? <FileText className="h-5 w-5 text-primary" /> : <Wallet className="h-5 w-5 text-primary" />}
+                </div>
+                <div>
+                  <p className="font-medium">
+                    {useManualInvoicing ? 'Manual Invoicing' : 'Stripe Payments'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {useManualInvoicing 
+                      ? 'Create and send invoices manually to your players' 
+                      : 'Players pay automatically via Stripe'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="manual-invoicing" className="text-sm text-muted-foreground">
+                  {useManualInvoicing ? 'Manual' : 'Stripe'}
+                </Label>
+                <Switch
+                  id="manual-invoicing"
+                  checked={useManualInvoicing}
+                  onCheckedChange={handleToggleManualInvoicing}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Invoice Settings (collapsible) */}
+        {showSettings && trainerInfo && (
+          <div className="mb-6">
+            <InvoiceSettingsCard 
+              userId={user!.id}
+              initialData={trainerInfo}
+              onSave={fetchTrainerInfo}
+            />
+          </div>
+        )}
+
+        {/* Manual invoicing: Business info warning */}
+        {useManualInvoicing && !isBusinessInfoComplete && (
+          <Card className="mb-6 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+            <CardContent className="p-4 flex items-center gap-4">
+              <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your business details</p>
+                <p className="text-sm text-orange-600 dark:text-orange-300">Add your KvK, BTW, and bank details to create invoices</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+                Add Details
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Stripe Connect Card - only show when NOT using manual invoicing */}
+        {!useManualInvoicing && connectStatus && !connectStatus.chargesEnabled && (
           <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -285,8 +427,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Stripe Balance Card */}
-        {connectStatus?.chargesEnabled && connectStatus.balance && (
+        {/* Stripe Balance Card - only show when NOT using manual invoicing */}
+        {!useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
           <Card className="mb-8 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -318,8 +460,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Pending onboarding warning */}
-        {connectStatus?.connected && !connectStatus.onboardingComplete && (
+        {/* Pending onboarding warning - only show when NOT using manual invoicing */}
+        {!useManualInvoicing && connectStatus?.connected && !connectStatus.onboardingComplete && (
           <Card className="mb-8 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
@@ -333,6 +475,7 @@ export default function TrainerEarnings() {
             </CardContent>
           </Card>
         )}
+
         {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
@@ -400,6 +543,12 @@ export default function TrainerEarnings() {
               )}
             </TabsTrigger>
             <TabsTrigger value="history">Payment History</TabsTrigger>
+            {useManualInvoicing && (
+              <TabsTrigger value="invoices" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Invoices
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="pending" className="space-y-4">
@@ -415,7 +564,12 @@ export default function TrainerEarnings() {
                   <CardContent className="p-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
-                        <p className="font-semibold">{booking.lessons?.title || 'Training Session'}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-semibold">{booking.lessons?.title || 'Training Session'}</p>
+                          {booking.payment_status === 'invoiced' && (
+                            <Badge variant="secondary">Invoiced</Badge>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground">{booking.player?.full_name || 'Player'}</p>
                         <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
@@ -430,10 +584,29 @@ export default function TrainerEarnings() {
                       </div>
                       <div className="flex items-center gap-4">
                         <p className="text-2xl font-bold">€{getAmount(booking)}</p>
-                        <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Mark Paid
-                        </Button>
+                        {useManualInvoicing ? (
+                          <div className="flex gap-2">
+                            {booking.payment_status !== 'invoiced' && (
+                              <Button 
+                                variant="outline"
+                                onClick={() => handleCreateInvoice(booking)}
+                                disabled={!isBusinessInfoComplete}
+                              >
+                                <FileText className="h-4 w-4 mr-2" />
+                                Create Invoice
+                              </Button>
+                            )}
+                            <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                              Mark Paid
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button onClick={() => handleMarkPaid(booking.id, getAmount(booking))}>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Mark Paid
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -481,8 +654,40 @@ export default function TrainerEarnings() {
                 ))
             )}
           </TabsContent>
+
+          {useManualInvoicing && trainerInfo && (
+            <TabsContent value="invoices">
+              <InvoiceList 
+                trainerId={trainerInfo.id} 
+                refreshTrigger={invoiceRefreshTrigger}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </main>
+
+      {/* Invoice Dialog */}
+      {trainerInfo && (
+        <CreateInvoiceDialog
+          open={invoiceDialogOpen}
+          onOpenChange={setInvoiceDialogOpen}
+          booking={selectedBooking}
+          trainerId={trainerInfo.id}
+          trainerBusinessInfo={{
+            business_name: trainerInfo.business_name,
+            business_address: trainerInfo.business_address,
+            kvk_number: trainerInfo.kvk_number,
+            btw_number: trainerInfo.btw_number,
+            iban: trainerInfo.iban,
+            bic: trainerInfo.bic,
+            payment_terms_days: trainerInfo.payment_terms_days,
+          }}
+          onInvoiceCreated={() => {
+            setInvoiceRefreshTrigger(prev => prev + 1);
+            fetchEarnings();
+          }}
+        />
+      )}
     </div>
   );
 }
