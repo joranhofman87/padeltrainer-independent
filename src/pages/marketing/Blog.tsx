@@ -130,7 +130,7 @@ export default function Blog() {
                         />
                       </div>
                       <CardContent className="p-8 flex flex-col justify-center">
-                        <Badge className="w-fit mb-4">{featuredPost.category}</Badge>
+                        <Badge className="w-fit mb-4">Blog</Badge>
                         <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">
                           {featuredPost.title}
                         </CardTitle>
@@ -183,7 +183,7 @@ export default function Blog() {
                             />
                           </div>
                           <CardContent className="p-6">
-                            <Badge variant="secondary" className="mb-3">{post.category}</Badge>
+                            <Badge variant="secondary" className="mb-3">Blog</Badge>
                             <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">
                               {post.title}
                             </CardTitle>
