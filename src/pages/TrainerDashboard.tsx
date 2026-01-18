@@ -298,16 +298,6 @@ export default function TrainerDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* Welcome Section */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">
-            {t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || '' })}
-          </h1>
-          <p className="text-muted-foreground">
-            {t('dashboard.subtitle')}
-          </p>
-        </div>
-
         {/* Setup Checklist - Only show if not all complete */}
         {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete && setupStatus.hasPlayers) && (
           <SetupChecklist
