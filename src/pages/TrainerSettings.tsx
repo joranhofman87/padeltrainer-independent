@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export default function TrainerSettings() {
@@ -45,6 +45,14 @@ export default function TrainerSettings() {
       route: '/profile/edit',
       iconBg: 'bg-gray-500/10',
       iconColor: 'text-gray-600',
+    },
+    {
+      title: t('bookingSettings.title'),
+      description: t('bookingSettings.settingsDescription'),
+      icon: ClipboardCheck,
+      route: '/trainer/settings/bookings',
+      iconBg: 'bg-green-500/10',
+      iconColor: 'text-green-600',
     },
     {
       title: t('settings.calendarSync'),

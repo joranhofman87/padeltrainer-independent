@@ -9,7 +9,12 @@ export type EmailType =
   | "payment_confirmed_trainer"
   | "new_booking_trainer"
   | "new_availability"
-  | "manual_booking_confirmation";
+  | "manual_booking_confirmation"
+  | "slot_reopened"
+  | "booking_request"
+  | "booking_approved_payment"
+  | "booking_approved_invoice"
+  | "booking_rejected";
 
 export interface EmailData {
   playerName?: string;
@@ -23,6 +28,9 @@ export interface EmailData {
   rating?: number;
   platformFee?: number;
   netAmount?: number;
+  paymentLink?: string;
+  reason?: string;
+  bookingUrl?: string;
 }
 
 /**

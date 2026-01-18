@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,11 +43,14 @@ interface TrainerWithProfile {
   hourly_rate: number | null;
   experience_years: number | null;
   specializations: string[] | null;
+  require_booking_approval: boolean | null;
+  use_manual_invoicing: boolean | null;
   profiles: {
     full_name: string;
     avatar_url: string | null;
     location: string | null;
     bio: string | null;
+    email: string | null;
   };
 }
 
@@ -64,6 +67,7 @@ export default function BookLesson() {
   const [loadingData, setLoadingData] = useState(true);
   const [booking, setBooking] = useState(false);
   const [booked, setBooked] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -90,7 +94,9 @@ export default function BookLesson() {
         hourly_rate,
         experience_years,
         specializations,
-        profiles(full_name, avatar_url, location, bio)
+        require_booking_approval,
+        use_manual_invoicing,
+        profiles(full_name, avatar_url, location, bio, email)
       `)
       .eq('id', trainerId)
       .single();
@@ -205,45 +211,130 @@ export default function BookLesson() {
     setBooking(true);
 
     try {
-      // Create the booking first
-      const { data: bookingData, error } = await supabase
-        .from('bookings')
-        .insert({
-          player_id: profile.id,
-          slot_id: selectedSlot.id,
-          lesson_id: selectedSlot.lesson_id,
-          notes: notes || null,
-          status: 'pending',
-          payment_status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
       const price = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
+      const requiresApproval = trainer.require_booking_approval;
+      const useManualInvoicing = trainer.use_manual_invoicing;
 
-      // Create Stripe checkout session
-      const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
-        'create-checkout-session',
-        {
+      if (requiresApproval) {
+        // Create booking with pending_approval status
+        const { data: bookingData, error } = await supabase
+          .from('bookings')
+          .insert({
+            player_id: profile.id,
+            slot_id: selectedSlot.id,
+            lesson_id: selectedSlot.lesson_id,
+            notes: notes || null,
+            status: 'pending_approval',
+            payment_status: 'pending',
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Send email to trainer about the request
+        const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
+        const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
+        
+        await supabase.functions.invoke('send-email', {
           body: {
-            bookingId: bookingData.id,
-            lessonTitle: selectedSlot.lessons?.title || 'Training Session',
-            trainerName: trainer.profiles.full_name,
-            price,
-            trainerId: trainer.id,
+            type: 'booking_request',
+            to: trainer.profiles.email,
+            data: {
+              trainerName: trainer.profiles.full_name,
+              playerName: profile.full_name,
+              playerEmail: profile.email,
+              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+              lessonDate,
+              lessonTime,
+              location: selectedSlot.lessons?.location,
+              price,
+            },
           },
-        }
-      );
+        });
 
-      if (checkoutError) throw checkoutError;
+        setRequestSent(true);
+        toast({
+          title: 'Request Sent!',
+          description: 'The trainer will review your booking request.',
+        });
+      } else if (useManualInvoicing) {
+        // Auto-accept with manual invoicing - confirm immediately
+        const { data: bookingData, error } = await supabase
+          .from('bookings')
+          .insert({
+            player_id: profile.id,
+            slot_id: selectedSlot.id,
+            lesson_id: selectedSlot.lesson_id,
+            notes: notes || null,
+            status: 'confirmed',
+            payment_status: 'pending',
+          })
+          .select()
+          .single();
 
-      if (checkoutData?.url) {
-        // Redirect to Stripe Checkout
-        window.location.href = checkoutData.url;
+        if (error) throw error;
+
+        // Send confirmation email to player
+        const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
+        const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
+
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'manual_booking_confirmation',
+            to: profile.email,
+            data: {
+              playerName: profile.full_name,
+              trainerName: trainer.profiles.full_name,
+              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+              lessonDate,
+              lessonTime,
+              location: selectedSlot.lessons?.location,
+              price,
+            },
+          },
+        });
+
+        setBooked(true);
       } else {
-        throw new Error('No checkout URL received');
+        // Auto-accept with Stripe payment (existing flow)
+        const { data: bookingData, error } = await supabase
+          .from('bookings')
+          .insert({
+            player_id: profile.id,
+            slot_id: selectedSlot.id,
+            lesson_id: selectedSlot.lesson_id,
+            notes: notes || null,
+            status: 'pending',
+            payment_status: 'pending',
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Create Stripe checkout session
+        const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
+          'create-checkout-session',
+          {
+            body: {
+              bookingId: bookingData.id,
+              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+              trainerName: trainer.profiles.full_name,
+              price,
+              trainerId: trainer.id,
+            },
+          }
+        );
+
+        if (checkoutError) throw checkoutError;
+
+        if (checkoutData?.url) {
+          // Redirect to Stripe Checkout
+          window.location.href = checkoutData.url;
+        } else {
+          throw new Error('No checkout URL received');
+        }
       }
     } catch (error: any) {
       console.error('Booking error:', error);
@@ -275,6 +366,31 @@ export default function BookLesson() {
     );
   }
 
+  if (requestSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mx-auto mb-4">
+            <SendHorizontal className="h-8 w-8 text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Request Sent!</h2>
+          <p className="text-muted-foreground mb-6">
+            Your booking request has been sent to {trainer.profiles.full_name}.
+            You'll be notified once they respond.
+          </p>
+          <div className="space-y-3">
+            <Button className="w-full" onClick={() => navigate('/bookings')}>
+              View My Bookings
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
+              Browse Other Trainers
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (booked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -287,6 +403,12 @@ export default function BookLesson() {
             Your lesson with {trainer.profiles.full_name} has been booked.
             You'll receive a confirmation soon.
           </p>
+          {trainer.use_manual_invoicing && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg mb-4 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
+              <FileText className="h-4 w-4" />
+              You'll receive an invoice from the trainer for payment.
+            </div>
+          )}
           <div className="space-y-3">
             <Button className="w-full" onClick={() => navigate('/bookings')}>
               View My Bookings
