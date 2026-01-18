@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected";
   to: string;
   data: {
     playerName?: string;
@@ -31,6 +31,9 @@ interface EmailRequest {
     dateRange?: string;
     slotDate?: string;
     slotTime?: string;
+    paymentLink?: string;
+    reason?: string;
+    bookingUrl?: string;
   };
 }
 
@@ -256,6 +259,106 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <strong>Payment:</strong> Please arrange payment directly with your trainer.
             </p>
             <p>See you on the court!</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "booking_request":
+      return {
+        subject: `New Booking Request from ${data.playerName} 📬`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #2563eb;">New Booking Request! 📬</h1>
+            <p>Hi ${data.trainerName},</p>
+            <p><strong>${data.playerName}</strong> has requested to book a lesson with you.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
+              <p><strong>Player:</strong> ${data.playerName}</p>
+              <p><strong>Contact:</strong> ${data.playerEmail}</p>
+              <p><strong>Date:</strong> ${data.lessonDate}</p>
+              <p><strong>Time:</strong> ${data.lessonTime}</p>
+              ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
+              <p><strong>Price:</strong> €${data.price}</p>
+            </div>
+            <p>Please review this request in your dashboard and approve or decline it.</p>
+            <p style="margin-top: 24px;">
+              <a href="${data.bookingUrl || 'https://padeltrainer.lovable.app/trainer-bookings'}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "booking_approved_payment":
+      return {
+        subject: `Booking Approved! Complete Your Payment 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Booking Approved! 🎉</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>Great news! <strong>${data.trainerName}</strong> has approved your booking request.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
+              <p><strong>Date:</strong> ${data.lessonDate}</p>
+              <p><strong>Time:</strong> ${data.lessonTime}</p>
+              ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
+              <p style="font-size: 18px; color: #16a34a;"><strong>Price:</strong> €${data.price}</p>
+            </div>
+            <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e;">
+              <strong>Action Required:</strong> Complete your payment to confirm the booking.
+            </p>
+            <p style="margin-top: 24px;">
+              <a href="${data.paymentLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Pay Now</a>
+            </p>
+            <p style="color: #6b7280; font-size: 14px;">This payment link expires in 24 hours.</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "booking_approved_invoice":
+      return {
+        subject: `Booking Confirmed: ${data.lessonTitle} 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Booking Confirmed! 🎉</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>Great news! <strong>${data.trainerName}</strong> has approved and confirmed your booking.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
+              <p><strong>Date:</strong> ${data.lessonDate}</p>
+              <p><strong>Time:</strong> ${data.lessonTime}</p>
+              ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
+              ${data.price ? `<p><strong>Price:</strong> €${data.price}</p>` : ''}
+            </div>
+            <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e;">
+              <strong>Payment:</strong> You'll receive an invoice from your trainer for payment.
+            </p>
+            <p>See you on the court!</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "booking_rejected":
+      return {
+        subject: `Booking Request Declined`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">Booking Request Declined</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>Unfortunately, <strong>${data.trainerName}</strong> was unable to accept your booking request.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
+              <p><strong>Date:</strong> ${data.lessonDate}</p>
+              <p><strong>Time:</strong> ${data.lessonTime}</p>
+              ${data.reason ? `<p style="color: #6b7280;"><strong>Reason:</strong> ${data.reason}</p>` : ''}
+            </div>
+            <p>Don't worry – you can browse other available slots or trainers.</p>
+            <p style="margin-top: 24px;">
+              <a href="https://padeltrainer.lovable.app/trainers" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Find Another Lesson</a>
+            </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,

@@ -679,6 +679,7 @@ export type Database = {
           knltb_rating: number | null
           kvk_number: string | null
           payment_terms_days: number | null
+          require_booking_approval: boolean | null
           schedule_weeks_ahead: number
           slot_duration_minutes: number
           slot_gap_minutes: number
@@ -704,6 +705,7 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
@@ -729,6 +731,7 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number

@@ -395,5 +395,32 @@
     "noOpenSlotsDescription": "All your training slots are either fully booked or marked as private.",
     "createSlots": "Create new slots",
     "viewCalendar": "View full calendar"
+  },
+  "bookingSettings": {
+    "title": "Booking Settings",
+    "subtitle": "Control how players book with you",
+    "settingsDescription": "Control player booking approval",
+    "approvalTitle": "Booking Approval",
+    "approvalSubtitle": "Choose whether to review booking requests before they're confirmed",
+    "requireApproval": "Require approval for bookings",
+    "requireApprovalDescriptionStripe": "Players must wait for your approval before they can pay and confirm.",
+    "requireApprovalDescriptionInvoice": "Players must wait for your approval before their booking is confirmed.",
+    "autoAccept": "Auto-Accept",
+    "autoAcceptDescriptionStripe": "Players can book and pay immediately without waiting.",
+    "autoAcceptDescriptionInvoice": "Players are confirmed immediately and receive an invoice.",
+    "manualApproval": "Manual Approval",
+    "manualApprovalDescriptionStripe": "Review requests first, then players pay after approval.",
+    "manualApprovalDescriptionInvoice": "Review and approve each request before confirmation.",
+    "approvalEnabled": "Booking approval is now required",
+    "approvalDisabled": "Bookings are now auto-accepted"
+  },
+  "bookings": {
+    "requests": "Requests",
+    "pendingApproval": "Awaiting Approval",
+    "awaitingApproval": "Awaiting trainer approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "noRequests": "No pending requests",
+    "noRequestsDescription": "Booking requests from players will appear here"
   }
 }

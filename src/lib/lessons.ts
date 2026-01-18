@@ -31,7 +31,7 @@ export interface Booking {
   slot_id: string;
   player_id: string;
   lesson_id: string | null;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'pending' | 'pending_approval' | 'confirmed' | 'cancelled' | 'completed' | 'rejected';
   notes: string | null;
   payment_status: 'pending' | 'paid' | 'refunded' | 'waived';
   payment_amount: number | null;
@@ -206,4 +206,41 @@ export async function updateBookingStatus(bookingId: string, status: Booking['st
 
 export async function cancelBooking(bookingId: string) {
   return updateBookingStatus(bookingId, 'cancelled');
+}
+
+export async function approveBookingRequest(bookingId: string) {
+  const result = await supabase
+    .from('bookings')
+    .update({ status: 'pending' })
+    .eq('id', bookingId)
+    .select()
+    .single();
+
+  return result;
+}
+
+export async function rejectBookingRequest(bookingId: string) {
+  const result = await supabase
+    .from('bookings')
+    .update({ status: 'rejected' })
+    .eq('id', bookingId)
+    .select()
+    .single();
+
+  return result;
+}
+
+export async function confirmBookingAfterApproval(bookingId: string) {
+  // Used for manual invoicing - set to confirmed directly
+  const result = await supabase
+    .from('bookings')
+    .update({ 
+      status: 'confirmed',
+      payment_status: 'pending' 
+    })
+    .eq('id', bookingId)
+    .select()
+    .single();
+
+  return result;
 }

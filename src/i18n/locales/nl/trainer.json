@@ -395,5 +395,32 @@
     "noOpenSlotsDescription": "Al je trainingsslots zijn of volgeboekt of gemarkeerd als privé.",
     "createSlots": "Nieuwe slots aanmaken",
     "viewCalendar": "Bekijk volledige kalender"
+  },
+  "bookingSettings": {
+    "title": "Boekingsinstellingen",
+    "subtitle": "Bepaal hoe spelers bij je kunnen boeken",
+    "settingsDescription": "Beheer goedkeuring van boekingen",
+    "approvalTitle": "Boekingsgoedkeuring",
+    "approvalSubtitle": "Kies of je boekingsverzoeken wilt beoordelen voordat ze worden bevestigd",
+    "requireApproval": "Goedkeuring vereist voor boekingen",
+    "requireApprovalDescriptionStripe": "Spelers moeten wachten op jouw goedkeuring voordat ze kunnen betalen.",
+    "requireApprovalDescriptionInvoice": "Spelers moeten wachten op jouw goedkeuring voordat de boeking wordt bevestigd.",
+    "autoAccept": "Automatisch accepteren",
+    "autoAcceptDescriptionStripe": "Spelers kunnen direct boeken en betalen zonder te wachten.",
+    "autoAcceptDescriptionInvoice": "Spelers worden direct bevestigd en ontvangen een factuur.",
+    "manualApproval": "Handmatige goedkeuring",
+    "manualApprovalDescriptionStripe": "Beoordeel verzoeken eerst, dan betalen spelers na goedkeuring.",
+    "manualApprovalDescriptionInvoice": "Beoordeel en keur elk verzoek goed voor bevestiging.",
+    "approvalEnabled": "Goedkeuring voor boekingen is nu vereist",
+    "approvalDisabled": "Boekingen worden nu automatisch geaccepteerd"
+  },
+  "bookings": {
+    "requests": "Verzoeken",
+    "pendingApproval": "Wacht op goedkeuring",
+    "awaitingApproval": "Wacht op goedkeuring van trainer",
+    "approve": "Goedkeuren",
+    "reject": "Afwijzen",
+    "noRequests": "Geen openstaande verzoeken",
+    "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier"
   }
 }
