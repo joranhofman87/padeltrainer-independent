@@ -148,7 +148,7 @@ export default function BlogPost() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <Badge className="mb-4">{post.category}</Badge>
+          <Badge className="mb-4">Blog</Badge>
           <h1 className="text-3xl md:text-4xl font-bold mb-4">{post.title}</h1>
           <div className="flex items-center gap-4 text-muted-foreground mb-8">
             <span className="flex items-center gap-1">

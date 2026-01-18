@@ -13,12 +13,12 @@ export interface BlogPostSkeleton {
   fields: {
     title: EntryFieldTypes.Text;
     slug: EntryFieldTypes.Text;
-    excerpt: EntryFieldTypes.Text;
+    subtitle: EntryFieldTypes.Text;
     content: EntryFieldTypes.RichText;
-    category: EntryFieldTypes.Text;
     featuredImage?: EntryFieldTypes.AssetLink;
-    publishedAt: EntryFieldTypes.Date;
-    readTime: EntryFieldTypes.Text;
+    publishedDate: EntryFieldTypes.Date;
+    author?: EntryFieldTypes.Text;
+    rating?: EntryFieldTypes.Number;
   };
 }
 
@@ -28,28 +28,45 @@ export interface BlogPost {
   title: string;
   excerpt: string;
   content: Document;
-  category: string;
   image: string;
   date: string;
   readTime: string;
+  author?: string;
+}
+
+// Calculate read time from content (rough estimate: 200 words per minute)
+function calculateReadTime(content: Document): string {
+  let wordCount = 0;
+  const countWords = (node: any) => {
+    if (node.nodeType === 'text' && node.value) {
+      wordCount += node.value.split(/\s+/).filter(Boolean).length;
+    }
+    if (node.content) {
+      node.content.forEach(countWords);
+    }
+  };
+  countWords(content);
+  const minutes = Math.max(1, Math.ceil(wordCount / 200));
+  return `${minutes} min read`;
 }
 
 // Transform Contentful entry to BlogPost
 function transformEntry(entry: Entry<BlogPostSkeleton, undefined, string>): BlogPost {
   const fields = entry.fields;
   const featuredImage = fields.featuredImage as Asset | undefined;
+  const content = fields.content as Document;
   
   return {
     slug: fields.slug as string,
     title: fields.title as string,
-    excerpt: fields.excerpt as string,
-    content: fields.content as Document,
-    category: fields.category as string,
+    excerpt: (fields.subtitle as string) || '',
+    content: content,
     image: featuredImage?.fields?.file?.url 
       ? `https:${featuredImage.fields.file.url}` 
       : '/placeholder.svg',
-    date: fields.publishedAt as string,
-    readTime: fields.readTime as string,
+    date: fields.publishedDate as string,
+    readTime: calculateReadTime(content),
+    author: fields.author as string | undefined,
   };
 }
 
@@ -58,7 +75,7 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
   try {
     const response = await client.getEntries<BlogPostSkeleton>({
       content_type: 'blogPost',
-      order: ['-fields.publishedAt'],
+      order: ['-fields.publishedDate'],
     });
     
     return response.items.map(transformEntry);
