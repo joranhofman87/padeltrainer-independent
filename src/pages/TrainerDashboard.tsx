@@ -11,6 +11,7 @@ import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, Clipbo
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
 
 interface DashboardStats {
   totalStudents: number;
@@ -36,6 +37,7 @@ export default function TrainerDashboard() {
     openSlots: 0,
     monthlyEarnings: 0,
   });
+  const [trainerId, setTrainerId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>({
     profileComplete: false,
@@ -159,7 +161,8 @@ export default function TrainerDashboard() {
         return;
       }
 
-      const trainerId = trainerProfile.id;
+      setTrainerId(trainerProfile.id);
+      const currentTrainerId = trainerProfile.id;
       const now = new Date();
       const monthStart = startOfMonth(now);
       const monthEnd = endOfMonth(now);
@@ -172,7 +175,7 @@ export default function TrainerDashboard() {
           guest_player_id,
           availability_slots!inner(trainer_id)
         `)
-        .eq('availability_slots.trainer_id', trainerId)
+        .eq('availability_slots.trainer_id', currentTrainerId)
         .eq('status', 'confirmed');
 
       // Count unique players (both registered players and guest players)
@@ -192,7 +195,7 @@ export default function TrainerDashboard() {
           lessons(max_participants),
           bookings(id, status)
         `)
-        .eq('trainer_id', trainerId)
+        .eq('trainer_id', currentTrainerId)
         .eq('is_marked_full', false)
         .gte('start_time', now.toISOString());
 
@@ -214,7 +217,7 @@ export default function TrainerDashboard() {
           paid_at,
           availability_slots!inner(trainer_id)
         `)
-        .eq('availability_slots.trainer_id', trainerId)
+        .eq('availability_slots.trainer_id', currentTrainerId)
         .eq('payment_status', 'paid')
         .gte('paid_at', monthStart.toISOString())
         .lte('paid_at', monthEnd.toISOString());
@@ -447,6 +450,11 @@ export default function TrainerDashboard() {
               </CardDescription>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Calendar Widget */}
+        <div className="mb-8">
+          <DashboardCalendar trainerId={trainerId} />
         </div>
 
       </main>
