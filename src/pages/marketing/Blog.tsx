@@ -7,6 +7,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
 import { getBlogPosts } from '@/lib/contentful';
+import { useTranslation } from 'react-i18next';
 
 function BlogPostCardSkeleton() {
   return (
@@ -40,28 +41,33 @@ function FeaturedPostSkeleton() {
 }
 
 function EmptyState() {
+  const { t } = useTranslation('marketing');
   return (
     <div className="text-center py-16">
       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
         <FileText className="h-8 w-8 text-muted-foreground" />
       </div>
-      <h2 className="text-xl font-semibold mb-2">No articles yet</h2>
+      <h2 className="text-xl font-semibold mb-2">{t('blog.notFound.title')}</h2>
       <p className="text-muted-foreground max-w-md mx-auto">
-        We're working on creating amazing content for you. Check back soon for tips, insights, and stories from the padel community.
+        {t('blog.notFound.description')}
       </p>
     </div>
   );
 }
 
 export default function Blog() {
+  const { t, i18n } = useTranslation('marketing');
+  
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ['blog-posts'],
-    queryFn: getBlogPosts,
+    queryKey: ['blog-posts', i18n.language],
+    queryFn: () => getBlogPosts(i18n.language),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
   const featuredPost = posts[0];
   const recentPosts = posts.slice(1);
+  
+  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
 
   return (
     <MarketingLayout>
@@ -73,9 +79,9 @@ export default function Blog() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Blog</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">{t('blog.title')}</h1>
             <p className="text-xl text-muted-foreground">
-              Tips, insights, and stories from the Dutch padel community
+              {t('blog.subtitle')}
             </p>
           </motion.div>
         </div>
@@ -140,7 +146,7 @@ export default function Blog() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
-                            {new Date(featuredPost.date).toLocaleDateString('en-US', { 
+                            {new Date(featuredPost.date).toLocaleDateString(dateLocale, { 
                               month: 'short', 
                               day: 'numeric',
                               year: 'numeric'
@@ -163,7 +169,7 @@ export default function Blog() {
           {recentPosts.length > 0 && (
             <section className="py-12">
               <div className="container mx-auto px-4">
-                <h2 className="text-2xl font-bold mb-8">Recent Articles</h2>
+                <h2 className="text-2xl font-bold mb-8">{t('blog.recentArticles')}</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {recentPosts.map((post, index) => (
                     <motion.div
@@ -191,7 +197,7 @@ export default function Blog() {
                               {post.excerpt}
                             </CardDescription>
                             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span>{new Date(post.date).toLocaleDateString('en-US', { 
+                              <span>{new Date(post.date).toLocaleDateString(dateLocale, { 
                                 month: 'short', 
                                 day: 'numeric'
                               })}</span>
@@ -218,18 +224,18 @@ export default function Blog() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-2xl font-bold mb-4">Stay in the loop</h2>
+            <h2 className="text-2xl font-bold mb-4">{t('blog.newsletter.title')}</h2>
             <p className="text-muted-foreground mb-6">
-              Get the latest padel tips and platform updates delivered to your inbox.
+              {t('blog.newsletter.subtitle')}
             </p>
             <div className="flex gap-3 max-w-md mx-auto">
               <input
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t('blog.newsletter.placeholder')}
                 className="flex-1 px-4 py-2 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors flex items-center gap-2">
-                Subscribe
+                {t('blog.newsletter.subscribe')}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>

@@ -10,6 +10,7 @@ import { getBlogPostBySlug } from '@/lib/contentful';
 import { documentToReactComponents } from '@contentful/rich-text-react-renderer';
 import { BLOCKS, INLINES } from '@contentful/rich-text-types';
 import type { Options } from '@contentful/rich-text-react-renderer';
+import { useTranslation } from 'react-i18next';
 
 // Rich text rendering options
 const richTextOptions: Options = {
@@ -90,13 +91,16 @@ function BlogPostSkeleton() {
 
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
+  const { t, i18n } = useTranslation('marketing');
   
   const { data: post, isLoading, error } = useQuery({
-    queryKey: ['blog-post', slug],
-    queryFn: () => getBlogPostBySlug(slug!),
+    queryKey: ['blog-post', slug, i18n.language],
+    queryFn: () => getBlogPostBySlug(slug!, i18n.language),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
+  
+  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
 
   if (isLoading) {
     return (
@@ -105,7 +109,7 @@ export default function BlogPost() {
           <Button variant="ghost" asChild>
             <Link to="/blog" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Back to Blog
+              {t('blog.backToBlog')}
             </Link>
           </Button>
         </div>
@@ -118,12 +122,12 @@ export default function BlogPost() {
     return (
       <MarketingLayout>
         <div className="container mx-auto px-4 py-20 text-center">
-          <h1 className="text-2xl font-bold mb-4">Article not found</h1>
+          <h1 className="text-2xl font-bold mb-4">{t('blog.notFound.title')}</h1>
           <p className="text-muted-foreground mb-6">
-            The article you're looking for doesn't exist or has been moved.
+            {t('blog.notFound.description')}
           </p>
           <Button asChild>
-            <Link to="/blog">Back to Blog</Link>
+            <Link to="/blog">{t('blog.notFound.backToBlog')}</Link>
           </Button>
         </div>
       </MarketingLayout>
@@ -133,14 +137,14 @@ export default function BlogPost() {
   return (
     <MarketingLayout>
       {/* Back Button */}
-      <div className="container mx-auto px-4 pt-8">
-        <Button variant="ghost" asChild>
-          <Link to="/blog" className="flex items-center gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Blog
-          </Link>
-        </Button>
-      </div>
+        <div className="container mx-auto px-4 pt-8">
+          <Button variant="ghost" asChild>
+            <Link to="/blog" className="flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              {t('blog.backToBlog')}
+            </Link>
+          </Button>
+        </div>
 
       {/* Article Header */}
       <article className="container mx-auto px-4 py-8 max-w-3xl">
@@ -153,7 +157,7 @@ export default function BlogPost() {
           <div className="flex items-center gap-4 text-muted-foreground mb-8">
             <span className="flex items-center gap-1">
               <Calendar className="h-4 w-4" />
-              {new Date(post.date).toLocaleDateString('en-US', { 
+              {new Date(post.date).toLocaleDateString(dateLocale, { 
                 month: 'long', 
                 day: 'numeric',
                 year: 'numeric'
@@ -165,7 +169,7 @@ export default function BlogPost() {
             </span>
             <Button variant="ghost" size="sm">
               <Share2 className="h-4 w-4 mr-2" />
-              Share
+              {t('blog.share')}
             </Button>
           </div>
         </motion.div>
@@ -201,12 +205,12 @@ export default function BlogPost() {
           transition={{ delay: 0.3 }}
           className="mt-12 p-8 bg-accent/30 rounded-xl text-center"
         >
-          <h3 className="text-xl font-bold mb-2">Ready to find your perfect trainer?</h3>
+          <h3 className="text-xl font-bold mb-2">{t('blog.readyToFind')}</h3>
           <p className="text-muted-foreground mb-4">
-            Browse verified trainers matched to your skill level.
+            {t('blog.browseTrainers')}
           </p>
           <Button asChild>
-            <Link to="/trainers">Find Trainers</Link>
+            <Link to="/trainers">{t('blog.findTrainers')}</Link>
           </Button>
         </motion.div>
       </article>
