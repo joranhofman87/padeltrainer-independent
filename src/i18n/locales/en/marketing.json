@@ -1,62 +1,115 @@
 {
+  "nav": {
+    "home": "Home",
+    "pricing": "Pricing",
+    "about": "About",
+    "blog": "Blog",
+    "signIn": "Sign In",
+    "getStarted": "Get Started",
+    "language": "Language"
+  },
+  "footer": {
+    "tagline": "Connecting padel players with the best trainers across the Netherlands.",
+    "platform": "Platform",
+    "findTrainers": "Find Trainers",
+    "company": "Company",
+    "aboutUs": "About Us",
+    "contact": "Contact",
+    "legal": "Legal",
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "copyright": "© {{year}} PadelTrainer.ai. All rights reserved."
+  },
   "home": {
+    "badge": "Now live across the Netherlands",
     "hero": {
       "title": "Find Your Perfect",
       "titleHighlight": "Padel Trainer",
-      "subtitle": "Connect with certified padel trainers across the Netherlands. Book lessons that match your skill level and start improving your game today.",
-      "cta": "Find a Trainer",
-      "ctaSecondary": "I'm a Trainer"
+      "subtitle": "Connect with certified trainers, book lessons that match your skill level, and start improving your game today.",
+      "cta": "Start as Player",
+      "ctaSecondary": "Join as Trainer"
+    },
+    "trust": {
+      "freeToJoin": "Free to join",
+      "knltbVerified": "KNLTB verified",
+      "securePayments": "Secure payments"
     },
     "stats": {
-      "trainers": "Verified Trainers",
+      "trainers": "Certified Trainers",
       "lessons": "Lessons Booked",
       "rating": "Average Rating",
       "cities": "Cities Covered"
     },
     "features": {
-      "title": "Why PadelTrainer.ai?",
-      "subtitle": "Everything you need to find the perfect trainer and book lessons",
+      "title": "Everything you need to improve your game",
+      "subtitle": "From finding the right trainer to booking and paying, we make the entire process seamless.",
       "verified": {
         "title": "Verified Trainers",
-        "description": "All trainers are verified with KNLTB certification and experience"
+        "description": "Every trainer is verified with their KNLTB credentials and real reviews from players."
       },
       "booking": {
         "title": "Easy Booking",
-        "description": "Book lessons in seconds with our streamlined booking system"
-      },
-      "payments": {
-        "title": "Secure Payments",
-        "description": "Pay securely with iDEAL or card, protected by Stripe"
+        "description": "Book lessons with just a few clicks. Flexible scheduling that fits your life."
       },
       "matching": {
         "title": "Skill Matching",
-        "description": "Find trainers that match your current skill level and goals"
+        "description": "Find trainers that specialize in your skill level, from beginner to advanced."
+      },
+      "local": {
+        "title": "Local Trainers",
+        "description": "Connect with trainers near you across all major cities in the Netherlands."
+      },
+      "payments": {
+        "title": "Secure Payments",
+        "description": "Pay securely through our platform with iDEAL and card support."
+      },
+      "progress": {
+        "title": "Track Progress",
+        "description": "Monitor your improvement and get insights on your padel journey."
       }
     },
     "howItWorks": {
-      "title": "How It Works",
-      "subtitle": "Get started in minutes",
+      "title": "How it works",
+      "subtitle": "Get started in 3 simple steps",
       "step1": {
-        "title": "Browse Trainers",
-        "description": "Search and filter trainers by location, specialization, and rating"
+        "title": "Create your profile",
+        "description": "Sign up and add your KNLTB rating to get personalized trainer recommendations."
       },
       "step2": {
-        "title": "Book a Lesson",
-        "description": "Choose a time that works for you and book instantly"
+        "title": "Find your trainer",
+        "description": "Browse verified trainers, read reviews, and find the perfect match for your goals."
       },
       "step3": {
-        "title": "Play & Improve",
-        "description": "Meet your trainer and start improving your padel skills"
+        "title": "Book & play",
+        "description": "Select a time slot, pay securely, and start improving your padel game."
       }
     },
     "testimonials": {
-      "title": "What Players Say",
-      "subtitle": "Join thousands of happy players"
+      "title": "Loved by players & trainers",
+      "subtitle": "See what our community has to say",
+      "items": {
+        "1": {
+          "name": "Thomas de Vries",
+          "role": "Player since 2023",
+          "content": "Found an amazing trainer in Amsterdam within minutes. My game has improved significantly in just 2 months!"
+        },
+        "2": {
+          "name": "Lisa van den Berg",
+          "role": "KNLTB Level 6",
+          "content": "The skill matching is spot-on. My trainer knows exactly how to push me to the next level."
+        },
+        "3": {
+          "name": "Mark Jansen",
+          "role": "Padel Trainer",
+          "content": "As a trainer, PadelTrainer.ai has helped me fill my schedule and connect with motivated players."
+        }
+      }
     },
     "cta": {
-      "title": "Ready to improve your game?",
-      "subtitle": "Join thousands of players finding their perfect trainer",
-      "button": "Find a Trainer Now"
+      "title": "Ready to level up your padel game?",
+      "subtitle": "Join thousands of players who are already improving with PadelTrainer.ai",
+      "button": "Get Started Free",
+      "browseTrainers": "Browse Trainers"
     }
   },
   "pricing": {

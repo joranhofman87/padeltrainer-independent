@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
 
 interface MarketingLayoutProps {
   children: React.ReactNode;
@@ -12,12 +13,13 @@ interface MarketingLayoutProps {
 export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t } = useTranslation('marketing');
 
   const navLinks = [
-    { href: '/', label: 'Home' },
-    { href: '/pricing', label: 'Pricing' },
-    { href: '/about', label: 'About' },
-    { href: '/blog', label: 'Blog' },
+    { href: '/', label: t('nav.home') },
+    { href: '/pricing', label: t('nav.pricing') },
+    { href: '/about', label: t('nav.about') },
+    { href: '/blog', label: t('nav.blog') },
   ];
 
   return (
@@ -53,10 +55,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div className="hidden md:flex items-center gap-3">
               <LanguageSwitcher />
               <Button variant="ghost" asChild>
-                <Link to="/auth">Sign In</Link>
+                <Link to="/auth">{t('nav.signIn')}</Link>
               </Button>
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/signup/player">Get Started</Link>
+                <Link to="/signup/player">{t('nav.getStarted')}</Link>
               </Button>
             </div>
 
@@ -94,14 +96,14 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 ))}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Language:</span>
+                    <span className="text-sm text-muted-foreground">{t('nav.language')}:</span>
                     <LanguageSwitcher />
                   </div>
                   <Button variant="ghost" asChild>
-                    <Link to="/auth">Sign In</Link>
+                    <Link to="/auth">{t('nav.signIn')}</Link>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <Link to="/signup/player">Get Started</Link>
+                    <Link to="/signup/player">{t('nav.getStarted')}</Link>
                   </Button>
                 </div>
               </nav>
@@ -125,39 +127,39 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 </span>
               </Link>
               <p className="text-sm text-accent-foreground/70">
-                Connecting padel players with the best trainers across the Netherlands.
+                {t('footer.tagline')}
               </p>
             </div>
 
             {/* Links */}
             <div>
-              <h4 className="font-semibold mb-4">Platform</h4>
+              <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
               <ul className="space-y-2 text-sm text-accent-foreground/70">
-                <li><Link to="/trainers" className="hover:text-primary transition-colors">Find Trainers</Link></li>
-                <li><Link to="/pricing" className="hover:text-primary transition-colors">Pricing</Link></li>
-                <li><Link to="/blog" className="hover:text-primary transition-colors">Blog</Link></li>
+                <li><Link to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</Link></li>
+                <li><Link to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</Link></li>
+                <li><Link to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4">Company</h4>
+              <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
               <ul className="space-y-2 text-sm text-accent-foreground/70">
-                <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
-                <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">Contact</a></li>
+                <li><Link to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</Link></li>
+                <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">{t('footer.contact')}</a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4">Legal</h4>
+              <h4 className="font-semibold mb-4">{t('footer.legal')}</h4>
               <ul className="space-y-2 text-sm text-accent-foreground/70">
-                <li><Link to="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
-                <li><Link to="/terms" className="hover:text-primary transition-colors">Terms of Service</Link></li>
+                <li><Link to="/privacy" className="hover:text-primary transition-colors">{t('footer.privacyPolicy')}</Link></li>
+                <li><Link to="/terms" className="hover:text-primary transition-colors">{t('footer.termsOfService')}</Link></li>
               </ul>
             </div>
           </div>
 
           <div className="border-t border-accent-foreground/10 mt-8 pt-8 text-center text-sm text-accent-foreground/70">
-            <p>© {new Date().getFullYear()} PadelTrainer.ai. All rights reserved.</p>
+            <p>{t('footer.copyright', { year: new Date().getFullYear() })}</p>
           </div>
         </div>
       </footer>

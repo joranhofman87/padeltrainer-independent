@@ -1,7 +1,13 @@
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 export default function Terms() {
+  const { t, i18n } = useTranslation('marketing');
+
+  const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
+  const formattedDate = new Date().toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' });
+
   return (
     <MarketingLayout>
       <div className="container mx-auto px-4 py-16 max-w-4xl">
@@ -10,9 +16,9 @@ export default function Terms() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <h1 className="text-4xl font-bold mb-8">Terms of Service</h1>
+          <h1 className="text-4xl font-bold mb-8">{t('terms.title')}</h1>
           <p className="text-muted-foreground mb-8">
-            Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            {t('terms.lastUpdated', { date: formattedDate })}
           </p>
 
           <div className="prose prose-lg max-w-none space-y-8">

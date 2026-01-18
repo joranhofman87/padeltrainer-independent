@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { 
   ArrowRight, 
   Users, 
@@ -31,65 +32,73 @@ const staggerContainer = {
 };
 
 export default function Home() {
+  const { t } = useTranslation('marketing');
+
   const features = [
     {
       icon: Users,
-      title: 'Verified Trainers',
-      description: 'Every trainer is verified with their KNLTB credentials and real reviews from players.'
+      titleKey: 'home.features.verified.title',
+      descriptionKey: 'home.features.verified.description'
     },
     {
       icon: Calendar,
-      title: 'Easy Booking',
-      description: 'Book lessons with just a few clicks. Flexible scheduling that fits your life.'
+      titleKey: 'home.features.booking.title',
+      descriptionKey: 'home.features.booking.description'
     },
     {
       icon: Star,
-      title: 'Skill Matching',
-      description: 'Find trainers that specialize in your skill level, from beginner to advanced.'
+      titleKey: 'home.features.matching.title',
+      descriptionKey: 'home.features.matching.description'
     },
     {
       icon: MapPin,
-      title: 'Local Trainers',
-      description: 'Connect with trainers near you across all major cities in the Netherlands.'
+      titleKey: 'home.features.local.title',
+      descriptionKey: 'home.features.local.description'
     },
     {
       icon: Shield,
-      title: 'Secure Payments',
-      description: 'Pay securely through our platform with iDEAL and card support.'
+      titleKey: 'home.features.payments.title',
+      descriptionKey: 'home.features.payments.description'
     },
     {
       icon: TrendingUp,
-      title: 'Track Progress',
-      description: 'Monitor your improvement and get insights on your padel journey.'
+      titleKey: 'home.features.progress.title',
+      descriptionKey: 'home.features.progress.description'
     }
   ];
 
   const stats = [
-    { value: '500+', label: 'Certified Trainers' },
-    { value: '10,000+', label: 'Lessons Booked' },
-    { value: '4.9', label: 'Average Rating' },
-    { value: '50+', label: 'Cities Covered' }
+    { value: '500+', labelKey: 'home.stats.trainers' },
+    { value: '10,000+', labelKey: 'home.stats.lessons' },
+    { value: '4.9', labelKey: 'home.stats.rating' },
+    { value: '50+', labelKey: 'home.stats.cities' }
   ];
 
   const testimonials = [
     {
-      name: 'Thomas de Vries',
-      role: 'Player since 2023',
-      content: 'Found an amazing trainer in Amsterdam within minutes. My game has improved significantly in just 2 months!',
+      nameKey: 'home.testimonials.items.1.name',
+      roleKey: 'home.testimonials.items.1.role',
+      contentKey: 'home.testimonials.items.1.content',
       rating: 5
     },
     {
-      name: 'Lisa van den Berg',
-      role: 'KNLTB Level 6',
-      content: 'The skill matching is spot-on. My trainer knows exactly how to push me to the next level.',
+      nameKey: 'home.testimonials.items.2.name',
+      roleKey: 'home.testimonials.items.2.role',
+      contentKey: 'home.testimonials.items.2.content',
       rating: 5
     },
     {
-      name: 'Mark Jansen',
-      role: 'Padel Trainer',
-      content: 'As a trainer, PadelTrainer.ai has helped me fill my schedule and connect with motivated players.',
+      nameKey: 'home.testimonials.items.3.name',
+      roleKey: 'home.testimonials.items.3.role',
+      contentKey: 'home.testimonials.items.3.content',
       rating: 5
     }
+  ];
+
+  const steps = [
+    { step: '1', titleKey: 'home.howItWorks.step1.title', descriptionKey: 'home.howItWorks.step1.description' },
+    { step: '2', titleKey: 'home.howItWorks.step2.title', descriptionKey: 'home.howItWorks.step2.description' },
+    { step: '3', titleKey: 'home.howItWorks.step3.title', descriptionKey: 'home.howItWorks.step3.description' }
   ];
 
   return (
@@ -111,7 +120,7 @@ export default function Home() {
             <motion.div variants={fadeInUp}>
               <Badge variant="secondary" className="mb-6 px-4 py-1.5 text-sm">
                 <Zap className="h-3.5 w-3.5 mr-1.5" />
-                Now live across the Netherlands
+                {t('home.badge')}
               </Badge>
             </motion.div>
             
@@ -119,9 +128,9 @@ export default function Home() {
               variants={fadeInUp}
               className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 tracking-tight"
             >
-              Find Your Perfect
+              {t('home.hero.title')}
               <span className="block bg-gradient-to-r from-primary to-[hsl(var(--brand-gold))] bg-clip-text text-transparent">
-                Padel Trainer
+                {t('home.hero.titleHighlight')}
               </span>
             </motion.h1>
             
@@ -129,8 +138,7 @@ export default function Home() {
               variants={fadeInUp}
               className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-2xl mx-auto"
             >
-              Connect with certified trainers, book lessons that match your skill level, 
-              and start improving your game today.
+              {t('home.hero.subtitle')}
             </motion.p>
             
             <motion.div 
@@ -139,12 +147,12 @@ export default function Home() {
             >
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
                 <Link to="/signup/player">
-                  Start as Player
+                  {t('home.hero.cta')}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
-                <Link to="/signup/trainer">Join as Trainer</Link>
+                <Link to="/signup/trainer">{t('home.hero.ctaSecondary')}</Link>
               </Button>
             </motion.div>
 
@@ -155,15 +163,15 @@ export default function Home() {
             >
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                <span>Free to join</span>
+                <span>{t('home.trust.freeToJoin')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                <span>KNLTB verified</span>
+                <span>{t('home.trust.knltbVerified')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                <span>Secure payments</span>
+                <span>{t('home.trust.securePayments')}</span>
               </div>
             </motion.div>
           </motion.div>
@@ -176,7 +184,7 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, index) => (
               <motion.div
-                key={stat.label}
+                key={stat.labelKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -186,7 +194,7 @@ export default function Home() {
                 <div className="text-3xl md:text-4xl font-bold text-primary mb-1">
                   {stat.value}
                 </div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
+                <div className="text-sm text-muted-foreground">{t(stat.labelKey)}</div>
               </motion.div>
             ))}
           </div>
@@ -203,17 +211,17 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Everything you need to improve your game
+              {t('home.features.title')}
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              From finding the right trainer to booking and paying, we make the entire process seamless.
+              {t('home.features.subtitle')}
             </p>
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => (
               <motion.div
-                key={feature.title}
+                key={feature.titleKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -224,8 +232,8 @@ export default function Home() {
                     <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                       <feature.icon className="h-6 w-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                    <p className="text-muted-foreground">{feature.description}</p>
+                    <h3 className="text-lg font-semibold mb-2">{t(feature.titleKey)}</h3>
+                    <p className="text-muted-foreground">{t(feature.descriptionKey)}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -243,16 +251,12 @@ export default function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
-            <p className="text-lg text-muted-foreground">Get started in 3 simple steps</p>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('home.howItWorks.title')}</h2>
+            <p className="text-lg text-muted-foreground">{t('home.howItWorks.subtitle')}</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {[
-              { step: '1', title: 'Create your profile', description: 'Sign up and add your KNLTB rating to get personalized trainer recommendations.' },
-              { step: '2', title: 'Find your trainer', description: 'Browse verified trainers, read reviews, and find the perfect match for your goals.' },
-              { step: '3', title: 'Book & play', description: 'Select a time slot, pay securely, and start improving your padel game.' }
-            ].map((item, index) => (
+            {steps.map((item, index) => (
               <motion.div
                 key={item.step}
                 initial={{ opacity: 0, y: 20 }}
@@ -264,8 +268,8 @@ export default function Home() {
                 <div className="h-16 w-16 rounded-full bg-primary text-primary-foreground text-2xl font-bold flex items-center justify-center mx-auto mb-4">
                   {item.step}
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
-                <p className="text-muted-foreground">{item.description}</p>
+                <h3 className="text-xl font-semibold mb-2">{t(item.titleKey)}</h3>
+                <p className="text-muted-foreground">{t(item.descriptionKey)}</p>
               </motion.div>
             ))}
           </div>
@@ -281,14 +285,14 @@ export default function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Loved by players & trainers</h2>
-            <p className="text-lg text-muted-foreground">See what our community has to say</p>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('home.testimonials.title')}</h2>
+            <p className="text-lg text-muted-foreground">{t('home.testimonials.subtitle')}</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((testimonial, index) => (
               <motion.div
-                key={testimonial.name}
+                key={testimonial.nameKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -301,10 +305,10 @@ export default function Home() {
                         <Star key={i} className="h-4 w-4 fill-primary text-primary" />
                       ))}
                     </div>
-                    <p className="text-muted-foreground mb-4">"{testimonial.content}"</p>
+                    <p className="text-muted-foreground mb-4">"{t(testimonial.contentKey)}"</p>
                     <div>
-                      <div className="font-semibold">{testimonial.name}</div>
-                      <div className="text-sm text-muted-foreground">{testimonial.role}</div>
+                      <div className="font-semibold">{t(testimonial.nameKey)}</div>
+                      <div className="text-sm text-muted-foreground">{t(testimonial.roleKey)}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -324,20 +328,20 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Ready to level up your padel game?
+              {t('home.cta.title')}
             </h2>
             <p className="text-lg text-accent-foreground/80 mb-8">
-              Join thousands of players who are already improving with PadelTrainer.ai
+              {t('home.cta.subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
                 <Link to="/signup/player">
-                  Get Started Free
+                  {t('home.cta.button')}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
               <Button size="lg" variant="secondary" className="text-lg px-8 h-14" asChild>
-                <Link to="/trainers">Browse Trainers</Link>
+                <Link to="/trainers">{t('home.cta.browseTrainers')}</Link>
               </Button>
             </div>
           </motion.div>

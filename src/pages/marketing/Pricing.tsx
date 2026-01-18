@@ -6,79 +6,70 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
 import { Check, X, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 export default function Pricing() {
-  const playerFeatures = [
-    'Browse all verified trainers',
-    'Read reviews and ratings',
-    'Book lessons online',
-    'Secure iDEAL & card payments',
-    'Google Calendar sync',
-    'Email notifications',
-    'Track your bookings',
+  const { t } = useTranslation('marketing');
+
+  const playerFeatureKeys = [
+    'pricing.players.features.browse',
+    'pricing.players.features.reviews',
+    'pricing.players.features.book',
+    'pricing.players.features.payments',
+    'pricing.players.features.calendar',
+    'pricing.players.features.notifications',
+    'pricing.players.features.tracking',
   ];
 
   const trainerPlans = [
     {
-      name: 'Starter',
-      price: 'Free',
-      period: '',
-      description: 'Perfect for getting started',
+      planKey: 'starter',
       platformFee: '10%',
       features: [
-        { text: 'Up to 3 active lessons', included: true },
-        { text: 'Basic profile page', included: true },
-        { text: 'Accept online bookings', included: true },
-        { text: 'Email notifications', included: true },
-        { text: 'Calendar sync', included: false },
-        { text: 'Analytics dashboard', included: false },
-        { text: 'Priority support', included: false },
-        { text: 'Multi-trainer support', included: false },
+        { key: 'lessons', included: true },
+        { key: 'profile', included: true },
+        { key: 'bookings', included: true },
+        { key: 'notifications', included: true },
+        { key: 'calendar', included: false },
+        { key: 'analytics', included: false },
+        { key: 'support', included: false },
+        { key: 'multiTrainer', included: false },
       ],
-      cta: 'Start Free',
       popular: false,
     },
     {
-      name: 'Professional',
-      price: '€29',
-      period: '/month',
-      yearlyPrice: '€278/year (save 20%)',
-      description: 'For serious trainers',
+      planKey: 'professional',
       platformFee: '5%',
       features: [
-        { text: 'Unlimited active lessons', included: true },
-        { text: 'Enhanced profile page', included: true },
-        { text: 'Accept online bookings', included: true },
-        { text: 'Email notifications', included: true },
-        { text: 'Google Calendar sync', included: true },
-        { text: 'Analytics dashboard', included: true },
-        { text: 'Priority support', included: true },
-        { text: 'Multi-trainer support', included: false },
+        { key: 'lessons', included: true },
+        { key: 'profile', included: true },
+        { key: 'bookings', included: true },
+        { key: 'notifications', included: true },
+        { key: 'calendar', included: true },
+        { key: 'analytics', included: true },
+        { key: 'support', included: true },
+        { key: 'multiTrainer', included: false },
       ],
-      cta: 'Get Professional',
       popular: true,
     },
     {
-      name: 'Academy',
-      price: '€79',
-      period: '/month',
-      yearlyPrice: '€758/year (save 20%)',
-      description: 'For clubs & academies',
+      planKey: 'academy',
       platformFee: '2.5%',
       features: [
-        { text: 'Unlimited active lessons', included: true },
-        { text: 'Premium profile page', included: true },
-        { text: 'Accept online bookings', included: true },
-        { text: 'Email notifications', included: true },
-        { text: 'Google Calendar sync', included: true },
-        { text: 'Advanced analytics', included: true },
-        { text: 'Dedicated support', included: true },
-        { text: 'Multi-trainer support', included: true },
+        { key: 'lessons', included: true },
+        { key: 'profile', included: true },
+        { key: 'bookings', included: true },
+        { key: 'notifications', included: true },
+        { key: 'calendar', included: true },
+        { key: 'analytics', included: true },
+        { key: 'support', included: true },
+        { key: 'multiTrainer', included: true },
       ],
-      cta: 'Contact Sales',
       popular: false,
     },
   ];
+
+  const faqKeys = ['platformFee', 'changePlans', 'contract', 'payouts'];
 
   return (
     <MarketingLayout>
@@ -91,10 +82,10 @@ export default function Pricing() {
             animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Simple, transparent pricing
+              {t('pricing.hero.title')}
             </h1>
             <p className="text-xl text-muted-foreground">
-              Free for players. Flexible plans for trainers to grow their business.
+              {t('pricing.hero.subtitle')}
             </p>
           </motion.div>
         </div>
@@ -111,24 +102,24 @@ export default function Pricing() {
           >
             <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
               <CardHeader className="text-center pb-4">
-                <Badge className="w-fit mx-auto mb-2">For Players</Badge>
-                <CardTitle className="text-2xl">Always Free</CardTitle>
+                <Badge className="w-fit mx-auto mb-2">{t('pricing.players.badge')}</Badge>
+                <CardTitle className="text-2xl">{t('pricing.players.title')}</CardTitle>
                 <CardDescription className="text-lg">
-                  No subscription fees. Just pay for the lessons you book.
+                  {t('pricing.players.description')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid sm:grid-cols-2 gap-3">
-                  {playerFeatures.map((feature) => (
-                    <div key={feature} className="flex items-center gap-2">
+                  {playerFeatureKeys.map((featureKey) => (
+                    <div key={featureKey} className="flex items-center gap-2">
                       <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                      <span>{feature}</span>
+                      <span>{t(featureKey)}</span>
                     </div>
                   ))}
                 </div>
                 <div className="mt-8 text-center">
                   <Button size="lg" className="px-8" asChild>
-                    <Link to="/auth">Get Started Free</Link>
+                    <Link to="/auth">{t('pricing.players.cta')}</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -146,19 +137,19 @@ export default function Pricing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <Badge variant="secondary" className="mb-4">For Trainers</Badge>
+            <Badge variant="secondary" className="mb-4">{t('pricing.trainers.badge')}</Badge>
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Choose your plan
+              {t('pricing.trainers.title')}
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Start free and upgrade as your business grows. Lower platform fees with higher tiers.
+              {t('pricing.trainers.subtitle')}
             </p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {trainerPlans.map((plan, index) => (
               <motion.div
-                key={plan.name}
+                key={plan.planKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -167,27 +158,27 @@ export default function Pricing() {
                 <Card className={`h-full relative ${plan.popular ? 'border-2 border-primary shadow-lg' : ''}`}>
                   {plan.popular && (
                     <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      Most Popular
+                      {t('pricing.trainers.mostPopular')}
                     </Badge>
                   )}
                   <CardHeader className="text-center">
-                    <CardTitle className="text-xl">{plan.name}</CardTitle>
-                    <CardDescription>{plan.description}</CardDescription>
+                    <CardTitle className="text-xl">{t(`pricing.trainers.plans.${plan.planKey}.name`)}</CardTitle>
+                    <CardDescription>{t(`pricing.trainers.plans.${plan.planKey}.description`)}</CardDescription>
                     <div className="pt-4">
-                      <span className="text-4xl font-bold">{plan.price}</span>
-                      <span className="text-muted-foreground">{plan.period}</span>
-                      {plan.yearlyPrice && (
-                        <p className="text-sm text-muted-foreground mt-1">{plan.yearlyPrice}</p>
+                      <span className="text-4xl font-bold">{t(`pricing.trainers.plans.${plan.planKey}.price`)}</span>
+                      <span className="text-muted-foreground">{t(`pricing.trainers.plans.${plan.planKey}.period`, { defaultValue: '' })}</span>
+                      {plan.planKey !== 'starter' && (
+                        <p className="text-sm text-muted-foreground mt-1">{t(`pricing.trainers.plans.${plan.planKey}.yearlyPrice`)}</p>
                       )}
                     </div>
                     <div className="pt-2 flex items-center justify-center gap-1">
-                      <Badge variant="outline">{plan.platformFee} platform fee</Badge>
+                      <Badge variant="outline">{plan.platformFee} {t('pricing.trainers.platformFee')}</Badge>
                       <Tooltip>
                         <TooltipTrigger>
                           <HelpCircle className="h-4 w-4 text-muted-foreground" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Fee deducted from each lesson payment</p>
+                          <p>{t('pricing.trainers.feeTooltip')}</p>
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -195,14 +186,14 @@ export default function Pricing() {
                   <CardContent>
                     <ul className="space-y-3 mb-8">
                       {plan.features.map((feature) => (
-                        <li key={feature.text} className="flex items-center gap-2">
+                        <li key={feature.key} className="flex items-center gap-2">
                           {feature.included ? (
                             <Check className="h-5 w-5 text-primary flex-shrink-0" />
                           ) : (
                             <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
                           )}
                           <span className={feature.included ? '' : 'text-muted-foreground/50'}>
-                            {feature.text}
+                            {t(`pricing.trainers.plans.${plan.planKey}.features.${feature.key}`)}
                           </span>
                         </li>
                       ))}
@@ -212,7 +203,7 @@ export default function Pricing() {
                       variant={plan.popular ? 'default' : 'outline'}
                       asChild
                     >
-                      <Link to="/auth">{plan.cta}</Link>
+                      <Link to="/auth">{t(`pricing.trainers.plans.${plan.planKey}.cta`)}</Link>
                     </Button>
                   </CardContent>
                 </Card>
@@ -231,30 +222,13 @@ export default function Pricing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <h2 className="text-3xl font-bold mb-4">Frequently asked questions</h2>
+            <h2 className="text-3xl font-bold mb-4">{t('pricing.faq.title')}</h2>
           </motion.div>
 
           <div className="max-w-3xl mx-auto space-y-6">
-            {[
-              {
-                q: 'How does the platform fee work?',
-                a: 'The platform fee is automatically deducted from each lesson payment. For example, if you charge €50 for a lesson on the Professional plan (5% fee), you receive €47.50.'
-              },
-              {
-                q: 'Can I change plans later?',
-                a: 'Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle.'
-              },
-              {
-                q: 'Is there a contract or commitment?',
-                a: 'No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings.'
-              },
-              {
-                q: 'How do payouts work?',
-                a: 'Payments are processed through Stripe Connect. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days.'
-              }
-            ].map((faq, index) => (
+            {faqKeys.map((faqKey, index) => (
               <motion.div
-                key={faq.q}
+                key={faqKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -262,8 +236,8 @@ export default function Pricing() {
               >
                 <Card>
                   <CardContent className="p-6">
-                    <h3 className="font-semibold mb-2">{faq.q}</h3>
-                    <p className="text-muted-foreground">{faq.a}</p>
+                    <h3 className="font-semibold mb-2">{t(`pricing.faq.questions.${faqKey}.q`)}</h3>
+                    <p className="text-muted-foreground">{t(`pricing.faq.questions.${faqKey}.a`)}</p>
                   </CardContent>
                 </Card>
               </motion.div>
