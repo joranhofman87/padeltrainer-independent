@@ -385,11 +385,14 @@
     "individualSlots": "Individuele Slots",
     "open": "open",
     "next": "Volgende",
-    "spotOpen": "plek vrij",
-    "spotsOpen": "plekken vrij",
+    "spotOpen": "plek",
+    "spotsOpen": "plekken",
+    "sessionsOpen": "sessies open",
+    "spotsAvailable": "plekken beschikbaar",
     "noLesson": "Geen les gekoppeld",
     "bookPlayer": "Speler boeken",
     "noOpenSlots": "Geen open slots beschikbaar",
+    "noOpenSlotsDescription": "Al je trainingsslots zijn of volgeboekt of gemarkeerd als privé.",
     "createSlots": "Nieuwe slots aanmaken",
     "viewCalendar": "Bekijk volledige kalender"
   }
