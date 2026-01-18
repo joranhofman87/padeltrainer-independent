@@ -377,5 +377,20 @@
     "cyclusMarkedFull": "Cyclus marked as private",
     "cyclusMarkedOpen": "Cyclus opened to players",
     "privateBadge": "Private"
+  },
+  "openSlots": {
+    "title": "Open Training Slots",
+    "description": "Overview of all slots with available spots",
+    "trainingCycles": "Training Cycles",
+    "individualSlots": "Individual Slots",
+    "open": "open",
+    "next": "Next",
+    "spotOpen": "spot open",
+    "spotsOpen": "spots open",
+    "noLesson": "No lesson linked",
+    "bookPlayer": "Book player",
+    "noOpenSlots": "No open slots available",
+    "createSlots": "Create new slots",
+    "viewCalendar": "View full calendar"
   }
 }
