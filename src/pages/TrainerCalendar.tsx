@@ -496,7 +496,7 @@ export default function TrainerCalendar() {
                 <Button variant="outline" size="icon" onClick={navigatePrevious}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="min-w-[200px] text-center font-medium">
+                <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm sm:text-base">
                   {getDateRangeLabel()}
                 </div>
                 <Button variant="outline" size="icon" onClick={navigateNext}>

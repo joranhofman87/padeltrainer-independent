@@ -208,24 +208,26 @@ export default function TrainerPlayers() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
               <h1 className="text-2xl font-bold">{t("players.title")}</h1>
-              <p className="text-muted-foreground">{t("players.subtitle")}</p>
+              <p className="text-muted-foreground hidden sm:block">{t("players.subtitle")}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowImportPlayers(true)}>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setShowImportPlayers(true)}>
               <Upload className="mr-2 h-4 w-4" />
-              {t("players.import.button")}
+              <span className="hidden sm:inline">{t("players.import.button")}</span>
+              <span className="sm:hidden">Import</span>
             </Button>
-            <Button onClick={() => setShowAddPlayer(true)}>
+            <Button className="flex-1 sm:flex-none" onClick={() => setShowAddPlayer(true)}>
               <UserPlus className="mr-2 h-4 w-4" />
-              {t("players.addPlayer")}
+              <span className="hidden sm:inline">{t("players.addPlayer")}</span>
+              <span className="sm:hidden">Add</span>
             </Button>
           </div>
         </div>
