@@ -116,7 +116,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
       <main>{children}</main>
 
       {/* Footer */}
-      <footer className="border-t bg-accent text-accent-foreground">
+      <footer className="border-t bg-muted text-foreground">
         <div className="container mx-auto px-4 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {/* Brand */}
@@ -126,7 +126,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   PadelTrainer<span className="text-primary">.ai</span>
                 </span>
               </Link>
-              <p className="text-sm text-accent-foreground/70">
+              <p className="text-sm text-muted-foreground">
                 {t('footer.tagline')}
               </p>
             </div>
@@ -134,7 +134,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             {/* Links */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
-              <ul className="space-y-2 text-sm text-accent-foreground/70">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</Link></li>
                 <li><Link to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</Link></li>
                 <li><Link to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</Link></li>
@@ -143,7 +143,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             <div>
               <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
-              <ul className="space-y-2 text-sm text-accent-foreground/70">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</Link></li>
                 <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">{t('footer.contact')}</a></li>
               </ul>
@@ -151,14 +151,14 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             <div>
               <h4 className="font-semibold mb-4">{t('footer.legal')}</h4>
-              <ul className="space-y-2 text-sm text-accent-foreground/70">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/privacy" className="hover:text-primary transition-colors">{t('footer.privacyPolicy')}</Link></li>
                 <li><Link to="/terms" className="hover:text-primary transition-colors">{t('footer.termsOfService')}</Link></li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-accent-foreground/10 mt-8 pt-8 text-center text-sm text-accent-foreground/70">
+          <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
             <p>{t('footer.copyright', { year: new Date().getFullYear() })}</p>
           </div>
         </div>
