@@ -158,24 +158,61 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     return map;
   }, [slots, weekDays]);
 
-  // Get today's slots for mobile view
-  const todaySlots = useMemo(() => {
-    const today = new Date();
+  // Mobile: Track selected day for navigation
+  const [mobileSelectedDay, setMobileSelectedDay] = useState<Date>(new Date());
+
+  // Get slots for mobile selected day
+  const mobileDaySlots = useMemo(() => {
     return slots
       .filter((slot) => {
         const slotDate = new Date(slot.start_time);
         return (
-          slotDate.getDate() === today.getDate() &&
-          slotDate.getMonth() === today.getMonth() &&
-          slotDate.getFullYear() === today.getFullYear()
+          slotDate.getDate() === mobileSelectedDay.getDate() &&
+          slotDate.getMonth() === mobileSelectedDay.getMonth() &&
+          slotDate.getFullYear() === mobileSelectedDay.getFullYear()
         );
       })
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-  }, [slots]);
+  }, [slots, mobileSelectedDay]);
+
+  // Sync mobile selected day when week changes
+  useEffect(() => {
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+    if (mobileSelectedDay < weekStart || mobileSelectedDay > weekEnd) {
+      setMobileSelectedDay(weekStart);
+    }
+  }, [currentDate]);
 
   const navigatePrevious = () => setCurrentDate(subWeeks(currentDate, 1));
   const navigateNext = () => setCurrentDate(addWeeks(currentDate, 1));
-  const goToToday = () => setCurrentDate(new Date());
+  const goToToday = () => {
+    setCurrentDate(new Date());
+    setMobileSelectedDay(new Date());
+  };
+  
+  // Mobile day navigation
+  const navigatePreviousDay = () => {
+    const prevDay = addDays(mobileSelectedDay, -1);
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+    if (prevDay >= weekStart) {
+      setMobileSelectedDay(prevDay);
+    } else {
+      setCurrentDate(subWeeks(currentDate, 1));
+      setMobileSelectedDay(prevDay);
+    }
+  };
+  
+  const navigateNextDay = () => {
+    const nextDay = addDays(mobileSelectedDay, 1);
+    const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+    if (nextDay <= weekEnd) {
+      setMobileSelectedDay(nextDay);
+    } else {
+      setCurrentDate(addWeeks(currentDate, 1));
+      setMobileSelectedDay(nextDay);
+    }
+  };
 
   const getDateRangeLabel = () => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -213,7 +250,20 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     <Card className="overflow-hidden">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
+          {/* Mobile: Day navigation */}
+          <div className="flex items-center gap-1 sm:hidden">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
+              {t("calendar.today")}
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          {/* Desktop: Week navigation */}
+          <div className="hidden sm:flex items-center gap-1">
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -232,25 +282,23 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
           >
             <ExternalLink className="h-3 w-3" />
             <span className="hidden sm:inline">{t("calendar.addToCalendar")}</span>
-            <span className="sm:hidden">View</span>
+            <span className="sm:hidden">{t("calendar.fullAgenda", "Full agenda")}</span>
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">{getDateRangeLabel()}</p>
+        <p className="text-xs text-muted-foreground hidden sm:block">{getDateRangeLabel()}</p>
+        <p className="text-xs text-muted-foreground sm:hidden">{format(mobileSelectedDay, "EEE, MMM d")}</p>
       </CardHeader>
       <CardContent className="p-0">
-        {/* Mobile View - Today's Slots */}
+        {/* Mobile View - Selected Day's Slots */}
         <div className="block sm:hidden p-3 space-y-3">
-          <div className="text-sm font-medium text-muted-foreground">
-            {t("calendar.today")}: {format(new Date(), "EEEE, MMM d")}
-          </div>
-          {todaySlots.length === 0 ? (
+          {mobileDaySlots.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground">
               <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No slots today</p>
+              <p className="text-sm">{t("calendar.noSlotsThisDay", "No slots this day")}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {todaySlots.slice(0, 5).map((slot) => (
+              {mobileDaySlots.slice(0, 5).map((slot) => (
                 <div
                   key={slot.id}
                   className={cn(
@@ -275,26 +323,18 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
                   )}
                 </div>
               ))}
-              {todaySlots.length > 5 && (
+              {mobileDaySlots.length > 5 && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="w-full"
                   onClick={() => navigate("/trainer/calendar")}
                 >
-                  +{todaySlots.length - 5} more slots
+                  +{mobileDaySlots.length - 5} more
                 </Button>
               )}
             </div>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => navigate("/trainer/calendar")}
-          >
-            View Full Calendar
-          </Button>
         </div>
 
         {/* Desktop View - Week Grid */}

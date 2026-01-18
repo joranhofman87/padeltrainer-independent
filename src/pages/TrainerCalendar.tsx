@@ -493,13 +493,13 @@ export default function TrainerCalendar() {
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
               {/* Date Navigation */}
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={navigatePrevious}>
+                <Button variant="outline" size="icon" onClick={() => navigatePrevious()}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm sm:text-base">
                   {getDateRangeLabel()}
                 </div>
-                <Button variant="outline" size="icon" onClick={navigateNext}>
+                <Button variant="outline" size="icon" onClick={() => navigateNext()}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" onClick={goToToday}>
