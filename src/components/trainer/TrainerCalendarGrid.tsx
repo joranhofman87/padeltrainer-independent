@@ -117,7 +117,6 @@ export function TrainerCalendarGrid({
           onDeleteSlot={onDeleteSlot}
           onEditBooking={onEditBooking}
           onToggleMarkedFull={onToggleMarkedFull}
-          noSlotsLabel={t("calendar.noSlotsThisWeek")}
         />
       </div>
 
@@ -230,7 +229,6 @@ interface MobileDayViewProps {
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
-  noSlotsLabel: string;
 }
 
 function MobileDayView({
@@ -244,10 +242,7 @@ function MobileDayView({
   onDeleteSlot,
   onEditBooking,
   onToggleMarkedFull,
-  noSlotsLabel,
 }: MobileDayViewProps) {
-  const hasSlotsToday = HOURS.some((hour) => (slotsByHour[hour] || []).length > 0);
-
   return (
     <div className="space-y-4">
       {/* Day Navigation Header */}
@@ -297,15 +292,9 @@ function MobileDayView({
         ))}
       </div>
 
-      {/* Time Slots List */}
-      <div className="space-y-2 px-2">
-        {!hasSlotsToday && (
-          <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
-            <Plus className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">{noSlotsLabel}</p>
-          </div>
-        )}
-        {HOURS.map((hour) => {
+        {/* Time Slots List */}
+        <div className="space-y-2 px-2">
+          {HOURS.map((hour) => {
           const slotsAtHour = slotsByHour[hour] || [];
           const isPastHour = isBefore(
             new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour),
