@@ -17,7 +17,7 @@ interface TrainerCalendarGridProps {
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
 }
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
 
 export function TrainerCalendarGrid({
   slots,
