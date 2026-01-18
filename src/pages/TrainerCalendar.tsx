@@ -183,22 +183,27 @@ export default function TrainerCalendar() {
 
       if (slotsError) throw slotsError;
 
-      // Fetch bookings for these slots with player names
+      // Fetch bookings for these slots with player names (only if there are slots)
       const slotIds = availabilitySlots?.map((s) => s.id) || [];
-      const { data: bookings, error: bookingsError } = await supabase
-        .from("bookings")
-        .select(`
-          id,
-          slot_id,
-          status,
-          player_id,
-          guest_player_id,
-          profiles:player_id (full_name, skill_rating, rating_system),
-          guest_players:guest_player_id (full_name, skill_rating, rating_system)
-        `)
-        .in("slot_id", slotIds.length > 0 ? slotIds : ["none"]);
+      let bookings: any[] = [];
+      
+      if (slotIds.length > 0) {
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select(`
+            id,
+            slot_id,
+            status,
+            player_id,
+            guest_player_id,
+            profiles:player_id (full_name, skill_rating, rating_system),
+            guest_players:guest_player_id (full_name, skill_rating, rating_system)
+          `)
+          .in("slot_id", slotIds);
 
-      if (bookingsError) throw bookingsError;
+        if (bookingsError) throw bookingsError;
+        bookings = bookingsData || [];
+      }
 
       // Aggregate booking counts and player info
       const bookingCounts: Record<

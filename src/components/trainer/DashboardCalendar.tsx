@@ -77,14 +77,19 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
 
       if (slotsError) throw slotsError;
 
-      // Fetch bookings for these slots
+      // Fetch bookings for these slots (only if there are slots)
       const slotIds = availabilitySlots?.map((s) => s.id) || [];
-      const { data: bookings, error: bookingsError } = await supabase
-        .from("bookings")
-        .select("slot_id, status")
-        .in("slot_id", slotIds.length > 0 ? slotIds : ["none"]);
+      let bookings: any[] = [];
+      
+      if (slotIds.length > 0) {
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select("slot_id, status")
+          .in("slot_id", slotIds);
 
-      if (bookingsError) throw bookingsError;
+        if (bookingsError) throw bookingsError;
+        bookings = bookingsData || [];
+      }
 
       // Aggregate booking counts
       const bookingCounts: Record<string, { confirmed: number; pending: number }> = {};
