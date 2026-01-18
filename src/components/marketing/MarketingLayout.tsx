@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 interface MarketingLayoutProps {
   children: React.ReactNode;
@@ -50,6 +51,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
+              <LanguageSwitcher />
               <Button variant="ghost" asChild>
                 <Link to="/auth">Sign In</Link>
               </Button>
@@ -91,6 +93,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   </Link>
                 ))}
                 <div className="flex flex-col gap-2 pt-4 border-t">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Language:</span>
+                    <LanguageSwitcher />
+                  </div>
                   <Button variant="ghost" asChild>
                     <Link to="/auth">Sign In</Link>
                   </Button>

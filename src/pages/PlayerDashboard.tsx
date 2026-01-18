@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
@@ -290,6 +291,7 @@ export default function PlayerDashboard() {
             <span className="font-bold text-lg sm:text-xl">PadelTrainer<span className="text-primary">.ai</span></span>
           </div>
           <div className="flex items-center gap-4">
+            <LanguageSwitcher />
             <div className="flex items-center gap-2">
               <Avatar className="h-9 w-9">
                 <AvatarImage src={profile?.avatar_url || undefined} />
