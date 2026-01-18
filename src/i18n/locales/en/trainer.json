@@ -385,11 +385,14 @@
     "individualSlots": "Individual Slots",
     "open": "open",
     "next": "Next",
-    "spotOpen": "spot open",
-    "spotsOpen": "spots open",
+    "spotOpen": "spot",
+    "spotsOpen": "spots",
+    "sessionsOpen": "sessions open",
+    "spotsAvailable": "spots available",
     "noLesson": "No lesson linked",
     "bookPlayer": "Book player",
     "noOpenSlots": "No open slots available",
+    "noOpenSlotsDescription": "All your training slots are either fully booked or marked as private.",
     "createSlots": "Create new slots",
     "viewCalendar": "View full calendar"
   }

@@ -12,7 +12,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
-import { OpenSlotsSheet } from '@/components/trainer/OpenSlotsSheet';
 
 interface DashboardStats {
   totalStudents: number;
@@ -52,7 +51,6 @@ export default function TrainerDashboard() {
     const stored = localStorage.getItem('trainer_setup_expanded');
     return stored !== null ? stored === 'true' : true;
   });
-  const [openSlotsSheetOpen, setOpenSlotsSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -344,7 +342,7 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => setOpenSlotsSheetOpen(true)}
+            onClick={() => navigate('/trainer/open-slots')}
           >
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -461,15 +459,6 @@ export default function TrainerDashboard() {
         </div>
 
       </main>
-
-      {/* Open Slots Sheet */}
-      {trainerId && (
-        <OpenSlotsSheet
-          open={openSlotsSheetOpen}
-          onOpenChange={setOpenSlotsSheetOpen}
-          trainerId={trainerId}
-        />
-      )}
     </div>
   );
 }
