@@ -170,10 +170,10 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     if (isPast) return "bg-muted text-muted-foreground";
     if (slot.is_marked_full) return "bg-purple-100 dark:bg-purple-900/50 border-purple-300";
     if (slot.active_bookings >= slot.max_participants)
-      return "bg-green-100 dark:bg-green-900/50 border-green-300";
-    if (slot.active_bookings > 0 || slot.pending_bookings > 0)
       return "bg-blue-100 dark:bg-blue-900/50 border-blue-300";
-    return "bg-orange-50 dark:bg-orange-900/30 border-orange-200";
+    if (slot.active_bookings > 0)
+      return "bg-orange-100 dark:bg-orange-900/50 border-orange-300";
+    return "bg-green-100 dark:bg-green-900/30 border-green-300";
   };
 
   if (loading && slots.length === 0) {
@@ -300,15 +300,15 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
             {/* Legend */}
             <div className="flex items-center gap-3 p-2 border-t bg-muted/20 text-[10px]">
               <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded bg-green-200 border border-green-300" />
+                <span>{t("calendar.fullyOpen")}</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded bg-orange-200 border border-orange-300" />
-                <span>{t("calendar.available")}</span>
+                <span>{t("calendar.spotsLeft", { count: 0 }).replace("0 ", "")}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded bg-blue-200 border border-blue-300" />
-                <span>{t("calendar.booked")}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded bg-green-200 border border-green-300" />
                 <span>{t("calendar.fullyBooked")}</span>
               </div>
               <div className="flex items-center gap-1">
