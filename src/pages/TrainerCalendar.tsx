@@ -571,6 +571,8 @@ export default function TrainerCalendar() {
                 onDeleteSlot={handleDeleteSlot}
                 onEditBooking={handleEditBooking}
                 onToggleMarkedFull={handleToggleMarkedFull}
+                onNavigatePrevious={navigatePrevious}
+                onNavigateNext={navigateNext}
               />
             )}
           </CardContent>
