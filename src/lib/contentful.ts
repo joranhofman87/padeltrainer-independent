@@ -1,5 +1,5 @@
 import { createClient, EntryFieldTypes, Entry, Asset } from 'contentful';
-import type { Document } from '@contentful/rich-text-types';
+import { BLOCKS, type Document } from '@contentful/rich-text-types';
 
 // Contentful client configuration
 const client = createClient({
@@ -59,17 +59,24 @@ function calculateReadTime(content: Document | undefined): string {
 function transformEntry(entry: Entry<BlogPostSkeleton, undefined, string>): BlogPost {
   const fields = entry.fields;
   const featuredImage = fields.featuredImage as Asset | undefined;
-  const content = fields.content as Document;
+  const content = fields.content as Document | undefined;
+  
+  // Create empty document if content is missing
+  const safeContent: Document = content || {
+    nodeType: BLOCKS.DOCUMENT,
+    data: {},
+    content: [],
+  };
   
   return {
-    slug: fields.slug as string,
-    title: fields.title as string,
+    slug: (fields.slug as string) || '',
+    title: (fields.title as string) || 'Untitled',
     excerpt: (fields.subtitle as string) || '',
-    content: content,
+    content: safeContent,
     image: featuredImage?.fields?.file?.url 
       ? `https:${featuredImage.fields.file.url}` 
       : '/placeholder.svg',
-    date: fields.publishedDate as string,
+    date: (fields.publishedDate as string) || new Date().toISOString(),
     readTime: calculateReadTime(content),
     author: fields.author as string | undefined,
   };
