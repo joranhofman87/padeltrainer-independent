@@ -253,7 +253,7 @@
     "paymentMode": {
       "title": "Handmatig betalen via factuur",
       "enabledDescription": "Je maakt facturen aan en spelers betalen je direct (bankoverschrijving, contant, etc.)",
-      "disabledDescription": "Spelers betalen automatisch online via Stripe bij het boeken",
+      "disabledDescription": "Spelers betalen je online via Stripe bij het boeken. Geld gaat automatisch naar je bankrekening.",
       "enabledToast": "Handmatig factureren ingeschakeld",
       "enabledToastDescription": "Je maakt facturen aan en handelt betalingen zelf af",
       "disabledToast": "Automatische betalingen ingeschakeld",
