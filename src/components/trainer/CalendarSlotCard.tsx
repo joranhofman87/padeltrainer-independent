@@ -42,31 +42,28 @@ export interface SlotWithBookings {
   is_marked_full: boolean;
 }
 
-type SlotStatus = "free" | "pending" | "partial" | "full" | "past" | "private";
+type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 
 function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
   if (slot.is_marked_full) return "private";
   if (slot.active_bookings >= 4) return "full";
   if (slot.active_bookings > 0) return "partial";
-  if (slot.pending_bookings > 0) return "pending";
   return "free";
 }
 
 const statusColors: Record<SlotStatus, string> = {
-  free: "bg-muted/50 border-border hover:bg-muted",
-  pending: "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-200 dark:hover:bg-yellow-900/50",
+  free: "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-900/50",
   partial: "bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-900/50",
-  full: "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-900/50",
+  full: "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 hover:bg-blue-200 dark:hover:bg-blue-900/50",
   past: "bg-muted/30 border-muted opacity-50",
   private: "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/50",
 };
 
 const statusTextColors: Record<SlotStatus, string> = {
-  free: "text-muted-foreground",
-  pending: "text-yellow-700 dark:text-yellow-300",
+  free: "text-green-700 dark:text-green-300",
   partial: "text-orange-700 dark:text-orange-300",
-  full: "text-green-700 dark:text-green-300",
+  full: "text-blue-700 dark:text-blue-300",
   past: "text-muted-foreground",
   private: "text-purple-700 dark:text-purple-300",
 };
@@ -116,8 +113,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, onBook
   const ratingInfo = calculateAverageRating(slot.booked_players || []);
 
   const statusLabel = {
-    free: t("calendar.available"),
-    pending: t("calendar.pending"),
+    free: t("calendar.fullyOpen"),
     partial: t("calendar.spotsLeft", { count: spotsLeft }),
     full: t("calendar.fullyBooked"),
     past: t("calendar.past"),
