@@ -86,8 +86,8 @@ export default function Auth() {
             <ArrowLeft className="h-4 w-4" />
             {t('backToHome', 'Back to home')}
           </Link>
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <span className="text-3xl">🎾</span>
+          <div className="mb-4">
+            <span className="font-bold text-2xl">PadelTrainer<span className="text-primary">.ai</span></span>
           </div>
           <CardTitle className="text-2xl font-bold">{t('title')}</CardTitle>
           <CardDescription>

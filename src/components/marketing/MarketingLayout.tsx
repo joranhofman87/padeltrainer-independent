@@ -27,9 +27,6 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                <span className="text-xl">🎾</span>
-              </div>
               <span className="font-bold text-xl tracking-tight">
                 PadelTrainer<span className="text-primary">.ai</span>
               </span>
@@ -117,9 +114,6 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             {/* Brand */}
             <div className="col-span-2 md:col-span-1">
               <Link to="/" className="flex items-center gap-2 mb-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                  <span className="text-lg">🎾</span>
-                </div>
                 <span className="font-bold text-lg">
                   PadelTrainer<span className="text-primary">.ai</span>
                 </span>

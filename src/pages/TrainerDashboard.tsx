@@ -270,11 +270,10 @@ export default function TrainerDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🎾</span>
-            <span className="font-bold text-xl">PadelTrainer.ai</span>
-            <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full">
+        <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-lg sm:text-xl">PadelTrainer<span className="text-primary">.ai</span></span>
+            <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full hidden sm:inline">
               {t('badge')}
             </span>
           </div>
