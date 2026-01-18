@@ -198,9 +198,6 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     <Card className="overflow-hidden">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {t("calendar.title")}
-          </CardTitle>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
               <ChevronLeft className="h-4 w-4" />
@@ -211,16 +208,16 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-2 gap-1 text-xs"
-              onClick={() => navigate("/trainer/calendar")}
-            >
-              <ExternalLink className="h-3 w-3" />
-              <span className="hidden sm:inline">{t("calendar.weekView")}</span>
-            </Button>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs"
+            onClick={() => navigate("/trainer/calendar")}
+          >
+            <ExternalLink className="h-3 w-3" />
+            <span>{t("calendar.addToCalendar")}</span>
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground">{getDateRangeLabel()}</p>
       </CardHeader>
