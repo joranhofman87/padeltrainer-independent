@@ -210,8 +210,10 @@ export default function TrainerEarnings() {
     } else {
       setTrainerInfo(prev => prev ? { ...prev, use_manual_invoicing: checked } : null);
       toast({ 
-        title: checked ? 'Manual invoicing enabled' : 'Stripe payments enabled',
-        description: checked ? 'You can now create and send invoices manually' : 'Players will pay via Stripe'
+        title: checked ? 'Manual invoicing enabled' : 'Automatic payments enabled',
+        description: checked 
+          ? 'You create invoices and handle payments yourself' 
+          : 'Players pay online via Stripe when booking'
       });
     }
   };
@@ -328,22 +330,20 @@ export default function TrainerEarnings() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-full bg-primary/10">
-                  {useManualInvoicing ? <FileText className="h-5 w-5 text-primary" /> : <Wallet className="h-5 w-5 text-primary" />}
+                  <FileText className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="font-medium">
-                    {useManualInvoicing ? 'Manual Invoicing' : 'Stripe Payments'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="font-medium">Manual payments by invoice</p>
+                  <p className="text-sm text-muted-foreground max-w-md">
                     {useManualInvoicing 
-                      ? 'Create and send invoices manually to your players' 
-                      : 'Players pay automatically via Stripe'}
+                      ? 'You create invoices and players pay you directly (bank transfer, cash, etc.)' 
+                      : 'Players pay online via Stripe automatically when booking'}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Label htmlFor="manual-invoicing" className="text-sm text-muted-foreground">
-                  {useManualInvoicing ? 'Manual' : 'Stripe'}
+                <Label htmlFor="manual-invoicing" className="text-sm text-muted-foreground sr-only">
+                  Toggle manual invoicing
                 </Label>
                 <Switch
                   id="manual-invoicing"

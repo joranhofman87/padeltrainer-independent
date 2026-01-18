@@ -250,6 +250,15 @@
     "pendingPayouts": "Openstaande Uitbetalingen",
     "transactions": "Transactiegeschiedenis",
     "noTransactions": "Nog geen transacties",
+    "paymentMode": {
+      "title": "Handmatig betalen via factuur",
+      "enabledDescription": "Je maakt facturen aan en spelers betalen je direct (bankoverschrijving, contant, etc.)",
+      "disabledDescription": "Spelers betalen automatisch online via Stripe bij het boeken",
+      "enabledToast": "Handmatig factureren ingeschakeld",
+      "enabledToastDescription": "Je maakt facturen aan en handelt betalingen zelf af",
+      "disabledToast": "Automatische betalingen ingeschakeld",
+      "disabledToastDescription": "Spelers betalen online via Stripe bij het boeken"
+    },
     "stripeConnect": {
       "title": "Stripe Koppelen",
       "description": "Stel je Stripe-account in om uitbetalingen te ontvangen",
