@@ -250,6 +250,15 @@
     "pendingPayouts": "Pending Payouts",
     "transactions": "Transaction History",
     "noTransactions": "No transactions yet",
+    "paymentMode": {
+      "title": "Manual payments by invoice",
+      "enabledDescription": "You create invoices and players pay you directly (bank transfer, cash, etc.)",
+      "disabledDescription": "Players pay online via Stripe automatically when booking",
+      "enabledToast": "Manual invoicing enabled",
+      "enabledToastDescription": "You create invoices and handle payments yourself",
+      "disabledToast": "Automatic payments enabled",
+      "disabledToastDescription": "Players pay online via Stripe when booking"
+    },
     "stripeConnect": {
       "title": "Connect Stripe",
       "description": "Set up your Stripe account to receive payouts",
