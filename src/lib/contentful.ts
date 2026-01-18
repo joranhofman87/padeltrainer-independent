@@ -35,13 +35,18 @@ export interface BlogPost {
 }
 
 // Calculate read time from content (rough estimate: 200 words per minute)
-function calculateReadTime(content: Document): string {
+function calculateReadTime(content: Document | undefined): string {
+  if (!content || !content.content) {
+    return '1 min read';
+  }
+  
   let wordCount = 0;
   const countWords = (node: any) => {
+    if (!node) return;
     if (node.nodeType === 'text' && node.value) {
       wordCount += node.value.split(/\s+/).filter(Boolean).length;
     }
-    if (node.content) {
+    if (node.content && Array.isArray(node.content)) {
       node.content.forEach(countWords);
     }
   };
