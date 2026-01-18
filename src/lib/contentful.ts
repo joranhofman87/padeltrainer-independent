@@ -82,12 +82,18 @@ function transformEntry(entry: Entry<BlogPostSkeleton, undefined, string>): Blog
   };
 }
 
+// Map i18next locale to Contentful locale
+function getContentfulLocale(locale: string): string {
+  return locale === 'nl' ? 'nl' : 'en-US';
+}
+
 // Fetch all blog posts, sorted by published date (newest first)
-export async function getBlogPosts(): Promise<BlogPost[]> {
+export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
   try {
     const response = await client.getEntries<BlogPostSkeleton>({
       content_type: 'blogPost',
       order: ['-fields.publishedDate'],
+      locale: getContentfulLocale(locale),
     });
     
     return response.items.map(transformEntry);
@@ -98,12 +104,13 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
 }
 
 // Fetch a single blog post by slug
-export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> {
+export async function getBlogPostBySlug(slug: string, locale: string = 'en'): Promise<BlogPost | null> {
   try {
     const response = await client.getEntries<BlogPostSkeleton>({
       content_type: 'blogPost',
       'fields.slug': slug,
       limit: 1,
+      locale: getContentfulLocale(locale),
     });
     
     if (response.items.length === 0) {
