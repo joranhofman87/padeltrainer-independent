@@ -1,71 +1,67 @@
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
+import { getBlogPosts } from '@/lib/contentful';
 
-// Mock blog posts - in a real app these would come from a CMS or database
-const blogPosts = [
-  {
-    slug: 'how-to-choose-padel-trainer',
-    title: 'How to Choose the Right Padel Trainer for Your Level',
-    excerpt: 'Finding the perfect trainer can accelerate your progress dramatically. Here\'s what to look for based on your current skill level.',
-    category: 'Tips & Advice',
-    date: '2025-01-10',
-    readTime: '5 min read',
-    image: '/placeholder.svg'
-  },
-  {
-    slug: 'padel-growth-netherlands-2025',
-    title: 'Padel in the Netherlands: 2025 Growth Report',
-    excerpt: 'New courts, growing memberships, and an increasingly competitive scene. We break down the state of padel in NL.',
-    category: 'Industry',
-    date: '2025-01-05',
-    readTime: '8 min read',
-    image: '/placeholder.svg'
-  },
-  {
-    slug: 'improve-padel-serve',
-    title: '5 Drills to Improve Your Padel Serve',
-    excerpt: 'The serve is often overlooked in padel training. These 5 drills will help you add consistency and variety to your game.',
-    category: 'Training',
-    date: '2024-12-28',
-    readTime: '6 min read',
-    image: '/placeholder.svg'
-  },
-  {
-    slug: 'trainer-spotlight-amsterdam',
-    title: 'Trainer Spotlight: Top 5 Trainers in Amsterdam',
-    excerpt: 'Meet the most highly-rated padel trainers in Amsterdam and learn what makes them stand out.',
-    category: 'Spotlight',
-    date: '2024-12-20',
-    readTime: '4 min read',
-    image: '/placeholder.svg'
-  },
-  {
-    slug: 'padel-equipment-guide',
-    title: 'The Complete Padel Equipment Guide for Beginners',
-    excerpt: 'From rackets to shoes, everything you need to know before your first lesson.',
-    category: 'Guides',
-    date: '2024-12-15',
-    readTime: '10 min read',
-    image: '/placeholder.svg'
-  },
-  {
-    slug: 'mental-game-padel',
-    title: 'The Mental Game: How to Stay Focused During Matches',
-    excerpt: 'Top trainers share their tips for maintaining focus and confidence when it matters most.',
-    category: 'Training',
-    date: '2024-12-10',
-    readTime: '7 min read',
-    image: '/placeholder.svg'
-  }
-];
+function BlogPostCardSkeleton() {
+  return (
+    <Card className="h-full">
+      <Skeleton className="aspect-video w-full" />
+      <CardContent className="p-6">
+        <Skeleton className="h-5 w-20 mb-3" />
+        <Skeleton className="h-6 w-full mb-2" />
+        <Skeleton className="h-4 w-full mb-4" />
+        <Skeleton className="h-4 w-32" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function FeaturedPostSkeleton() {
+  return (
+    <Card className="overflow-hidden border-2">
+      <div className="grid md:grid-cols-2">
+        <Skeleton className="aspect-video md:aspect-auto md:h-full" />
+        <CardContent className="p-8 flex flex-col justify-center">
+          <Skeleton className="h-5 w-24 mb-4" />
+          <Skeleton className="h-8 w-full mb-4" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4 mb-4" />
+          <Skeleton className="h-4 w-40" />
+        </CardContent>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-16">
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
+        <FileText className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h2 className="text-xl font-semibold mb-2">No articles yet</h2>
+      <p className="text-muted-foreground max-w-md mx-auto">
+        We're working on creating amazing content for you. Check back soon for tips, insights, and stories from the padel community.
+      </p>
+    </div>
+  );
+}
 
 export default function Blog() {
-  const featuredPost = blogPosts[0];
-  const recentPosts = blogPosts.slice(1);
+  const { data: posts = [], isLoading } = useQuery({
+    queryKey: ['blog-posts'],
+    queryFn: getBlogPosts,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  const featuredPost = posts[0];
+  const recentPosts = posts.slice(1);
 
   return (
     <MarketingLayout>
@@ -85,99 +81,133 @@ export default function Blog() {
         </div>
       </section>
 
-      {/* Featured Post */}
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <Link to={`/blog/${featuredPost.slug}`}>
-              <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
-                <div className="grid md:grid-cols-2">
-                  <div className="aspect-video md:aspect-auto bg-muted">
-                    <img 
-                      src={featuredPost.image} 
-                      alt={featuredPost.title}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <CardContent className="p-8 flex flex-col justify-center">
-                    <Badge className="w-fit mb-4">{featuredPost.category}</Badge>
-                    <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">
-                      {featuredPost.title}
-                    </CardTitle>
-                    <CardDescription className="text-base mb-4">
-                      {featuredPost.excerpt}
-                    </CardDescription>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        {new Date(featuredPost.date).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {featuredPost.readTime}
-                      </span>
-                    </div>
-                  </CardContent>
-                </div>
-              </Card>
-            </Link>
-          </motion.div>
-        </div>
-      </section>
+      {/* Content */}
+      {isLoading ? (
+        <>
+          {/* Featured Post Skeleton */}
+          <section className="py-12">
+            <div className="container mx-auto px-4">
+              <FeaturedPostSkeleton />
+            </div>
+          </section>
 
-      {/* Recent Posts Grid */}
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <h2 className="text-2xl font-bold mb-8">Recent Articles</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentPosts.map((post, index) => (
+          {/* Recent Posts Skeleton */}
+          <section className="py-12">
+            <div className="container mx-auto px-4">
+              <Skeleton className="h-8 w-48 mb-8" />
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <BlogPostCardSkeleton key={i} />
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
+      ) : posts.length === 0 ? (
+        <section className="py-12">
+          <div className="container mx-auto px-4">
+            <EmptyState />
+          </div>
+        </section>
+      ) : (
+        <>
+          {/* Featured Post */}
+          <section className="py-12">
+            <div className="container mx-auto px-4">
               <motion.div
-                key={post.slug}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
               >
-                <Link to={`/blog/${post.slug}`}>
-                  <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
-                    <div className="aspect-video bg-muted">
-                      <img 
-                        src={post.image} 
-                        alt={post.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <CardContent className="p-6">
-                      <Badge variant="secondary" className="mb-3">{post.category}</Badge>
-                      <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">
-                        {post.title}
-                      </CardTitle>
-                      <CardDescription className="line-clamp-2 mb-4">
-                        {post.excerpt}
-                      </CardDescription>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>{new Date(post.date).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric'
-                        })}</span>
-                        <span>{post.readTime}</span>
+                <Link to={`/blog/${featuredPost.slug}`}>
+                  <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
+                    <div className="grid md:grid-cols-2">
+                      <div className="aspect-video md:aspect-auto bg-muted">
+                        <img 
+                          src={featuredPost.image} 
+                          alt={featuredPost.title}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
-                    </CardContent>
+                      <CardContent className="p-8 flex flex-col justify-center">
+                        <Badge className="w-fit mb-4">{featuredPost.category}</Badge>
+                        <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">
+                          {featuredPost.title}
+                        </CardTitle>
+                        <CardDescription className="text-base mb-4">
+                          {featuredPost.excerpt}
+                        </CardDescription>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            {new Date(featuredPost.date).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            {featuredPost.readTime}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </div>
                   </Card>
                 </Link>
               </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
+          </section>
+
+          {/* Recent Posts Grid */}
+          {recentPosts.length > 0 && (
+            <section className="py-12">
+              <div className="container mx-auto px-4">
+                <h2 className="text-2xl font-bold mb-8">Recent Articles</h2>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {recentPosts.map((post, index) => (
+                    <motion.div
+                      key={post.slug}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <Link to={`/blog/${post.slug}`}>
+                        <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
+                          <div className="aspect-video bg-muted">
+                            <img 
+                              src={post.image} 
+                              alt={post.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <CardContent className="p-6">
+                            <Badge variant="secondary" className="mb-3">{post.category}</Badge>
+                            <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">
+                              {post.title}
+                            </CardTitle>
+                            <CardDescription className="line-clamp-2 mb-4">
+                              {post.excerpt}
+                            </CardDescription>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span>{new Date(post.date).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric'
+                              })}</span>
+                              <span>{post.readTime}</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+        </>
+      )}
 
       {/* Newsletter CTA */}
       <section className="py-16 bg-accent/30">
