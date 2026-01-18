@@ -249,9 +249,9 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
             </div>
 
             {/* Time Grid - Compact */}
-            <div className="relative max-h-[280px] overflow-y-auto">
+            <div className="relative">
               {HOURS.map((hour) => (
-                <div key={hour} className="grid grid-cols-8 border-b min-h-[40px]">
+                <div key={hour} className="grid grid-cols-8 border-b min-h-[28px]">
                   <div className="p-1 text-[10px] text-muted-foreground text-right pr-2 pt-0.5">
                     {String(hour).padStart(2, "0")}:00
                   </div>
@@ -267,7 +267,7 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
                       <div
                         key={`${dayKey}-${hour}`}
                         className={cn(
-                          "border-l p-0.5 min-h-[40px]",
+                          "border-l p-0.5 min-h-[28px]",
                           isToday(day) && "bg-primary/5",
                           isPast && "bg-muted/20"
                         )}
