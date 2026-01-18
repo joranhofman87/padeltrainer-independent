@@ -377,5 +377,20 @@
     "cyclusMarkedFull": "Cyclus als privé gemarkeerd",
     "cyclusMarkedOpen": "Cyclus geopend voor spelers",
     "privateBadge": "Privé"
+  },
+  "openSlots": {
+    "title": "Open Trainingsslots",
+    "description": "Overzicht van alle slots met beschikbare plekken",
+    "trainingCycles": "Trainingscycli",
+    "individualSlots": "Individuele Slots",
+    "open": "open",
+    "next": "Volgende",
+    "spotOpen": "plek vrij",
+    "spotsOpen": "plekken vrij",
+    "noLesson": "Geen les gekoppeld",
+    "bookPlayer": "Speler boeken",
+    "noOpenSlots": "Geen open slots beschikbaar",
+    "createSlots": "Nieuwe slots aanmaken",
+    "viewCalendar": "Bekijk volledige kalender"
   }
 }
