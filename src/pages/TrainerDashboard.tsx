@@ -80,7 +80,7 @@ export default function TrainerDashboard() {
       // Get trainer profile
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('id, hourly_rate')
+        .select('id, hourly_rate, use_manual_invoicing')
         .eq('user_id', user?.id)
         .maybeSingle();
 
@@ -123,7 +123,8 @@ export default function TrainerDashboard() {
         .eq('trainer_id', trainerId)
         .maybeSingle();
 
-      const stripeComplete = !!(stripeData?.onboarding_complete && stripeData?.charges_enabled);
+      // Payment is complete if Stripe is set up OR manual invoicing is enabled
+      const paymentsComplete = !!(stripeData?.onboarding_complete && stripeData?.charges_enabled) || !!trainerProfile.use_manual_invoicing;
 
       // Check if trainer has players
       const { count: playerCount } = await supabase
@@ -137,7 +138,7 @@ export default function TrainerDashboard() {
         profileComplete,
         hasLessons,
         hasAvailability,
-        stripeComplete,
+        stripeComplete: paymentsComplete,
         hasPlayers,
       });
     } catch (error) {
@@ -475,7 +476,7 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
     { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
     { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
     { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
-    { key: 'stripeComplete', label: 'Set up payments with Stripe', route: '/earnings', complete: setupStatus.stripeComplete },
+    { key: 'stripeComplete', label: 'Connect Stripe or setup manual payments', route: '/earnings', complete: setupStatus.stripeComplete },
     { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
   ];
 
