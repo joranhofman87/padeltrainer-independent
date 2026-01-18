@@ -207,10 +207,11 @@
       "contact": "Contact Us"
     }
   },
-  "blog": {
+"blog": {
     "title": "Blog",
     "subtitle": "Tips, insights, and stories from the Dutch padel community",
     "recentArticles": "Recent Articles",
+    "backToList": "Back to Blog",
     "categories": {
       "tips": "Tips & Advice",
       "industry": "Industry",
@@ -220,20 +221,20 @@
     },
     "newsletter": {
       "title": "Stay in the loop",
-      "subtitle": "Get the latest padel tips and platform updates delivered to your inbox.",
+      "description": "Get the latest padel tips and platform updates delivered to your inbox.",
       "placeholder": "Enter your email",
-      "subscribe": "Subscribe"
+      "button": "Subscribe"
     },
     "notFound": {
       "title": "Article not found",
       "description": "The article you're looking for doesn't exist or has been moved.",
-      "backToBlog": "Back to Blog"
+      "backButton": "Back to Blog"
     },
-    "share": "Share",
-    "backToBlog": "Back to Blog",
-    "readyToFind": "Ready to find your perfect trainer?",
-    "browseTrainers": "Browse verified trainers matched to your skill level.",
-    "findTrainers": "Find Trainers"
+    "cta": {
+      "title": "Ready to find your perfect trainer?",
+      "description": "Browse verified trainers matched to your skill level.",
+      "button": "Find Trainers"
+    }
   },
   "privacy": {
     "title": "Privacy Policy",
