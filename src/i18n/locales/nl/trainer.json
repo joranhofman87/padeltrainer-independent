@@ -7,10 +7,14 @@
     "stats": {
       "upcomingLessons": "Aankomende Lessen",
       "totalStudents": "Totaal Studenten",
+      "openSlots": "Open Slots",
+      "revenue": "Omzet",
       "thisMonth": "Deze Maand",
       "analytics": "Analytics",
       "viewEarnings": "Klik om inkomsten te bekijken →",
-      "viewStats": "Bekijk gedetailleerde statistieken →"
+      "viewStats": "Bekijk gedetailleerde statistieken →",
+      "viewStudents": "Bekijk alle studenten →",
+      "viewSlots": "Bekijk kalender →"
     },
     "quickActions": {
       "bookings": {
@@ -259,6 +263,18 @@
     "currentPlan": "Huidig Plan",
     "changePlan": "Plan Wijzigen",
     "manageSubscription": "Abonnement Beheren"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "subtitle": "Beheer je accountvoorkeuren",
+    "subscription": "Abonnement",
+    "subscriptionDescription": "Beheer je plan en facturatie",
+    "profile": "Profielinstellingen",
+    "profileDescription": "Pas je profiel en betalingsinstellingen aan",
+    "calendarSync": "Agenda Synchronisatie",
+    "calendarSyncDescription": "Koppel Google Agenda voor automatische sync",
+    "notifications": "Meldingen",
+    "notificationsDescription": "Beheer je e-mailmeldingsvoorkeuren"
   },
   "analytics": {
     "title": "Analytics",

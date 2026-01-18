@@ -7,13 +7,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, Plus, BarChart3, Clock, CreditCard, Crown, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, CalendarSync, UserPlus } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 interface DashboardStats {
-  upcomingLessons: number;
   totalStudents: number;
+  openSlots: number;
   monthlyEarnings: number;
 }
 
@@ -29,9 +30,10 @@ export default function TrainerDashboard() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation('trainer');
   const [stats, setStats] = useState<DashboardStats>({
-    upcomingLessons: 0,
     totalStudents: 0,
+    openSlots: 0,
     monthlyEarnings: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
@@ -162,29 +164,47 @@ export default function TrainerDashboard() {
       const monthStart = startOfMonth(now);
       const monthEnd = endOfMonth(now);
 
-      // 1. Upcoming lessons (confirmed bookings in future)
-      const { data: upcomingBookings } = await supabase
-        .from('availability_slots')
-        .select(`
-          id,
-          start_time,
-          bookings!inner(id, status)
-        `)
-        .eq('trainer_id', trainerId)
-        .gte('start_time', now.toISOString())
-        .eq('bookings.status', 'confirmed');
-
-      // 2. Unique students (distinct player_ids from all confirmed bookings)
+      // 1. Unique students (distinct player_ids from all confirmed bookings)
       const { data: allBookings } = await supabase
         .from('bookings')
         .select(`
           player_id,
+          guest_player_id,
           availability_slots!inner(trainer_id)
         `)
         .eq('availability_slots.trainer_id', trainerId)
         .eq('status', 'confirmed');
 
-      const uniqueStudents = new Set(allBookings?.map(b => b.player_id) || []);
+      // Count unique players (both registered players and guest players)
+      const uniquePlayerIds = new Set<string>();
+      allBookings?.forEach(b => {
+        if (b.player_id) uniquePlayerIds.add(b.player_id);
+        if (b.guest_player_id) uniquePlayerIds.add(b.guest_player_id);
+      });
+
+      // 2. Open slots - future slots that are not marked full and have available spots
+      const { data: futureSlots } = await supabase
+        .from('availability_slots')
+        .select(`
+          id,
+          is_marked_full,
+          lesson_id,
+          lessons(max_participants),
+          bookings(id, status)
+        `)
+        .eq('trainer_id', trainerId)
+        .eq('is_marked_full', false)
+        .gte('start_time', now.toISOString());
+
+      // Count slots that have available spots
+      let openSlotsCount = 0;
+      futureSlots?.forEach(slot => {
+        const maxParticipants = slot.lessons?.max_participants || 4;
+        const confirmedBookings = slot.bookings?.filter((b: { status: string }) => b.status === 'confirmed').length || 0;
+        if (confirmedBookings < maxParticipants) {
+          openSlotsCount++;
+        }
+      });
 
       // 3. Monthly earnings (sum of payment_amount for paid bookings this month)
       const { data: monthlyBookings } = await supabase
@@ -204,8 +224,8 @@ export default function TrainerDashboard() {
       const netEarnings = totalEarnings * 0.9;
 
       setStats({
-        upcomingLessons: upcomingBookings?.length || 0,
-        totalStudents: uniqueStudents.size,
+        totalStudents: uniquePlayerIds.size,
+        openSlots: openSlotsCount,
         monthlyEarnings: netEarnings,
       });
     } catch (error) {
@@ -251,10 +271,13 @@ export default function TrainerDashboard() {
             <span className="text-2xl">🎾</span>
             <span className="font-bold text-xl">PadelTrainer.ai</span>
             <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full">
-              Trainer
+              {t('badge')}
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/trainer/settings')}>
+              <Settings className="h-5 w-5" />
+            </Button>
             <div className="flex items-center gap-2">
               <Avatar className="h-9 w-9">
                 <AvatarImage src={profile?.avatar_url || undefined} />
@@ -272,19 +295,13 @@ export default function TrainerDashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {/* Welcome Section */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">
-              Welcome back, Coach {profile?.full_name?.split(' ')[0] || ''}! 💪
-            </h1>
-            <p className="text-muted-foreground">
-              Manage your lessons, view bookings, and grow your padel training business
-            </p>
-          </div>
-          <Button className="hidden md:flex gap-2" onClick={() => navigate('/lessons')}>
-            <Plus className="h-4 w-4" />
-            Create Lesson
-          </Button>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">
+            {t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || '' })}
+          </h1>
+          <p className="text-muted-foreground">
+            {t('dashboard.subtitle')}
+          </p>
         </div>
 
         {/* Setup Checklist - Only show if not all complete */}
@@ -299,27 +316,14 @@ export default function TrainerDashboard() {
 
         {/* Stats Cards */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/trainer/players')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Upcoming Lessons</p>
-                  <p className="text-3xl font-bold">
-                    {statsLoading ? '...' : stats.upcomingLessons}
-                  </p>
-                </div>
-                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-                  <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Students</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.totalStudents')}</p>
                   <p className="text-3xl font-bold">
                     {statsLoading ? '...' : stats.totalStudents}
                   </p>
@@ -328,6 +332,27 @@ export default function TrainerDashboard() {
                   <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewStudents')}</p>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/trainer/calendar')}
+          >
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.openSlots')}</p>
+                  <p className="text-3xl font-bold">
+                    {statsLoading ? '...' : stats.openSlots}
+                  </p>
+                </div>
+                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewSlots')}</p>
             </CardContent>
           </Card>
 
@@ -335,7 +360,7 @@ export default function TrainerDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">This Month</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.revenue')}</p>
                   <p className="text-3xl font-bold">
                     {statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}
                   </p>
@@ -344,7 +369,7 @@ export default function TrainerDashboard() {
                   <DollarSign className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Click to view earnings →</p>
+              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewEarnings')}</p>
             </CardContent>
           </Card>
 
@@ -352,20 +377,39 @@ export default function TrainerDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Analytics</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.analytics')}</p>
                   <p className="text-3xl font-bold">📊</p>
                 </div>
                 <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900">
                   <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">View detailed stats →</p>
+              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewStats')}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        {/* Quick Actions - Simplified to 3 cards */}
+        <div className="grid md:grid-cols-3 gap-4 mb-8">
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/lessons')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Calendar className="h-5 w-5 text-primary" />
+                </div>
+                <CardTitle className="text-lg">{t('dashboard.quickActions.myLessons.title')}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                {t('dashboard.quickActions.myLessons.description')}
+              </CardDescription>
+            </CardContent>
+          </Card>
+
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/trainer/calendar')}
@@ -375,12 +419,12 @@ export default function TrainerDashboard() {
                 <div className="p-2 rounded-lg bg-indigo-500/10">
                   <Calendar className="h-5 w-5 text-indigo-600" />
                 </div>
-                <CardTitle className="text-lg">Calendar</CardTitle>
+                <CardTitle className="text-lg">{t('calendar.title')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                View your schedule at a glance
+                {t('dashboard.quickActions.workingHours.description').replace('Set your weekly schedule and generate slots', 'View your schedule at a glance')}
               </CardDescription>
             </CardContent>
           </Card>
@@ -394,126 +438,12 @@ export default function TrainerDashboard() {
                 <div className="p-2 rounded-lg bg-blue-500/10">
                   <ClipboardList className="h-5 w-5 text-blue-600" />
                 </div>
-                <CardTitle className="text-lg">Bookings</CardTitle>
+                <CardTitle className="text-lg">{t('dashboard.quickActions.bookings.title')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                View and manage player bookings
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/lessons')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Calendar className="h-5 w-5 text-primary" />
-                </div>
-                <CardTitle className="text-lg">My Lessons</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Create and manage your training sessions
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/earnings')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-orange-500/10">
-                  <CreditCard className="h-5 w-5 text-orange-600" />
-                </div>
-                <CardTitle className="text-lg">Earnings</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                View payouts and transaction history
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/subscription')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Crown className="h-5 w-5 text-purple-600" />
-                </div>
-                <CardTitle className="text-lg">Subscription</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Upgrade your plan for more features
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/profile/edit')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gray-500/10">
-                  <Settings className="h-5 w-5 text-gray-600" />
-                </div>
-                <CardTitle className="text-lg">Profile Settings</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Update your profile and payment settings
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/trainer/players')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <UserPlus className="h-5 w-5 text-green-600" />
-                </div>
-                <CardTitle className="text-lg">My Players</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Manage guest players and book for them
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/settings/calendar')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <CalendarSync className="h-5 w-5 text-blue-600" />
-                </div>
-                <CardTitle className="text-lg">Calendar Sync</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Connect Google Calendar for automatic booking sync
+                {t('dashboard.quickActions.bookings.description')}
               </CardDescription>
             </CardContent>
           </Card>
