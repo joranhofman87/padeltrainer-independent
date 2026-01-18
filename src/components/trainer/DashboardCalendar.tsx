@@ -33,7 +33,7 @@ interface DashboardCalendarProps {
   trainerId: string | null;
 }
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 08:00 to 19:00
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
 
 export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
   const { t } = useTranslation("trainer");
