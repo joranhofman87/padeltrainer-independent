@@ -11,7 +11,7 @@ import {
   isToday,
   isBefore,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -158,6 +158,21 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     return map;
   }, [slots, weekDays]);
 
+  // Get today's slots for mobile view
+  const todaySlots = useMemo(() => {
+    const today = new Date();
+    return slots
+      .filter((slot) => {
+        const slotDate = new Date(slot.start_time);
+        return (
+          slotDate.getDate() === today.getDate() &&
+          slotDate.getMonth() === today.getMonth() &&
+          slotDate.getFullYear() === today.getFullYear()
+        );
+      })
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+  }, [slots]);
+
   const navigatePrevious = () => setCurrentDate(subWeeks(currentDate, 1));
   const navigateNext = () => setCurrentDate(addWeeks(currentDate, 1));
   const goToToday = () => setCurrentDate(new Date());
@@ -216,13 +231,74 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
             onClick={() => navigate("/trainer/calendar")}
           >
             <ExternalLink className="h-3 w-3" />
-            <span>{t("calendar.addToCalendar")}</span>
+            <span className="hidden sm:inline">{t("calendar.addToCalendar")}</span>
+            <span className="sm:hidden">View</span>
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">{getDateRangeLabel()}</p>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        {/* Mobile View - Today's Slots */}
+        <div className="block sm:hidden p-3 space-y-3">
+          <div className="text-sm font-medium text-muted-foreground">
+            {t("calendar.today")}: {format(new Date(), "EEEE, MMM d")}
+          </div>
+          {todaySlots.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No slots today</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todaySlots.slice(0, 5).map((slot) => (
+                <div
+                  key={slot.id}
+                  className={cn(
+                    "p-3 rounded-lg border cursor-pointer",
+                    getSlotColor(slot)
+                  )}
+                  onClick={() => navigate("/trainer/calendar")}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">
+                      {format(new Date(slot.start_time), "HH:mm")} -{" "}
+                      {format(new Date(slot.end_time), "HH:mm")}
+                    </div>
+                    <div className="text-sm">
+                      {slot.active_bookings}/{slot.max_participants}
+                    </div>
+                  </div>
+                  {slot.lesson_title && (
+                    <div className="text-sm text-muted-foreground truncate">
+                      {slot.lesson_title}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {todaySlots.length > 5 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => navigate("/trainer/calendar")}
+                >
+                  +{todaySlots.length - 5} more slots
+                </Button>
+              )}
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => navigate("/trainer/calendar")}
+          >
+            View Full Calendar
+          </Button>
+        </div>
+
+        {/* Desktop View - Week Grid */}
+        <div className="hidden sm:block overflow-x-auto">
           <div className="min-w-[600px]">
             {/* Header */}
             <div className="grid grid-cols-8 border-b border-t bg-muted/30">

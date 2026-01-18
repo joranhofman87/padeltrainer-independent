@@ -185,7 +185,7 @@ export default function TrainerProfile() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 min-w-[160px]">
+              <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[160px]">
                 {user && role === 'player' && (
                   <Button size="lg" className="w-full" onClick={() => navigate(`/book/${trainerId}`)}>
                     <Calendar className="h-4 w-4 mr-2" />
