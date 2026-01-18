@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subDays, isToday, isBefore, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
@@ -16,6 +16,8 @@ interface TrainerCalendarGridProps {
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
+  onNavigatePrevious?: () => void;
+  onNavigateNext?: () => void;
 }
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
@@ -30,18 +32,38 @@ export function TrainerCalendarGrid({
   onDeleteSlot,
   onEditBooking,
   onToggleMarkedFull,
+  onNavigatePrevious,
+  onNavigateNext,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
   const [mobileSelectedDate, setMobileSelectedDate] = useState(currentDate);
 
   // Sync mobile selected date when currentDate changes
-  useMemo(() => {
+  useEffect(() => {
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
     const weekEnd = addDays(weekStart, 6);
     if (mobileSelectedDate < weekStart || mobileSelectedDate > weekEnd) {
       setMobileSelectedDate(currentDate);
     }
   }, [currentDate]);
+
+  // Handle mobile day navigation - go to next/prev week when at boundaries
+  const handleMobileDateChange = (newDate: Date) => {
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const weekEnd = addDays(weekStart, 6);
+    
+    if (newDate < weekStart && onNavigatePrevious) {
+      onNavigatePrevious();
+      // Set to the last day of the previous week
+      setMobileSelectedDate(newDate);
+    } else if (newDate > weekEnd && onNavigateNext) {
+      onNavigateNext();
+      // Set to the first day of the next week
+      setMobileSelectedDate(newDate);
+    } else {
+      setMobileSelectedDate(newDate);
+    }
+  };
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -86,7 +108,7 @@ export function TrainerCalendarGrid({
       <div className="block sm:hidden">
         <MobileDayView
           selectedDate={mobileSelectedDate}
-          onDateChange={setMobileSelectedDate}
+          onDateChange={handleMobileDateChange}
           slotsByHour={mobileDaySlots}
           weekDays={weekDays}
           onCellClick={onCellClick}
@@ -234,7 +256,6 @@ function MobileDayView({
           variant="ghost"
           size="icon"
           onClick={() => onDateChange(subDays(selectedDate, 1))}
-          disabled={isBefore(subDays(selectedDate, 1), subDays(weekDays[0], 1))}
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
@@ -250,7 +271,6 @@ function MobileDayView({
           variant="ghost"
           size="icon"
           onClick={() => onDateChange(addDays(selectedDate, 1))}
-          disabled={isBefore(weekDays[6], selectedDate)}
         >
           <ChevronRight className="h-5 w-5" />
         </Button>
