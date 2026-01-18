@@ -534,22 +534,24 @@ export default function TrainerEarnings() {
           </Card>
         </div>
 
-        <Tabs defaultValue="pending" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="pending" className="gap-2">
-              Pending Payments
-              {pendingPayments.length > 0 && (
-                <Badge variant="secondary">{pendingPayments.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="history">Payment History</TabsTrigger>
-            {useManualInvoicing && (
-              <TabsTrigger value="invoices" className="gap-2">
-                <FileText className="h-4 w-4" />
-                Invoices
+        {/* Payments Section */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Payments</h2>
+          <Tabs defaultValue="pending" className="space-y-4">
+            <TabsList className="w-full sm:w-auto">
+              <TabsTrigger value="pending" className="gap-1 flex-1 sm:flex-none">
+                Pending
+                {pendingPayments.length > 0 && (
+                  <Badge variant="secondary" className="ml-1">{pendingPayments.length}</Badge>
+                )}
               </TabsTrigger>
-            )}
-          </TabsList>
+              <TabsTrigger value="history" className="flex-1 sm:flex-none">History</TabsTrigger>
+              {useManualInvoicing && (
+                <TabsTrigger value="invoices" className="flex-1 sm:flex-none">
+                  Invoices
+                </TabsTrigger>
+              )}
+            </TabsList>
 
           <TabsContent value="pending" className="space-y-4">
             {pendingPayments.length === 0 ? (
@@ -663,7 +665,8 @@ export default function TrainerEarnings() {
               />
             </TabsContent>
           )}
-        </Tabs>
+          </Tabs>
+        </div>
       </main>
 
       {/* Invoice Dialog */}

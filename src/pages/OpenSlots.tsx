@@ -220,25 +220,18 @@ export default function OpenSlots() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="font-bold text-xl">{t('openSlots.title', 'Open Training Slots')}</h1>
-              <p className="text-sm text-muted-foreground">
-                {t('openSlots.description', 'Overview of all slots with available spots')}
-              </p>
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
+              <Badge variant="secondary">{totalOpenSlots}</Badge>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-base px-3 py-1">
-              {totalOpenSlots} {t('openSlots.open', 'open')}
-            </Badge>
-            <Button variant="outline" onClick={() => navigate('/trainer/calendar')}>
-              <Calendar className="h-4 w-4 mr-2" />
-              {t('openSlots.viewCalendar', 'View full calendar')}
+            <Button variant="outline" size="sm" onClick={() => navigate('/trainer/calendar')}>
+              <Calendar className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
             </Button>
           </div>
         </div>
