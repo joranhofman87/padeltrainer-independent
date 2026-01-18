@@ -156,7 +156,7 @@ export default function Onboarding() {
             {isPlayer && (
               <div className="space-y-2">
                 <Label htmlFor="knltb" className="flex items-center gap-2">
-                  <span className="text-sm">🎾</span>
+                  {t('onboarding.knltbLabel', 'KNLTB Number')}
                   {t('onboarding.knltbLabel', 'KNLTB Number')}
                   <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
                 </Label>

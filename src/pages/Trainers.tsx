@@ -183,13 +183,12 @@ export default function Trainers() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => navigate('/player')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="text-2xl">🎾</span>
-            <span className="font-bold text-xl">Find Trainers</span>
+            <span className="font-bold text-lg sm:text-xl">Find Trainers</span>
           </div>
           {!user && (
             <Button onClick={() => navigate('/auth')}>Sign In</Button>
