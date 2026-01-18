@@ -207,10 +207,11 @@
       "contact": "Neem Contact Op"
     }
   },
-  "blog": {
+"blog": {
     "title": "Blog",
     "subtitle": "Tips, inzichten en verhalen uit de Nederlandse padelgemeenschap",
     "recentArticles": "Recente Artikelen",
+    "backToList": "Terug naar Blog",
     "categories": {
       "tips": "Tips & Advies",
       "industry": "Branche",
@@ -220,20 +221,20 @@
     },
     "newsletter": {
       "title": "Blijf op de hoogte",
-      "subtitle": "Ontvang de laatste padeltips en platformupdates in je inbox.",
+      "description": "Ontvang de laatste padeltips en platformupdates in je inbox.",
       "placeholder": "Vul je e-mail in",
-      "subscribe": "Abonneren"
+      "button": "Abonneren"
     },
     "notFound": {
       "title": "Artikel niet gevonden",
       "description": "Het artikel dat je zoekt bestaat niet of is verplaatst.",
-      "backToBlog": "Terug naar Blog"
+      "backButton": "Terug naar Blog"
     },
-    "share": "Delen",
-    "backToBlog": "Terug naar Blog",
-    "readyToFind": "Klaar om je perfecte trainer te vinden?",
-    "browseTrainers": "Bekijk geverifieerde trainers die passen bij jouw niveau.",
-    "findTrainers": "Vind Trainers"
+    "cta": {
+      "title": "Klaar om je perfecte trainer te vinden?",
+      "description": "Bekijk geverifieerde trainers die passen bij jouw niveau.",
+      "button": "Vind Trainers"
+    }
   },
   "privacy": {
     "title": "Privacybeleid",
