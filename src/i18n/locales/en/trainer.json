@@ -7,10 +7,14 @@
     "stats": {
       "upcomingLessons": "Upcoming Lessons",
       "totalStudents": "Total Students",
+      "openSlots": "Open Slots",
+      "revenue": "Revenue",
       "thisMonth": "This Month",
       "analytics": "Analytics",
       "viewEarnings": "Click to view earnings →",
-      "viewStats": "View detailed stats →"
+      "viewStats": "View detailed stats →",
+      "viewStudents": "View all students →",
+      "viewSlots": "View calendar →"
     },
     "quickActions": {
       "bookings": {
@@ -259,6 +263,18 @@
     "currentPlan": "Current Plan",
     "changePlan": "Change Plan",
     "manageSubscription": "Manage Subscription"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account preferences",
+    "subscription": "Subscription",
+    "subscriptionDescription": "Manage your plan and billing",
+    "profile": "Profile Settings",
+    "profileDescription": "Update your profile and payment settings",
+    "calendarSync": "Calendar Sync",
+    "calendarSyncDescription": "Connect Google Calendar for automatic sync",
+    "notifications": "Notifications",
+    "notificationsDescription": "Manage email notification preferences"
   },
   "analytics": {
     "title": "Analytics",
