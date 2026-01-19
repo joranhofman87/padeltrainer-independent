@@ -11,8 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, RefreshCw, Camera, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, User, RefreshCw, Camera, Loader2, MapPin } from 'lucide-react';
 import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from '@/lib/ratingSystem';
+import { LocationPicker } from '@/components/locations/LocationPicker';
+import { getPlayerLocations, updatePlayerLocations } from '@/lib/locations';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -54,6 +56,11 @@ export default function EditProfile() {
   
   const [certificationsInput, setCertificationsInput] = useState('');
   const [specializationsInput, setSpecializationsInput] = useState('');
+  
+  // Player location state
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+  const [preferredLocationId, setPreferredLocationId] = useState<string | undefined>();
+  const [loadingLocations, setLoadingLocations] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -82,6 +89,28 @@ export default function EditProfile() {
       fetchTrainerProfile();
     }
   }, [role, user]);
+
+  // Fetch player locations when profile is loaded and role is player
+  useEffect(() => {
+    if (role === 'player' && profile?.id) {
+      fetchPlayerLocations();
+    }
+  }, [role, profile?.id]);
+
+  const fetchPlayerLocations = async () => {
+    if (!profile?.id) return;
+    setLoadingLocations(true);
+    try {
+      const playerLocations = await getPlayerLocations(profile.id);
+      setSelectedLocationIds(playerLocations.map(pl => pl.location_id));
+      const preferred = playerLocations.find(pl => pl.is_preferred);
+      setPreferredLocationId(preferred?.location_id);
+    } catch (error) {
+      console.error('Error fetching player locations:', error);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
 
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
@@ -252,6 +281,11 @@ export default function EditProfile() {
         .eq('user_id', user.id);
       
       if (profileError) throw profileError;
+
+      // Update player locations if player
+      if (role === 'player' && profile?.id) {
+        await updatePlayerLocations(profile.id, selectedLocationIds, preferredLocationId);
+      }
 
       // Update trainer profile if trainer
       if (role === 'trainer') {
@@ -520,6 +554,24 @@ export default function EditProfile() {
                       max: getRatingSystemConfig(formData.rating_system).max 
                     })}
                   </p>
+                </div>
+                {/* Preferred Padel Clubs Section */}
+                <div className="space-y-2 pt-4 border-t">
+                  <Label className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    {t('profile.preferredClubs', 'Preferred Padel Clubs')}
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {t('profile.whereToTrain', 'Where do you want to train?')}
+                  </p>
+                  <LocationPicker
+                    selectedLocationIds={selectedLocationIds}
+                    onChange={setSelectedLocationIds}
+                    primaryLocationId={preferredLocationId}
+                    onPrimaryChange={setPreferredLocationId}
+                    showPrimary={true}
+                    disabled={loadingLocations}
+                  />
                 </div>
               </CardContent>
             </Card>
