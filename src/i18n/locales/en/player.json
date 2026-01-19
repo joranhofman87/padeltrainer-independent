@@ -30,7 +30,8 @@
     "stats": {
       "upcoming": "Upcoming",
       "completed": "Completed",
-      "totalBookings": "Total Bookings"
+      "totalBookings": "Total Bookings",
+      "following": "Following"
     },
     "nextUp": "Next Up",
     "allBookings": "All Bookings",

@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
@@ -18,6 +18,7 @@ interface DashboardStats {
   totalStudents: number;
   openSlots: number;
   monthlyEarnings: number;
+  followerCount: number;
 }
 
 interface SetupStatus {
@@ -37,6 +38,7 @@ export default function TrainerDashboard() {
     totalStudents: 0,
     openSlots: 0,
     monthlyEarnings: 0,
+    followerCount: 0,
   });
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -228,10 +230,17 @@ export default function TrainerDashboard() {
       // Apply platform fee (trainer gets 90%)
       const netEarnings = totalEarnings * 0.9;
 
+      // 4. Follower count
+      const { count: followerCount } = await supabase
+        .from('trainer_followers')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', currentTrainerId);
+
       setStats({
         totalStudents: uniquePlayerIds.size,
         openSlots: openSlotsCount,
         monthlyEarnings: netEarnings,
+        followerCount: followerCount || 0,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -372,14 +381,16 @@ export default function TrainerDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.analytics')}</p>
-                  <p className="text-3xl font-bold">📊</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.followers')}</p>
+                  <p className="text-3xl font-bold">
+                    {statsLoading ? '...' : stats.followerCount}
+                  </p>
                 </div>
                 <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900">
-                  <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  <Bell className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewStats')}</p>
+              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewFollowers')}</p>
             </CardContent>
           </Card>
         </div>

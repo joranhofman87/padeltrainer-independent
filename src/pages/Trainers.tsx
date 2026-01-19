@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, MapPin, Star, ArrowLeft, TrendingUp } from 'lucide-react';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
+import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
 
 interface TrainerWithProfile {
@@ -327,6 +328,9 @@ export default function Trainers() {
                             Verified
                           </Badge>
                         )}
+                        <div className="ml-auto">
+                          <FollowButton trainerProfileId={trainer.id} />
+                        </div>
                       </div>
                       {trainer.profile?.location && (
                         <CardDescription className="flex items-center gap-1 mt-1">
