@@ -67,5 +67,27 @@
   "completed": "Completed",
   "pending": "Pending",
   "confirmed": "Confirmed",
-  "cancelled": "Cancelled"
+  "cancelled": "Cancelled",
+  "locations": {
+    "title": "Padel Locations",
+    "subtitle": "Find trainers at {{count}} venues across the Netherlands",
+    "searchPlaceholder": "Search by name or city...",
+    "filterByCity": "Filter by city",
+    "allCities": "All cities",
+    "noResults": "No locations found",
+    "tryDifferentSearch": "Try a different search term or filter",
+    "showingCount": "Showing {{count}} locations",
+    "trainersAvailable": "trainers available",
+    "selectLocations": "Select locations...",
+    "backToLocations": "Back to Locations",
+    "visitWebsite": "Visit Website",
+    "getDirections": "Get Directions",
+    "trainersAtLocation": "Trainers at this location",
+    "trainer": "trainer",
+    "trainers": "trainers",
+    "noTrainers": "No trainers yet",
+    "noTrainersDescription": "No trainers are currently teaching at this location.",
+    "primaryLocation": "Primary Location",
+    "bookLesson": "Book Lesson"
+  }
 }
