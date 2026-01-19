@@ -15,6 +15,7 @@ import {
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { StarRating } from '@/components/reviews/StarRating';
 import { getTrainerAverageRating } from '@/lib/reviews';
+import { recordProfileView } from '@/lib/profileViews';
 
 interface TrainerData {
   id: string;
@@ -49,6 +50,13 @@ export default function TrainerProfile() {
       fetchTrainerProfile();
     }
   }, [trainerId]);
+
+  // Record anonymous profile view
+  useEffect(() => {
+    if (trainer?.id) {
+      recordProfileView(trainer.id);
+    }
+  }, [trainer?.id]);
 
   const fetchTrainerProfile = async () => {
     setLoading(true);
