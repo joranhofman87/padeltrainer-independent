@@ -78,7 +78,7 @@
     "tryDifferentSearch": "Try a different search term or filter",
     "showingCount": "Showing {{count}} locations",
     "trainersAvailable": "trainers available",
-    "selectLocations": "Select locations...",
+    "selectLocations": "Select clubs...",
     "backToLocations": "Back to Locations",
     "visitWebsite": "Visit Website",
     "getDirections": "Get Directions",
@@ -88,6 +88,17 @@
     "noTrainers": "No trainers yet",
     "noTrainersDescription": "No trainers are currently teaching at this location.",
     "primaryLocation": "Primary Location",
-    "bookLesson": "Book Lesson"
+    "bookLesson": "Book Lesson",
+    "clubsSelected": "{{count}} club(s) selected",
+    "country": "Country",
+    "netherlands": "Netherlands",
+    "selectedClubs": "Selected clubs",
+    "clearAll": "Clear all",
+    "setPreferred": "Set as preferred",
+    "preferredClubHint": "⭐ = Your preferred club"
+  },
+  "profile": {
+    "preferredClubs": "Preferred Padel Clubs",
+    "whereToTrain": "Where do you want to train?"
   }
 }
