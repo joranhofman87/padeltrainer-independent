@@ -48,6 +48,9 @@ import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
 import FollowingList from "./pages/FollowingList";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminLocations from "./pages/admin/AdminLocations";
+import Locations from "./pages/Locations";
+import LocationDetail from "./pages/LocationDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -102,6 +105,9 @@ const App = () => (
             <Route path="/settings/calendar" element={<CalendarSettings />} />
             <Route path="/player/following" element={<FollowingList />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/locations" element={<AdminLocations />} />
+            <Route path="/locations" element={<Locations />} />
+            <Route path="/locations/:slug" element={<LocationDetail />} />
             <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>
