@@ -357,7 +357,7 @@ export default function PlayerDashboard() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -401,6 +401,25 @@ export default function PlayerDashboard() {
                     {statsLoading ? '...' : playerStats.totalBookings}
                   </p>
                   <p className="text-xs text-muted-foreground">Total Bookings</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/player/following')}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-purple-100 dark:bg-purple-900">
+                  <Bell className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {followingLoading ? '...' : followedTrainers.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Following</p>
                 </div>
               </div>
             </CardContent>

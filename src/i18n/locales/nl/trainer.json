@@ -11,10 +11,12 @@
       "revenue": "Omzet",
       "thisMonth": "Deze Maand",
       "analytics": "Analytics",
+      "followers": "Volgers",
       "viewEarnings": "Klik om inkomsten te bekijken →",
       "viewStats": "Bekijk gedetailleerde statistieken →",
       "viewStudents": "Bekijk alle studenten →",
-      "viewSlots": "Bekijk kalender →"
+      "viewSlots": "Bekijk kalender →",
+      "viewFollowers": "Spelers die jou volgen →"
     },
     "quickActions": {
       "bookings": {

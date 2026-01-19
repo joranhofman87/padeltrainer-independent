@@ -30,7 +30,8 @@
     "stats": {
       "upcoming": "Aankomend",
       "completed": "Voltooid",
-      "totalBookings": "Totaal Boekingen"
+      "totalBookings": "Totaal Boekingen",
+      "following": "Volgend"
     },
     "nextUp": "Binnenkort",
     "allBookings": "Alle Boekingen",

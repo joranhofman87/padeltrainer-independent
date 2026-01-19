@@ -11,10 +11,12 @@
       "revenue": "Revenue",
       "thisMonth": "This Month",
       "analytics": "Analytics",
+      "followers": "Followers",
       "viewEarnings": "Click to view earnings →",
       "viewStats": "View detailed stats →",
       "viewStudents": "View all students →",
-      "viewSlots": "View calendar →"
+      "viewSlots": "View calendar →",
+      "viewFollowers": "Players following you →"
     },
     "quickActions": {
       "bookings": {
