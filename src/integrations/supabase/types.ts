@@ -663,6 +663,35 @@ export type Database = {
           },
         ]
       }
+      trainer_profile_views: {
+        Row: {
+          id: string
+          session_id: string | null
+          trainer_id: string
+          viewed_at: string
+        }
+        Insert: {
+          id?: string
+          session_id?: string | null
+          trainer_id: string
+          viewed_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string | null
+          trainer_id?: string
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_profile_views_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainer_profiles: {
         Row: {
           bic: string | null

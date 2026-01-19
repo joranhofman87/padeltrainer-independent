@@ -12,11 +12,13 @@
       "thisMonth": "Deze Maand",
       "analytics": "Analytics",
       "followers": "Volgers",
+      "profileViews": "Profielweergaven",
       "viewEarnings": "Klik om inkomsten te bekijken →",
       "viewStats": "Bekijk gedetailleerde statistieken →",
       "viewStudents": "Bekijk alle studenten →",
       "viewSlots": "Bekijk kalender →",
-      "viewFollowers": "Spelers die jou volgen →"
+      "viewFollowers": "Spelers die jou volgen →",
+      "viewProfileViews": "Laatste 30 dagen →"
     },
     "quickActions": {
       "bookings": {

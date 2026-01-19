@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
@@ -19,6 +19,7 @@ interface DashboardStats {
   openSlots: number;
   monthlyEarnings: number;
   followerCount: number;
+  profileViews: number;
 }
 
 interface SetupStatus {
@@ -39,6 +40,7 @@ export default function TrainerDashboard() {
     openSlots: 0,
     monthlyEarnings: 0,
     followerCount: 0,
+    profileViews: 0,
   });
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -236,11 +238,21 @@ export default function TrainerDashboard() {
         .select('id', { count: 'exact', head: true })
         .eq('trainer_id', currentTrainerId);
 
+      // 5. Profile views (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const { count: profileViews } = await supabase
+        .from('trainer_profile_views')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', currentTrainerId)
+        .gte('viewed_at', thirtyDaysAgo.toISOString());
+
       setStats({
         totalStudents: uniquePlayerIds.size,
         openSlots: openSlotsCount,
         monthlyEarnings: netEarnings,
         followerCount: followerCount || 0,
+        profileViews: profileViews || 0,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -319,24 +331,58 @@ export default function TrainerDashboard() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.profileViews')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">
+                    {statsLoading ? '...' : stats.profileViews}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-3 rounded-full bg-sky-100 dark:bg-sky-900">
+                  <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-sky-600 dark:text-sky-400" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewProfileViews')}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.followers')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">
+                    {statsLoading ? '...' : stats.followerCount}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-3 rounded-full bg-purple-100 dark:bg-purple-900">
+                  <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewFollowers')}</p>
+            </CardContent>
+          </Card>
+
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow"
             onClick={() => navigate('/trainer/players')}
           >
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.totalStudents')}</p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.totalStudents')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {statsLoading ? '...' : stats.totalStudents}
                   </p>
                 </div>
-                <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="p-2 sm:p-3 rounded-full bg-green-100 dark:bg-green-900">
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewStudents')}</p>
+              <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewStudents')}</p>
             </CardContent>
           </Card>
 
@@ -344,53 +390,36 @@ export default function TrainerDashboard() {
             className="cursor-pointer hover:shadow-lg transition-shadow"
             onClick={() => navigate('/trainer/open-slots')}
           >
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.openSlots')}</p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.openSlots')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {statsLoading ? '...' : stats.openSlots}
                   </p>
                 </div>
-                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-                  <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-2 sm:p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewSlots')}</p>
+              <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewSlots')}</p>
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/earnings')}>
-            <CardContent className="p-6">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow col-span-2 sm:col-span-1" onClick={() => navigate('/earnings')}>
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.revenue')}</p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('dashboard.stats.revenue')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {statsLoading ? '...' : `€${stats.monthlyEarnings.toFixed(0)}`}
                   </p>
                 </div>
-                <div className="p-3 rounded-full bg-orange-100 dark:bg-orange-900">
-                  <DollarSign className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                <div className="p-2 sm:p-3 rounded-full bg-orange-100 dark:bg-orange-900">
+                  <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewEarnings')}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.followers')}</p>
-                  <p className="text-3xl font-bold">
-                    {statsLoading ? '...' : stats.followerCount}
-                  </p>
-                </div>
-                <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900">
-                  <Bell className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">{t('dashboard.stats.viewFollowers')}</p>
+              <p className="text-xs text-muted-foreground mt-2 hidden sm:block">{t('dashboard.stats.viewEarnings')}</p>
             </CardContent>
           </Card>
         </div>

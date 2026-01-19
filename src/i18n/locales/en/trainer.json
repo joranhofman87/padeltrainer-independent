@@ -12,11 +12,13 @@
       "thisMonth": "This Month",
       "analytics": "Analytics",
       "followers": "Followers",
+      "profileViews": "Profile Views",
       "viewEarnings": "Click to view earnings →",
       "viewStats": "View detailed stats →",
       "viewStudents": "View all students →",
       "viewSlots": "View calendar →",
-      "viewFollowers": "Players following you →"
+      "viewFollowers": "Players following you →",
+      "viewProfileViews": "Last 30 days →"
     },
     "quickActions": {
       "bookings": {
