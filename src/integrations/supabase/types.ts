@@ -433,6 +433,48 @@ export type Database = {
           },
         ]
       }
+      locations: {
+        Row: {
+          city: string
+          country: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          postal_code: string | null
+          slug: string
+          street_address: string | null
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          city: string
+          country?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          postal_code?: string | null
+          slug: string
+          street_address?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          city?: string
+          country?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          postal_code?: string | null
+          slug?: string
+          street_address?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           created_at: string
@@ -465,6 +507,52 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      player_locations: {
+        Row: {
+          created_at: string
+          id: string
+          is_preferred: boolean
+          location_id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_preferred?: boolean
+          location_id: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_preferred?: boolean
+          location_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_locations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       player_rating_history: {
         Row: {
@@ -656,6 +744,45 @@ export type Database = {
           },
           {
             foreignKeyName: "trainer_followers_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trainer_locations: {
+        Row: {
+          created_at: string
+          id: string
+          is_primary: boolean
+          location_id: string
+          trainer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          location_id: string
+          trainer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          location_id?: string
+          trainer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_locations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_locations_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
@@ -958,6 +1085,10 @@ export type Database = {
       }
     }
     Functions: {
+      generate_location_slug: {
+        Args: { city: string; name: string }
+        Returns: string
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
