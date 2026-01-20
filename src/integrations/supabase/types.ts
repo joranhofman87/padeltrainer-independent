@@ -328,6 +328,60 @@ export type Database = {
           },
         ]
       }
+      club_trainer_invitations: {
+        Row: {
+          club_profile_id: string
+          created_at: string
+          id: string
+          invited_by: string
+          message: string | null
+          responded_at: string | null
+          status: string
+          token: string
+          trainer_email: string
+          trainer_profile_id: string | null
+        }
+        Insert: {
+          club_profile_id: string
+          created_at?: string
+          id?: string
+          invited_by: string
+          message?: string | null
+          responded_at?: string | null
+          status?: string
+          token?: string
+          trainer_email: string
+          trainer_profile_id?: string | null
+        }
+        Update: {
+          club_profile_id?: string
+          created_at?: string
+          id?: string
+          invited_by?: string
+          message?: string | null
+          responded_at?: string | null
+          status?: string
+          token?: string
+          trainer_email?: string
+          trainer_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_trainer_invitations_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_trainer_invitations_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guest_players: {
         Row: {
           created_at: string
