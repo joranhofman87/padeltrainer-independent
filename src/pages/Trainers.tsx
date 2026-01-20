@@ -12,6 +12,7 @@ import { Search, MapPin, Star, ArrowLeft, TrendingUp } from 'lucide-react';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
+import { SEO } from '@/components/SEO';
 
 interface TrainerWithProfile {
   id: string;
@@ -180,8 +181,36 @@ export default function Trainers() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Trainers in the Netherlands",
+    "description": "Find certified padel trainers across the Netherlands. Browse profiles, compare rates, and book lessons.",
+    "numberOfItems": filteredAndSortedTrainers.length,
+    "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
+      "@type": "ListItem",
+      "position": index + 1,
+      "item": {
+        "@type": "Person",
+        "name": trainer.profile?.full_name || "Padel Trainer",
+        "jobTitle": "Padel Trainer",
+        "image": trainer.profile?.avatar_url,
+        "address": trainer.profile?.location ? {
+          "@type": "PostalAddress",
+          "addressLocality": trainer.profile.location
+        } : undefined
+      }
+    }))
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
+      <SEO
+        title="Find Padel Trainers"
+        description="Discover certified padel trainers across the Netherlands. Compare rates, read reviews, and book lessons that match your skill level."
+        url="/trainers"
+        structuredData={structuredData}
+      />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">

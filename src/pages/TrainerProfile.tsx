@@ -25,6 +25,7 @@ import { StarRating } from '@/components/reviews/StarRating';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
 import { toast } from 'sonner';
+import { SEO } from '@/components/SEO';
 
 interface TrainerData {
   id: string;
@@ -165,8 +166,37 @@ export default function TrainerProfile() {
     );
   }
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": profile.full_name,
+    "jobTitle": "Padel Trainer",
+    "image": profile.avatar_url,
+    "url": `https://padeltrainer.ai/trainer/${trainerId}`,
+    "address": profile.location ? {
+      "@type": "PostalAddress",
+      "addressLocality": profile.location
+    } : undefined,
+    ...(averageRating !== null && reviewCount > 0 ? {
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": averageRating,
+        "reviewCount": reviewCount,
+        "bestRating": 5,
+        "worstRating": 1
+      }
+    } : {})
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+      <SEO
+        title={profile.full_name || 'Padel Trainer'}
+        description={profile.bio || `Book padel lessons with ${profile.full_name || 'this trainer'} in ${profile.location || 'the Netherlands'}. ${trainer.experience_years ? `${trainer.experience_years} years of experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`}
+        url={`/trainer/${trainerId}`}
+        image={profile.avatar_url || undefined}
+        structuredData={structuredData}
+      />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
