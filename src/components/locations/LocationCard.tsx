@@ -45,7 +45,9 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, on
               className="h-8 w-8 shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
-                window.open(location.website_url!, '_blank');
+                const url = new URL(location.website_url!);
+                url.searchParams.set('ref', 'padeltrainerai');
+                window.open(url.toString(), '_blank');
               }}
               aria-label={t('locations.visitWebsite')}
             >
