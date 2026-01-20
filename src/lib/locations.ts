@@ -14,11 +14,14 @@ export interface Location {
   updated_at: string;
 }
 
+export type TrainerRelationshipType = 'independent' | 'club_trainer';
+
 export interface TrainerLocation {
   id: string;
   trainer_id: string;
   location_id: string;
   is_primary: boolean;
+  relationship_type: TrainerRelationshipType;
   created_at: string;
 }
 
@@ -125,7 +128,11 @@ export async function getTrainerLocations(trainerId: string): Promise<(TrainerLo
     throw error;
   }
 
-  return data || [];
+  // Cast relationship_type to our typed enum
+  return (data || []).map(item => ({
+    ...item,
+    relationship_type: (item.relationship_type || 'independent') as TrainerRelationshipType,
+  }));
 }
 
 // Fetch player's preferred locations
@@ -146,11 +153,16 @@ export async function getPlayerLocations(profileId: string): Promise<(PlayerLoca
   return data || [];
 }
 
-// Update trainer locations
+export interface TrainerLocationData {
+  locationId: string;
+  isPrimary: boolean;
+  relationshipType: TrainerRelationshipType;
+}
+
+// Update trainer locations with relationship types
 export async function updateTrainerLocations(
   trainerId: string,
-  locationIds: string[],
-  primaryLocationId?: string
+  locationData: TrainerLocationData[]
 ): Promise<void> {
   // Delete existing locations
   const { error: deleteError } = await supabase
@@ -164,11 +176,12 @@ export async function updateTrainerLocations(
   }
 
   // Insert new locations
-  if (locationIds.length > 0) {
-    const inserts = locationIds.map(locationId => ({
+  if (locationData.length > 0) {
+    const inserts = locationData.map(data => ({
       trainer_id: trainerId,
-      location_id: locationId,
-      is_primary: locationId === primaryLocationId
+      location_id: data.locationId,
+      is_primary: data.isPrimary,
+      relationship_type: data.relationshipType,
     }));
 
     const { error: insertError } = await supabase
@@ -180,6 +193,20 @@ export async function updateTrainerLocations(
       throw insertError;
     }
   }
+}
+
+// Legacy function for backward compatibility (uses 'independent' as default)
+export async function updateTrainerLocationsSimple(
+  trainerId: string,
+  locationIds: string[],
+  primaryLocationId?: string
+): Promise<void> {
+  const locationData: TrainerLocationData[] = locationIds.map(locationId => ({
+    locationId,
+    isPrimary: locationId === primaryLocationId,
+    relationshipType: 'independent' as TrainerRelationshipType,
+  }));
+  return updateTrainerLocations(trainerId, locationData);
 }
 
 // Update player locations
