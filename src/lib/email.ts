@@ -16,12 +16,15 @@ export type EmailType =
   | "booking_approved_invoice"
   | "booking_rejected"
   | "club_claim_approved"
-  | "club_claim_rejected";
+  | "club_claim_rejected"
+  | "club_trainer_invitation"
+  | "club_trainer_invitation_accepted";
 
 export interface EmailData {
   playerName?: string;
   playerEmail?: string;
   trainerName?: string;
+  trainerEmail?: string;
   lessonTitle?: string;
   lessonDate?: string;
   lessonTime?: string;
@@ -35,6 +38,10 @@ export interface EmailData {
   bookingUrl?: string;
   clubName?: string;
   ownerName?: string;
+  inviterName?: string;
+  inviteMessage?: string;
+  inviteLink?: string;
+  locationName?: string;
 }
 
 /**

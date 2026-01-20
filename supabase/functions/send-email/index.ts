@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted";
   to: string;
   data: {
     playerName?: string;
@@ -36,6 +36,10 @@ interface EmailRequest {
     bookingUrl?: string;
     clubName?: string;
     ownerName?: string;
+    inviterName?: string;
+    inviteMessage?: string;
+    inviteLink?: string;
+    locationName?: string;
   };
 }
 
@@ -412,6 +416,58 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             <p>If you believe this was an error, please contact us with additional verification documents or information.</p>
             <p style="margin-top: 24px;">
               <a href="mailto:support@padeltrainer.ai" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Contact Support</a>
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "club_trainer_invitation":
+      return {
+        subject: `${data.clubName} invites you to join as a trainer 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">You're Invited! 🎾</h1>
+            <p>Hi${data.trainerName ? ` ${data.trainerName}` : ""},</p>
+            <p><strong>${data.clubName}</strong> would like you to join as an official club trainer!</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.clubName}</h3>
+              <p><strong>Location:</strong> ${data.locationName || "Not specified"}</p>
+              <p><strong>Invited by:</strong> ${data.inviterName}</p>
+              ${data.inviteMessage ? `<p style="color: #6b7280; font-style: italic;">"${data.inviteMessage}"</p>` : ''}
+            </div>
+            <p>As a club trainer, you'll be:</p>
+            <ul style="margin: 0; padding-left: 20px;">
+              <li>Listed as an official trainer for ${data.clubName}</li>
+              <li>Visible on the club's trainer roster</li>
+              <li>Able to manage bookings through the club's calendar</li>
+            </ul>
+            <p style="margin-top: 24px;">
+              <a href="${data.inviteLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-right: 12px;">View Invitation</a>
+            </p>
+            <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+              If you're not interested, you can decline this invitation through the link above.
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "club_trainer_invitation_accepted":
+      return {
+        subject: `${data.trainerName} accepted your invitation! 🎉`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Trainer Joined Your Club! 🎉</h1>
+            <p>Hi ${data.ownerName || "Club Manager"},</p>
+            <p>Great news! <strong>${data.trainerName}</strong> has accepted your invitation to join <strong>${data.clubName}</strong> as a club trainer.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Trainer:</strong> ${data.trainerName}</p>
+              <p><strong>Email:</strong> ${data.trainerEmail}</p>
+            </div>
+            <p>You can now see their availability in your club calendar and they'll appear in your trainers list.</p>
+            <p style="margin-top: 24px;">
+              <a href="https://padeltrainer.lovable.app/club/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Club Trainers</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>

@@ -499,3 +499,264 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
     trainer_avatar: slot.trainer?.profiles?.avatar_url || null,
   }));
 }
+
+// ============= Trainer Invitation System =============
+
+export interface ClubTrainerInvitation {
+  id: string;
+  club_profile_id: string;
+  trainer_email: string;
+  trainer_profile_id: string | null;
+  invited_by: string;
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled';
+  token: string;
+  message: string | null;
+  created_at: string;
+  responded_at: string | null;
+}
+
+// Send invitation to a trainer
+export async function inviteClubTrainer(
+  clubProfileId: string,
+  trainerEmail: string,
+  invitedBy: string,
+  message?: string
+): Promise<{ success: boolean; error: string | null; invitation?: ClubTrainerInvitation }> {
+  // Check if invitation already exists
+  const { data: existing } = await supabase
+    .from('club_trainer_invitations')
+    .select('*')
+    .eq('club_profile_id', clubProfileId)
+    .eq('trainer_email', trainerEmail.toLowerCase())
+    .single();
+
+  if (existing && existing.status === 'pending') {
+    return { success: false, error: 'An invitation is already pending for this email' };
+  }
+
+  // Look up if trainer exists by email
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('email', trainerEmail.toLowerCase())
+    .single();
+
+  let trainerProfileId = null;
+  if (profile) {
+    const { data: trainerProfile } = await supabase
+      .from('trainer_profiles')
+      .select('id')
+      .eq('user_id', profile.user_id)
+      .single();
+    trainerProfileId = trainerProfile?.id || null;
+  }
+
+  // Create or update invitation
+  const invitationData = {
+    club_profile_id: clubProfileId,
+    trainer_email: trainerEmail.toLowerCase(),
+    trainer_profile_id: trainerProfileId,
+    invited_by: invitedBy,
+    message: message || null,
+    status: 'pending',
+    responded_at: null,
+  };
+
+  let result;
+  if (existing) {
+    // Update existing cancelled/declined invitation
+    result = await supabase
+      .from('club_trainer_invitations')
+      .update({ ...invitationData, token: crypto.randomUUID() })
+      .eq('id', existing.id)
+      .select()
+      .single();
+  } else {
+    result = await supabase
+      .from('club_trainer_invitations')
+      .insert(invitationData)
+      .select()
+      .single();
+  }
+
+  if (result.error) {
+    console.error('Error creating invitation:', result.error);
+    return { success: false, error: result.error.message };
+  }
+
+  return { success: true, error: null, invitation: result.data };
+}
+
+// Get all invitations for a club
+export async function getClubTrainerInvitations(clubProfileId: string) {
+  const { data, error } = await supabase
+    .from('club_trainer_invitations')
+    .select('*')
+    .eq('club_profile_id', clubProfileId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching invitations:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Get invitation by token (for response page)
+export async function getInvitationByToken(token: string) {
+  const { data, error } = await supabase
+    .from('club_trainer_invitations')
+    .select(`
+      *,
+      club_profiles!inner(
+        id,
+        location_id,
+        contact_email,
+        description,
+        locations:location_id(name, city)
+      )
+    `)
+    .eq('token', token)
+    .single();
+
+  if (error) {
+    console.error('Error fetching invitation by token:', error);
+    return null;
+  }
+
+  // Get inviter name
+  const { data: inviterProfile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('user_id', data.invited_by)
+    .single();
+
+  return {
+    ...data,
+    inviter_name: inviterProfile?.full_name || 'Club Manager',
+  };
+}
+
+// Respond to invitation (accept/decline)
+export async function respondToTrainerInvitation(
+  token: string,
+  accept: boolean,
+  userId: string
+): Promise<{ success: boolean; error: string | null }> {
+  // Get the invitation
+  const invitation = await getInvitationByToken(token);
+  if (!invitation) {
+    return { success: false, error: 'Invitation not found or expired' };
+  }
+
+  if (invitation.status !== 'pending') {
+    return { success: false, error: 'This invitation has already been responded to' };
+  }
+
+  // Verify user is a trainer
+  const { data: trainerProfile } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (!trainerProfile) {
+    return { success: false, error: 'You must have a trainer account to accept this invitation' };
+  }
+
+  // Update invitation status
+  const { error: updateError } = await supabase
+    .from('club_trainer_invitations')
+    .update({
+      status: accept ? 'accepted' : 'declined',
+      responded_at: new Date().toISOString(),
+      trainer_profile_id: trainerProfile.id,
+    })
+    .eq('token', token);
+
+  if (updateError) {
+    console.error('Error updating invitation:', updateError);
+    return { success: false, error: updateError.message };
+  }
+
+  // If accepted, create/update trainer_locations entry
+  if (accept) {
+    const locationId = invitation.club_profiles?.location_id;
+    
+    // Check if trainer already has this location
+    const { data: existingLocation } = await supabase
+      .from('trainer_locations')
+      .select('id')
+      .eq('trainer_id', trainerProfile.id)
+      .eq('location_id', locationId)
+      .single();
+
+    if (existingLocation) {
+      // Update to club_trainer
+      await supabase
+        .from('trainer_locations')
+        .update({ relationship_type: 'club_trainer' })
+        .eq('id', existingLocation.id);
+    } else {
+      // Create new entry
+      await supabase
+        .from('trainer_locations')
+        .insert({
+          trainer_id: trainerProfile.id,
+          location_id: locationId,
+          relationship_type: 'club_trainer',
+          is_primary: false,
+        });
+    }
+  }
+
+  return { success: true, error: null };
+}
+
+// Cancel an invitation
+export async function cancelTrainerInvitation(invitationId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('club_trainer_invitations')
+    .update({ status: 'cancelled' })
+    .eq('id', invitationId)
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('Error cancelling invitation:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Get pending invitations for a trainer (by email)
+export async function getPendingTrainerInvitationsForUser(userId: string): Promise<any[]> {
+  // Get user's email
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email')
+    .eq('user_id', userId)
+    .single();
+
+  if (!profile?.email) return [];
+
+  const { data, error } = await supabase
+    .from('club_trainer_invitations')
+    .select(`
+      *,
+      club_profiles!inner(
+        id,
+        locations:location_id(name, city)
+      )
+    `)
+    .eq('trainer_email', profile.email.toLowerCase())
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('Error fetching pending invitations:', error);
+    return [];
+  }
+
+  return data || [];
+}
