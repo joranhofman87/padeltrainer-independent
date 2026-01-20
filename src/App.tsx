@@ -51,6 +51,9 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminLocations from "./pages/admin/AdminLocations";
 import Locations from "./pages/Locations";
 import LocationDetail from "./pages/LocationDetail";
+import ClubDashboard from "./pages/club/ClubDashboard";
+import ClubPlayers from "./pages/club/ClubPlayers";
+import ClubTrainers from "./pages/club/ClubTrainers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -108,6 +111,9 @@ const App = () => (
             <Route path="/admin/locations" element={<AdminLocations />} />
             <Route path="/locations" element={<Locations />} />
             <Route path="/locations/:slug" element={<LocationDetail />} />
+            <Route path="/club" element={<ClubDashboard />} />
+            <Route path="/club/players" element={<ClubPlayers />} />
+            <Route path="/club/trainers" element={<ClubTrainers />} />
             <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>

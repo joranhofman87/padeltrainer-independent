@@ -1,0 +1,104 @@
+{
+  "badge": "Club Manager",
+  "dashboard": {
+    "title": "Club Dashboard",
+    "welcome": "Welcome back",
+    "overview": "Overview",
+    "trainers": "Trainers",
+    "players": "Players",
+    "calendar": "Calendar",
+    "settings": "Settings",
+    "profile": "Club Profile",
+    "pendingVerification": "Your club is pending verification",
+    "pendingVerificationDescription": "An admin will review your claim and verify your club ownership. You'll have full access once verified."
+  },
+  "stats": {
+    "trainers": "Club Trainers",
+    "players": "Players",
+    "upcomingSessions": "Upcoming Sessions",
+    "thisWeek": "This Week"
+  },
+  "claim": {
+    "button": "Claim this Club",
+    "title": "Claim Club Profile",
+    "description": "Request to manage {{clubName}}. Once verified, you'll be able to manage trainers and players.",
+    "contactEmail": "Contact Email",
+    "contactEmailPlaceholder": "club@example.com",
+    "phone": "Phone Number",
+    "phonePlaceholder": "+31 6 12345678",
+    "aboutClub": "About the Club",
+    "aboutClubPlaceholder": "Tell us about your club and your role there...",
+    "verificationNote": "Your claim will be reviewed by our team. We may contact you to verify your ownership of this club.",
+    "submit": "Submit Claim",
+    "success": "Claim Submitted",
+    "successDescription": "Your claim has been submitted and is pending verification.",
+    "error": "Error",
+    "errorDescription": "There was an error submitting your claim. Please try again.",
+    "emailRequired": "Please enter a contact email address.",
+    "alreadyClaimed": "This club has already been claimed.",
+    "loginRequired": "Please log in to claim this club."
+  },
+  "trainers": {
+    "title": "Club Trainers",
+    "description": "Trainers who are employed by or managed through your club.",
+    "empty": "No club trainers yet",
+    "emptyDescription": "Trainers who select 'Club Trainer' when adding your location will appear here.",
+    "inviteTrainer": "Invite Trainer",
+    "viewCalendar": "View Calendar",
+    "manageBookings": "Manage Bookings"
+  },
+  "players": {
+    "title": "Club Players",
+    "description": "Players registered with your club.",
+    "addPlayer": "Add Player",
+    "editPlayer": "Edit Player",
+    "deletePlayer": "Delete Player",
+    "empty": "No players yet",
+    "emptyDescription": "Add players who are members of your club.",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "rating": "Rating",
+    "notes": "Notes",
+    "deleteConfirm": "Are you sure you want to remove this player?",
+    "deleteConfirmDescription": "This action cannot be undone."
+  },
+  "profile": {
+    "title": "Club Profile",
+    "description": "Manage your club's public profile.",
+    "logo": "Club Logo",
+    "uploadLogo": "Upload Logo",
+    "contactEmail": "Contact Email",
+    "phone": "Phone",
+    "aboutClub": "About",
+    "save": "Save Changes",
+    "saved": "Profile saved successfully"
+  },
+  "managers": {
+    "title": "Club Managers",
+    "description": "People who can manage this club.",
+    "invite": "Invite Manager",
+    "inviteDescription": "Enter the email of the person you want to invite.",
+    "email": "Email Address",
+    "role": "Role",
+    "owner": "Owner",
+    "manager": "Manager",
+    "remove": "Remove",
+    "removeConfirm": "Remove this manager?",
+    "removeConfirmDescription": "They will no longer have access to manage this club.",
+    "inviteSuccess": "Invitation sent",
+    "inviteError": "Could not invite manager"
+  },
+  "settings": {
+    "title": "Club Settings",
+    "description": "Manage your club settings and team."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "trainers": "Trainers",
+    "players": "Players",
+    "calendar": "Calendar",
+    "profile": "Profile",
+    "settings": "Settings"
+  }
+}
