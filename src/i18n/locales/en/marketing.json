@@ -15,6 +15,7 @@
     "locations": "All Locations",
     "company": "Company",
     "aboutUs": "About Us",
+    "becomePartner": "Become a Partner",
     "contact": "Contact",
     "legal": "Legal",
     "privacyPolicy": "Privacy Policy",
@@ -296,5 +297,29 @@
   "terms": {
     "title": "Terms of Service",
     "lastUpdated": "Last updated: {{date}}"
+  },
+  "partner": {
+    "title": "Become a Partner",
+    "subtitle": "Interested in partnering with PadelTrainer.ai? Let's discuss how we can work together to grow padel in the Netherlands.",
+    "thankYouTitle": "Thank you for your interest!",
+    "thankYouMessage": "We've received your inquiry and will get back to you within 2 business days.",
+    "successTitle": "Message sent!",
+    "successMessage": "We'll be in touch soon.",
+    "errorTitle": "Something went wrong",
+    "errorMessage": "Please try again or email us directly at info@padeltrainer.ai",
+    "form": {
+      "name": "Your name",
+      "namePlaceholder": "John Doe",
+      "companyName": "Company name",
+      "companyNamePlaceholder": "Padel Club Amsterdam",
+      "email": "Email address",
+      "emailPlaceholder": "john@example.com",
+      "phone": "Phone number",
+      "phonePlaceholder": "+31 6 12345678",
+      "message": "How can we help?",
+      "messagePlaceholder": "Tell us about your company and how you'd like to partner with PadelTrainer.ai...",
+      "submit": "Send Message",
+      "sending": "Sending..."
+    }
   }
 }

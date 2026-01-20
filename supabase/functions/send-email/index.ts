@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry";
   to: string;
   data: {
     playerName?: string;
@@ -40,6 +40,12 @@ interface EmailRequest {
     inviteMessage?: string;
     inviteLink?: string;
     locationName?: string;
+    // Partner inquiry fields
+    name?: string;
+    companyName?: string;
+    email?: string;
+    phone?: string;
+    message?: string;
   };
 }
 
@@ -474,6 +480,29 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         `,
       };
 
+    case "partner_inquiry":
+      return {
+        subject: `New Partner Inquiry from ${data.name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #2563eb;">New Partner Inquiry 🤝</h1>
+            <p>A new partnership inquiry has been submitted via the website.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Contact Details</h3>
+              <p><strong>Name:</strong> ${data.name}</p>
+              <p><strong>Company:</strong> ${data.companyName}</p>
+              <p><strong>Email:</strong> <a href="mailto:${data.email}">${data.email}</a></p>
+              <p><strong>Phone:</strong> <a href="tel:${data.phone}">${data.phone}</a></p>
+            </div>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Message</h3>
+              <p style="white-space: pre-wrap;">${data.message}</p>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">This inquiry was submitted at ${new Date().toISOString()}</p>
+          </div>
+        `,
+      };
+
     default:
       return {
         subject: "PadelTrainer.ai Notification",
@@ -491,40 +520,47 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Verify authentication
+    // Verify authentication (except for partner_inquiry which is public)
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      console.error("No authorization header provided");
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Create client to verify user token
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const token = authHeader.replace("Bearer ", "");
+    const { type, to, data }: EmailRequest = await req.json();
     
-    // Allow service role key to bypass user auth check (for internal calls)
-    const isServiceRole = token === supabaseServiceKey;
+    // Allow partner_inquiry without auth (public contact form)
+    const isPartnerInquiry = type === "partner_inquiry";
     
-    if (!isServiceRole) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      
-      if (authError || !user) {
-        console.error("Authentication failed:", authError?.message);
+    if (!isPartnerInquiry) {
+      if (!authHeader) {
+        console.error("No authorization header provided");
         return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
+          JSON.stringify({ error: "Authentication required" }),
           { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
-      
-      console.log("Email request from authenticated user:", user.id);
-    } else {
-      console.log("Email request from service role (internal call)");
-    }
 
-    const { type, to, data }: EmailRequest = await req.json();
+      // Create client to verify user token
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const token = authHeader.replace("Bearer ", "");
+      
+      // Allow service role key to bypass user auth check (for internal calls)
+      const isServiceRole = token === supabaseServiceKey;
+      
+      if (!isServiceRole) {
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        
+        if (authError || !user) {
+          console.error("Authentication failed:", authError?.message);
+          return new Response(
+            JSON.stringify({ error: "Unauthorized" }),
+            { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+        
+        console.log("Email request from authenticated user:", user.id);
+      } else {
+        console.log("Email request from service role (internal call)");
+      }
+    } else {
+      console.log("Partner inquiry email (public form submission)");
+    }
 
     if (!to || !type) {
       return new Response(
