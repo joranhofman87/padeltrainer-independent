@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots } from "@/lib/club";
 import { ClubNavigation } from "@/components/club/ClubNavigation";
+import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
 
 interface ClubSlot {
   id: string;
@@ -48,6 +49,8 @@ export default function ClubCalendar() {
   const [loading, setLoading] = useState(true);
   const [clubProfileId, setClubProfileId] = useState<string | null>(null);
   const [clubName, setClubName] = useState<string>("");
+  const [selectedSlot, setSelectedSlot] = useState<ClubSlot | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -196,6 +199,11 @@ export default function ClubCalendar() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
+  const handleSlotClick = (slot: ClubSlot) => {
+    setSelectedSlot(slot);
+    setSheetOpen(true);
+  };
+
   if (authLoading || (loading && slots.length === 0)) {
     return (
       <div className="min-h-screen bg-background">
@@ -265,8 +273,9 @@ export default function ClubCalendar() {
                   {mobileDaySlots.map((slot) => (
                     <div
                       key={slot.id}
+                      onClick={() => handleSlotClick(slot)}
                       className={cn(
-                        "p-3 rounded-lg border",
+                        "p-3 rounded-lg border cursor-pointer hover:opacity-80 transition-opacity",
                         getSlotColor(slot)
                       )}
                     >
@@ -356,8 +365,9 @@ export default function ClubCalendar() {
                             {slotsInCell.map((slot) => (
                               <div
                                 key={slot.id}
+                                onClick={() => handleSlotClick(slot)}
                                 className={cn(
-                                  "text-xs p-1.5 rounded border mb-1 cursor-pointer hover:opacity-80",
+                                  "text-xs p-1.5 rounded border mb-1 cursor-pointer hover:opacity-80 transition-opacity",
                                   getSlotColor(slot)
                                 )}
                                 title={`${slot.trainer_name} - ${slot.lessons?.title || "Open Slot"}`}
@@ -406,6 +416,13 @@ export default function ClubCalendar() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Slot Detail Sheet */}
+      <ClubSlotDetailSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        slot={selectedSlot}
+      />
     </div>
   );
 }
