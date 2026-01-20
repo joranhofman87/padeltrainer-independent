@@ -31,15 +31,26 @@ Deno.serve(async (req) => {
       { url: '/auth', priority: '0.5', changefreq: 'monthly' },
     ];
 
-    // Fetch all trainers with public profiles
+    // Fetch all trainers with public profiles (include all, not just verified)
     const { data: trainers, error: trainersError } = await supabase
       .from('trainer_profiles')
-      .select('user_id, updated_at')
-      .eq('is_verified', true);
+      .select('user_id, updated_at');
 
     if (trainersError) {
       console.error('Error fetching trainers:', trainersError);
     }
+
+    // Fetch unique cities for city landing pages
+    const { data: cityData, error: citiesError } = await supabase
+      .from('locations')
+      .select('city')
+      .eq('is_active', true);
+
+    if (citiesError) {
+      console.error('Error fetching cities:', citiesError);
+    }
+
+    const uniqueCities = [...new Set(cityData?.map(l => l.city) || [])];
 
     // Fetch all active locations
     const { data: locations, error: locationsError } = await supabase
@@ -95,6 +106,17 @@ Deno.serve(async (req) => {
         xml += `    <priority>0.6</priority>\n`;
         xml += '  </url>\n';
       }
+    }
+
+    // Add city landing pages for SEO
+    for (const cityName of uniqueCities) {
+      const citySlug = cityName.toLowerCase().replace(/\s+/g, '-');
+      xml += '  <url>\n';
+      xml += `    <loc>${SITE_URL}/trainers/${citySlug}</loc>\n`;
+      xml += `    <lastmod>${today}</lastmod>\n`;
+      xml += `    <changefreq>weekly</changefreq>\n`;
+      xml += `    <priority>0.8</priority>\n`;
+      xml += '  </url>\n';
     }
 
     xml += '</urlset>';
