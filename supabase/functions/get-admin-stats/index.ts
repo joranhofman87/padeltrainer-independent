@@ -72,6 +72,7 @@ serve(async (req) => {
       trainersResult,
       playersResult,
       stripeAccountsResult,
+      clubsResult,
     ] = await Promise.all([
       supabase
         .from("bookings")
@@ -85,18 +86,23 @@ serve(async (req) => {
       supabase
         .from("trainer_stripe_accounts")
         .select("trainer_id, charges_enabled, payouts_enabled, onboarding_complete"),
+      supabase
+        .from("club_profiles")
+        .select("id, is_verified, subscription_status, subscription_tier, trial_ends_at"),
     ]);
 
     const bookings = bookingsResult.data || [];
     const trainers = trainersResult.data || [];
     const players = playersResult.data || [];
     const stripeAccounts = stripeAccountsResult.data || [];
+    const clubs = clubsResult.data || [];
 
     logStep("Data fetched", {
       bookings: bookings.length,
       trainers: trainers.length,
       players: players.length,
       stripeAccounts: stripeAccounts.length,
+      clubs: clubs.length,
     });
 
     // Calculate stats
@@ -136,8 +142,25 @@ serve(async (req) => {
     const connectedAccounts = stripeAccounts.filter(a => a.charges_enabled).length;
     const pendingAccounts = stripeAccounts.filter(a => !a.charges_enabled).length;
 
-    // Monthly stats (last 6 months)
+    // Club stats
     const now = new Date();
+    const clubStats = {
+      total: clubs.length,
+      verified: clubs.filter(c => c.is_verified).length,
+      subscribed: clubs.filter(c => c.subscription_status === "active").length,
+      trialing: clubs.filter(c => {
+        if (c.subscription_status !== "trial") return false;
+        if (!c.trial_ends_at) return true;
+        return new Date(c.trial_ends_at) > now;
+      }).length,
+      expired: clubs.filter(c => {
+        if (c.subscription_status === "active") return false;
+        if (!c.trial_ends_at) return false;
+        return new Date(c.trial_ends_at) <= now;
+      }).length,
+    };
+
+    // Monthly stats (last 6 months)
     const monthlyStats: Array<{
       month: string;
       gmv: number;
@@ -204,8 +227,14 @@ serve(async (req) => {
         activePlayers: players.length,
         connectedAccounts,
         pendingAccounts,
+        totalClubs: clubStats.total,
+        verifiedClubs: clubStats.verified,
+        subscribedClubs: clubStats.subscribed,
+        trialingClubs: clubStats.trialing,
+        expiredTrialClubs: clubStats.expired,
       },
       trainersByTier: trainerTiers,
+      clubStats,
       monthlyStats,
       stripeBalance,
     };

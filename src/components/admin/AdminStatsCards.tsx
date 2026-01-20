@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, Users, DollarSign, CreditCard, UserCheck, Clock } from "lucide-react";
+import { TrendingUp, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield } from "lucide-react";
 import type { AdminStats } from "@/lib/admin";
 
 interface AdminStatsCardsProps {
@@ -44,6 +44,20 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       color: "text-violet-500",
     },
     {
+      title: "Total Clubs",
+      value: stats.overview.totalClubs?.toString() || "0",
+      description: `${stats.overview.verifiedClubs || 0} verified, ${stats.overview.subscribedClubs || 0} subscribed`,
+      icon: Building2,
+      color: "text-teal-500",
+    },
+    {
+      title: "Club Trials",
+      value: stats.overview.trialingClubs?.toString() || "0",
+      description: `${stats.overview.expiredTrialClubs || 0} expired trials`,
+      icon: Clock,
+      color: "text-amber-500",
+    },
+    {
       title: "Stripe Connect",
       value: stats.overview.connectedAccounts.toString(),
       description: `${stats.overview.pendingAccounts} pending onboarding`,
@@ -58,13 +72,13 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: stats.stripeBalance?.pending?.[0]
         ? `${formatCurrency(stats.stripeBalance.pending[0].amount)} pending`
         : "No pending balance",
-      icon: Clock,
-      color: "text-amber-500",
+      icon: Shield,
+      color: "text-indigo-500",
     },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
         <Card key={card.title}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

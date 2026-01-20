@@ -185,7 +185,35 @@
     "players": "Players",
     "calendar": "Calendar",
     "profile": "Profile",
+    "subscription": "Subscription",
     "settings": "Settings"
+  },
+  "subscription": {
+    "title": "Club Subscription",
+    "description": "Manage your club's subscription and billing",
+    "active": "Active",
+    "trial": "Trial",
+    "trialActive": "Free Trial Active",
+    "trialDaysRemaining": "You have {{days}} days remaining in your free trial",
+    "trialExpired": "Trial Expired",
+    "subscribeToAccess": "Subscribe to continue accessing all club features",
+    "perMonth": "per month",
+    "billedAnnually": "Billed annually at €{{amount}}/year",
+    "startTrial": "Start Free Trial",
+    "upgradeNow": "Subscribe Now",
+    "manageBilling": "Manage Billing",
+    "renewsOn": "Renews on {{date}}",
+    "endsOn": "Ends on {{date}}",
+    "successTitle": "Subscription Successful",
+    "successDescription": "Thank you! Your club subscription is now active.",
+    "canceledTitle": "Subscription Canceled",
+    "canceledDescription": "Your subscription was not completed.",
+    "features": {
+      "unlimitedTrainers": "Unlimited Trainers",
+      "unifiedCalendar": "Unified Calendar",
+      "analytics": "Club Analytics",
+      "prioritySupport": "Priority Support"
+    }
   },
   "common": {
     "cancel": "Cancel",

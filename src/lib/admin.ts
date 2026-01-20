@@ -11,11 +11,23 @@ export interface AdminStats {
     activePlayers: number;
     connectedAccounts: number;
     pendingAccounts: number;
+    totalClubs: number;
+    verifiedClubs: number;
+    subscribedClubs: number;
+    trialingClubs: number;
+    expiredTrialClubs: number;
   };
   trainersByTier: {
     starter: number;
     professional: number;
     academy: number;
+  };
+  clubStats: {
+    total: number;
+    verified: number;
+    subscribed: number;
+    trialing: number;
+    expired: number;
   };
   monthlyStats: Array<{
     month: string;

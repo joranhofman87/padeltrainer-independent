@@ -61,6 +61,7 @@ import ClubTrainers from "./pages/club/ClubTrainers";
 import ClubProfile from "./pages/club/ClubProfile";
 import ClubCalendar from "./pages/club/ClubCalendar";
 import ClubSettings from "./pages/club/ClubSettings";
+import ClubSubscription from "./pages/club/ClubSubscription";
 import ClubTrainerInvitation from "./pages/club/ClubTrainerInvitation";
 import AdminClubClaims from "./pages/admin/AdminClubClaims";
 import NotFound from "./pages/NotFound";
@@ -131,6 +132,7 @@ const App = () => (
             <Route path="/club/trainers" element={<ClubTrainers />} />
             <Route path="/club/calendar" element={<ClubCalendar />} />
             <Route path="/club/settings" element={<ClubSettings />} />
+            <Route path="/club/subscription" element={<ClubSubscription />} />
             <Route path="/club/invitation/:token" element={<ClubTrainerInvitation />} />
             <Route path="*" element={<NotFound />} />
             </Routes>

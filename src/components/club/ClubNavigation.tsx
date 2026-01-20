@@ -6,7 +6,8 @@ import {
   UserCircle, 
   Calendar, 
   Building2, 
-  Settings 
+  Settings,
+  CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ const navItems = [
   { key: "players", path: "/club/players", icon: UserCircle },
   { key: "calendar", path: "/club/calendar", icon: Calendar },
   { key: "profile", path: "/club/profile", icon: Building2 },
+  { key: "subscription", path: "/club/subscription", icon: CreditCard },
   { key: "settings", path: "/club/settings", icon: Settings },
 ];
 

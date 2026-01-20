@@ -41,3 +41,12 @@ verify_jwt = false
 
 [functions.sitemap]
 verify_jwt = false
+
+[functions.create-club-checkout]
+verify_jwt = false
+
+[functions.check-club-subscription]
+verify_jwt = false
+
+[functions.club-customer-portal]
+verify_jwt = false
