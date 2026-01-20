@@ -296,6 +296,23 @@ export async function getUniqueCities(): Promise<string[]> {
   return cities;
 }
 
+// Get unique countries from locations
+export async function getUniqueCountries(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('country')
+    .eq('is_active', true)
+    .order('country');
+
+  if (error) {
+    console.error('Error fetching countries:', error);
+    throw error;
+  }
+
+  const countries = [...new Set(data?.map(l => l.country) || [])];
+  return countries;
+}
+
 // Get trainer count per location
 export async function getLocationTrainerCounts(): Promise<Record<string, number>> {
   const { data, error } = await supabase

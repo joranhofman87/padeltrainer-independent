@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { MapPin, Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -13,7 +15,7 @@ import {
 import { LocationCard } from '@/components/locations/LocationCard';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
-import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getClaimedLocationIds, type Location } from '@/lib/locations';
+import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { useTranslation } from 'react-i18next';
 
 export default function Locations() {
@@ -23,22 +25,27 @@ export default function Locations() {
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
   const [cities, setCities] = useState<string[]>([]);
+  const [countries, setCountries] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedCountry, setSelectedCountry] = useState<string>('all');
+  const [trainersAvailable, setTrainersAvailable] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [locationsData, countsData, citiesData, claimedData] = await Promise.all([
+        const [locationsData, countsData, citiesData, countriesData, claimedData] = await Promise.all([
           getActiveLocations(),
           getLocationTrainerCounts(),
           getUniqueCities(),
+          getUniqueCountries(),
           getClaimedLocationIds(),
         ]);
         setLocations(locationsData);
         setTrainerCounts(countsData);
         setCities(citiesData);
+        setCountries(countriesData);
         setClaimedIds(claimedData);
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -49,6 +56,15 @@ export default function Locations() {
     fetchData();
   }, []);
 
+  // Filter cities based on selected country
+  const filteredCities = useMemo(() => {
+    if (selectedCountry === 'all') return cities;
+    const countryCities = locations
+      .filter(l => l.country === selectedCountry)
+      .map(l => l.city);
+    return [...new Set(countryCities)].sort();
+  }, [cities, locations, selectedCountry]);
+
   const filteredLocations = useMemo(() => {
     return locations.filter(location => {
       const matchesSearch =
@@ -57,10 +73,12 @@ export default function Locations() {
         (location.street_address?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
 
       const matchesCity = selectedCity === 'all' || location.city === selectedCity;
+      const matchesCountry = selectedCountry === 'all' || location.country === selectedCountry;
+      const matchesTrainers = !trainersAvailable || (trainerCounts[location.id] || 0) > 0;
 
-      return matchesSearch && matchesCity;
+      return matchesSearch && matchesCity && matchesCountry && matchesTrainers;
     });
-  }, [locations, searchQuery, selectedCity]);
+  }, [locations, searchQuery, selectedCity, selectedCountry, trainersAvailable, trainerCounts]);
 
   const totalTrainers = Object.values(trainerCounts).reduce((a, b) => a + b, 0);
 
@@ -113,9 +131,10 @@ export default function Locations() {
               </div>
             </div>
 
-            {/* Search and Filter */}
-            <div className="flex flex-col sm:flex-row gap-4 mt-6">
-              <div className="relative flex-1">
+            {/* Search and Filters */}
+            <div className="space-y-4 mt-6">
+              {/* Search box */}
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={t('locations.searchPlaceholder')}
@@ -124,17 +143,50 @@ export default function Locations() {
                   className="pl-10"
                 />
               </div>
-              <Select value={selectedCity} onValueChange={setSelectedCity}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder={t('locations.filterByCity')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('locations.allCities')}</SelectItem>
-                  {cities.map(city => (
-                    <SelectItem key={city} value={city}>{city}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+              {/* Filter row */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Select value={selectedCountry} onValueChange={(value) => {
+                  setSelectedCountry(value);
+                  setSelectedCity('all'); // Reset city when country changes
+                }}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder={t('locations.filterByCountry')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('locations.allCountries')}</SelectItem>
+                    {countries.map(country => (
+                      <SelectItem key={country} value={country}>{country}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedCity} onValueChange={setSelectedCity}>
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder={t('locations.filterByCity')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('locations.allCities')}</SelectItem>
+                    {filteredCities.map(city => (
+                      <SelectItem key={city} value={city}>{city}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="trainers-available"
+                    checked={trainersAvailable}
+                    onCheckedChange={(checked) => setTrainersAvailable(checked === true)}
+                  />
+                  <Label 
+                    htmlFor="trainers-available" 
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    {t('locations.trainersAvailableFilter')}
+                  </Label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -155,6 +207,8 @@ export default function Locations() {
               <Button variant="outline" onClick={() => {
                 setSearchQuery('');
                 setSelectedCity('all');
+                setSelectedCountry('all');
+                setTrainersAvailable(false);
               }}>
                 {t('clearFilters')}
               </Button>
