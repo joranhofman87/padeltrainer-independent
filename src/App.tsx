@@ -30,6 +30,7 @@ import TrainerDashboard from "./pages/TrainerDashboard";
 import TrainerSettings from "./pages/TrainerSettings";
 import TrainerBookingSettings from "./pages/TrainerBookingSettings";
 import Trainers from "./pages/Trainers";
+import TrainersCity from "./pages/TrainersCity";
 import TrainerProfile from "./pages/TrainerProfile";
 import EditProfile from "./pages/EditProfile";
 import ManageLessons from "./pages/ManageLessons";
@@ -98,6 +99,7 @@ const App = () => (
             <Route path="/trainer/settings" element={<TrainerSettings />} />
             <Route path="/trainer/settings/bookings" element={<TrainerBookingSettings />} />
             <Route path="/trainers" element={<Trainers />} />
+            <Route path="/trainers/:city" element={<TrainersCity />} />
             <Route path="/trainer/:trainerId" element={<TrainerProfile />} />
             <Route path="/profile/edit" element={<EditProfile />} />
             <Route path="/lessons" element={<ManageLessons />} />

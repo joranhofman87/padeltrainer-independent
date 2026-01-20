@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -8,11 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp } from 'lucide-react';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight } from 'lucide-react';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { SEO } from '@/components/SEO';
+import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
 
 interface TrainerWithProfile {
   id: string;
@@ -36,18 +38,121 @@ interface TrainerWithProfile {
 type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
 
 export default function Trainers() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<TrainerFiltersState>(DEFAULT_FILTERS);
-  const [sortBy, setSortBy] = useState<SortOption>('rating');
   const [locations, setLocations] = useState<string[]>([]);
   const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
+  const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Parse filters from URL
+  const searchQuery = searchParams.get('search') || '';
+  const sortBy = (searchParams.get('sort') as SortOption) || 'rating';
+  const filters: TrainerFiltersState = useMemo(() => ({
+    location: searchParams.get('location') || 'all',
+    priceRange: [
+      Number(searchParams.get('minPrice')) || 0,
+      Number(searchParams.get('maxPrice')) || 200
+    ] as [number, number],
+    minRating: Number(searchParams.get('minRating')) || 0,
+    minExperience: Number(searchParams.get('minExperience')) || 0,
+    specializations: searchParams.get('specializations')?.split(',').filter(Boolean) || [],
+    verifiedOnly: searchParams.get('verified') === 'true',
+    minKnltbRating: Number(searchParams.get('minKnltb')) || 0,
+  }), [searchParams]);
+
+  // Update URL when search changes
+  const setSearchQuery = (query: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (query) {
+      newParams.set('search', query);
+    } else {
+      newParams.delete('search');
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+
+  // Update URL when sort changes
+  const setSortBy = (sort: SortOption) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (sort !== 'rating') {
+      newParams.set('sort', sort);
+    } else {
+      newParams.delete('sort');
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+
+  // Update URL when filters change
+  const setFilters = (newFilters: TrainerFiltersState) => {
+    const newParams = new URLSearchParams(searchParams);
+    
+    // Location
+    if (newFilters.location !== 'all') {
+      newParams.set('location', newFilters.location);
+    } else {
+      newParams.delete('location');
+    }
+    
+    // Price range
+    if (newFilters.priceRange[0] > 0) {
+      newParams.set('minPrice', String(newFilters.priceRange[0]));
+    } else {
+      newParams.delete('minPrice');
+    }
+    if (newFilters.priceRange[1] < 200) {
+      newParams.set('maxPrice', String(newFilters.priceRange[1]));
+    } else {
+      newParams.delete('maxPrice');
+    }
+    
+    // Rating
+    if (newFilters.minRating > 0) {
+      newParams.set('minRating', String(newFilters.minRating));
+    } else {
+      newParams.delete('minRating');
+    }
+    
+    // Experience
+    if (newFilters.minExperience > 0) {
+      newParams.set('minExperience', String(newFilters.minExperience));
+    } else {
+      newParams.delete('minExperience');
+    }
+    
+    // Specializations
+    if (newFilters.specializations.length > 0) {
+      newParams.set('specializations', newFilters.specializations.join(','));
+    } else {
+      newParams.delete('specializations');
+    }
+    
+    // Verified
+    if (newFilters.verifiedOnly) {
+      newParams.set('verified', 'true');
+    } else {
+      newParams.delete('verified');
+    }
+    
+    // KNLTB
+    if (newFilters.minKnltbRating > 0) {
+      newParams.set('minKnltb', String(newFilters.minKnltbRating));
+    } else {
+      newParams.delete('minKnltb');
+    }
+    
+    setSearchParams(newParams, { replace: true });
+  };
+
+  const clearFilters = () => {
+    setSearchParams({}, { replace: true });
+  };
+
   useEffect(() => {
     fetchTrainers();
+    getPopularCities(8).then(setPopularCities);
   }, []);
 
   const fetchTrainers = async () => {

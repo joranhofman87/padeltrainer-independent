@@ -131,7 +131,6 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               </p>
             </div>
 
-            {/* Links */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
@@ -139,6 +138,17 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><Link to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</Link></li>
                 <li><Link to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</Link></li>
                 <li><Link to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Popular Cities</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><Link to="/trainers/amsterdam" className="hover:text-primary transition-colors">Amsterdam</Link></li>
+                <li><Link to="/trainers/rotterdam" className="hover:text-primary transition-colors">Rotterdam</Link></li>
+                <li><Link to="/trainers/den-haag" className="hover:text-primary transition-colors">Den Haag</Link></li>
+                <li><Link to="/trainers/utrecht" className="hover:text-primary transition-colors">Utrecht</Link></li>
+                <li><Link to="/trainers/eindhoven" className="hover:text-primary transition-colors">Eindhoven</Link></li>
               </ul>
             </div>
 
