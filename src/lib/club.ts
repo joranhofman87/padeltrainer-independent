@@ -290,18 +290,11 @@ export async function updateClubProfile(
   return data;
 }
 
-// Get club managers with profiles in a single query
+// Get club managers with profiles using optimized batch query
 export async function getClubManagers(clubProfileId: string) {
   const { data, error } = await supabase
     .from('club_managers')
-    .select(`
-      *,
-      profile:profiles!club_managers_user_id_fkey (
-        full_name,
-        email,
-        avatar_url
-      )
-    `)
+    .select('*')
     .eq('club_profile_id', clubProfileId);
 
   if (error) {
@@ -309,7 +302,25 @@ export async function getClubManagers(clubProfileId: string) {
     return [];
   }
 
-  return data || [];
+  if (!data || data.length === 0) return [];
+
+  // Batch fetch all profiles in a single query
+  const userIds = data.map((m) => m.user_id);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, email, avatar_url')
+    .in('user_id', userIds);
+
+  // Create a lookup map for profiles
+  const profileMap = new Map(
+    (profiles || []).map((p) => [p.user_id, p])
+  );
+
+  // Merge profiles with managers
+  return data.map((manager) => ({
+    ...manager,
+    profile: profileMap.get(manager.user_id) || null,
+  }));
 }
 
 // Invite a manager to the club
