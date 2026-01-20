@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Users, Calendar, ExternalLink } from 'lucide-react';
+import { Users, Calendar, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, getClubTrainers } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
+import { ClubNavigation } from '@/components/club/ClubNavigation';
 
 interface TrainerWithProfile {
   id: string;
@@ -105,13 +106,9 @@ export default function ClubTrainers() {
       {/* Header */}
       <div className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/club')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <h1 className="text-xl font-semibold">{t('trainers.title')}</h1>
-          </div>
+          <h1 className="text-xl font-semibold">{t('trainers.title')}</h1>
         </div>
+        <ClubNavigation />
       </div>
 
       <div className="container mx-auto px-4 py-8">

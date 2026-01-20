@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Users, Trash2, Crown, UserPlus, Loader2 } from "lucide-react";
+import { Users, Trash2, Crown, UserPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,7 @@ import {
   removeClubManager,
   ClubProfile,
 } from "@/lib/club";
+import { ClubNavigation } from "@/components/club/ClubNavigation";
 
 interface Manager {
   id: string;
@@ -166,19 +167,16 @@ export default function ClubSettings() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-2xl">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/club")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("settings.description")}</p>
-          </div>
+      {/* Header */}
+      <div className="border-b bg-card sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <h1 className="text-xl font-semibold">{t("settings.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("settings.description")}</p>
         </div>
+        <ClubNavigation />
+      </div>
 
-        {/* Managers Card */}
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

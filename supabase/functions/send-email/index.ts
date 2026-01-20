@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected";
   to: string;
   data: {
     playerName?: string;
@@ -34,6 +34,8 @@ interface EmailRequest {
     paymentLink?: string;
     reason?: string;
     bookingUrl?: string;
+    clubName?: string;
+    ownerName?: string;
   };
 }
 
@@ -358,6 +360,58 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             <p>Don't worry – you can browse other available slots or trainers.</p>
             <p style="margin-top: 24px;">
               <a href="https://padeltrainer.lovable.app/trainers" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Find Another Lesson</a>
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "club_claim_approved":
+      return {
+        subject: `Club Claim Approved: ${data.clubName} ✅`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Club Claim Approved! 🎉</h1>
+            <p>Hi ${data.ownerName || "Club Manager"},</p>
+            <p>Great news! Your claim to manage <strong>${data.clubName}</strong> has been verified and approved.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">${data.clubName}</h3>
+              <p>You now have full access to:</p>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li>View and manage club trainers</li>
+                <li>Manage player roster</li>
+                <li>View aggregated trainer calendars</li>
+                <li>Edit club profile and settings</li>
+                <li>Invite other club managers</li>
+              </ul>
+            </div>
+            <p style="margin-top: 24px;">
+              <a href="https://padeltrainer.lovable.app/club" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Club Dashboard</a>
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "club_claim_rejected":
+      return {
+        subject: `Club Claim Update: ${data.clubName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">Club Claim Not Approved</h1>
+            <p>Hi ${data.ownerName || "there"},</p>
+            <p>Unfortunately, we were unable to verify your claim to manage <strong>${data.clubName}</strong>.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p>This could be due to:</p>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li>Unable to verify your ownership or management role</li>
+                <li>Duplicate or conflicting claim</li>
+                <li>Incomplete information provided</li>
+              </ul>
+            </div>
+            <p>If you believe this was an error, please contact us with additional verification documents or information.</p>
+            <p style="margin-top: 24px;">
+              <a href="mailto:support@padeltrainer.ai" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Contact Support</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>

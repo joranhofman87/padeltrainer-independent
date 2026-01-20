@@ -14,7 +14,9 @@ export type EmailType =
   | "booking_request"
   | "booking_approved_payment"
   | "booking_approved_invoice"
-  | "booking_rejected";
+  | "booking_rejected"
+  | "club_claim_approved"
+  | "club_claim_rejected";
 
 export interface EmailData {
   playerName?: string;
@@ -31,6 +33,8 @@ export interface EmailData {
   paymentLink?: string;
   reason?: string;
   bookingUrl?: string;
+  clubName?: string;
+  ownerName?: string;
 }
 
 /**

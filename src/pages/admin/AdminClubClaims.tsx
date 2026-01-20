@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUserAdmin } from "@/lib/admin";
 import { getPendingClubClaims, verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
+import { sendEmail } from "@/lib/email";
 
 interface PendingClaim extends ClubProfile {
   location: {
@@ -75,15 +76,23 @@ export default function AdminClubClaims() {
     checkAdminAndLoad();
   }, [user]);
 
-  const handleVerify = async (claimId: string) => {
-    setProcessing(claimId);
+  const handleVerify = async (claim: PendingClaim) => {
+    setProcessing(claim.id);
     try {
-      const success = await verifyClubClaim(claimId);
+      const success = await verifyClubClaim(claim.id);
       if (success) {
-        setClaims((prev) => prev.filter((c) => c.id !== claimId));
+        // Send approval email
+        if (claim.contact_email) {
+          await sendEmail("club_claim_approved", claim.contact_email, {
+            clubName: claim.location?.name || "Your Club",
+            ownerName: claim.owner?.full_name || undefined,
+          });
+        }
+        
+        setClaims((prev) => prev.filter((c) => c.id !== claim.id));
         toast({
           title: "Club Verified",
-          description: "The club claim has been approved.",
+          description: "The club claim has been approved and the owner has been notified.",
         });
       } else {
         toast({
@@ -97,15 +106,23 @@ export default function AdminClubClaims() {
     }
   };
 
-  const handleReject = async (claimId: string) => {
-    setProcessing(claimId);
+  const handleReject = async (claim: PendingClaim) => {
+    setProcessing(claim.id);
     try {
-      const success = await rejectClubClaim(claimId);
+      // Send rejection email before deleting
+      if (claim.contact_email) {
+        await sendEmail("club_claim_rejected", claim.contact_email, {
+          clubName: claim.location?.name || "the club",
+          ownerName: claim.owner?.full_name || undefined,
+        });
+      }
+      
+      const success = await rejectClubClaim(claim.id);
       if (success) {
-        setClaims((prev) => prev.filter((c) => c.id !== claimId));
+        setClaims((prev) => prev.filter((c) => c.id !== claim.id));
         toast({
           title: "Claim Rejected",
-          description: "The club claim has been rejected and removed.",
+          description: "The club claim has been rejected and the user has been notified.",
         });
       } else {
         toast({
@@ -236,7 +253,7 @@ export default function AdminClubClaims() {
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-2 border-t">
                     <Button
-                      onClick={() => handleVerify(claim.id)}
+                      onClick={() => handleVerify(claim)}
                       disabled={processing === claim.id}
                       className="flex-1"
                     >
@@ -264,14 +281,14 @@ export default function AdminClubClaims() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Reject Club Claim?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will permanently remove this claim. The user will need to submit a new
-                            claim if they want to manage this club.
+                            This will permanently remove this claim. The user will be notified
+                            and will need to submit a new claim if they want to manage this club.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => handleReject(claim.id)}
+                            onClick={() => handleReject(claim)}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           >
                             Reject Claim
