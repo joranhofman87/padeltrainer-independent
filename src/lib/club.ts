@@ -294,14 +294,7 @@ export async function updateClubProfile(
 export async function getClubManagers(clubProfileId: string) {
   const { data, error } = await supabase
     .from('club_managers')
-    .select(`
-      *,
-      profile:profiles!club_managers_user_id_fkey(
-        full_name,
-        email,
-        avatar_url
-      )
-    `)
+    .select('*')
     .eq('club_profile_id', clubProfileId);
 
   if (error) {
@@ -309,7 +302,19 @@ export async function getClubManagers(clubProfileId: string) {
     return [];
   }
 
-  return data || [];
+  // Fetch profiles separately
+  const managersWithProfiles = await Promise.all(
+    (data || []).map(async (manager) => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, email, avatar_url')
+        .eq('user_id', manager.user_id)
+        .maybeSingle();
+      return { ...manager, profile };
+    })
+  );
+
+  return managersWithProfiles;
 }
 
 // Invite a manager to the club
@@ -362,4 +367,135 @@ export async function removeClubManager(managerId: string): Promise<boolean> {
   }
 
   return true;
+}
+
+// Get all pending club claims (for admin)
+export async function getPendingClubClaims(): Promise<(ClubProfile & { location: any; owner: any })[]> {
+  const { data, error } = await supabase
+    .from('club_profiles')
+    .select(`
+      *,
+      location:locations(*),
+      managers:club_managers(
+        user_id,
+        role,
+        profile:profiles(full_name, email)
+      )
+    `)
+    .eq('is_verified', false)
+    .order('claimed_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching pending claims:', error);
+    return [];
+  }
+
+  return (data || []).map((claim: any) => ({
+    ...claim,
+    owner: claim.managers?.find((m: any) => m.role === 'owner')?.profile || null,
+  }));
+}
+
+// Verify a club claim (admin only)
+export async function verifyClubClaim(clubProfileId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('club_profiles')
+    .update({ is_verified: true })
+    .eq('id', clubProfileId);
+
+  if (error) {
+    console.error('Error verifying club claim:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Reject a club claim (admin only) - deletes the claim
+export async function rejectClubClaim(clubProfileId: string): Promise<boolean> {
+  // First delete the managers
+  await supabase
+    .from('club_managers')
+    .delete()
+    .eq('club_profile_id', clubProfileId);
+
+  // Then delete the profile
+  const { error } = await supabase
+    .from('club_profiles')
+    .delete()
+    .eq('id', clubProfileId);
+
+  if (error) {
+    console.error('Error rejecting club claim:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Get club trainers with their slots for calendar view
+export async function getClubTrainerSlots(clubProfileId: string, startDate: Date, endDate: Date) {
+  const trainers = await getClubTrainers(clubProfileId);
+  if (trainers.length === 0) return [];
+
+  const trainerIds = trainers.map((t: any) => t.trainer_profiles.id);
+
+  const { data: slots, error } = await supabase
+    .from('availability_slots')
+    .select(`
+      id,
+      trainer_id,
+      start_time,
+      end_time,
+      lesson_id,
+      is_marked_full,
+      lessons:lesson_id(title, max_participants),
+      trainer:trainer_profiles!inner(
+        id,
+        user_id,
+        profiles:profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
+      )
+    `)
+    .in('trainer_id', trainerIds)
+    .gte('start_time', startDate.toISOString())
+    .lte('start_time', endDate.toISOString())
+    .order('start_time');
+
+  if (error) {
+    console.error('Error fetching club trainer slots:', error);
+    return [];
+  }
+
+  // Get bookings for these slots
+  const slotIds = slots?.map((s) => s.id) || [];
+  let bookings: any[] = [];
+
+  if (slotIds.length > 0) {
+    const { data: bookingsData } = await supabase
+      .from('bookings')
+      .select('slot_id, status')
+      .in('slot_id', slotIds);
+    bookings = bookingsData || [];
+  }
+
+  // Aggregate booking counts
+  const bookingCounts: Record<string, { confirmed: number; pending: number }> = {};
+  bookings.forEach((b) => {
+    if (!bookingCounts[b.slot_id]) {
+      bookingCounts[b.slot_id] = { confirmed: 0, pending: 0 };
+    }
+    if (b.status === 'confirmed') {
+      bookingCounts[b.slot_id].confirmed++;
+    } else if (b.status === 'pending') {
+      bookingCounts[b.slot_id].pending++;
+    }
+  });
+
+  return (slots || []).map((slot: any) => ({
+    ...slot,
+    active_bookings: bookingCounts[slot.id]?.confirmed || 0,
+    pending_bookings: bookingCounts[slot.id]?.pending || 0,
+    trainer_name: slot.trainer?.profiles?.full_name || 'Unknown Trainer',
+    trainer_avatar: slot.trainer?.profiles?.avatar_url || null,
+  }));
 }
