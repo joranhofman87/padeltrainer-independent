@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
@@ -9,13 +10,21 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { 
   ArrowLeft, MapPin, Star, Clock, Award, Mail, Phone, 
-  Calendar, Users, CheckCircle, UserPlus, UserCheck
+  Calendar, Users, CheckCircle, UserPlus, UserCheck,
+  Share2, Copy, Check, MessageCircle
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { StarRating } from '@/components/reviews/StarRating';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
+import { toast } from 'sonner';
 
 interface TrainerData {
   id: string;
@@ -36,14 +45,44 @@ interface ProfileData {
 
 export default function TrainerProfile() {
   const { trainerId } = useParams<{ trainerId: string }>();
+  const { t } = useTranslation('trainer');
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
+
+  const profileUrl = `${window.location.origin}/trainer/${trainerId}`;
+  const trainerName = profile?.full_name || 'Trainer';
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setCopied(true);
+      toast.success(t('profile.linkCopied'));
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    const message = encodeURIComponent(`${t('profile.shareMessage', { name: trainerName })} ${profileUrl}`);
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  };
+
+  const handleShareTwitter = () => {
+    const text = encodeURIComponent(t('profile.shareMessage', { name: trainerName }));
+    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${encodeURIComponent(profileUrl)}`, '_blank');
+  };
+
+  const handleShareLinkedIn = () => {
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`, '_blank');
+  };
 
   useEffect(() => {
     if (trainerId) {
@@ -225,6 +264,41 @@ export default function TrainerProfile() {
                   <Mail className="h-4 w-4 mr-2" />
                   Contact
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="lg" className="w-full">
+                      {copied ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          {t('profile.copied')}
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="h-4 w-4 mr-2" />
+                          {t('profile.shareProfile')}
+                        </>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={handleCopyLink}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      {t('profile.copyLink')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareWhatsApp}>
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareTwitter}>
+                      <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
+                      Twitter / X
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareLinkedIn}>
+                      <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">in</span>
+                      LinkedIn
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </CardContent>

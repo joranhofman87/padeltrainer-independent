@@ -1,5 +1,12 @@
 {
   "badge": "Trainer",
+  "profile": {
+    "shareProfile": "Profiel Delen",
+    "copyLink": "Link Kopiëren",
+    "linkCopied": "Profiellink gekopieerd naar klembord!",
+    "copied": "Gekopieerd!",
+    "shareMessage": "Bekijk het padel trainingsprofiel van {{name}}!"
+  },
   "dashboard": {
     "welcome": "Welkom terug, Coach {{name}}! 💪",
     "subtitle": "Beheer je lessen, bekijk boekingen en laat je padeltraining-bedrijf groeien",
