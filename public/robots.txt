@@ -1,3 +1,5 @@
+# PadelTrainer.ai Robots.txt
+
 User-agent: Googlebot
 Allow: /
 
@@ -10,5 +12,23 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
 User-agent: *
 Allow: /
+
+# Sitemap
+Sitemap: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap
+
+# LLM context file
+# See: https://padeltrainer.lovable.app/llms.txt
