@@ -36,7 +36,26 @@
     "errorDescription": "There was an error submitting your claim. Please try again.",
     "emailRequired": "Please enter a contact email address.",
     "alreadyClaimed": "This club has already been claimed.",
-    "loginRequired": "Please log in to claim this club."
+    "loginRequired": "Please log in to claim this club.",
+    "selectLocation": "Please select a location",
+    "submitting": "Submitting...",
+    "submitClaim": "Claim This Club",
+    "description": "Tell us about your role",
+    "descriptionPlaceholder": "I am the owner/manager of this club...",
+    "descriptionHelp": "This helps us verify your claim faster",
+    "contactPhone": "Contact Phone",
+    "phonePlaceholder": "+31 6 12345678",
+    "emailPlaceholder": "club@example.com",
+    "successDescription": "Your claim is pending verification. We will review it shortly."
+  },
+  "onboarding": {
+    "title": "Find Your Club",
+    "subtitle": "Search for your club and claim it to start managing",
+    "selectClub": "Select Your Club",
+    "searchPlaceholder": "Search for your club...",
+    "noClubFound": "No club found",
+    "alreadyClaimed": "This club has already been claimed. Contact support if you believe this is an error.",
+    "hint": "Can't find your club? Contact us and we'll add it."
   },
   "trainers": {
     "title": "Club Trainers",

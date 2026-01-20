@@ -172,6 +172,12 @@ export default function Auth() {
                 <Link to="/signup/trainer">{t('signIn.signupTrainer', 'Join as Trainer')}</Link>
               </Button>
             </div>
+            <p className="text-center text-sm text-muted-foreground pt-2">
+              {t('signIn.clubOwner', 'Are you a club owner?')}{' '}
+              <Link to="/signup/club" className="text-primary hover:underline font-medium">
+                {t('signIn.registerClub', 'Register your club')}
+              </Link>
+            </p>
           </div>
         </CardContent>
       </Card>

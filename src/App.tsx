@@ -21,6 +21,8 @@ import Auth from "./pages/Auth";
 import SelectRole from "./pages/SelectRole";
 import PlayerSignup from "./pages/PlayerSignup";
 import TrainerSignup from "./pages/TrainerSignup";
+import ClubSignup from "./pages/ClubSignup";
+import ClubOnboarding from "./pages/ClubOnboarding";
 import Onboarding from "./pages/Onboarding";
 import PlayerDashboard from "./pages/PlayerDashboard";
 import TrainerDashboard from "./pages/TrainerDashboard";
@@ -85,6 +87,8 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/signup/player" element={<PlayerSignup />} />
             <Route path="/signup/trainer" element={<TrainerSignup />} />
+            <Route path="/signup/club" element={<ClubSignup />} />
+            <Route path="/onboarding/club" element={<ClubOnboarding />} />
             <Route path="/onboarding/:role" element={<Onboarding />} />
             <Route path="/select-role" element={<SelectRole />} />
             <Route path="/player" element={<PlayerDashboard />} />

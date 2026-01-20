@@ -36,7 +36,26 @@
     "errorDescription": "Er is een fout opgetreden bij het indienen van je aanvraag. Probeer het opnieuw.",
     "emailRequired": "Vul een contact e-mailadres in.",
     "alreadyClaimed": "Deze club is al geclaimd.",
-    "loginRequired": "Log in om deze club te claimen."
+    "loginRequired": "Log in om deze club te claimen.",
+    "selectLocation": "Selecteer een locatie",
+    "submitting": "Indienen...",
+    "submitClaim": "Claim Deze Club",
+    "description": "Vertel ons over je rol",
+    "descriptionPlaceholder": "Ik ben de eigenaar/beheerder van deze club...",
+    "descriptionHelp": "Dit helpt ons je claim sneller te verifiëren",
+    "contactPhone": "Contact Telefoon",
+    "phonePlaceholder": "+31 6 12345678",
+    "emailPlaceholder": "club@voorbeeld.nl",
+    "successDescription": "Je claim wacht op verificatie. We beoordelen het binnenkort."
+  },
+  "onboarding": {
+    "title": "Vind Je Club",
+    "subtitle": "Zoek je club en claim deze om te beginnen met beheren",
+    "selectClub": "Selecteer Je Club",
+    "searchPlaceholder": "Zoek naar je club...",
+    "noClubFound": "Geen club gevonden",
+    "alreadyClaimed": "Deze club is al geclaimd. Neem contact op met support als je denkt dat dit een fout is.",
+    "hint": "Kun je je club niet vinden? Neem contact met ons op en we voegen hem toe."
   },
   "trainers": {
     "title": "Clubtrainers",
