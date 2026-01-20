@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,7 @@ import {
   deleteClubPlayer,
   type ClubPlayer,
 } from '@/lib/club';
+import { ClubNavigation } from '@/components/club/ClubNavigation';
 
 export default function ClubPlayers() {
   const { t } = useTranslation('club');
@@ -208,18 +209,14 @@ export default function ClubPlayers() {
       <div className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/club')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="text-xl font-semibold">{t('players.title')}</h1>
-            </div>
+            <h1 className="text-xl font-semibold">{t('players.title')}</h1>
             <Button onClick={openAddDialog}>
               <Plus className="h-4 w-4 mr-2" />
               {t('players.addPlayer')}
             </Button>
           </div>
         </div>
+        <ClubNavigation />
       </div>
 
       <div className="container mx-auto px-4 py-8">

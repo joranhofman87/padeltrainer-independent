@@ -11,7 +11,7 @@ import {
   isToday,
   isBefore,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, ArrowLeft, Calendar, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots } from "@/lib/club";
+import { ClubNavigation } from "@/components/club/ClubNavigation";
 
 interface ClubSlot {
   id: string;
@@ -208,20 +209,18 @@ export default function ClubCalendar() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/club")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{clubName} - {t("dashboard.calendar")}</h1>
-            <p className="text-sm text-muted-foreground">
-              {t("calendar.description", "View all trainer schedules")}
-            </p>
-          </div>
+      {/* Header */}
+      <div className="border-b bg-card sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <h1 className="text-xl font-semibold">{clubName} - {t("dashboard.calendar")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {t("calendar.description", "View all trainer schedules")}
+          </p>
         </div>
+        <ClubNavigation />
+      </div>
 
+      <div className="container mx-auto px-4 py-8">
         <Card className="overflow-hidden">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">

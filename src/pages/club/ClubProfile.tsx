@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Building2, Camera, Loader2 } from 'lucide-react';
+import { Save, Building2, Camera, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, updateClubProfile, type ClubProfile } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
 import type { Location } from '@/lib/locations';
+import { ClubNavigation } from '@/components/club/ClubNavigation';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -204,17 +205,13 @@ export default function ClubProfile() {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/club')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <span className="font-bold text-xl">{t('profile.editTitle')}</span>
-          </div>
+          <span className="font-bold text-xl">{t('profile.title')}</span>
           <Button onClick={handleSubmit} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
             {saving ? t('common:saving') : t('common:save')}
           </Button>
         </div>
+        <ClubNavigation />
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
