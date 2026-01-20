@@ -1,0 +1,65 @@
+# PadelTrainer.ai
+
+> The platform connecting padel players with certified trainers in the Netherlands.
+
+## What is PadelTrainer.ai?
+
+PadelTrainer.ai is a marketplace that helps padel players find, book, and pay for lessons with professional trainers. Trainers can manage their availability, students, and payments all in one place.
+
+## Who is it for?
+
+- **Players**: Find trainers near you, view their profiles, specializations, ratings, and book lessons instantly
+- **Trainers**: Manage your schedule, accept bookings, create training cycles, and handle payments via Stripe or manual invoicing
+- **Clubs**: Claim your club profile, manage court information, and connect with trainers
+
+## Key Features
+
+### For Players
+- Browse verified trainers by location, price, and specialization
+- Book individual lessons or full training cycles
+- Follow trainers to get notified of new availability
+- Leave reviews and ratings
+- View lesson history and upcoming bookings
+
+### For Trainers
+- Create and manage lesson types with custom pricing
+- Set up recurring training cycles (cyclus)
+- Accept or require approval for bookings
+- Manage guest players (non-registered)
+- Connect Stripe for automatic payments or use manual invoicing
+- Sync with Google Calendar
+- View analytics and earnings
+
+### For Clubs
+- Claim your club profile from our directory
+- Display club information, courts, and amenities
+- Invite trainers to be associated with your club
+
+## Main Pages
+
+- `/` - Homepage with platform overview
+- `/trainers` - Browse all trainers with filters
+- `/trainer/:id` - Individual trainer profile with booking
+- `/locations` - Browse all padel clubs/locations
+- `/locations/:slug` - Individual club page
+- `/pricing` - Subscription plans for trainers
+- `/about` - About the platform
+- `/blog` - Padel tips and news
+- `/partner` - Partnership inquiry form
+
+## Technology
+
+Built with React, TypeScript, and Tailwind CSS. Backend powered by Supabase (PostgreSQL, Auth, Edge Functions, Storage). Payments via Stripe Connect.
+
+## Languages
+
+Available in English (en) and Dutch (nl).
+
+## Contact
+
+- Website: https://padeltrainer.ai
+- Partner inquiries: info@padeltrainer.ai
+
+## API
+
+No public API is currently available. Trainer and location data is accessible through the public-facing website.
