@@ -290,11 +290,18 @@ export async function updateClubProfile(
   return data;
 }
 
-// Get club managers
+// Get club managers with profiles in a single query
 export async function getClubManagers(clubProfileId: string) {
   const { data, error } = await supabase
     .from('club_managers')
-    .select('*')
+    .select(`
+      *,
+      profile:profiles!club_managers_user_id_fkey (
+        full_name,
+        email,
+        avatar_url
+      )
+    `)
     .eq('club_profile_id', clubProfileId);
 
   if (error) {
@@ -302,19 +309,7 @@ export async function getClubManagers(clubProfileId: string) {
     return [];
   }
 
-  // Fetch profiles separately
-  const managersWithProfiles = await Promise.all(
-    (data || []).map(async (manager) => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, email, avatar_url')
-        .eq('user_id', manager.user_id)
-        .maybeSingle();
-      return { ...manager, profile };
-    })
-  );
-
-  return managersWithProfiles;
+  return data || [];
 }
 
 // Invite a manager to the club
