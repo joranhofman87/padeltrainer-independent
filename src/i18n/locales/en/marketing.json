@@ -193,30 +193,54 @@
             "support": "Dedicated support",
             "multiTrainer": "Multi-trainer support"
           }
-        }
-      }
-    },
-    "faq": {
-      "title": "Frequently asked questions",
-      "questions": {
-        "platformFee": {
-          "q": "How does the platform fee work?",
-          "a": "The platform fee is automatically deducted from each lesson payment. For example, if you charge €50 for a lesson on the Professional plan (5% fee), you receive €47.50."
-        },
-        "changePlans": {
-          "q": "Can I change plans later?",
-          "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
-        },
-        "contract": {
-          "q": "Is there a contract or commitment?",
-          "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
-        },
-        "payouts": {
-          "q": "How do payouts work?",
-          "a": "Payments are processed through Stripe Connect. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
-        }
       }
     }
+  },
+  "clubs": {
+    "badge": "For Clubs",
+    "title": "Club Plan",
+    "subtitle": "Complete platform for managing your club's training operations",
+    "price": "€199",
+    "period": "/month",
+    "billedAnnually": "Billed annually at €2,388/year",
+    "trialBadge": "14-day free trial",
+    "cta": "Start Free Trial",
+    "features": {
+      "trainers": "Unlimited trainers",
+      "calendar": "Unified trainer calendar",
+      "players": "Player management",
+      "bookings": "Centralized booking system",
+      "analytics": "Club analytics dashboard",
+      "profile": "Custom club profile page",
+      "support": "Priority support",
+      "branding": "Club branding"
+    }
+  },
+  "faq": {
+    "title": "Frequently asked questions",
+    "questions": {
+      "platformFee": {
+        "q": "How does the platform fee work?",
+        "a": "The platform fee is automatically deducted from each lesson payment. For example, if you charge €50 for a lesson on the Professional plan (5% fee), you receive €47.50."
+      },
+      "changePlans": {
+        "q": "Can I change plans later?",
+        "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+      },
+      "contract": {
+        "q": "Is there a contract or commitment?",
+        "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+      },
+      "payouts": {
+        "q": "How do payouts work?",
+        "a": "Payments are processed through Stripe Connect. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+      },
+      "clubTrial": {
+        "q": "How does the club free trial work?",
+        "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+      }
+    }
+  }
   },
   "about": {
     "hero": {

@@ -193,30 +193,54 @@
             "support": "Dedicated support",
             "multiTrainer": "Multi-trainer ondersteuning"
           }
-        }
-      }
-    },
-    "faq": {
-      "title": "Veelgestelde vragen",
-      "questions": {
-        "platformFee": {
-          "q": "Hoe werken de platformkosten?",
-          "a": "De platformkosten worden automatisch afgetrokken van elke lesbetaling. Als je bijvoorbeeld €50 vraagt voor een les met het Professional-abonnement (5% kosten), ontvang je €47,50."
-        },
-        "changePlans": {
-          "q": "Kan ik later van abonnement wisselen?",
-          "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
-        },
-        "contract": {
-          "q": "Is er een contract of verplichting?",
-          "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
-        },
-        "payouts": {
-          "q": "Hoe werken uitbetalingen?",
-          "a": "Betalingen worden verwerkt via Stripe Connect. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
-        }
       }
     }
+  },
+  "clubs": {
+    "badge": "Voor Clubs",
+    "title": "Club Abonnement",
+    "subtitle": "Compleet platform voor het beheren van de trainingsactiviteiten van je club",
+    "price": "€199",
+    "period": "/maand",
+    "billedAnnually": "Jaarlijks gefactureerd voor €2.388/jaar",
+    "trialBadge": "14 dagen gratis proberen",
+    "cta": "Start Gratis Proefperiode",
+    "features": {
+      "trainers": "Onbeperkt trainers",
+      "calendar": "Gecombineerde trainer agenda",
+      "players": "Spelersbeheer",
+      "bookings": "Gecentraliseerd boekingssysteem",
+      "analytics": "Club analytics dashboard",
+      "profile": "Aangepaste club profielpagina",
+      "support": "Prioriteitsondersteuning",
+      "branding": "Club branding"
+    }
+  },
+  "faq": {
+    "title": "Veelgestelde vragen",
+    "questions": {
+      "platformFee": {
+        "q": "Hoe werken de platformkosten?",
+        "a": "De platformkosten worden automatisch afgetrokken van elke lesbetaling. Als je bijvoorbeeld €50 vraagt voor een les met het Professional-abonnement (5% kosten), ontvang je €47,50."
+      },
+      "changePlans": {
+        "q": "Kan ik later van abonnement wisselen?",
+        "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
+      },
+      "contract": {
+        "q": "Is er een contract of verplichting?",
+        "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
+      },
+      "payouts": {
+        "q": "Hoe werken uitbetalingen?",
+        "a": "Betalingen worden verwerkt via Stripe Connect. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+      },
+      "clubTrial": {
+        "q": "Hoe werkt de gratis proefperiode voor clubs?",
+        "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. Geen creditcard nodig om te starten. Na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
+      }
+    }
+  }
   },
   "about": {
     "hero": {

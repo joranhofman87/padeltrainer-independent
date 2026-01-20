@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
-import { Check, X, HelpCircle } from 'lucide-react';
+import { Check, X, HelpCircle, Building2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 
@@ -69,7 +69,18 @@ export default function Pricing() {
     },
   ];
 
-  const faqKeys = ['platformFee', 'changePlans', 'contract', 'payouts'];
+  const clubFeatureKeys = [
+    'pricing.clubs.features.trainers',
+    'pricing.clubs.features.calendar',
+    'pricing.clubs.features.players',
+    'pricing.clubs.features.bookings',
+    'pricing.clubs.features.analytics',
+    'pricing.clubs.features.profile',
+    'pricing.clubs.features.support',
+    'pricing.clubs.features.branding',
+  ];
+
+  const faqKeys = ['platformFee', 'changePlans', 'contract', 'payouts', 'clubTrial'];
 
   return (
     <MarketingLayout>
@@ -210,6 +221,68 @@ export default function Pricing() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Club Pricing */}
+      <section className="py-16">
+        <div className="container mx-auto px-4">
+          <motion.div
+            className="text-center mb-12"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <Badge variant="secondary" className="mb-4">{t('pricing.clubs.badge')}</Badge>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              {t('pricing.clubs.title')}
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              {t('pricing.clubs.subtitle')}
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="max-w-2xl mx-auto"
+          >
+            <Card className="border-2 border-primary shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-4 py-1 text-sm font-medium rounded-bl-lg">
+                {t('pricing.clubs.trialBadge')}
+              </div>
+              <CardHeader className="text-center pb-4 pt-8">
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                  <Building2 className="h-6 w-6 text-primary" />
+                </div>
+                <CardTitle className="text-2xl">{t('pricing.clubs.title')}</CardTitle>
+                <CardDescription className="text-lg">
+                  {t('pricing.clubs.subtitle')}
+                </CardDescription>
+                <div className="pt-4">
+                  <span className="text-4xl font-bold">{t('pricing.clubs.price')}</span>
+                  <span className="text-muted-foreground">{t('pricing.clubs.period')}</span>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {t('pricing.clubs.billedAnnually')}
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid sm:grid-cols-2 gap-3 mb-8">
+                  {clubFeatureKeys.map((featureKey) => (
+                    <div key={featureKey} className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                      <span>{t(featureKey)}</span>
+                    </div>
+                  ))}
+                </div>
+                <Button size="lg" className="w-full" asChild>
+                  <Link to="/club/signup">{t('pricing.clubs.cta')}</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </section>
 
