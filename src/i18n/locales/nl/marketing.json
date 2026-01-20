@@ -15,6 +15,7 @@
     "locations": "Alle Locaties",
     "company": "Bedrijf",
     "aboutUs": "Over ons",
+    "becomePartner": "Word Partner",
     "contact": "Contact",
     "legal": "Juridisch",
     "privacyPolicy": "Privacybeleid",
@@ -296,5 +297,29 @@
   "terms": {
     "title": "Algemene Voorwaarden",
     "lastUpdated": "Laatst bijgewerkt: {{date}}"
+  },
+  "partner": {
+    "title": "Word Partner",
+    "subtitle": "Geïnteresseerd in een samenwerking met PadelTrainer.ai? Laten we bespreken hoe we samen kunnen werken om padel in Nederland te laten groeien.",
+    "thankYouTitle": "Bedankt voor je interesse!",
+    "thankYouMessage": "We hebben je bericht ontvangen en nemen binnen 2 werkdagen contact met je op.",
+    "successTitle": "Bericht verzonden!",
+    "successMessage": "We nemen snel contact met je op.",
+    "errorTitle": "Er ging iets mis",
+    "errorMessage": "Probeer het opnieuw of mail ons direct op info@padeltrainer.ai",
+    "form": {
+      "name": "Je naam",
+      "namePlaceholder": "Jan Jansen",
+      "companyName": "Bedrijfsnaam",
+      "companyNamePlaceholder": "Padelclub Amsterdam",
+      "email": "E-mailadres",
+      "emailPlaceholder": "jan@voorbeeld.nl",
+      "phone": "Telefoonnummer",
+      "phonePlaceholder": "+31 6 12345678",
+      "message": "Hoe kunnen we helpen?",
+      "messagePlaceholder": "Vertel ons over je bedrijf en hoe je wilt samenwerken met PadelTrainer.ai...",
+      "submit": "Verstuur Bericht",
+      "sending": "Versturen..."
+    }
   }
 }

@@ -146,6 +146,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</Link></li>
+                <li><Link to="/partner" className="hover:text-primary transition-colors">{t('footer.becomePartner')}</Link></li>
                 <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">{t('footer.contact')}</a></li>
               </ul>
             </div>
