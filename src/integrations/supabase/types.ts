@@ -293,6 +293,12 @@ export type Database = {
           location_id: string
           logo_url: string | null
           phone: string | null
+          stripe_customer_id: string | null
+          subscription_ends_at: string | null
+          subscription_id: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -306,6 +312,12 @@ export type Database = {
           location_id: string
           logo_url?: string | null
           phone?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -319,6 +331,12 @@ export type Database = {
           location_id?: string
           logo_url?: string | null
           phone?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Relationships: [
