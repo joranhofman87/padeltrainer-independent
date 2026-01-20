@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -101,8 +102,41 @@ export default function Home() {
     { step: '3', titleKey: 'home.howItWorks.step3.title', descriptionKey: 'home.howItWorks.step3.description' }
   ];
 
+  const websiteStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "PadelTrainer.ai",
+    "url": "https://padeltrainer.ai",
+    "description": t('home.hero.subtitle'),
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://padeltrainer.ai/trainers?search={search_term}",
+      "query-input": "required name=search_term"
+    }
+  };
+
+  const organizationStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "PadelTrainer.ai",
+    "url": "https://padeltrainer.ai",
+    "logo": "https://padeltrainer.ai/favicon.png",
+    "sameAs": [],
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer service",
+      "availableLanguage": ["Dutch", "English"]
+    }
+  };
+
   return (
     <MarketingLayout>
+      <SEO
+        title={t('home.hero.title')}
+        description={t('home.hero.subtitle')}
+        url="/"
+        structuredData={[websiteStructuredData, organizationStructuredData]}
+      />
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         {/* Background gradient */}

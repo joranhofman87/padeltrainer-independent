@@ -20,7 +20,7 @@ export function SEO({
   noIndex = false 
 }: SEOProps) {
   const fullTitle = `${title} | PadelTrainer.ai`;
-  const baseUrl = 'https://padeltrainer.lovable.app';
+  const baseUrl = 'https://padeltrainer.ai';
   const fullUrl = url ? `${baseUrl}${url}` : baseUrl;
   const defaultImage = `${baseUrl}/og-image.png`;
 
