@@ -5,7 +5,6 @@ import {
   Building2, 
   Users, 
   Calendar, 
-  Settings, 
   AlertCircle, 
   ArrowRight,
   MapPin
@@ -17,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, getClubPlayers, getClubTrainers, type ClubProfile } from '@/lib/club';
+import { ClubNavigation } from '@/components/club/ClubNavigation';
 import type { Location } from '@/lib/locations';
 
 interface ClubWithLocation extends ClubProfile {
@@ -111,31 +111,27 @@ export default function ClubDashboard() {
       {/* Header */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">{activeClub?.location.name}</h1>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>{activeClub?.location.city}</span>
-                  <Badge variant={activeClub?.is_verified ? 'default' : 'secondary'}>
-                    {activeClub?.is_verified ? t('common:verified') : t('dashboard.pendingVerification')}
-                  </Badge>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold">{activeClub?.location.name}</h1>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span>{activeClub?.location.city}</span>
+                    <Badge variant={activeClub?.is_verified ? 'default' : 'secondary'}>
+                      {activeClub?.is_verified ? t('common:verified') : t('dashboard.pendingVerification')}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </div>
             
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate('/club/profile')}>
-                {t('dashboard.profile')}
-              </Button>
-              <Button variant="outline" onClick={() => navigate('/club/settings')}>
-                <Settings className="h-4 w-4" />
-              </Button>
-            </div>
+            {/* Navigation */}
+            <ClubNavigation />
           </div>
         </div>
       </div>
