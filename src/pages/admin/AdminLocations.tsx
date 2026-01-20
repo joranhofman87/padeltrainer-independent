@@ -75,6 +75,7 @@ export default function AdminLocations() {
     website_url: '',
     slug: '',
     is_active: true,
+    number_of_courts: null as number | null,
   });
   const [saving, setSaving] = useState(false);
 
@@ -154,6 +155,7 @@ export default function AdminLocations() {
       website_url: '',
       slug: '',
       is_active: true,
+      number_of_courts: null,
     });
     setDialogOpen(true);
   };
@@ -169,6 +171,7 @@ export default function AdminLocations() {
       website_url: location.website_url || '',
       slug: location.slug,
       is_active: location.is_active,
+      number_of_courts: location.number_of_courts,
     });
     setDialogOpen(true);
   };
@@ -192,6 +195,7 @@ export default function AdminLocations() {
         street_address: formData.street_address || null,
         postal_code: formData.postal_code || null,
         website_url: formData.website_url || null,
+        number_of_courts: formData.number_of_courts ?? null,
       };
 
       if (editingLocation) {

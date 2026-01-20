@@ -10,6 +10,7 @@ export interface Location {
   website_url: string | null;
   slug: string;
   is_active: boolean;
+  number_of_courts: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -312,4 +313,35 @@ export async function getLocationTrainerCounts(): Promise<Record<string, number>
   });
 
   return counts;
+}
+
+// Get claimed status for multiple locations (batch)
+export async function getClaimedLocationIds(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('club_profiles')
+    .select('location_id');
+
+  if (error) {
+    console.error('Error fetching claimed locations:', error);
+    return new Set();
+  }
+
+  return new Set(data?.map(cp => cp.location_id) || []);
+}
+
+// Get club profile by location ID
+export async function getClubProfileByLocationId(locationId: string) {
+  const { data, error } = await supabase
+    .from('club_profiles')
+    .select('*')
+    .eq('location_id', locationId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    console.error('Error fetching club profile:', error);
+    return null;
+  }
+
+  return data;
 }

@@ -136,6 +136,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</Link></li>
+                <li><Link to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</Link></li>
                 <li><Link to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</Link></li>
                 <li><Link to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</Link></li>
               </ul>
