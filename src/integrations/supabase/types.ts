@@ -182,6 +182,152 @@ export type Database = {
         }
         Relationships: []
       }
+      club_managers: {
+        Row: {
+          club_profile_id: string
+          created_at: string
+          id: string
+          invited_by: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          club_profile_id: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          club_profile_id?: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_managers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_players: {
+        Row: {
+          club_profile_id: string
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          linked_profile_id: string | null
+          notes: string | null
+          phone: string | null
+          rating_system: string
+          skill_rating: number | null
+          updated_at: string
+        }
+        Insert: {
+          club_profile_id: string
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          linked_profile_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          rating_system?: string
+          skill_rating?: number | null
+          updated_at?: string
+        }
+        Update: {
+          club_profile_id?: string
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          linked_profile_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          rating_system?: string
+          skill_rating?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_players_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_profiles: {
+        Row: {
+          claimed_at: string
+          contact_email: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_verified: boolean
+          location_id: string
+          logo_url: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string
+          contact_email?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_verified?: boolean
+          location_id: string
+          logo_url?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string
+          contact_email?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_verified?: boolean
+          location_id?: string
+          logo_url?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guest_players: {
         Row: {
           created_at: string
@@ -757,6 +903,7 @@ export type Database = {
           id: string
           is_primary: boolean
           location_id: string
+          relationship_type: string
           trainer_id: string
         }
         Insert: {
@@ -764,6 +911,7 @@ export type Database = {
           id?: string
           is_primary?: boolean
           location_id: string
+          relationship_type?: string
           trainer_id: string
         }
         Update: {
@@ -771,6 +919,7 @@ export type Database = {
           id?: string
           is_primary?: boolean
           location_id?: string
+          relationship_type?: string
           trainer_id?: string
         }
         Relationships: [
@@ -1089,6 +1238,7 @@ export type Database = {
         Args: { city: string; name: string }
         Returns: string
       }
+      get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -1101,11 +1251,16 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_any_club_manager: { Args: { _user_id: string }; Returns: boolean }
+      is_club_manager: {
+        Args: { _club_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "player" | "trainer" | "admin"
+      app_role: "player" | "trainer" | "admin" | "club_manager"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1233,7 +1388,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["player", "trainer", "admin"],
+      app_role: ["player", "trainer", "admin", "club_manager"],
     },
   },
 } as const

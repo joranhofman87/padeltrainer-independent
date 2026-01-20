@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, ExternalLink, ArrowLeft, Loader2, Star, Users } from 'lucide-react';
+import { MapPin, ExternalLink, ArrowLeft, Loader2, Star, Users, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getLocationBySlug, getTrainersAtLocation, type Location } from '@/lib/locations';
+import { isLocationClaimed } from '@/lib/club';
+import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
-
+import { useAuth } from '@/hooks/useAuth';
 interface TrainerWithProfile {
   id: string;
   is_primary: boolean;
@@ -37,10 +39,13 @@ interface TrainerWithProfile {
 export default function LocationDetail() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['common', 'club']);
+  const { user, profile } = useAuth();
   const [location, setLocation] = useState<Location | null>(null);
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isClaimed, setIsClaimed] = useState(false);
+  const [showClaimDialog, setShowClaimDialog] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -52,6 +57,10 @@ export default function LocationDetail() {
           navigate('/locations');
           return;
         }
+        
+        // Check if location is claimed
+        const claimed = await isLocationClaimed(locationData.id);
+        setIsClaimed(claimed);
         setLocation(locationData);
 
         const trainersData = await getTrainersAtLocation(locationData.id);
@@ -160,22 +169,49 @@ export default function LocationDetail() {
                   onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(`${location.street_address || ''} ${location.postal_code} ${location.city}`)}`, '_blank')}
                 >
                   <MapPin className="h-4 w-4 mr-2" />
-                  {t('locations.getDirections', 'Get Directions')}
+                  {t('common:locations.getDirections', 'Get Directions')}
                 </Button>
+                {!isClaimed && (
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      if (!user) {
+                        navigate('/auth');
+                        return;
+                      }
+                      setShowClaimDialog(true);
+                    }}
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    {t('club:claim.button')}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         </div>
+        
+        {/* Claim Dialog */}
+        {location && user && (
+          <ClaimClubDialog
+            open={showClaimDialog}
+            onOpenChange={setShowClaimDialog}
+            locationId={location.id}
+            locationName={location.name}
+            userId={user.id}
+            userEmail={profile?.email || user.email}
+          />
+        )}
 
         {/* Trainers */}
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-semibold flex items-center gap-2">
               <Users className="h-6 w-6 text-primary" />
-              {t('locations.trainersAtLocation', 'Trainers at this location')}
+              {t('common:locations.trainersAtLocation', 'Trainers at this location')}
             </h2>
             <Badge variant="secondary" className="text-sm">
-              {trainers.length} {trainers.length === 1 ? t('locations.trainer', 'trainer') : t('locations.trainers', 'trainers')}
+              {trainers.length} {trainers.length === 1 ? t('common:locations.trainer', 'trainer') : t('common:locations.trainers', 'trainers')}
             </Badge>
           </div>
 
@@ -183,9 +219,9 @@ export default function LocationDetail() {
             <Card>
               <CardContent className="py-12 text-center">
                 <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">{t('locations.noTrainers', 'No trainers yet')}</h3>
+                <h3 className="text-lg font-medium mb-2">{t('common:locations.noTrainers', 'No trainers yet')}</h3>
                 <p className="text-muted-foreground">
-                  {t('locations.noTrainersDescription', 'No trainers are currently teaching at this location.')}
+                  {t('common:locations.noTrainersDescription', 'No trainers are currently teaching at this location.')}
                 </p>
               </CardContent>
             </Card>

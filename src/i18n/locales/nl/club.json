@@ -1,0 +1,104 @@
+{
+  "badge": "Clubbeheerder",
+  "dashboard": {
+    "title": "Club Dashboard",
+    "welcome": "Welkom terug",
+    "overview": "Overzicht",
+    "trainers": "Trainers",
+    "players": "Spelers",
+    "calendar": "Kalender",
+    "settings": "Instellingen",
+    "profile": "Clubprofiel",
+    "pendingVerification": "Je club wacht op verificatie",
+    "pendingVerificationDescription": "Een beheerder zal je aanvraag beoordelen en je clubeigendom verifiëren. Je krijgt volledige toegang zodra dit is geverifieerd."
+  },
+  "stats": {
+    "trainers": "Clubtrainers",
+    "players": "Spelers",
+    "upcomingSessions": "Komende Sessies",
+    "thisWeek": "Deze Week"
+  },
+  "claim": {
+    "button": "Claim deze Club",
+    "title": "Claim Clubprofiel",
+    "description": "Vraag aan om {{clubName}} te beheren. Na verificatie kun je trainers en spelers beheren.",
+    "contactEmail": "Contact E-mail",
+    "contactEmailPlaceholder": "club@voorbeeld.nl",
+    "phone": "Telefoonnummer",
+    "phonePlaceholder": "+31 6 12345678",
+    "aboutClub": "Over de Club",
+    "aboutClubPlaceholder": "Vertel ons over je club en je rol daar...",
+    "verificationNote": "Je aanvraag wordt beoordeeld door ons team. We kunnen contact met je opnemen om je eigendom van deze club te verifiëren.",
+    "submit": "Aanvraag Indienen",
+    "success": "Aanvraag Ingediend",
+    "successDescription": "Je aanvraag is ingediend en wacht op verificatie.",
+    "error": "Fout",
+    "errorDescription": "Er is een fout opgetreden bij het indienen van je aanvraag. Probeer het opnieuw.",
+    "emailRequired": "Vul een contact e-mailadres in.",
+    "alreadyClaimed": "Deze club is al geclaimd.",
+    "loginRequired": "Log in om deze club te claimen."
+  },
+  "trainers": {
+    "title": "Clubtrainers",
+    "description": "Trainers die in dienst zijn bij of beheerd worden door je club.",
+    "empty": "Nog geen clubtrainers",
+    "emptyDescription": "Trainers die 'Clubtrainer' selecteren bij het toevoegen van jouw locatie verschijnen hier.",
+    "inviteTrainer": "Trainer Uitnodigen",
+    "viewCalendar": "Bekijk Kalender",
+    "manageBookings": "Beheer Boekingen"
+  },
+  "players": {
+    "title": "Clubspelers",
+    "description": "Spelers geregistreerd bij je club.",
+    "addPlayer": "Speler Toevoegen",
+    "editPlayer": "Speler Bewerken",
+    "deletePlayer": "Speler Verwijderen",
+    "empty": "Nog geen spelers",
+    "emptyDescription": "Voeg spelers toe die lid zijn van je club.",
+    "name": "Naam",
+    "email": "E-mail",
+    "phone": "Telefoon",
+    "rating": "Rating",
+    "notes": "Notities",
+    "deleteConfirm": "Weet je zeker dat je deze speler wilt verwijderen?",
+    "deleteConfirmDescription": "Deze actie kan niet ongedaan worden gemaakt."
+  },
+  "profile": {
+    "title": "Clubprofiel",
+    "description": "Beheer het openbare profiel van je club.",
+    "logo": "Club Logo",
+    "uploadLogo": "Logo Uploaden",
+    "contactEmail": "Contact E-mail",
+    "phone": "Telefoon",
+    "aboutClub": "Over",
+    "save": "Wijzigingen Opslaan",
+    "saved": "Profiel succesvol opgeslagen"
+  },
+  "managers": {
+    "title": "Clubbeheerders",
+    "description": "Mensen die deze club kunnen beheren.",
+    "invite": "Beheerder Uitnodigen",
+    "inviteDescription": "Vul het e-mailadres in van de persoon die je wilt uitnodigen.",
+    "email": "E-mailadres",
+    "role": "Rol",
+    "owner": "Eigenaar",
+    "manager": "Beheerder",
+    "remove": "Verwijderen",
+    "removeConfirm": "Deze beheerder verwijderen?",
+    "removeConfirmDescription": "Zij hebben dan geen toegang meer om deze club te beheren.",
+    "inviteSuccess": "Uitnodiging verzonden",
+    "inviteError": "Kon beheerder niet uitnodigen"
+  },
+  "settings": {
+    "title": "Club Instellingen",
+    "description": "Beheer je clubinstellingen en team."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "trainers": "Trainers",
+    "players": "Spelers",
+    "calendar": "Kalender",
+    "profile": "Profiel",
+    "settings": "Instellingen"
+  }
+}
