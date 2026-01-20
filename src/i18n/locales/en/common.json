@@ -108,7 +108,11 @@
     "noDescription": "No description available yet.",
     "editClub": "Edit Club",
     "seoTitle": "Padel Locations in the Netherlands",
-    "seoDescription": "Find padel trainers at {{count}} venues across the Netherlands. Book lessons at your nearest club."
+    "seoDescription": "Find padel trainers at {{count}} venues across the Netherlands. Book lessons at your nearest club.",
+    "searchCountry": "Search country...",
+    "searchCity": "Search city...",
+    "noCountryFound": "No country found.",
+    "noCityFound": "No city found."
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
