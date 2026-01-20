@@ -5,9 +5,11 @@ import { getAdminStats, isUserAdmin, type AdminStats } from "@/lib/admin";
 import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { AdminCharts } from "@/components/admin/AdminCharts";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ShieldAlert, LogOut } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -17,6 +19,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -37,8 +40,15 @@ export default function AdminDashboard() {
       }
 
       try {
-        const data = await getAdminStats();
+        const [data, claimsData] = await Promise.all([
+          getAdminStats(),
+          supabase
+            .from("club_profiles")
+            .select("id", { count: "exact", head: true })
+            .eq("is_verified", false),
+        ]);
         setStats(data);
+        setPendingClaimsCount(claimsData.count || 0);
       } catch (error) {
         console.error("Failed to fetch admin stats:", error);
         toast({
@@ -129,6 +139,43 @@ export default function AdminDashboard() {
       <main className="container mx-auto px-4 py-8">
         {stats ? (
           <div className="space-y-8">
+            {/* Admin Actions */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/club-claims")}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Building2 className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Club Claims</h3>
+                      <p className="text-sm text-muted-foreground">Review pending club ownership requests</p>
+                    </div>
+                  </div>
+                  {pendingClaimsCount > 0 && (
+                    <Badge variant="destructive">{pendingClaimsCount} pending</Badge>
+                  )}
+                </div>
+              </div>
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/locations")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <MapPin className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Locations</h3>
+                    <p className="text-sm text-muted-foreground">Manage tennis clubs and venues</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <AdminStatsCards stats={stats} />
             <AdminCharts stats={stats} />
 
