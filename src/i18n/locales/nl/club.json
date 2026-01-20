@@ -185,7 +185,35 @@
     "players": "Spelers",
     "calendar": "Kalender",
     "profile": "Profiel",
+    "subscription": "Abonnement",
     "settings": "Instellingen"
+  },
+  "subscription": {
+    "title": "Club Abonnement",
+    "description": "Beheer het abonnement en facturering van je club",
+    "active": "Actief",
+    "trial": "Proefperiode",
+    "trialActive": "Gratis Proefperiode Actief",
+    "trialDaysRemaining": "Je hebt nog {{days}} dagen in je gratis proefperiode",
+    "trialExpired": "Proefperiode Verlopen",
+    "subscribeToAccess": "Abonneer om toegang te blijven houden tot alle club functies",
+    "perMonth": "per maand",
+    "billedAnnually": "Jaarlijks gefactureerd voor €{{amount}}/jaar",
+    "startTrial": "Start Gratis Proefperiode",
+    "upgradeNow": "Nu Abonneren",
+    "manageBilling": "Beheer Facturering",
+    "renewsOn": "Verlengt op {{date}}",
+    "endsOn": "Eindigt op {{date}}",
+    "successTitle": "Abonnement Succesvol",
+    "successDescription": "Bedankt! Je club abonnement is nu actief.",
+    "canceledTitle": "Abonnement Geannuleerd",
+    "canceledDescription": "Je abonnement is niet voltooid.",
+    "features": {
+      "unlimitedTrainers": "Onbeperkt Trainers",
+      "unifiedCalendar": "Geïntegreerde Kalender",
+      "analytics": "Club Analyses",
+      "prioritySupport": "Prioriteit Ondersteuning"
+    }
   },
   "common": {
     "cancel": "Annuleren",
