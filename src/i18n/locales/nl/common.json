@@ -108,7 +108,11 @@
     "noDescription": "Nog geen beschrijving beschikbaar.",
     "editClub": "Club bewerken",
     "seoTitle": "Padel Locaties in Nederland",
-    "seoDescription": "Vind padel trainers op {{count}} locaties in Nederland. Boek lessen bij jouw dichtstbijzijnde club."
+    "seoDescription": "Vind padel trainers op {{count}} locaties in Nederland. Boek lessen bij jouw dichtstbijzijnde club.",
+    "searchCountry": "Zoek land...",
+    "searchCity": "Zoek stad...",
+    "noCountryFound": "Geen land gevonden.",
+    "noCityFound": "Geen stad gevonden."
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",

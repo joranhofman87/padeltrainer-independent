@@ -1,22 +1,29 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2 } from 'lucide-react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { LocationCard } from '@/components/locations/LocationCard';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 
 export default function Locations() {
   const navigate = useNavigate();
@@ -31,6 +38,8 @@ export default function Locations() {
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [trainersAvailable, setTrainersAvailable] = useState(false);
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [cityOpen, setCityOpen] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -146,32 +155,127 @@ export default function Locations() {
 
               {/* Filter row */}
               <div className="flex flex-col sm:flex-row gap-4">
-                <Select value={selectedCountry} onValueChange={(value) => {
-                  setSelectedCountry(value);
-                  setSelectedCity('all'); // Reset city when country changes
-                }}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder={t('locations.filterByCountry')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('locations.allCountries')}</SelectItem>
-                    {countries.map(country => (
-                      <SelectItem key={country} value={country}>{country}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Country selector with search */}
+                <Popover open={countryOpen} onOpenChange={setCountryOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={countryOpen}
+                      className="w-full sm:w-[180px] justify-between"
+                    >
+                      {selectedCountry === 'all'
+                        ? t('locations.allCountries')
+                        : selectedCountry}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full sm:w-[180px] p-0">
+                    <Command>
+                      <CommandInput placeholder={t('locations.searchCountry')} />
+                      <CommandList>
+                        <CommandEmpty>{t('locations.noCountryFound')}</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="all"
+                            onSelect={() => {
+                              setSelectedCountry('all');
+                              setSelectedCity('all');
+                              setCountryOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedCountry === 'all' ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {t('locations.allCountries')}
+                          </CommandItem>
+                          {countries.map(country => (
+                            <CommandItem
+                              key={country}
+                              value={country}
+                              onSelect={() => {
+                                setSelectedCountry(country);
+                                setSelectedCity('all');
+                                setCountryOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedCountry === country ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {country}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
-                <Select value={selectedCity} onValueChange={setSelectedCity}>
-                  <SelectTrigger className="w-full sm:w-[200px]">
-                    <SelectValue placeholder={t('locations.filterByCity')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('locations.allCities')}</SelectItem>
-                    {filteredCities.map(city => (
-                      <SelectItem key={city} value={city}>{city}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* City selector with search */}
+                <Popover open={cityOpen} onOpenChange={setCityOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={cityOpen}
+                      className="w-full sm:w-[200px] justify-between"
+                    >
+                      {selectedCity === 'all'
+                        ? t('locations.allCities')
+                        : selectedCity}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full sm:w-[200px] p-0">
+                    <Command>
+                      <CommandInput placeholder={t('locations.searchCity')} />
+                      <CommandList>
+                        <CommandEmpty>{t('locations.noCityFound')}</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="all"
+                            onSelect={() => {
+                              setSelectedCity('all');
+                              setCityOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedCity === 'all' ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {t('locations.allCities')}
+                          </CommandItem>
+                          {filteredCities.map(city => (
+                            <CommandItem
+                              key={city}
+                              value={city}
+                              onSelect={() => {
+                                setSelectedCity(city);
+                                setCityOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedCity === city ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {city}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
                 <div className="flex items-center space-x-2">
                   <Checkbox
