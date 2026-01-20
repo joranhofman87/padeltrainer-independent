@@ -260,7 +260,11 @@ export default function LocationDetail() {
                 {location.website_url && (
                   <Button
                     variant="outline"
-                    onClick={() => window.open(location.website_url!, '_blank')}
+                    onClick={() => {
+                      const url = new URL(location.website_url!);
+                      url.searchParams.set('ref', 'padeltrainerai');
+                      window.open(url.toString(), '_blank');
+                    }}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     {t('locations.visitWebsite')}
