@@ -283,6 +283,7 @@ export type Database = {
       }
       club_profiles: {
         Row: {
+          banner_url: string | null
           claimed_at: string
           contact_email: string | null
           created_at: string
@@ -295,6 +296,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          banner_url?: string | null
           claimed_at?: string
           contact_email?: string | null
           created_at?: string
@@ -307,6 +309,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          banner_url?: string | null
           claimed_at?: string
           contact_email?: string | null
           created_at?: string
@@ -641,6 +644,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          number_of_courts: number | null
           postal_code: string | null
           slug: string
           street_address: string | null
@@ -654,6 +658,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          number_of_courts?: number | null
           postal_code?: string | null
           slug: string
           street_address?: string | null
@@ -667,6 +672,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          number_of_courts?: number | null
           postal_code?: string | null
           slug?: string
           street_address?: string | null

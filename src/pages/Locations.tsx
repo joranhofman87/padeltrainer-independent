@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/select';
 import { LocationCard } from '@/components/locations/LocationCard';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
-import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, type Location } from '@/lib/locations';
+import { SEO } from '@/components/SEO';
+import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { useTranslation } from 'react-i18next';
 
 export default function Locations() {
@@ -20,6 +21,7 @@ export default function Locations() {
   const { t } = useTranslation('common');
   const [locations, setLocations] = useState<Location[]>([]);
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
+  const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
   const [cities, setCities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,14 +30,16 @@ export default function Locations() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [locationsData, countsData, citiesData] = await Promise.all([
+        const [locationsData, countsData, citiesData, claimedData] = await Promise.all([
           getActiveLocations(),
           getLocationTrainerCounts(),
           getUniqueCities(),
+          getClaimedLocationIds(),
         ]);
         setLocations(locationsData);
         setTrainerCounts(countsData);
         setCities(citiesData);
+        setClaimedIds(claimedData);
       } catch (error) {
         console.error('Error fetching locations:', error);
       } finally {
@@ -60,8 +64,39 @@ export default function Locations() {
 
   const totalTrainers = Object.values(trainerCounts).reduce((a, b) => a + b, 0);
 
+  // Structured data for location list
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": t('locations.seoTitle'),
+    "description": t('locations.seoDescription', { count: locations.length }),
+    "numberOfItems": locations.length,
+    "itemListElement": filteredLocations.slice(0, 10).map((location, index) => ({
+      "@type": "ListItem",
+      "position": index + 1,
+      "item": {
+        "@type": "SportsClub",
+        "name": location.name,
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": location.street_address,
+          "addressLocality": location.city,
+          "postalCode": location.postal_code,
+          "addressCountry": "NL"
+        }
+      }
+    }))
+  };
+
   return (
     <MarketingLayout>
+      <SEO
+        title={t('locations.seoTitle')}
+        description={t('locations.seoDescription', { count: locations.length })}
+        url="/locations"
+        type="website"
+        structuredData={structuredData}
+      />
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 border-b">
@@ -71,9 +106,9 @@ export default function Locations() {
                 <MapPin className="h-8 w-8 text-primary" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold">{t('locations.title', 'Padel Locations')}</h1>
+                <h1 className="text-3xl font-bold">{t('locations.title')}</h1>
                 <p className="text-muted-foreground">
-                  {t('locations.subtitle', 'Find trainers at {{count}} venues across the Netherlands', { count: locations.length })}
+                  {t('locations.subtitle', { count: locations.length })}
                 </p>
               </div>
             </div>
@@ -83,7 +118,7 @@ export default function Locations() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={t('locations.searchPlaceholder', 'Search by name or city...')}
+                  placeholder={t('locations.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -91,10 +126,10 @@ export default function Locations() {
               </div>
               <Select value={selectedCity} onValueChange={setSelectedCity}>
                 <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder={t('locations.filterByCity', 'Filter by city')} />
+                  <SelectValue placeholder={t('locations.filterByCity')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t('locations.allCities', 'All cities')}</SelectItem>
+                  <SelectItem value="all">{t('locations.allCities')}</SelectItem>
                   {cities.map(city => (
                     <SelectItem key={city} value={city}>{city}</SelectItem>
                   ))}
@@ -113,23 +148,23 @@ export default function Locations() {
           ) : filteredLocations.length === 0 ? (
             <div className="text-center py-16">
               <MapPin className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">{t('locations.noResults', 'No locations found')}</h3>
+              <h3 className="text-lg font-medium mb-2">{t('locations.noResults')}</h3>
               <p className="text-muted-foreground mb-4">
-                {t('locations.tryDifferentSearch', 'Try a different search term or filter')}
+                {t('locations.tryDifferentSearch')}
               </p>
               <Button variant="outline" onClick={() => {
                 setSearchQuery('');
                 setSelectedCity('all');
               }}>
-                {t('clearFilters', 'Clear Filters')}
+                {t('clearFilters')}
               </Button>
             </div>
           ) : (
             <>
               <div className="flex items-center justify-between mb-6">
                 <p className="text-sm text-muted-foreground">
-                  {t('locations.showingCount', 'Showing {{count}} locations', { count: filteredLocations.length })}
-                  {totalTrainers > 0 && ` · ${totalTrainers} ${t('locations.trainersAvailable', 'trainers available')}`}
+                  {t('locations.showingCount', { count: filteredLocations.length })}
+                  {totalTrainers > 0 && ` · ${totalTrainers} ${t('locations.trainersAvailable')}`}
                 </p>
               </div>
 
@@ -139,6 +174,7 @@ export default function Locations() {
                     key={location.id}
                     location={location}
                     trainerCount={trainerCounts[location.id] || 0}
+                    isClaimed={claimedIds.has(location.id)}
                   />
                 ))}
               </div>

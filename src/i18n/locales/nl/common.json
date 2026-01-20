@@ -95,7 +95,17 @@
     "selectedClubs": "Geselecteerde clubs",
     "clearAll": "Alles wissen",
     "setPreferred": "Als voorkeur instellen",
-    "preferredClubHint": "⭐ = Jouw voorkeursclub"
+    "preferredClubHint": "⭐ = Jouw voorkeursclub",
+    "verified": "Geverifieerde Club",
+    "court": "baan",
+    "courts": "banen",
+    "aboutClub": "Over deze club",
+    "quickStats": "Statistieken",
+    "memberSince": "Lid sinds",
+    "noDescription": "Nog geen beschrijving beschikbaar.",
+    "editClub": "Club bewerken",
+    "seoTitle": "Padel Locaties in Nederland",
+    "seoDescription": "Vind padel trainers op {{count}} locaties in Nederland. Boek lessen bij jouw dichtstbijzijnde club."
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
