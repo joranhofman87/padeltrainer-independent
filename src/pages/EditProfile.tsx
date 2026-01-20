@@ -14,7 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, User, RefreshCw, Camera, Loader2, MapPin } from 'lucide-react';
 import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from '@/lib/ratingSystem';
 import { LocationPicker } from '@/components/locations/LocationPicker';
-import { getPlayerLocations, updatePlayerLocations } from '@/lib/locations';
+import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
+import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateTrainerLocations, TrainerLocationData } from '@/lib/locations';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -61,6 +62,9 @@ export default function EditProfile() {
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [preferredLocationId, setPreferredLocationId] = useState<string | undefined>();
   const [loadingLocations, setLoadingLocations] = useState(false);
+  
+  // Trainer location state
+  const [trainerLocations, setTrainerLocations] = useState<TrainerLocationSelection[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -96,6 +100,30 @@ export default function EditProfile() {
       fetchPlayerLocations();
     }
   }, [role, profile?.id]);
+
+  // Fetch trainer locations when profile is loaded and role is trainer
+  useEffect(() => {
+    if (role === 'trainer' && user) {
+      fetchTrainerLocations();
+    }
+  }, [role, user]);
+
+  const fetchTrainerLocations = async () => {
+    if (!user) return;
+    setLoadingLocations(true);
+    try {
+      const locations = await getTrainerLocations(user.id);
+      setTrainerLocations(locations.map(loc => ({
+        locationId: loc.location_id,
+        relationshipType: loc.relationship_type as 'independent' | 'club_trainer',
+        isPrimary: loc.is_primary,
+      })));
+    } catch (error) {
+      console.error('Error fetching trainer locations:', error);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
 
   const fetchPlayerLocations = async () => {
     if (!profile?.id) return;
@@ -310,6 +338,14 @@ export default function EditProfile() {
           .eq('user_id', user.id);
         
         if (trainerError) throw trainerError;
+
+        // Update trainer locations
+        const locationsData: TrainerLocationData[] = trainerLocations.map(loc => ({
+          locationId: loc.locationId,
+          relationshipType: loc.relationshipType,
+          isPrimary: loc.isPrimary,
+        }));
+        await updateTrainerLocations(user.id, locationsData);
       }
 
       await refreshAuth();
@@ -654,6 +690,22 @@ export default function EditProfile() {
                     value={specializationsInput}
                     onChange={(e) => setSpecializationsInput(e.target.value)}
                     placeholder="Beginners, Advanced Technique, Competition Prep"
+                  />
+                </div>
+
+                {/* Trainer Teaching Locations */}
+                <div className="space-y-2 pt-4 border-t">
+                  <Label className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Teaching Locations
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
+                  </p>
+                  <TrainerLocationPicker
+                    selectedLocations={trainerLocations}
+                    onChange={setTrainerLocations}
+                    disabled={loadingLocations}
                   />
                 </div>
               </CardContent>
