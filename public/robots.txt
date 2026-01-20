@@ -31,4 +31,4 @@ Allow: /
 Sitemap: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap
 
 # LLM context file
-# See: https://padeltrainer.lovable.app/llms.txt
+# See: https://padeltrainer.ai/llms.txt

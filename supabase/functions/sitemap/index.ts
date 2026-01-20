@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SITE_URL = 'https://padeltrainer.lovable.app';
+const SITE_URL = 'https://padeltrainer.ai';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
