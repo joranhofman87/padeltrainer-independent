@@ -66,6 +66,8 @@ serve(async (req) => {
 
     logStep("Admin access verified");
 
+    const now = new Date();
+
     // Fetch all required data in parallel
     const [
       bookingsResult,
@@ -79,10 +81,10 @@ serve(async (req) => {
         .select("id, payment_amount, payment_status, paid_at, created_at, slot_id"),
       supabase
         .from("trainer_profiles")
-        .select("id, user_id, subscription_status"),
+        .select("id, user_id, subscription_status, created_at"),
       supabase
         .from("profiles")
-        .select("id, user_id"),
+        .select("id, user_id, created_at"),
       supabase
         .from("trainer_stripe_accounts")
         .select("trainer_id, charges_enabled, payouts_enabled, onboarding_complete"),
@@ -104,6 +106,31 @@ serve(async (req) => {
       stripeAccounts: stripeAccounts.length,
       clubs: clubs.length,
     });
+
+    // Calculate signup trends (this month vs last month)
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const trainersThisMonth = trainers.filter(t => 
+      t.created_at && new Date(t.created_at) >= thisMonthStart
+    ).length;
+    const trainersLastMonth = trainers.filter(t => 
+      t.created_at && new Date(t.created_at) >= lastMonthStart && new Date(t.created_at) <= lastMonthEnd
+    ).length;
+    const trainerTrend = trainersLastMonth > 0 
+      ? ((trainersThisMonth - trainersLastMonth) / trainersLastMonth) * 100 
+      : trainersThisMonth > 0 ? 100 : 0;
+
+    const playersThisMonth = players.filter(p => 
+      p.created_at && new Date(p.created_at) >= thisMonthStart
+    ).length;
+    const playersLastMonth = players.filter(p => 
+      p.created_at && new Date(p.created_at) >= lastMonthStart && new Date(p.created_at) <= lastMonthEnd
+    ).length;
+    const playerTrend = playersLastMonth > 0 
+      ? ((playersThisMonth - playersLastMonth) / playersLastMonth) * 100 
+      : playersThisMonth > 0 ? 100 : 0;
 
     // Calculate stats
     const paidBookings = bookings.filter(b => b.payment_status === "paid");
@@ -143,7 +170,6 @@ serve(async (req) => {
     const pendingAccounts = stripeAccounts.filter(a => !a.charges_enabled).length;
 
     // Club stats
-    const now = new Date();
     const clubStats = {
       total: clubs.length,
       verified: clubs.filter(c => c.is_verified).length,
@@ -232,6 +258,14 @@ serve(async (req) => {
         subscribedClubs: clubStats.subscribed,
         trialingClubs: clubStats.trialing,
         expiredTrialClubs: clubStats.expired,
+      },
+      signupTrends: {
+        trainersThisMonth,
+        trainersLastMonth,
+        trainerTrend,
+        playersThisMonth,
+        playersLastMonth,
+        playerTrend,
       },
       trainersByTier: trainerTiers,
       clubStats,

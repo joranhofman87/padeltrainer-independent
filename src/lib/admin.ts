@@ -17,6 +17,14 @@ export interface AdminStats {
     trialingClubs: number;
     expiredTrialClubs: number;
   };
+  signupTrends: {
+    trainersThisMonth: number;
+    trainersLastMonth: number;
+    trainerTrend: number;
+    playersThisMonth: number;
+    playersLastMonth: number;
+    playerTrend: number;
+  };
   trainersByTier: {
     starter: number;
     professional: number;
