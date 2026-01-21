@@ -90,7 +90,14 @@ export default function ClubOnboarding() {
     setIsLoading(true);
 
     try {
-      await claimClub(selectedLocation.id, user.id, contactEmail, contactPhone, description);
+      const { clubProfile, error } = await claimClub(selectedLocation.id, user.id, contactEmail, contactPhone, description);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Clear the pending role since they've completed the club flow
+      sessionStorage.removeItem('pendingRole');
       
       toast({
         title: t('claim.success', 'Claim Submitted!'),
@@ -99,6 +106,7 @@ export default function ClubOnboarding() {
       
       navigate('/club');
     } catch (error: any) {
+      console.error('Club claim error:', error);
       toast({
         title: t('claim.error', 'Error'),
         description: error.message || t('claim.errorDescription', 'Failed to submit claim'),

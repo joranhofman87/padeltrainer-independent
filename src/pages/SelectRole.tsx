@@ -17,6 +17,13 @@ export default function SelectRole() {
 
   useEffect(() => {
     if (!loading) {
+      // If user signed up as club, redirect to club onboarding
+      const storedPendingRole = sessionStorage.getItem('pendingRole');
+      if (storedPendingRole === 'club') {
+        navigate('/onboarding/club');
+        return;
+      }
+      
       if (!user) {
         navigate('/auth');
       } else if (role) {
