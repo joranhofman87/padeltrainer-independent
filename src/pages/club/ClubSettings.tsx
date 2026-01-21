@@ -1,7 +1,18 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Users, Trash2, Crown, UserPlus, Loader2 } from "lucide-react";
+import { 
+  Users, 
+  Trash2, 
+  Crown, 
+  UserPlus, 
+  Loader2, 
+  CreditCard,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Wallet
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +50,11 @@ import {
   removeClubManager,
   ClubProfile,
 } from "@/lib/club";
+import { 
+  connectClubStripe, 
+  checkClubConnectStatus,
+  type ClubConnectStatus 
+} from "@/lib/clubPayments";
 import { ClubNavigation } from "@/components/club/ClubNavigation";
 
 interface Manager {
@@ -55,6 +72,7 @@ interface Manager {
 export default function ClubSettings() {
   const { t } = useTranslation("club");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
 
@@ -64,6 +82,11 @@ export default function ClubSettings() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  
+  // Stripe Connect state
+  const [connectStatus, setConnectStatus] = useState<ClubConnectStatus | null>(null);
+  const [connectLoading, setConnectLoading] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -81,6 +104,17 @@ export default function ClubSettings() {
           setClub(clubs[0]);
           const managersData = await getClubManagers(clubs[0].id);
           setManagers(managersData as Manager[]);
+          
+          // Check Stripe connect status
+          setCheckingStatus(true);
+          try {
+            const status = await checkClubConnectStatus(clubs[0].id);
+            setConnectStatus(status);
+          } catch (e) {
+            console.error("Error checking connect status:", e);
+          } finally {
+            setCheckingStatus(false);
+          }
         }
       } finally {
         setLoading(false);
@@ -88,6 +122,64 @@ export default function ClubSettings() {
     }
     loadData();
   }, [user]);
+
+  // Handle Stripe redirect callbacks
+  useEffect(() => {
+    if (searchParams.get("stripe_success") === "true" && club) {
+      toast({
+        title: t("settings.stripeConnectSuccess", "Stripe Connected"),
+        description: t("settings.stripeConnectSuccessDescription", "Your Stripe account has been connected successfully."),
+      });
+      // Refresh status
+      checkClubConnectStatus(club.id).then(setConnectStatus).catch(console.error);
+    } else if (searchParams.get("stripe_refresh") === "true") {
+      toast({
+        title: t("settings.stripeConnectRefresh", "Complete Setup"),
+        description: t("settings.stripeConnectRefreshDescription", "Please complete your Stripe account setup."),
+        variant: "destructive",
+      });
+    }
+  }, [searchParams, club, toast, t]);
+
+  const handleConnectStripe = async () => {
+    if (!club) return;
+    
+    setConnectLoading(true);
+    try {
+      const url = await connectClubStripe(club.id);
+      window.open(url, "_blank");
+    } catch (error: any) {
+      toast({
+        title: t("common:error"),
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setConnectLoading(false);
+    }
+  };
+
+  const handleRefreshStatus = async () => {
+    if (!club) return;
+    
+    setCheckingStatus(true);
+    try {
+      const status = await checkClubConnectStatus(club.id);
+      setConnectStatus(status);
+      toast({
+        title: t("settings.statusRefreshed", "Status Refreshed"),
+        description: t("settings.statusRefreshedDescription", "Connection status has been updated."),
+      });
+    } catch (error: any) {
+      toast({
+        title: t("common:error"),
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const handleInvite = async () => {
     if (!club || !user || !inviteEmail.trim()) return;
@@ -144,6 +236,7 @@ export default function ClubSettings() {
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8 max-w-2xl">
           <Skeleton className="h-8 w-48 mb-4" />
+          <Skeleton className="h-64 w-full mb-6" />
           <Skeleton className="h-64 w-full" />
         </div>
       </div>
@@ -176,7 +269,140 @@ export default function ClubSettings() {
         <ClubNavigation />
       </div>
 
-      <div className="container mx-auto px-4 py-8 max-w-2xl">
+      <div className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
+        {/* Stripe Connect Card */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">
+                {t("settings.stripeConnect", "Payment Setup")}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {t("settings.stripeConnectDescription", "Connect your Stripe account to receive payments from club trainer bookings.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {checkingStatus ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("settings.checkingStatus", "Checking status...")}
+              </div>
+            ) : connectStatus?.connected ? (
+              <>
+                {/* Connection Status */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    {connectStatus.chargesEnabled ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-amber-500" />
+                    )}
+                    <span className="font-medium">
+                      {connectStatus.chargesEnabled
+                        ? t("settings.paymentsEnabled", "Payments Enabled")
+                        : t("settings.paymentsNotEnabled", "Payments Not Yet Enabled")}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {connectStatus.payoutsEnabled ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-amber-500" />
+                    )}
+                    <span className="font-medium">
+                      {connectStatus.payoutsEnabled
+                        ? t("settings.payoutsEnabled", "Payouts Enabled")
+                        : t("settings.payoutsNotEnabled", "Payouts Not Yet Enabled")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Balance Display */}
+                {connectStatus.chargesEnabled && connectStatus.balance && (
+                  <div className="grid grid-cols-2 gap-4 p-4 rounded-lg border bg-muted/30">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-1">
+                        <Wallet className="h-4 w-4" />
+                        {t("settings.availableBalance", "Available")}
+                      </div>
+                      <div className="text-xl font-semibold">
+                        {connectStatus.balance.available.map((b, i) => (
+                          <span key={i}>€{b.amount.toFixed(2)}</span>
+                        ))}
+                        {connectStatus.balance.available.length === 0 && <span>€0.00</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">
+                        {t("settings.pendingBalance", "Pending")}
+                      </div>
+                      <div className="text-xl font-semibold text-muted-foreground">
+                        {connectStatus.balance.pending.map((b, i) => (
+                          <span key={i}>€{b.amount.toFixed(2)}</span>
+                        ))}
+                        {connectStatus.balance.pending.length === 0 && <span>€0.00</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Warning if setup incomplete */}
+                {(!connectStatus.chargesEnabled || !connectStatus.payoutsEnabled) && (
+                  <Alert variant="destructive" className="border-amber-500 bg-amber-500/10">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>{t("settings.setupIncomplete", "Setup Incomplete")}</AlertTitle>
+                    <AlertDescription>
+                      {t("settings.setupIncompleteDescription", "Please complete your Stripe account setup to start receiving payments.")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-2">
+                  {(!connectStatus.chargesEnabled || !connectStatus.payoutsEnabled) && (
+                    <Button onClick={handleConnectStripe} disabled={connectLoading}>
+                      {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      {t("settings.completeSetup", "Complete Setup")}
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={handleRefreshStatus} disabled={checkingStatus}>
+                    {checkingStatus && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    {t("settings.refreshStatus", "Refresh Status")}
+                  </Button>
+                  {connectStatus.chargesEnabled && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => window.open("https://dashboard.stripe.com", "_blank")}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {t("settings.stripeDashboard", "Stripe Dashboard")}
+                    </Button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <Alert>
+                  <CreditCard className="h-4 w-4" />
+                  <AlertTitle>{t("settings.notConnected", "Not Connected")}</AlertTitle>
+                  <AlertDescription>
+                    {t("settings.notConnectedDescription", "Connect your Stripe account to receive payments when players book with your club trainers.")}
+                  </AlertDescription>
+                </Alert>
+                
+                <Button onClick={handleConnectStripe} disabled={connectLoading}>
+                  {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  {t("settings.connectStripe", "Connect Stripe")}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Managers Card */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

@@ -23,6 +23,7 @@ const TIER_FEES: Record<string, number> = {
 };
 
 const STARTER_FEE = 10; // 10% for starter/free tier
+const CLUB_FEE = 5; // 5% fee for club payments
 
 async function getTrainerPlatformFee(stripe: Stripe, trainerEmail: string): Promise<number> {
   try {
@@ -53,6 +54,62 @@ async function getTrainerPlatformFee(stripe: Stripe, trainerEmail: string): Prom
   }
 }
 
+// Get club's Stripe account if trainer is a club_trainer at the slot's location
+async function getClubStripeAccountForSlot(
+  supabaseClient: any,
+  trainerId: string,
+  slotId: string
+): Promise<{ clubProfileId: string; stripeAccountId: string } | null> {
+  // Get the slot to find its location (if it's tied to a lesson with a location)
+  const { data: slot } = await supabaseClient
+    .from('availability_slots')
+    .select('lesson_id')
+    .eq('id', slotId)
+    .single();
+
+  // Check if trainer is a club_trainer at any location
+  const { data: trainerLocations } = await supabaseClient
+    .from('trainer_locations')
+    .select('location_id, relationship_type')
+    .eq('trainer_id', trainerId)
+    .eq('relationship_type', 'club_trainer');
+
+  if (!trainerLocations || trainerLocations.length === 0) {
+    return null; // Not a club trainer
+  }
+
+  // For now, use the first club location if trainer is a club_trainer
+  // In the future, we could match based on the lesson's location
+  const clubLocationId = trainerLocations[0].location_id;
+
+  // Get club profile for this location
+  const { data: clubProfile } = await supabaseClient
+    .from('club_profiles')
+    .select('id')
+    .eq('location_id', clubLocationId)
+    .maybeSingle();
+
+  if (!clubProfile) {
+    return null; // No club profile for this location
+  }
+
+  // Get club's Stripe account
+  const { data: clubStripeAccount } = await supabaseClient
+    .from('club_stripe_accounts')
+    .select('stripe_account_id, charges_enabled')
+    .eq('club_profile_id', clubProfile.id)
+    .maybeSingle();
+
+  if (!clubStripeAccount?.charges_enabled || !clubStripeAccount?.stripe_account_id) {
+    return null; // Club doesn't have Stripe set up
+  }
+
+  return {
+    clubProfileId: clubProfile.id,
+    stripeAccountId: clubStripeAccount.stripe_account_id,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -79,8 +136,8 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { bookingId, lessonTitle, trainerName, price, trainerId } = await req.json();
-    logStep("Request payload", { bookingId, lessonTitle, price, trainerId });
+    const { bookingId, lessonTitle, trainerName, price, trainerId, slotId } = await req.json();
+    logStep("Request payload", { bookingId, lessonTitle, price, trainerId, slotId });
 
     if (!bookingId || !price) {
       throw new Error("Missing required fields: bookingId and price");
@@ -98,12 +155,36 @@ serve(async (req) => {
 
     const priceInCents = Math.round(price * 100);
 
-    // Check if trainer has a connected Stripe account (REQUIRED for direct charges)
+    // Determine payment destination: club or independent trainer
     let connectedAccountId: string | undefined;
     let applicationFeeAmount: number | undefined;
     let platformFeePercent = STARTER_FEE;
+    let isClubPayment = false;
+    let clubProfileId: string | undefined;
     
-    if (trainerId) {
+    if (!trainerId) {
+      throw new Error("Trainer ID is required for booking");
+    }
+
+    // First, check if this is a club trainer and should route to club
+    if (slotId) {
+      const clubAccount = await getClubStripeAccountForSlot(supabaseClient, trainerId, slotId);
+      if (clubAccount) {
+        isClubPayment = true;
+        clubProfileId = clubAccount.clubProfileId;
+        connectedAccountId = clubAccount.stripeAccountId;
+        platformFeePercent = CLUB_FEE;
+        applicationFeeAmount = Math.round(priceInCents * (platformFeePercent / 100));
+        logStep("Routing payment to club", { 
+          clubProfileId, 
+          connectedAccountId, 
+          platformFeePercent 
+        });
+      }
+    }
+
+    // If not a club payment, use trainer's personal Stripe account
+    if (!isClubPayment) {
       const { data: stripeAccount } = await supabaseClient
         .from('trainer_stripe_accounts')
         .select('stripe_account_id, charges_enabled')
@@ -130,19 +211,17 @@ serve(async (req) => {
 
       // Calculate platform fee in cents based on trainer's subscription tier
       applicationFeeAmount = Math.round(priceInCents * (platformFeePercent / 100));
-      logStep("Trainer connected account ready for direct charge", { 
+      logStep("Using trainer connected account for direct charge", { 
         connectedAccountId, 
         applicationFeeAmount, 
         platformFeePercent 
       });
-    } else {
-      throw new Error("Trainer ID is required for booking");
     }
 
     const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
 
     // Create checkout session with DIRECT CHARGE on connected account
-    // This places liability with the trainer (connected account pays Stripe fees)
+    // This places liability with the recipient (connected account pays Stripe fees)
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['ideal', 'card', 'bancontact'],
       mode: 'payment',
@@ -166,6 +245,8 @@ serve(async (req) => {
         trainer_id: trainerId,
         platform_fee_percent: platformFeePercent.toString(),
         connected_account_id: connectedAccountId,
+        is_club_payment: isClubPayment ? 'true' : 'false',
+        club_profile_id: clubProfileId || '',
       },
       payment_intent_data: {
         application_fee_amount: applicationFeeAmount,
@@ -173,12 +254,12 @@ serve(async (req) => {
     };
 
     // Create session ON the connected account (direct charge model)
-    // Trainer pays Stripe fees, platform collects application fee
+    // Recipient pays Stripe fees, platform collects application fee
     const session = await stripe.checkout.sessions.create(
       sessionParams,
       { stripeAccount: connectedAccountId }
     );
-    logStep("Checkout session created", { sessionId: session.id, url: session.url });
+    logStep("Checkout session created", { sessionId: session.id, url: session.url, isClubPayment });
 
     // Update booking with session ID
     const { error: updateError } = await supabaseClient

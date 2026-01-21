@@ -349,6 +349,47 @@ export type Database = {
           },
         ]
       }
+      club_stripe_accounts: {
+        Row: {
+          charges_enabled: boolean
+          club_profile_id: string
+          created_at: string
+          id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          stripe_account_id: string
+          updated_at: string
+        }
+        Insert: {
+          charges_enabled?: boolean
+          club_profile_id: string
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id: string
+          updated_at?: string
+        }
+        Update: {
+          charges_enabled?: boolean
+          club_profile_id?: string
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_trainer_invitations: {
         Row: {
           club_profile_id: string
