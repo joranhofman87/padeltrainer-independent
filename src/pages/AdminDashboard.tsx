@@ -1,25 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { getAdminStats, isUserAdmin, type AdminStats } from "@/lib/admin";
+import {
+  useIsAdmin,
+  useAdminStats,
+  usePendingClaimsCount,
+  useInvalidateAdminData,
+} from "@/hooks/useAdminData";
 import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { AdminCharts } from "@/components/admin/AdminCharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin, Award, Users } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  LogOut,
+  Building2,
+  MapPin,
+  Award,
+  Users,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
+
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    isFetching: statsRefreshing,
+  } = useAdminStats();
+  const { data: pendingClaimsCount = 0 } = usePendingClaimsCount();
+  const { invalidateAll } = useInvalidateAdminData();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -27,50 +44,9 @@ export default function AdminDashboard() {
     }
   }, [authLoading, user, navigate]);
 
-  useEffect(() => {
-    async function checkAdminAndFetch() {
-      if (!user) return;
-
-      const adminStatus = await isUserAdmin(user.id);
-      setIsAdmin(adminStatus);
-
-      if (!adminStatus) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const [data, claimsData] = await Promise.all([
-          getAdminStats(),
-          supabase
-            .from("club_profiles")
-            .select("id", { count: "exact", head: true })
-            .eq("is_verified", false),
-        ]);
-        setStats(data);
-        setPendingClaimsCount(claimsData.count || 0);
-      } catch (error) {
-        console.error("Failed to fetch admin stats:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load admin statistics",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (user) {
-      checkAdminAndFetch();
-    }
-  }, [user, toast]);
-
   const handleRefresh = async () => {
-    setRefreshing(true);
     try {
-      const data = await getAdminStats();
-      setStats(data);
+      await invalidateAll();
       toast({
         title: "Refreshed",
         description: "Statistics updated successfully",
@@ -81,8 +57,6 @@ export default function AdminDashboard() {
         description: "Failed to refresh statistics",
         variant: "destructive",
       });
-    } finally {
-      setRefreshing(false);
     }
   };
 
@@ -91,7 +65,9 @@ export default function AdminDashboard() {
     navigate("/");
   };
 
-  if (authLoading || loading) {
+  const loading = authLoading || isAdminLoading || (isAdmin && statsLoading);
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -116,16 +92,20 @@ export default function AdminDashboard() {
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Platform overview and analytics</p>
+            <p className="text-sm text-muted-foreground">
+              Platform overview and analytics
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={statsRefreshing}
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${statsRefreshing ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
             <Button variant="ghost" size="sm" onClick={handleLogout}>
@@ -151,7 +131,9 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <h3 className="font-semibold">User Management</h3>
-                    <p className="text-sm text-muted-foreground">Manage users, roles, and access</p>
+                    <p className="text-sm text-muted-foreground">
+                      Manage users, roles, and access
+                    </p>
                   </div>
                 </div>
               </div>
@@ -166,7 +148,9 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <h3 className="font-semibold">Club Claims</h3>
-                      <p className="text-sm text-muted-foreground">Review pending club ownership requests</p>
+                      <p className="text-sm text-muted-foreground">
+                        Review pending club ownership requests
+                      </p>
                     </div>
                   </div>
                   {pendingClaimsCount > 0 && (
@@ -184,7 +168,9 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Locations</h3>
-                    <p className="text-sm text-muted-foreground">Manage tennis clubs and venues</p>
+                    <p className="text-sm text-muted-foreground">
+                      Manage tennis clubs and venues
+                    </p>
                   </div>
                 </div>
               </div>
@@ -198,7 +184,9 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Certifications & Specializations</h3>
-                    <p className="text-sm text-muted-foreground">Manage trainer qualifications</p>
+                    <p className="text-sm text-muted-foreground">
+                      Manage trainer qualifications
+                    </p>
                   </div>
                 </div>
               </div>
@@ -222,7 +210,12 @@ export default function AdminDashboard() {
                   <div className="text-xs text-muted-foreground">€29/month</div>
                 </div>
                 <div className="rounded-lg bg-chart-4/10 p-4">
-                  <div className="text-2xl font-bold" style={{ color: "hsl(var(--chart-4))" }}>2.5%</div>
+                  <div
+                    className="text-2xl font-bold"
+                    style={{ color: "hsl(var(--chart-4))" }}
+                  >
+                    2.5%
+                  </div>
                   <div className="text-sm font-medium">Academy Tier</div>
                   <div className="text-xs text-muted-foreground">€79/month</div>
                 </div>
