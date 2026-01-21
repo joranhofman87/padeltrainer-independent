@@ -190,7 +190,7 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, coaching_method, favourite_quote, video_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
+      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)
       .single();
     
@@ -201,7 +201,7 @@ export default function EditProfile() {
         certifications: data.certifications || [],
         specializations: data.specializations || [],
         knltb_rating: data.knltb_rating,
-        trainer_rating_system: 'knltb', // Default to knltb as the field is named knltb_rating in DB
+        trainer_rating_system: (data as any).trainer_rating_system || 'knltb',
         coaching_method: data.coaching_method || '',
         favourite_quote: data.favourite_quote || '',
         video_url: data.video_url || '',
@@ -332,6 +332,7 @@ export default function EditProfile() {
             certifications,
             specializations,
             knltb_rating: trainerData.knltb_rating,
+            trainer_rating_system: trainerData.trainer_rating_system,
             coaching_method: trainerData.coaching_method || null,
             favourite_quote: trainerData.favourite_quote || null,
             video_url: trainerData.video_url || null,

@@ -1227,6 +1227,7 @@ export type Database = {
           specializations: string[] | null
           stripe_account_id: string | null
           subscription_status: string | null
+          trainer_rating_system: string | null
           updated_at: string
           use_manual_invoicing: boolean | null
           user_id: string
@@ -1263,6 +1264,7 @@ export type Database = {
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
+          trainer_rating_system?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id: string
@@ -1299,6 +1301,7 @@ export type Database = {
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
+          trainer_rating_system?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id?: string
