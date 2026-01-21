@@ -66,7 +66,7 @@ export default function ClubSignup() {
     
     setIsLoading(true);
 
-    const { error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName);
 
     if (error) {
       toast({
@@ -74,14 +74,20 @@ export default function ClubSignup() {
         description: error.message,
         variant: 'destructive',
       });
-    } else {
-      // Store role preference in sessionStorage for onboarding
+    } else if (data?.session) {
+      // Session is immediately available - safe to navigate
       sessionStorage.setItem('pendingRole', 'club');
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
       });
       navigate('/onboarding/club');
+    } else {
+      // No immediate session (email confirmation required)
+      toast({
+        title: t('signUp.success'),
+        description: t('signUp.checkEmail', 'Please check your email to confirm your account before continuing.'),
+      });
     }
 
     setIsLoading(false);

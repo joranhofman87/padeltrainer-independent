@@ -77,6 +77,15 @@ export async function claimClub(
   phone?: string,
   description?: string
 ): Promise<{ success: boolean; error: Error | null }> {
+  // Verify session is active to prevent RLS errors
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return { 
+      success: false, 
+      error: new Error('Not authenticated. Please log in and try again.') 
+    };
+  }
+
   // Create the club profile with created_by to allow the user to see their pending claim
   const { data: insertResult, error: profileError } = await supabase
     .from('club_profiles')
@@ -86,7 +95,7 @@ export async function claimClub(
       phone: phone || null,
       description: description || null,
       is_verified: false,
-      created_by: userId,
+      created_by: session.user.id, // Use session user ID for RLS
     })
     .select('id')
     .single();
@@ -104,7 +113,7 @@ export async function claimClub(
     .from('club_managers')
     .insert({
       club_profile_id: insertResult.id,
-      user_id: userId,
+      user_id: session.user.id, // Use session user ID for consistency
       role: 'owner',
     });
 
@@ -119,7 +128,7 @@ export async function claimClub(
   // Also assign the 'club' role to the user if they don't already have it
   const { error: roleError } = await supabase
     .from('user_roles')
-    .insert({ user_id: userId, role: 'club' });
+    .insert({ user_id: session.user.id, role: 'club' });
 
   // Ignore duplicate key error (user might already have this role)
   if (roleError && roleError.code !== '23505') {
