@@ -12,7 +12,8 @@ export interface UserProfile {
   phone: string | null;
   location: string | null;
   skill_rating: number | null;
-  knltb_number: string | null;
+  rating_member_id: string | null;
+  rating_system: string;
   created_at: string;
   updated_at: string;
 }

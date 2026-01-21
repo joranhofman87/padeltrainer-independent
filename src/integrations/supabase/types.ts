@@ -902,9 +902,9 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
-          knltb_number: string | null
           location: string | null
           phone: string | null
+          rating_member_id: string | null
           rating_system: string
           skill_rating: number | null
           updated_at: string
@@ -917,9 +917,9 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
-          knltb_number?: string | null
           location?: string | null
           phone?: string | null
+          rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null
           updated_at?: string
@@ -932,13 +932,61 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
-          knltb_number?: string | null
           location?: string | null
           phone?: string | null
+          rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      rating_systems: {
+        Row: {
+          code: string
+          country: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          lower_is_better: boolean
+          max_rating: number
+          member_id_label: string | null
+          member_id_placeholder: string | null
+          min_rating: number
+          name: string
+          step: number
+        }
+        Insert: {
+          code: string
+          country?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          lower_is_better?: boolean
+          max_rating: number
+          member_id_label?: string | null
+          member_id_placeholder?: string | null
+          min_rating: number
+          name: string
+          step?: number
+        }
+        Update: {
+          code?: string
+          country?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          lower_is_better?: boolean
+          max_rating?: number
+          member_id_label?: string | null
+          member_id_placeholder?: string | null
+          min_rating?: number
+          name?: string
+          step?: number
         }
         Relationships: []
       }

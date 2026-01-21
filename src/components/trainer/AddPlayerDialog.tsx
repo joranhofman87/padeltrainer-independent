@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2 } from "lucide-react";
-import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from "@/lib/ratingSystem";
+import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
 
 interface AddPlayerDialogProps {
   open: boolean;
@@ -42,6 +42,7 @@ interface LinkedProfile {
   id: string;
   full_name: string | null;
   skill_rating: number | null;
+  rating_system?: string;
 }
 
 export function AddPlayerDialog({
@@ -57,17 +58,40 @@ export function AddPlayerDialog({
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [ratingSystem, setRatingSystem] = useState<RatingSystem>(DEFAULT_RATING_SYSTEM);
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [ratingSystem, setRatingSystem] = useState<string>("knltb");
   const [skillRating, setSkillRating] = useState("");
   const [notes, setNotes] = useState("");
   const [linkedProfile, setLinkedProfile] = useState<LinkedProfile | null>(null);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
+
+  // Fetch rating systems on mount
+  useEffect(() => {
+    async function fetchRatingSystems() {
+      setLoadingRatingSystems(true);
+      try {
+        const systems = await getRatingSystems();
+        setRatingSystems(systems);
+        if (systems.length > 0 && !systems.find(s => s.code === ratingSystem)) {
+          setRatingSystem(systems[0].code);
+        }
+      } catch (error) {
+        console.error("Error fetching rating systems:", error);
+      } finally {
+        setLoadingRatingSystems(false);
+      }
+    }
+    fetchRatingSystems();
+  }, []);
+
+  const currentRatingSystem = ratingSystems.find(s => s.code === ratingSystem);
 
   const resetForm = () => {
     setFullName("");
     setEmail("");
     setPhone("");
-    setRatingSystem(DEFAULT_RATING_SYSTEM);
+    setRatingSystem("knltb");
     setSkillRating("");
     setNotes("");
     setLinkedProfile(null);
@@ -97,12 +121,13 @@ export function AddPlayerDialog({
         setLinkedProfile(data);
         // Auto-fill skill rating and system if empty and profile has it
         if (!skillRating && data.skill_rating) {
-          const profileRatingSystem = (data.rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM;
+          const profileRatingSystem = data.rating_system || "knltb";
           setRatingSystem(profileRatingSystem);
           setSkillRating(data.skill_rating.toString());
+          const systemConfig = ratingSystems.find(s => s.code === profileRatingSystem);
           toast({
             title: t("players.autoFilledFromProfile"),
-            description: `${t("players.skillRating")}: ${data.skill_rating.toFixed(1)} (${profileRatingSystem.toUpperCase()})`,
+            description: `${t("players.skillRating")}: ${data.skill_rating.toFixed(1)} (${systemConfig?.name || profileRatingSystem.toUpperCase()})`,
           });
         }
       } else {
@@ -168,6 +193,14 @@ export function AddPlayerDialog({
       setIsLoading(false);
     }
   };
+
+  // Group rating systems by country
+  const groupedSystems = ratingSystems.reduce((acc, system) => {
+    const country = system.country;
+    if (!acc[country]) acc[country] = [];
+    acc[country].push(system);
+    return acc;
+  }, {} as Record<string, RatingSystemConfig[]>);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -244,32 +277,41 @@ export function AddPlayerDialog({
             <div className="flex items-center gap-2">
               <Select
                 value={ratingSystem}
-                onValueChange={(value: RatingSystem) => {
+                onValueChange={(value) => {
                   setRatingSystem(value);
                   setSkillRating("");
                 }}
+                disabled={loadingRatingSystems}
               >
-                <SelectTrigger className="w-32 shrink-0">
-                  <SelectValue />
+                <SelectTrigger className="w-36 shrink-0">
+                  <SelectValue placeholder={loadingRatingSystems ? "Loading..." : "Select"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(RATING_SYSTEMS).map((system) => (
-                    <SelectItem key={system.id} value={system.id}>
-                      {system.name}
-                    </SelectItem>
+                  {Object.entries(groupedSystems).map(([country, systems]) => (
+                    <div key={country}>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        {COUNTRY_NAMES[country] || country}
+                      </div>
+                      {systems.map((system) => (
+                        <SelectItem key={system.code} value={system.code}>
+                          {system.name}
+                        </SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>
               <Input
                 id="skillRating"
                 type="number"
-                step={getRatingSystemConfig(ratingSystem).step}
-                min={getRatingSystemConfig(ratingSystem).min}
-                max={getRatingSystemConfig(ratingSystem).max}
+                step={currentRatingSystem?.step || 0.1}
+                min={currentRatingSystem?.min_rating || 0.1}
+                max={currentRatingSystem?.max_rating || 10}
                 value={skillRating}
                 onChange={(e) => setSkillRating(e.target.value)}
-                placeholder={`${getRatingSystemConfig(ratingSystem).min} - ${getRatingSystemConfig(ratingSystem).max}`}
+                placeholder={currentRatingSystem ? `${currentRatingSystem.min_rating} - ${currentRatingSystem.max_rating}` : ""}
                 className="flex-1"
+                disabled={!currentRatingSystem}
               />
             </div>
           </div>

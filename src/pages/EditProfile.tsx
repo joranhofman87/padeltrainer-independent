@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, User, Camera, Loader2, MapPin } from 'lucide-react';
-import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from '@/lib/ratingSystem';
+import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
 import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateTrainerLocations, TrainerLocationData } from '@/lib/locations';
@@ -45,8 +45,8 @@ export default function EditProfile() {
     location: '',
     bio: '',
     skill_rating: '',
-    rating_system: DEFAULT_RATING_SYSTEM as RatingSystem,
-    knltb_number: '',
+    rating_system: 'knltb',
+    rating_member_id: '',
   });
   
   const [trainerData, setTrainerData] = useState<TrainerProfileData>({
@@ -56,6 +56,10 @@ export default function EditProfile() {
     specializations: [],
     knltb_rating: null,
   });
+  
+  // Rating systems from database
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
   
   // Trainer country for certifications picker
   const [trainerCountry, setTrainerCountry] = useState<string>('NL');
@@ -67,6 +71,22 @@ export default function EditProfile() {
   
   // Trainer location state
   const [trainerLocations, setTrainerLocations] = useState<TrainerLocationSelection[]>([]);
+
+  // Fetch rating systems from database
+  useEffect(() => {
+    async function fetchRatingSystems() {
+      setLoadingRatingSystems(true);
+      try {
+        const systems = await getRatingSystems();
+        setRatingSystems(systems);
+      } catch (error) {
+        console.error('Error fetching rating systems:', error);
+      } finally {
+        setLoadingRatingSystems(false);
+      }
+    }
+    fetchRatingSystems();
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -83,8 +103,8 @@ export default function EditProfile() {
         location: profile.location || '',
         bio: profile.bio || '',
         skill_rating: profile.skill_rating?.toString() || '',
-        rating_system: ((profile as any).rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM,
-        knltb_number: profile.knltb_number || '',
+        rating_system: (profile as any).rating_system || 'knltb',
+        rating_member_id: (profile as any).rating_member_id || '',
       });
       setAvatarUrl(profile.avatar_url || null);
     }
@@ -161,6 +181,8 @@ export default function EditProfile() {
     }
   };
 
+  // Get current rating system config
+  const currentRatingSystem = ratingSystems.find(s => s.code === formData.rating_system);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -251,7 +273,7 @@ export default function EditProfile() {
           bio: formData.bio,
           skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
           rating_system: formData.rating_system,
-          knltb_number: formData.knltb_number,
+          rating_member_id: formData.rating_member_id,
         })
         .eq('user_id', user.id);
       
@@ -321,6 +343,14 @@ export default function EditProfile() {
     .map((n) => n[0])
     .join('')
     .toUpperCase() || 'U';
+
+  // Group rating systems by country for display
+  const groupedSystems = ratingSystems.reduce((acc, system) => {
+    const country = system.country;
+    if (!acc[country]) acc[country] = [];
+    acc[country].push(system);
+    return acc;
+  }, {} as Record<string, RatingSystemConfig[]>);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
@@ -461,34 +491,29 @@ export default function EditProfile() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="knltb_number">KNLTB Number</Label>
-                  <Input
-                    id="knltb_number"
-                    value={formData.knltb_number}
-                    onChange={(e) => setFormData({ ...formData, knltb_number: e.target.value })}
-                    placeholder="12345678"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your official KNLTB registration number
-                  </p>
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="rating_system">{t('ratingSystem.label')}</Label>
                   <Select
                     value={formData.rating_system}
-                    onValueChange={(value: RatingSystem) => {
+                    onValueChange={(value) => {
                       setFormData({ ...formData, rating_system: value, skill_rating: '' });
                     }}
+                    disabled={loadingRatingSystems}
                   >
                     <SelectTrigger id="rating_system">
-                      <SelectValue />
+                      <SelectValue placeholder={loadingRatingSystems ? 'Loading...' : 'Select rating system'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.values(RATING_SYSTEMS).map((system) => (
-                        <SelectItem key={system.id} value={system.id}>
-                          {t(`ratingSystem.${system.id}`)} ({t('ratingSystem.range', { min: system.min, max: system.max })})
-                        </SelectItem>
+                      {Object.entries(groupedSystems).map(([country, systems]) => (
+                        <div key={country}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                            {COUNTRY_NAMES[country] || country}
+                          </div>
+                          {systems.map((system) => (
+                            <SelectItem key={system.code} value={system.code}>
+                              {system.name} ({system.min_rating} - {system.max_rating})
+                            </SelectItem>
+                          ))}
+                        </div>
                       ))}
                     </SelectContent>
                   </Select>
@@ -497,25 +522,43 @@ export default function EditProfile() {
                   </p>
                 </div>
 
+                {/* Dynamic Member ID field */}
+                {currentRatingSystem?.member_id_label && (
+                  <div className="space-y-2">
+                    <Label htmlFor="rating_member_id">{currentRatingSystem.member_id_label}</Label>
+                    <Input
+                      id="rating_member_id"
+                      value={formData.rating_member_id}
+                      onChange={(e) => setFormData({ ...formData, rating_member_id: e.target.value })}
+                      placeholder={currentRatingSystem.member_id_placeholder || ''}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your official {currentRatingSystem.name} registration number
+                    </p>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="skill_rating">Padel Rating</Label>
                   <Input
                     id="skill_rating"
                     type="number"
-                    step={getRatingSystemConfig(formData.rating_system).step}
-                    min={getRatingSystemConfig(formData.rating_system).min}
-                    max={getRatingSystemConfig(formData.rating_system).max}
+                    step={currentRatingSystem?.step || 0.1}
+                    min={currentRatingSystem?.min_rating || 0.1}
+                    max={currentRatingSystem?.max_rating || 10}
                     value={formData.skill_rating}
                     onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
-                    placeholder={getRatingSystemConfig(formData.rating_system).max.toString()}
+                    placeholder={currentRatingSystem?.max_rating?.toString() || ''}
+                    disabled={!currentRatingSystem}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t('ratingSystem.range', { 
-                      min: getRatingSystemConfig(formData.rating_system).min, 
-                      max: getRatingSystemConfig(formData.rating_system).max 
-                    })}
-                  </p>
+                  {currentRatingSystem && (
+                    <p className="text-xs text-muted-foreground">
+                      {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
+                      {currentRatingSystem.lower_is_better && ' (lower is better)'}
+                    </p>
+                  )}
                 </div>
+                
                 {/* Preferred Padel Clubs Section */}
                 <div className="space-y-2 pt-4 border-t">
                   <Label className="flex items-center gap-2">

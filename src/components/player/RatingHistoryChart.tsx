@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { getRatingSystemByCode, RatingSystemConfig } from '@/lib/ratingSystems';
 
 interface RatingHistoryEntry {
   id: string;
@@ -36,20 +37,29 @@ export function RatingHistoryChart({
   const { t } = useTranslation('player');
   const [history, setHistory] = useState<RatingHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [systemConfig, setSystemConfig] = useState<RatingSystemConfig | null>(null);
 
   useEffect(() => {
     fetchHistory();
-  }, [profileId]);
+    fetchSystemConfig();
+  }, [profileId, ratingSystem]);
+
+  const fetchSystemConfig = async () => {
+    const config = await getRatingSystemByCode(ratingSystem);
+    setSystemConfig(config);
+  };
 
   const fetchHistory = async () => {
     if (!profileId) return;
     
     setLoading(true);
     try {
+      // Filter by rating system to show per-system history
       const { data, error } = await supabase
         .from('player_rating_history')
         .select('*')
         .eq('profile_id', profileId)
+        .eq('rating_system', ratingSystem)
         .order('scraped_at', { ascending: true });
 
       if (error) {
@@ -64,11 +74,15 @@ export function RatingHistoryChart({
     }
   };
 
-  // Calculate improvement
+  // Calculate improvement based on rating system direction
   const firstRating = history.length > 0 ? history[0].rating : null;
   const latestRating = history.length > 0 ? history[history.length - 1].rating : currentRating;
-  const improvement = firstRating && latestRating ? Number((firstRating - latestRating).toFixed(2)) : 0;
-  const hasImproved = improvement > 0; // Lower rating = better in KNLTB
+  const rawDifference = firstRating && latestRating ? Number((firstRating - latestRating).toFixed(2)) : 0;
+  
+  // Determine if player improved based on rating system rules
+  const lowerIsBetter = systemConfig?.lower_is_better ?? (ratingSystem === 'knltb');
+  const improvement = lowerIsBetter ? rawDifference : -rawDifference;
+  const hasImproved = improvement > 0;
   const hasDeclined = improvement < 0;
 
   // Format data for chart
@@ -98,6 +112,11 @@ export function RatingHistoryChart({
           <CardTitle className="text-lg flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
             {t('ratingHistory.title', 'Rating Progress')}
+            {systemConfig && (
+              <span className="text-sm font-normal text-muted-foreground">
+                ({systemConfig.name})
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -124,6 +143,11 @@ export function RatingHistoryChart({
             <Minus className="h-5 w-5 text-muted-foreground" />
           )}
           {t('ratingHistory.title', 'Rating Progress')}
+          {systemConfig && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({systemConfig.name})
+            </span>
+          )}
         </CardTitle>
         <CardDescription>
           {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
@@ -150,7 +174,7 @@ export function RatingHistoryChart({
               hasImproved ? 'text-green-600 dark:text-green-400' : 
               hasDeclined ? 'text-red-600 dark:text-red-400' : ''
             }`}>
-              {improvement > 0 ? '+' : ''}{improvement || '—'}
+              {improvement !== 0 ? (improvement > 0 ? '+' : '') + improvement : '—'}
             </p>
           </div>
         </div>
@@ -171,7 +195,7 @@ export function RatingHistoryChart({
               tickLine={false}
               axisLine={false}
               domain={['auto', 'auto']}
-              reversed={ratingSystem === 'knltb'} // KNLTB: lower is better
+              reversed={lowerIsBetter}
               className="fill-muted-foreground"
             />
             <ChartTooltip 
@@ -194,9 +218,9 @@ export function RatingHistoryChart({
           </LineChart>
         </ChartContainer>
 
-        {ratingSystem === 'knltb' && (
+        {lowerIsBetter && (
           <p className="text-xs text-muted-foreground text-center mt-2">
-            {t('ratingHistory.knltbNote', 'In KNLTB, a lower rating means better performance')}
+            {t('ratingHistory.knltbNote', `In ${systemConfig?.name || 'this system'}, a lower rating means better performance`)}
           </p>
         )}
       </CardContent>

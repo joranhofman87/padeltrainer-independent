@@ -46,15 +46,15 @@ export default function Onboarding() {
 
     setIsLoading(true);
     try {
-      // Update profile with phone and optionally KNLTB number
-      const profileUpdates: { phone?: string; knltb_number?: string; rating_system?: string } = {};
+      // Update profile with phone and optionally member ID
+      const profileUpdates: { phone?: string; rating_member_id?: string; rating_system?: string } = {};
       
       if (phone.trim()) {
         profileUpdates.phone = phone.trim();
       }
       
       if (pendingRole === 'player' && knltbNumber.trim()) {
-        profileUpdates.knltb_number = knltbNumber.trim();
+        profileUpdates.rating_member_id = knltbNumber.trim();
         profileUpdates.rating_system = 'knltb';
       }
       

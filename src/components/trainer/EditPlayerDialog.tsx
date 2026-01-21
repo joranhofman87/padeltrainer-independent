@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
-import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from "@/lib/ratingSystem";
+import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
 
 interface EditPlayerDialogProps {
   open: boolean;
@@ -38,13 +38,41 @@ export function EditPlayerDialog({
   const [fullName, setFullName] = useState(player.full_name);
   const [email, setEmail] = useState(player.email);
   const [phone, setPhone] = useState(player.phone);
-  const [ratingSystem, setRatingSystem] = useState<RatingSystem>(
-    (player.rating_system as RatingSystem) || DEFAULT_RATING_SYSTEM
-  );
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [ratingSystem, setRatingSystem] = useState<string>(player.rating_system || "knltb");
   const [skillRating, setSkillRating] = useState(
     player.skill_rating?.toString() || ""
   );
   const [notes, setNotes] = useState(player.notes || "");
+  const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
+
+  // Fetch rating systems on mount
+  useEffect(() => {
+    async function fetchRatingSystems() {
+      setLoadingRatingSystems(true);
+      try {
+        const systems = await getRatingSystems();
+        setRatingSystems(systems);
+      } catch (error) {
+        console.error("Error fetching rating systems:", error);
+      } finally {
+        setLoadingRatingSystems(false);
+      }
+    }
+    fetchRatingSystems();
+  }, []);
+
+  // Reset form when player changes
+  useEffect(() => {
+    setFullName(player.full_name);
+    setEmail(player.email);
+    setPhone(player.phone);
+    setRatingSystem(player.rating_system || "knltb");
+    setSkillRating(player.skill_rating?.toString() || "");
+    setNotes(player.notes || "");
+  }, [player]);
+
+  const currentRatingSystem = ratingSystems.find(s => s.code === ratingSystem);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +113,14 @@ export function EditPlayerDialog({
       setIsLoading(false);
     }
   };
+
+  // Group rating systems by country
+  const groupedSystems = ratingSystems.reduce((acc, system) => {
+    const country = system.country;
+    if (!acc[country]) acc[country] = [];
+    acc[country].push(system);
+    return acc;
+  }, {} as Record<string, RatingSystemConfig[]>);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,19 +172,27 @@ export function EditPlayerDialog({
             <Label htmlFor="edit-ratingSystem">{t("players.ratingSystem")}</Label>
             <Select
               value={ratingSystem}
-              onValueChange={(value: RatingSystem) => {
+              onValueChange={(value) => {
                 setRatingSystem(value);
                 setSkillRating("");
               }}
+              disabled={loadingRatingSystems}
             >
               <SelectTrigger id="edit-ratingSystem">
-                <SelectValue />
+                <SelectValue placeholder={loadingRatingSystems ? "Loading..." : "Select"} />
               </SelectTrigger>
               <SelectContent>
-                {Object.values(RATING_SYSTEMS).map((system) => (
-                  <SelectItem key={system.id} value={system.id}>
-                    {system.name} ({system.min} - {system.max})
-                  </SelectItem>
+                {Object.entries(groupedSystems).map(([country, systems]) => (
+                  <div key={country}>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                      {COUNTRY_NAMES[country] || country}
+                    </div>
+                    {systems.map((system) => (
+                      <SelectItem key={system.code} value={system.code}>
+                        {system.name} ({system.min_rating} - {system.max_rating})
+                      </SelectItem>
+                    ))}
+                  </div>
                 ))}
               </SelectContent>
             </Select>
@@ -159,16 +203,20 @@ export function EditPlayerDialog({
             <Input
               id="edit-skillRating"
               type="number"
-              step={getRatingSystemConfig(ratingSystem).step}
-              min={getRatingSystemConfig(ratingSystem).min}
-              max={getRatingSystemConfig(ratingSystem).max}
+              step={currentRatingSystem?.step || 0.1}
+              min={currentRatingSystem?.min_rating || 0.1}
+              max={currentRatingSystem?.max_rating || 10}
               value={skillRating}
               onChange={(e) => setSkillRating(e.target.value)}
               placeholder={t("players.skillRatingPlaceholder")}
+              disabled={!currentRatingSystem}
             />
-            <p className="text-xs text-muted-foreground">
-              {getRatingSystemConfig(ratingSystem).min} - {getRatingSystemConfig(ratingSystem).max}
-            </p>
+            {currentRatingSystem && (
+              <p className="text-xs text-muted-foreground">
+                {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
+                {currentRatingSystem.lower_is_better && ' (lower is better)'}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
