@@ -134,7 +134,10 @@
       "minSkill": "Min Niveau",
       "maxSkill": "Max Niveau",
       "active": "Actief",
-      "activeDescription": "Les is zichtbaar en boekbaar"
+      "activeDescription": "Les is zichtbaar en boekbaar",
+      "paymentTiming": "Betalingsmoment",
+      "upfront": "Vooraf",
+      "after": "Na de Les"
     },
     "status": {
       "active": "Actief",
