@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Loader2, Camera, Save } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,6 +45,9 @@ interface TrainerProfileData {
   social_instagram: string;
   social_youtube: string;
   social_linkedin: string;
+  preferred_min_rating: number | null;
+  preferred_max_rating: number | null;
+  preferred_rating_system: string;
 }
 
 interface ProfileData {
@@ -87,6 +91,9 @@ export function EditClubTrainerDialog({
     social_instagram: '',
     social_youtube: '',
     social_linkedin: '',
+    preferred_min_rating: null,
+    preferred_max_rating: null,
+    preferred_rating_system: 'knltb',
   });
 
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
@@ -128,7 +135,7 @@ export function EditClubTrainerDialog({
       // Fetch trainer profile data
       const { data: trainer } = await supabase
         .from('trainer_profiles')
-        .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, social_instagram, social_youtube, social_linkedin')
+        .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, social_instagram, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
         .eq('id', trainerId)
         .single();
 
@@ -146,6 +153,9 @@ export function EditClubTrainerDialog({
           social_instagram: trainer.social_instagram || '',
           social_youtube: trainer.social_youtube || '',
           social_linkedin: trainer.social_linkedin || '',
+          preferred_min_rating: trainer.preferred_min_rating,
+          preferred_max_rating: trainer.preferred_max_rating,
+          preferred_rating_system: trainer.preferred_rating_system || 'knltb',
         });
       }
     } catch (error) {
@@ -253,6 +263,9 @@ export function EditClubTrainerDialog({
           social_instagram: trainerData.social_instagram || null,
           social_youtube: trainerData.social_youtube || null,
           social_linkedin: trainerData.social_linkedin || null,
+          preferred_min_rating: trainerData.preferred_min_rating,
+          preferred_max_rating: trainerData.preferred_max_rating,
+          preferred_rating_system: trainerData.preferred_rating_system || null,
         })
         .eq('id', trainerId);
 
@@ -477,6 +490,88 @@ export function EditClubTrainerDialog({
                   selectedSpecializations={trainerData.specializations}
                   onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
                 />
+              </div>
+
+              {/* Preferred Player Levels */}
+              <div className="space-y-4 pt-4 border-t">
+                <div>
+                  <Label>{t('editTrainer.preferredLevels', 'Preferred Player Levels')}</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {t('editTrainer.preferredLevelsDescription', 'Which skill levels does this trainer most enjoy training?')}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                  <Select
+                    value={trainerData.preferred_rating_system}
+                    onValueChange={(value) => {
+                      const system = ratingSystems.find(s => s.code === value);
+                      setTrainerData({ 
+                        ...trainerData, 
+                        preferred_rating_system: value,
+                        preferred_min_rating: system?.min_rating || null,
+                        preferred_max_rating: system?.max_rating || null,
+                      });
+                    }}
+                  >
+                    <SelectTrigger id="preferred_rating_system">
+                      <SelectValue placeholder="Select rating system" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(groupedSystems).map(([country, systems]) => (
+                        <div key={country}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                            {COUNTRY_NAMES[country] || country}
+                          </div>
+                          {systems.map((system) => (
+                            <SelectItem key={system.code} value={system.code}>
+                              {system.name}
+                            </SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(() => {
+                  const preferredSystem = ratingSystems.find(s => s.code === trainerData.preferred_rating_system);
+                  if (!preferredSystem) return null;
+                  
+                  const minVal = trainerData.preferred_min_rating ?? preferredSystem.min_rating;
+                  const maxVal = trainerData.preferred_max_rating ?? preferredSystem.max_rating;
+                  
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Level range:</span>
+                        <span className="font-medium">
+                          {minVal} - {maxVal} ({preferredSystem.name})
+                        </span>
+                      </div>
+                      <div className="px-2">
+                        <Slider
+                          value={[minVal, maxVal]}
+                          min={preferredSystem.min_rating}
+                          max={preferredSystem.max_rating}
+                          step={preferredSystem.step}
+                          onValueChange={([min, max]) => {
+                            setTrainerData({
+                              ...trainerData,
+                              preferred_min_rating: min,
+                              preferred_max_rating: max,
+                            });
+                          }}
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>{preferredSystem.min_rating}</span>
+                          <span>{preferredSystem.max_rating}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Coaching Method */}
