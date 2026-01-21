@@ -73,6 +73,7 @@ import ClubSubscription from "./pages/club/ClubSubscription";
 import ClubTrainerInvitation from "./pages/club/ClubTrainerInvitation";
 import AdminClubClaims from "./pages/admin/AdminClubClaims";
 import NotFound from "./pages/NotFound";
+import Sitemap from "./pages/Sitemap";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +86,9 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
           <Routes>
+            {/* Sitemap redirect */}
+            <Route path="/sitemap.xml" element={<Sitemap />} />
+            
             {/* Root redirect - detects browser language */}
             <Route path="/" element={<RootRedirect />} />
             
