@@ -268,7 +268,14 @@ export default function ClubOnboarding() {
             {!selectedLocation && (
               <div className="rounded-lg bg-muted/50 p-4 text-center">
                 <p className="text-sm text-muted-foreground">
-                  {t('onboarding.hint', "Can't find your club? Contact us and we'll add it.")}
+                  {t('onboarding.cantFindClub', "Can't find your club?")}{' '}
+                  <a 
+                    href="mailto:info@padeltrainer.ai?subject=Add%20my%20club&body=Hi%20Team%2C%0A%0ACould%20you%20add%20my%20club%20XXX.%0A%0ASee%20here%20all%20details%3A%20ADD%20WEBSITE%20LINK"
+                    className="text-primary hover:underline font-medium"
+                  >
+                    {t('onboarding.contactUs', 'Contact us')}
+                  </a>{' '}
+                  {t('onboarding.andWeWillAddIt', "and we'll add it.")}
                 </p>
               </div>
             )}
