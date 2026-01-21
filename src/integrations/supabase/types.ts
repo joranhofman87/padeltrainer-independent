@@ -182,6 +182,36 @@ export type Database = {
         }
         Relationships: []
       }
+      certifications: {
+        Row: {
+          country: string
+          created_at: string
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          country?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
       club_managers: {
         Row: {
           club_profile_id: string
@@ -972,6 +1002,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      specializations: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
       }
       trainer_followers: {
         Row: {

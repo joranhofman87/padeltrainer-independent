@@ -6,7 +6,7 @@ import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { AdminCharts } from "@/components/admin/AdminCharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin } from "lucide-react";
+import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -171,6 +171,20 @@ export default function AdminDashboard() {
                   <div>
                     <h3 className="font-semibold">Locations</h3>
                     <p className="text-sm text-muted-foreground">Manage tennis clubs and venues</p>
+                  </div>
+                </div>
+              </div>
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/certifications")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Award className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Certifications & Specializations</h3>
+                    <p className="text-sm text-muted-foreground">Manage trainer qualifications</p>
                   </div>
                 </div>
               </div>

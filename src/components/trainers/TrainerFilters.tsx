@@ -42,6 +42,7 @@ export interface TrainerFiltersState {
   priceRange: [number, number];
   minRating: number;
   specializations: string[];
+  certifications: string[];
   minExperience: number;
   locationId: string;
   verifiedOnly: boolean;
@@ -53,6 +54,7 @@ interface TrainerFiltersProps {
   onChange: (filters: TrainerFiltersState) => void;
   locations: Location[];
   allSpecializations: string[];
+  allCertifications: string[];
   activeFilterCount: number;
 }
 
@@ -60,6 +62,7 @@ const DEFAULT_FILTERS: TrainerFiltersState = {
   priceRange: [0, 200],
   minRating: 0,
   specializations: [],
+  certifications: [],
   minExperience: 0,
   locationId: 'all',
   verifiedOnly: false,
@@ -71,6 +74,7 @@ export function TrainerFilters({
   onChange,
   locations,
   allSpecializations,
+  allCertifications,
   activeFilterCount,
 }: TrainerFiltersProps) {
   const [open, setOpen] = useState(false);
@@ -103,6 +107,15 @@ export function TrainerFilters({
       specializations: prev.specializations.includes(spec)
         ? prev.specializations.filter(s => s !== spec)
         : [...prev.specializations, spec],
+    }));
+  };
+
+  const toggleCertification = (cert: string) => {
+    setLocalFilters(prev => ({
+      ...prev,
+      certifications: prev.certifications.includes(cert)
+        ? prev.certifications.filter(c => c !== cert)
+        : [...prev.certifications, cert],
     }));
   };
 
@@ -389,7 +402,27 @@ export function TrainerFilters({
             </div>
           )}
 
-          {/* Verified Only */}
+          {/* Certifications */}
+          {allCertifications.length > 0 && (
+            <div className="space-y-3">
+              <Label>Certifications</Label>
+              <div className="flex flex-wrap gap-2">
+                {allCertifications.map((cert) => (
+                  <Badge
+                    key={cert}
+                    variant={localFilters.certifications.includes(cert) ? 'default' : 'outline'}
+                    className="cursor-pointer hover:bg-primary/80"
+                    onClick={() => toggleCertification(cert)}
+                  >
+                    {cert}
+                    {localFilters.certifications.includes(cert) && (
+                      <X className="h-3 w-3 ml-1" />
+                    )}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-center space-x-2">
             <Checkbox
               id="verified"
