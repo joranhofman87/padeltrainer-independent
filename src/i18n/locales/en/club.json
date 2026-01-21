@@ -242,7 +242,20 @@
     "waived": "Waived",
     "emptySlot": "Empty slot",
     "openSlot": "Open Slot",
-    "viewTrainerProfile": "View Trainer Profile"
+    "viewTrainerProfile": "View Trainer Profile",
+    "addSlot": "Add Slot",
+    "addSlotDescription": "Create a new availability slot for a trainer",
+    "createCyclus": "Create Cyclus",
+    "cyclusDescription": "Create recurring training slots for your trainers",
+    "selectTrainer": "Trainer",
+    "selectTrainerPlaceholder": "Select a trainer",
+    "selectTrainerFirst": "Please select a trainer first",
+    "allTrainers": "All Trainers",
+    "slotCreated": "Slot created successfully",
+    "slotsGenerated": "Slots Generated",
+    "slotsGeneratedDescription": "{{count}} slots created successfully",
+    "noLessonsForTrainer": "No lessons configured for this trainer",
+    "error": "Error"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -251,7 +264,8 @@
     "calendar": "Calendar",
     "profile": "Profile",
     "subscription": "Subscription",
-    "settings": "Settings"
+    "settings": "Settings",
+    "lessons": "Lessons"
   },
   "subscription": {
     "title": "Club Subscription",
@@ -284,6 +298,35 @@
     "cancel": "Cancel",
     "goHome": "Go Home",
     "signIn": "Sign In",
-    "signUp": "Sign Up as Trainer"
+    "signUp": "Sign Up as Trainer",
+    "saving": "Saving...",
+    "save": "Save Changes"
+  },
+  "lessons": {
+    "title": "Lessons",
+    "description": "Create and manage lessons for your trainers",
+    "manageLessons": "Manage Lessons",
+    "lessonsCount": "{{count}} lessons",
+    "allTrainers": "All Trainers",
+    "addLesson": "Add Lesson",
+    "editLesson": "Edit Lesson",
+    "noTrainers": "No trainers in your club yet",
+    "addTrainersFirst": "Add trainers to your club to create lessons for them",
+    "noLessons": "No lessons created yet",
+    "createFirst": "Create First Lesson",
+    "participants": "participants",
+    "selectTrainer": "Trainer",
+    "selectTrainerPlaceholder": "Select a trainer",
+    "lessonFormDescription": "Configure the lesson details",
+    "requiredFields": "Please fill in all required fields",
+    "updated": "Lesson Updated",
+    "created": "Lesson Created",
+    "deleted": "Lesson Deleted",
+    "copy": "Copy",
+    "deleteConfirm": "Delete Lesson?",
+    "deleteConfirmDescription": "This will permanently delete this lesson. This action cannot be undone.",
+    "delete": "Delete",
+    "create": "Create Lesson",
+    "error": "Error"
   }
 }

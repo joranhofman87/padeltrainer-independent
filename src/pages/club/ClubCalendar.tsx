@@ -10,18 +10,29 @@ import {
   addDays,
   isToday,
   isBefore,
+  setHours,
+  setMinutes,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Plus, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { getUserClubProfiles, getClubTrainerSlots } from "@/lib/club";
+import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
 import { ClubNavigation } from "@/components/club/ClubNavigation";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
+import { ClubAddSlotDialog, ClubBulkCreateSheet } from "@/components/club/ClubAddSlotDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ClubSlot {
   id: string;
@@ -35,6 +46,19 @@ interface ClubSlot {
   trainer_avatar: string | null;
   active_bookings: number;
   pending_bookings: number;
+}
+
+interface Trainer {
+  id: string;
+  name: string;
+  avatar: string | null;
+  user_id: string;
+}
+
+interface Lesson {
+  id: string;
+  title: string;
+  trainer_id: string;
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 08:00 to 21:00
@@ -51,6 +75,17 @@ export default function ClubCalendar() {
   const [clubName, setClubName] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<ClubSlot | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  
+  // Trainer filter state
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
+  
+  // Dialog states
+  const [addSlotDialogOpen, setAddSlotDialogOpen] = useState(false);
+  const [bulkCreateSheetOpen, setBulkCreateSheetOpen] = useState(false);
+  const [clickedDate, setClickedDate] = useState<Date | undefined>();
+  const [clickedTime, setClickedTime] = useState<string | undefined>();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -65,6 +100,40 @@ export default function ClubCalendar() {
       if (clubs.length > 0) {
         setClubProfileId(clubs[0].id);
         setClubName(clubs[0].location?.name || "Club");
+        
+        // Load trainers
+        const clubTrainers = await getClubTrainers(clubs[0].id);
+        const trainerList: Trainer[] = [];
+        
+        for (const t of clubTrainers) {
+          const trainer = t.trainer_profiles as any;
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name, avatar_url")
+            .eq("user_id", trainer.user_id)
+            .single();
+          
+          trainerList.push({
+            id: trainer.id,
+            name: profile?.full_name || "Unknown",
+            avatar: profile?.avatar_url || null,
+            user_id: trainer.user_id,
+          });
+        }
+        
+        setTrainers(trainerList);
+        
+        // Load lessons for all trainers
+        if (trainerList.length > 0) {
+          const trainerIds = trainerList.map(t => t.id);
+          const { data: lessonsData } = await supabase
+            .from("lessons")
+            .select("id, title, trainer_id")
+            .in("trainer_id", trainerIds)
+            .eq("is_active", true);
+          
+          setLessons(lessonsData || []);
+        }
       }
     }
     loadClub();
@@ -98,6 +167,12 @@ export default function ClubCalendar() {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
+  // Filter slots by selected trainer
+  const filteredSlots = useMemo(() => {
+    if (selectedTrainerId === "all") return slots;
+    return slots.filter(s => s.trainer_id === selectedTrainerId);
+  }, [slots, selectedTrainerId]);
+
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, ClubSlot[]>> = {};
 
@@ -109,7 +184,7 @@ export default function ClubCalendar() {
       });
     });
 
-    slots.forEach((slot) => {
+    filteredSlots.forEach((slot) => {
       const slotDate = new Date(slot.start_time);
       const dayKey = format(slotDate, "yyyy-MM-dd");
       const hour = slotDate.getHours();
@@ -120,13 +195,13 @@ export default function ClubCalendar() {
     });
 
     return map;
-  }, [slots, weekDays]);
+  }, [filteredSlots, weekDays]);
 
   // Mobile selected day
   const [mobileSelectedDay, setMobileSelectedDay] = useState<Date>(new Date());
   
   const mobileDaySlots = useMemo(() => {
-    return slots
+    return filteredSlots
       .filter((slot) => {
         const slotDate = new Date(slot.start_time);
         return (
@@ -136,7 +211,7 @@ export default function ClubCalendar() {
         );
       })
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-  }, [slots, mobileSelectedDay]);
+  }, [filteredSlots, mobileSelectedDay]);
 
   useEffect(() => {
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -204,6 +279,22 @@ export default function ClubCalendar() {
     setSheetOpen(true);
   };
 
+  const handleCellClick = (day: Date, hour: number) => {
+    const isPast = isBefore(
+      setMinutes(setHours(day, hour), 0),
+      new Date()
+    );
+    if (isPast) return;
+    
+    setClickedDate(day);
+    setClickedTime(`${String(hour).padStart(2, "0")}:00`);
+    setAddSlotDialogOpen(true);
+  };
+
+  const handleSlotsCreated = () => {
+    fetchSlots();
+  };
+
   if (authLoading || (loading && slots.length === 0)) {
     return (
       <div className="min-h-screen bg-background">
@@ -231,34 +322,64 @@ export default function ClubCalendar() {
       <div className="container mx-auto px-4 py-8">
         <Card className="overflow-hidden">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              {/* Mobile: Day navigation */}
-              <div className="flex items-center gap-1 sm:hidden">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
-                  <ChevronLeft className="h-4 w-4" />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* Navigation controls */}
+              <div className="flex items-center gap-2">
+                {/* Mobile: Day navigation */}
+                <div className="flex items-center gap-1 sm:hidden">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
+                    {t("calendar.today", "Today")}
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Desktop: Week navigation */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={goToToday}>
+                    {t("calendar.today", "Today")}
+                  </Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="text-sm font-medium hidden sm:block ml-4">{getDateRangeLabel()}</div>
+              </div>
+              
+              {/* Actions and filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
+                  <SelectTrigger className="w-[160px] h-8">
+                    <SelectValue placeholder={t("calendar.allTrainers", "All Trainers")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("calendar.allTrainers", "All Trainers")}</SelectItem>
+                    {trainers.map(trainer => (
+                      <SelectItem key={trainer.id} value={trainer.id}>
+                        {trainer.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Button variant="outline" size="sm" onClick={() => { setClickedDate(undefined); setClickedTime(undefined); setAddSlotDialogOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t("calendar.addSlot", "Add Slot")}
                 </Button>
-                <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
-                  {t("calendar.today", "Today")}
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
-                  <ChevronRight className="h-4 w-4" />
+                
+                <Button variant="outline" size="sm" onClick={() => { setClickedDate(undefined); setClickedTime(undefined); setBulkCreateSheetOpen(true); }}>
+                  <Repeat className="h-4 w-4 mr-1" />
+                  {t("calendar.createCyclus", "Create Cyclus")}
                 </Button>
               </div>
-              {/* Desktop: Week navigation */}
-              <div className="hidden sm:flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={goToToday}>
-                  {t("calendar.today", "Today")}
-                </Button>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="text-sm font-medium hidden sm:block">{getDateRangeLabel()}</div>
             </div>
-            <p className="text-xs text-muted-foreground sm:hidden">{format(mobileSelectedDay, "EEEE, MMMM d")}</p>
+            <p className="text-xs text-muted-foreground sm:hidden mt-2">{format(mobileSelectedDay, "EEEE, MMMM d")}</p>
           </CardHeader>
           <CardContent className="p-0">
             {/* Mobile View */}
@@ -267,6 +388,15 @@ export default function ClubCalendar() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Calendar className="h-10 w-10 mx-auto mb-2 opacity-50" />
                   <p>{t("calendar.noSlots", "No slots scheduled")}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-4"
+                    onClick={() => { setClickedDate(mobileSelectedDay); setAddSlotDialogOpen(true); }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t("calendar.addSlot", "Add Slot")}
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -356,16 +486,18 @@ export default function ClubCalendar() {
                         return (
                           <div
                             key={`${dayKey}-${hour}`}
+                            onClick={() => slotsInCell.length === 0 && handleCellClick(day, hour)}
                             className={cn(
                               "border-l p-1 min-h-[48px]",
                               isToday(day) && "bg-primary/5",
-                              isPast && "bg-muted/20"
+                              isPast && "bg-muted/20",
+                              slotsInCell.length === 0 && !isPast && "cursor-pointer hover:bg-muted/30"
                             )}
                           >
                             {slotsInCell.map((slot) => (
                               <div
                                 key={slot.id}
-                                onClick={() => handleSlotClick(slot)}
+                                onClick={(e) => { e.stopPropagation(); handleSlotClick(slot); }}
                                 className={cn(
                                   "text-xs p-1.5 rounded border mb-1 cursor-pointer hover:opacity-80 transition-opacity",
                                   getSlotColor(slot)
@@ -422,6 +554,33 @@ export default function ClubCalendar() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         slot={selectedSlot}
+      />
+
+      {/* Add Slot Dialog */}
+      <ClubAddSlotDialog
+        open={addSlotDialogOpen}
+        onOpenChange={setAddSlotDialogOpen}
+        trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+        lessons={lessons}
+        defaultTrainerId={selectedTrainerId !== "all" ? selectedTrainerId : undefined}
+        defaultDate={clickedDate}
+        defaultTime={clickedTime}
+        defaultDuration={60}
+        onSlotsCreated={handleSlotsCreated}
+      />
+
+      {/* Bulk Create Sheet */}
+      <ClubBulkCreateSheet
+        open={bulkCreateSheetOpen}
+        onOpenChange={setBulkCreateSheetOpen}
+        trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+        lessons={lessons}
+        defaultTrainerId={selectedTrainerId !== "all" ? selectedTrainerId : undefined}
+        defaultDate={clickedDate}
+        defaultTime={clickedTime}
+        defaultDuration={60}
+        defaultWeeks={8}
+        onSlotsCreated={handleSlotsCreated}
       />
     </div>
   );
