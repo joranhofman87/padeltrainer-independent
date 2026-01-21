@@ -74,10 +74,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div className="hidden md:flex items-center gap-3">
               <LanguageSwitcher />
               <Button variant="ghost" asChild>
-                <LocalizedLink to="/auth">{t('nav.signIn')}</LocalizedLink>
+                <Link to="/auth">{t('nav.signIn')}</Link>
               </Button>
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <LocalizedLink to="/signup/player">{t('nav.getStarted')}</LocalizedLink>
+                <Link to="/signup/player">{t('nav.getStarted')}</Link>
               </Button>
             </div>
 
@@ -119,10 +119,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <LanguageSwitcher />
                   </div>
                   <Button variant="ghost" asChild>
-                    <LocalizedLink to="/auth">{t('nav.signIn')}</LocalizedLink>
+                    <Link to="/auth">{t('nav.signIn')}</Link>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <LocalizedLink to="/signup/player">{t('nav.getStarted')}</LocalizedLink>
+                    <Link to="/signup/player">{t('nav.getStarted')}</Link>
                   </Button>
                 </div>
               </nav>
@@ -157,7 +157,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</LocalizedLink></li>
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
-                <li><LocalizedLink to="/signup/club" className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</LocalizedLink></li>
+                <li><Link to="/signup/club" className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link></li>
               </ul>
             </div>
 
