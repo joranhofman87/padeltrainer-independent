@@ -36,6 +36,8 @@ export function useClubContext() {
   return context;
 }
 
+const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
+
 export default function ClubLayout() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
@@ -58,16 +60,15 @@ export default function ClubLayout() {
       const userClubs = await getUserClubProfiles(user.id);
       setClubs(userClubs);
       
-      if (userClubs.length > 0 && !activeClub) {
+      // Try to restore previously selected club from localStorage
+      const savedClubId = localStorage.getItem(ACTIVE_CLUB_STORAGE_KEY);
+      const savedClub = savedClubId ? userClubs.find(c => c.id === savedClubId) : null;
+      
+      if (savedClub) {
+        setActiveClub(savedClub);
+      } else if (userClubs.length > 0) {
         setActiveClub(userClubs[0]);
-      } else if (activeClub) {
-        // Update active club data if it still exists
-        const updatedActiveClub = userClubs.find(c => c.id === activeClub.id);
-        if (updatedActiveClub) {
-          setActiveClub(updatedActiveClub);
-        } else if (userClubs.length > 0) {
-          setActiveClub(userClubs[0]);
-        }
+        localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, userClubs[0].id);
       }
     } catch (error) {
       console.error('Error fetching clubs:', error);
@@ -82,6 +83,7 @@ export default function ClubLayout() {
 
   const handleClubChange = (club: ClubWithLocation) => {
     setActiveClub(club);
+    localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, club.id);
   };
 
   const handleSignOut = async () => {
