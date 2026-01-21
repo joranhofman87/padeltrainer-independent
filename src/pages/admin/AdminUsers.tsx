@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { isUserAdmin } from "@/lib/admin";
+import { useIsAdmin, useAdminUsers, useInvalidateAdminData } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Search, ArrowLeft, MoreHorizontal, UserCog, LogIn, ShieldAlert } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  ArrowLeft,
+  MoreHorizontal,
+  UserCog,
+  LogIn,
+  ShieldAlert,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -53,11 +61,15 @@ export default function AdminUsers() {
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const [users, setUsers] = useState<UserWithRole[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  const { data: users = [], isLoading: usersLoading } = useAdminUsers();
+  const { invalidateUsers } = useInvalidateAdminData();
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>(searchParams.get("role") || "all");
+  const [roleFilter, setRoleFilter] = useState<string>(
+    searchParams.get("role") || "all"
+  );
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState<string>("");
@@ -70,71 +82,12 @@ export default function AdminUsers() {
     }
   }, [authLoading, user, navigate]);
 
-  useEffect(() => {
-    async function checkAdminAndFetch() {
-      if (!user) return;
-
-      const adminStatus = await isUserAdmin(user.id);
-      setIsAdmin(adminStatus);
-
-      if (!adminStatus) {
-        setLoading(false);
-        return;
-      }
-
-      await fetchUsers();
-    }
-
-    if (user) {
-      checkAdminAndFetch();
-    }
-  }, [user]);
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      // Get all profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("user_id, email, full_name, avatar_url, created_at")
-        .order("created_at", { ascending: false });
-
-      if (profilesError) throw profilesError;
-
-      // Get all user roles
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role");
-
-      if (rolesError) throw rolesError;
-
-      // Merge profiles with roles
-      const rolesMap = new Map(roles?.map(r => [r.user_id, r.role]) || []);
-      const usersWithRoles: UserWithRole[] = (profiles || []).map(p => ({
-        ...p,
-        role: rolesMap.get(p.user_id) || null,
-      }));
-
-      setUsers(usersWithRoles);
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load users",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleChangeRole = async () => {
     if (!selectedUser || !newRole) return;
 
     setActionLoading(true);
     try {
       if (newRole === "none") {
-        // Delete the role
         const { error } = await supabase
           .from("user_roles")
           .delete()
@@ -142,7 +95,6 @@ export default function AdminUsers() {
 
         if (error) throw error;
       } else {
-        // First try to update, if no rows affected then insert
         const { data: existingRole } = await supabase
           .from("user_roles")
           .select("id")
@@ -150,18 +102,19 @@ export default function AdminUsers() {
           .single();
 
         if (existingRole) {
-          // Update existing role
           const { error } = await supabase
             .from("user_roles")
-            .update({ role: newRole as "admin" | "player" | "trainer" | "club_manager" })
+            .update({
+              role: newRole as "admin" | "player" | "trainer" | "club_manager",
+            })
             .eq("user_id", selectedUser.user_id);
 
           if (error) throw error;
         } else {
-          // Insert new role
-          const { error } = await supabase
-            .from("user_roles")
-            .insert({ user_id: selectedUser.user_id, role: newRole as "admin" | "player" | "trainer" | "club_manager" });
+          const { error } = await supabase.from("user_roles").insert({
+            user_id: selectedUser.user_id,
+            role: newRole as "admin" | "player" | "trainer" | "club_manager",
+          });
 
           if (error) throw error;
         }
@@ -172,7 +125,7 @@ export default function AdminUsers() {
         description: `${selectedUser.full_name || selectedUser.email}'s role has been updated.`,
       });
 
-      await fetchUsers();
+      await invalidateUsers();
       setChangeRoleDialogOpen(false);
       setSelectedUser(null);
     } catch (error: any) {
@@ -199,12 +152,9 @@ export default function AdminUsers() {
       if (error) throw error;
 
       if (data?.url) {
-        // Store admin session info for return
         localStorage.setItem("impersonation_admin_id", user?.id || "");
-        
-        // Open the magic link in a new tab
         window.open(data.url, "_blank");
-        
+
         toast({
           title: "Impersonation link generated",
           description: "A new tab has been opened with the impersonation session.",
@@ -225,7 +175,7 @@ export default function AdminUsers() {
     }
   };
 
-  const filteredUsers = users.filter(u => {
+  const filteredUsers = users.filter((u) => {
     const matchesSearch =
       !searchQuery ||
       u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -252,7 +202,9 @@ export default function AdminUsers() {
     }
   };
 
-  if (authLoading || loading) {
+  const loading = authLoading || isAdminLoading || (isAdmin && usersLoading);
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -294,7 +246,7 @@ export default function AdminUsers() {
             <Input
               placeholder="Search by name or email..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
@@ -325,12 +277,15 @@ export default function AdminUsers() {
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="text-center py-8 text-muted-foreground"
+                  >
                     No users found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map(u => (
+                filteredUsers.map((u) => (
                   <TableRow key={u.user_id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -445,8 +400,9 @@ export default function AdminUsers() {
           <DialogHeader>
             <DialogTitle>Login as User</DialogTitle>
             <DialogDescription>
-              You are about to log in as {selectedUser?.full_name || selectedUser?.email}.
-              This action will be logged for security purposes.
+              You are about to log in as{" "}
+              {selectedUser?.full_name || selectedUser?.email}. This action will be
+              logged for security purposes.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 text-sm text-muted-foreground">

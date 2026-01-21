@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { isUserAdmin } from "@/lib/admin";
-import { supabase } from "@/integrations/supabase/client";
+import { useIsAdmin, useAdminClubs } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Search, ArrowLeft, ShieldAlert, Building2, CheckCircle2, XCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import {
+  Loader2,
+  Search,
+  ArrowLeft,
+  ShieldAlert,
+  Building2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { format } from "date-fns";
 
 interface ClubProfile {
@@ -41,10 +47,10 @@ interface ClubProfile {
 export default function AdminClubs() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const { toast } = useToast();
-  const [clubs, setClubs] = useState<ClubProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  const { data: clubs = [], isLoading: clubsLoading } = useAdminClubs();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -53,57 +59,6 @@ export default function AdminClubs() {
       navigate("/auth");
     }
   }, [authLoading, user, navigate]);
-
-  useEffect(() => {
-    async function checkAdminAndFetch() {
-      if (!user) return;
-
-      const adminStatus = await isUserAdmin(user.id);
-      setIsAdmin(adminStatus);
-
-      if (!adminStatus) {
-        setLoading(false);
-        return;
-      }
-
-      await fetchClubs();
-    }
-
-    if (user) {
-      checkAdminAndFetch();
-    }
-  }, [user]);
-
-  const fetchClubs = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("club_profiles")
-        .select(`
-          id,
-          is_verified,
-          subscription_status,
-          subscription_tier,
-          trial_ends_at,
-          created_at,
-          location:locations!club_profiles_location_id_fkey(name, city)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      setClubs(data || []);
-    } catch (error) {
-      console.error("Failed to fetch clubs:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load clubs",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getSubscriptionStatus = (club: ClubProfile) => {
     if (club.subscription_status === "active") return "active";
@@ -114,7 +69,7 @@ export default function AdminClubs() {
     return club.subscription_status || "inactive";
   };
 
-  const filteredClubs = clubs.filter(c => {
+  const filteredClubs = clubs.filter((c) => {
     const matchesSearch =
       !searchQuery ||
       c.location?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -143,7 +98,9 @@ export default function AdminClubs() {
     }
   };
 
-  if (authLoading || loading) {
+  const loading = authLoading || isAdminLoading || (isAdmin && clubsLoading);
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -185,7 +142,7 @@ export default function AdminClubs() {
             <Input
               placeholder="Search by club or city name..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
@@ -217,12 +174,15 @@ export default function AdminClubs() {
             <TableBody>
               {filteredClubs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="text-center py-8 text-muted-foreground"
+                  >
                     No clubs found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredClubs.map(club => {
+                filteredClubs.map((club) => {
                   const status = getSubscriptionStatus(club);
                   return (
                     <TableRow key={club.id}>
@@ -232,8 +192,12 @@ export default function AdminClubs() {
                             <Building2 className="h-4 w-4 text-muted-foreground" />
                           </div>
                           <div>
-                            <div className="font-medium">{club.location?.name || "Unknown"}</div>
-                            <div className="text-sm text-muted-foreground">{club.location?.city || "Unknown city"}</div>
+                            <div className="font-medium">
+                              {club.location?.name || "Unknown"}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {club.location?.city || "Unknown city"}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -245,9 +209,7 @@ export default function AdminClubs() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant(status)}>
-                          {status}
-                        </Badge>
+                        <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
                         {club.subscription_tier && (
                           <span className="ml-2 text-xs text-muted-foreground">
                             ({club.subscription_tier})
