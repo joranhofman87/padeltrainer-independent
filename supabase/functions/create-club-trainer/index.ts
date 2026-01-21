@@ -141,13 +141,21 @@ Deno.serve(async (req) => {
     }
 
     // Link trainer to the club's location
+    // First check if they already have locations - if not, make this one primary
+    const { data: existingLocations } = await supabaseAdmin
+      .from("trainer_locations")
+      .select("id")
+      .eq("trainer_id", trainerId);
+
+    const isPrimary = !existingLocations || existingLocations.length === 0;
+
     const { error: locationError } = await supabaseAdmin
       .from("trainer_locations")
       .upsert({
         trainer_id: trainerId,
         location_id: locationId,
-        relationship_type: "club",
-        is_primary: false,
+        relationship_type: "club_trainer",
+        is_primary: isPrimary,
       }, {
         onConflict: "trainer_id,location_id",
       });
