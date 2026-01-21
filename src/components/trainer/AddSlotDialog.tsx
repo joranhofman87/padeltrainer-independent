@@ -58,6 +58,7 @@ interface BulkSlotConfig {
   cyclusName: string;
   addPlayers: boolean;
   selectedPlayers: string[];
+  courtType: 'indoor' | 'outdoor' | null;
 }
 
 interface AddSlotDialogProps {
@@ -90,6 +91,7 @@ export function AddSlotDialog({
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
   const [slotLessonId, setSlotLessonId] = useState<string | null>(null);
+  const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleAddSingleSlot = async () => {
@@ -106,6 +108,7 @@ export function AddSlotDialog({
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         lesson_id: slotLessonId,
+        court_type: slotCourtType,
       });
 
       if (error) throw error;
@@ -225,6 +228,24 @@ export function AddSlotDialog({
             </Select>
           </div>
 
+          {/* Court Type */}
+          <div className="space-y-2">
+            <Label>{t("calendar.courtType", "Court Type")}</Label>
+            <Select
+              value={slotCourtType || "any"}
+              onValueChange={(v) => setSlotCourtType(v === "any" ? null : v as 'indoor' | 'outdoor')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{t("calendar.anyCourtType", "Any")}</SelectItem>
+                <SelectItem value="indoor">{t("calendar.indoor", "Indoor")}</SelectItem>
+                <SelectItem value="outdoor">{t("calendar.outdoor", "Outdoor")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button
             onClick={handleAddSingleSlot}
             disabled={isSaving}
@@ -323,6 +344,7 @@ export function BulkCreateSheet({
           cyclusName: generateCyclusName(newStartDate, newStartTime, null),
           addPlayers: false,
           selectedPlayers: [],
+          courtType: null,
         },
       ]);
     }
@@ -342,6 +364,7 @@ export function BulkCreateSheet({
         cyclusName: generateCyclusName(newStartDate, newStartTime, null),
         addPlayers: false,
         selectedPlayers: [],
+        courtType: null,
       },
     ]);
   };
@@ -385,6 +408,7 @@ export function BulkCreateSheet({
         lesson_id: string | null;
         cyclus_id: string | null;
         cyclus_name: string | null;
+        court_type: 'indoor' | 'outdoor' | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -420,6 +444,7 @@ export function BulkCreateSheet({
             lesson_id: config.lessonId,
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
+            court_type: config.courtType,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -719,6 +744,26 @@ export function BulkCreateSheet({
                             {lesson.title}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Court Type */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("calendar.courtType", "Court Type")}</Label>
+                    <Select
+                      value={slot.courtType || "any"}
+                      onValueChange={(v) =>
+                        updateBulkSlot(index, { courtType: v === "any" ? null : v as 'indoor' | 'outdoor' })
+                      }
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">{t("calendar.anyCourtType", "Any")}</SelectItem>
+                        <SelectItem value="indoor">{t("calendar.indoor", "Indoor")}</SelectItem>
+                        <SelectItem value="outdoor">{t("calendar.outdoor", "Outdoor")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

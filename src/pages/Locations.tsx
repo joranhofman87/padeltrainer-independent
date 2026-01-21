@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2, Check, ChevronsUpDown } from 'lucide-react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,6 +38,7 @@ export default function Locations() {
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [trainersAvailable, setTrainersAvailable] = useState(false);
+  const [indoorCourtsOnly, setIndoorCourtsOnly] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
 
@@ -84,10 +85,11 @@ export default function Locations() {
       const matchesCity = selectedCity === 'all' || location.city === selectedCity;
       const matchesCountry = selectedCountry === 'all' || location.country === selectedCountry;
       const matchesTrainers = !trainersAvailable || (trainerCounts[location.id] || 0) > 0;
+      const matchesIndoor = !indoorCourtsOnly || (location.indoor_courts != null && location.indoor_courts > 0);
 
-      return matchesSearch && matchesCity && matchesCountry && matchesTrainers;
+      return matchesSearch && matchesCity && matchesCountry && matchesTrainers && matchesIndoor;
     });
-  }, [locations, searchQuery, selectedCity, selectedCountry, trainersAvailable, trainerCounts]);
+  }, [locations, searchQuery, selectedCity, selectedCountry, trainersAvailable, indoorCourtsOnly, trainerCounts]);
 
   const totalTrainers = Object.values(trainerCounts).reduce((a, b) => a + b, 0);
 
@@ -290,6 +292,21 @@ export default function Locations() {
                     {t('locations.trainersAvailableFilter')}
                   </Label>
                 </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="indoor-courts"
+                    checked={indoorCourtsOnly}
+                    onCheckedChange={(checked) => setIndoorCourtsOnly(checked === true)}
+                  />
+                  <Label 
+                    htmlFor="indoor-courts" 
+                    className="text-sm font-medium cursor-pointer flex items-center gap-1"
+                  >
+                    <Home className="h-3.5 w-3.5" />
+                    {t('locations.indoorCourtsFilter')}
+                  </Label>
+                </div>
               </div>
             </div>
           </div>
@@ -313,6 +330,7 @@ export default function Locations() {
                 setSelectedCity('all');
                 setSelectedCountry('all');
                 setTrainersAvailable(false);
+                setIndoorCourtsOnly(false);
               }}>
                 {t('clearFilters')}
               </Button>

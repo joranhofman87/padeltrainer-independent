@@ -108,6 +108,9 @@
     "verified": "Verified Club",
     "court": "court",
     "courts": "courts",
+    "indoorCourts": "indoor",
+    "outdoorCourts": "outdoor",
+    "indoorCourtsFilter": "Indoor courts available",
     "aboutClub": "About this Club",
     "quickStats": "Quick Stats",
     "memberSince": "Member since",
@@ -118,7 +121,11 @@
     "searchCountry": "Search country...",
     "searchCity": "Search city...",
     "noCountryFound": "No country found.",
-    "noCityFound": "No city found."
+    "noCityFound": "No city found.",
+    "courtType": "Court Type",
+    "indoor": "Indoor",
+    "outdoor": "Outdoor",
+    "anyCourtType": "Any"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",

@@ -26,6 +26,7 @@ interface SlotWithDetails {
   lesson_id: string | null;
   cyclus_id?: string | null;
   cyclus_name?: string | null;
+  court_type?: 'indoor' | 'outdoor' | null;
   bookedPlayers?: BookedPlayerInfo[];
   averageRating?: number | null;
   ratingSystem?: string;
@@ -162,6 +163,7 @@ export default function BookLesson() {
         lesson_id,
         cyclus_id,
         cyclus_name,
+        court_type,
         lessons(id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating)
       `)
       .eq('trainer_id', trainerData.id)
@@ -833,6 +835,12 @@ export default function BookLesson() {
                                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                   <MapPin className="h-3 w-3" />
                                   {slot.lessons.location}
+                                </p>
+                              )}
+                              {slot.court_type && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                  {slot.court_type === 'indoor' ? '🏠' : '☀️'}{' '}
+                                  {slot.court_type === 'indoor' ? 'Indoor' : 'Outdoor'}
                                 </p>
                               )}
                               <div className="flex items-center gap-2 mt-1">
