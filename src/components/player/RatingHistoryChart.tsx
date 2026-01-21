@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 
 interface RatingHistoryEntry {
@@ -20,7 +19,6 @@ interface RatingHistoryChartProps {
   profileId: string;
   currentRating: number | null;
   ratingSystem: string;
-  onRefresh?: () => void;
 }
 
 const chartConfig = {
@@ -33,8 +31,7 @@ const chartConfig = {
 export function RatingHistoryChart({ 
   profileId, 
   currentRating, 
-  ratingSystem,
-  onRefresh 
+  ratingSystem 
 }: RatingHistoryChartProps) {
   const { t } = useTranslation('player');
   const [history, setHistory] = useState<RatingHistoryEntry[]>([]);
@@ -79,7 +76,7 @@ export function RatingHistoryChart({
     date: format(new Date(entry.scraped_at), 'MMM d'),
     fullDate: format(new Date(entry.scraped_at), 'MMM d, yyyy'),
     rating: entry.rating,
-    source: entry.source === 'knltb_scrape' ? 'KNLTB' : 'Manual',
+    source: 'Manual',
   }));
 
   if (loading) {
@@ -109,12 +106,6 @@ export function RatingHistoryChart({
             <p className="text-sm mt-1">
               {t('ratingHistory.noDataDescription', 'Your rating history will appear here as it updates')}
             </p>
-            {onRefresh && (
-              <Button variant="outline" size="sm" className="mt-4" onClick={onRefresh}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                {t('ratingHistory.refresh', 'Sync Rating')}
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -124,28 +115,19 @@ export function RatingHistoryChart({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              {hasImproved ? (
-                <TrendingUp className="h-5 w-5 text-green-500" />
-              ) : hasDeclined ? (
-                <TrendingDown className="h-5 w-5 text-red-500" />
-              ) : (
-                <Minus className="h-5 w-5 text-muted-foreground" />
-              )}
-              {t('ratingHistory.title', 'Rating Progress')}
-            </CardTitle>
-            <CardDescription>
-              {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
-            </CardDescription>
-          </div>
-          {onRefresh && (
-            <Button variant="ghost" size="sm" onClick={onRefresh}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+        <CardTitle className="text-lg flex items-center gap-2">
+          {hasImproved ? (
+            <TrendingUp className="h-5 w-5 text-green-500" />
+          ) : hasDeclined ? (
+            <TrendingDown className="h-5 w-5 text-red-500" />
+          ) : (
+            <Minus className="h-5 w-5 text-muted-foreground" />
           )}
-        </div>
+          {t('ratingHistory.title', 'Rating Progress')}
+        </CardTitle>
+        <CardDescription>
+          {t('ratingHistory.trackingDescription', 'Tracking your padel improvement over time')}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {/* Stats row */}

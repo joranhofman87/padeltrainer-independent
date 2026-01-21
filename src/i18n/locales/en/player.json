@@ -9,16 +9,12 @@
   "ratingHistory": {
     "title": "Rating Progress",
     "noData": "No rating history yet",
-    "noDataDescription": "Your rating history will appear here as it updates",
-    "refresh": "Sync Rating",
+    "noDataDescription": "Your rating history will appear here as you update it",
     "trackingDescription": "Tracking your padel improvement over time",
     "started": "Started",
     "current": "Current",
     "improvement": "Improvement",
-    "knltbNote": "In KNLTB, a lower rating means better performance",
-    "syncing": "Syncing your KNLTB rating...",
-    "syncSuccess": "Rating synced successfully!",
-    "syncError": "Failed to sync rating"
+    "knltbNote": "In KNLTB, a lower rating means better performance"
   },
   "dashboard": {
     "welcome": "Welcome back, {{name}}! 👋",

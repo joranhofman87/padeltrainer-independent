@@ -1,7 +1,5 @@
 project_id = "ppkbhdiiqdusdeatgdft"
 
-[functions.scrape-knltb-rating]
-verify_jwt = false
 
 [functions.create-checkout-session]
 verify_jwt = false
@@ -33,8 +31,6 @@ verify_jwt = false
 [functions.sync-calendar-event]
 verify_jwt = false
 
-[functions.sync-knltb-ratings]
-verify_jwt = false
 
 [functions.generate-invoice]
 verify_jwt = false
