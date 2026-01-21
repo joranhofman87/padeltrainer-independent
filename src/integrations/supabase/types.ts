@@ -1599,6 +1599,10 @@ export type Database = {
       }
     }
     Functions: {
+      club_has_managers: {
+        Args: { _club_profile_id: string }
+        Returns: boolean
+      }
       generate_location_slug: {
         Args: { city: string; name: string }
         Returns: string
@@ -1618,6 +1622,10 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_any_club_manager: { Args: { _user_id: string }; Returns: boolean }
       is_club_manager: {
+        Args: { _club_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_club_owner: {
         Args: { _club_profile_id: string; _user_id: string }
         Returns: boolean
       }
