@@ -96,11 +96,16 @@ export default function ClubDashboard() {
           <Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">{t('dashboard.title')}</h1>
           <p className="text-muted-foreground mb-6">
-            You haven't claimed any clubs yet. Visit a location page to claim your club.
+            {t('dashboard.noClubs', "You haven't claimed any clubs yet. Visit a location page to claim your club.")}
           </p>
-          <Button onClick={() => navigate('/locations')}>
-            Browse Locations
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button onClick={() => navigate('/onboarding/club')}>
+              {t('dashboard.claimClub', 'Claim a Club')}
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/locations')}>
+              {t('dashboard.browseLocations', 'Browse Locations')}
+            </Button>
+          </div>
         </div>
       </div>
     );

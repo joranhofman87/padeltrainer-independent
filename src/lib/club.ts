@@ -91,7 +91,10 @@ export async function claimClub(
 
   if (profileError) {
     console.error('Error creating club profile:', profileError);
-    return { clubProfile: null as any, error: profileError };
+    const errorMessage = profileError.code === '23505' 
+      ? 'This location has already been claimed'
+      : `Failed to create club claim: ${profileError.message}`;
+    return { clubProfile: null as any, error: new Error(errorMessage) };
   }
 
   // Then, add the user as the owner
@@ -107,7 +110,8 @@ export async function claimClub(
     console.error('Error creating club manager:', managerError);
     // Clean up the club profile if manager creation fails
     await supabase.from('club_profiles').delete().eq('id', clubProfile.id);
-    return { clubProfile: null as any, error: managerError };
+    const errorMessage = `Failed to assign ownership: ${managerError.message}. Please try again or contact support.`;
+    return { clubProfile: null as any, error: new Error(errorMessage) };
   }
 
   return { clubProfile, error: null };

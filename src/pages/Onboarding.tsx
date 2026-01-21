@@ -22,12 +22,19 @@ export default function Onboarding() {
   const { t } = useTranslation('auth');
 
   // Determine the role from URL or sessionStorage
+  const storedPendingRole = sessionStorage.getItem('pendingRole');
   const pendingRole = (urlRole === 'player' || urlRole === 'trainer') 
     ? urlRole 
-    : (sessionStorage.getItem('pendingRole') as UserRole | null);
+    : (storedPendingRole as UserRole | null);
 
   useEffect(() => {
     if (!loading) {
+      // If user signed up as club, redirect to club onboarding
+      if (storedPendingRole === 'club') {
+        navigate('/onboarding/club');
+        return;
+      }
+      
       if (!user) {
         // Not logged in - redirect to appropriate signup
         navigate(pendingRole === 'trainer' ? '/signup/trainer' : '/signup/player');
@@ -36,7 +43,7 @@ export default function Onboarding() {
         navigate(role === 'trainer' ? '/trainer' : '/player');
       }
     }
-  }, [user, role, loading, navigate, pendingRole]);
+  }, [user, role, loading, navigate, pendingRole, storedPendingRole]);
 
 
   const handleComplete = async (e: React.FormEvent) => {
