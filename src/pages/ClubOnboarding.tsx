@@ -14,6 +14,7 @@ import { claimClub, isLocationClaimed } from '@/lib/club';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function ClubOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +35,27 @@ export default function ClubOnboarding() {
       navigate('/signup/club');
     }
   }, [user, loading, navigate]);
+
+  // Assign club role immediately when user lands on the page
+  useEffect(() => {
+    const assignClubRole = async () => {
+      if (user && sessionStorage.getItem('pendingRole') === 'club') {
+        try {
+          const { error } = await supabase
+            .from('user_roles')
+            .insert({ user_id: user.id, role: 'club' });
+          
+          // Clear pending role if successful or if it's a duplicate (23505 = unique violation)
+          if (!error || error.code === '23505') {
+            sessionStorage.removeItem('pendingRole');
+          }
+        } catch (err) {
+          console.error('Error assigning club role:', err);
+        }
+      }
+    };
+    assignClubRole();
+  }, [user]);
 
   useEffect(() => {
     const fetchLocations = async () => {
