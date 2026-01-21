@@ -113,6 +113,27 @@
     "trainerRequiredDescription": "Je hebt een trainer account nodig om deze uitnodiging te accepteren.",
     "becomeTrainer": "Word Trainer"
   },
+  "createTrainer": {
+    "button": "Trainer Aanmaken",
+    "title": "Trainer Account Aanmaken",
+    "description": "Maak een nieuw trainer account aan of koppel een bestaande gebruiker aan je club.",
+    "fullName": "Volledige Naam",
+    "fullNamePlaceholder": "Jan Jansen",
+    "email": "E-mail",
+    "emailPlaceholder": "trainer@voorbeeld.nl",
+    "phone": "Telefoon (optioneel)",
+    "phonePlaceholder": "+31 6 12345678",
+    "create": "Trainer Aanmaken",
+    "success": "Trainer Aangemaakt",
+    "newUserCreated": "Er is een nieuw trainer account aangemaakt.",
+    "existingUserLinked": "De trainer is gekoppeld aan je club.",
+    "error": "Fout",
+    "successTitle": "Trainer Aangemaakt!",
+    "successNewUser": "Het trainer account is aangemaakt. Deel de inloggegevens hieronder.",
+    "successExistingUser": "De bestaande gebruiker is als trainer gekoppeld aan je club.",
+    "credentials": "Inloggegevens",
+    "shareNote": "Deel deze gegevens veilig met de trainer. Ze moeten hun wachtwoord wijzigen na eerste login."
+  },
   "players": {
     "title": "Clubspelers",
     "description": "Spelers geregistreerd bij je club.",

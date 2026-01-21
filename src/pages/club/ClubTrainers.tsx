@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, getClubTrainers } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
 import { ClubNavigation } from '@/components/club/ClubNavigation';
+import { CreateClubTrainerDialog } from '@/components/club/CreateClubTrainerDialog';
 
 interface TrainerWithProfile {
   id: string;
@@ -37,6 +38,7 @@ export default function ClubTrainers() {
   const { user, loading: authLoading } = useAuth();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clubData, setClubData] = useState<{ id: string; locationId: string } | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -44,40 +46,43 @@ export default function ClubTrainers() {
     }
   }, [user, authLoading, navigate]);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!user) return;
+  const fetchData = async () => {
+    if (!user) return;
 
-      try {
-        const userClubs = await getUserClubProfiles(user.id);
-        if (userClubs.length === 0) {
-          navigate('/club');
-          return;
-        }
-
-        const clubId = userClubs[0].id;
-        const trainersData = await getClubTrainers(clubId);
-
-        // Fetch profiles for trainers
-        const userIds = trainersData.map((t: any) => t.trainer_profiles.user_id);
-        const { data: profiles } = await supabase
-          .from('profiles_public')
-          .select('user_id, full_name, avatar_url')
-          .in('user_id', userIds);
-
-        const trainersWithProfiles = trainersData.map((trainer: any) => ({
-          ...trainer,
-          profile: profiles?.find(p => p.user_id === trainer.trainer_profiles.user_id),
-        }));
-
-        setTrainers(trainersWithProfiles);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+    try {
+      const userClubs = await getUserClubProfiles(user.id);
+      if (userClubs.length === 0) {
+        navigate('/club');
+        return;
       }
-    }
 
+      const clubId = userClubs[0].id;
+      const locationId = userClubs[0].location_id;
+      setClubData({ id: clubId, locationId });
+      
+      const trainersData = await getClubTrainers(clubId);
+
+      // Fetch profiles for trainers
+      const userIds = trainersData.map((t: any) => t.trainer_profiles.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles_public')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      const trainersWithProfiles = trainersData.map((trainer: any) => ({
+        ...trainer,
+        profile: profiles?.find(p => p.user_id === trainer.trainer_profiles.user_id),
+      }));
+
+      setTrainers(trainersWithProfiles);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, [user, navigate]);
 
@@ -112,7 +117,16 @@ export default function ClubTrainers() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <p className="text-muted-foreground mb-6">{t('trainers.description')}</p>
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-muted-foreground">{t('trainers.description')}</p>
+          {clubData && (
+            <CreateClubTrainerDialog
+              clubProfileId={clubData.id}
+              locationId={clubData.locationId}
+              onTrainerCreated={fetchData}
+            />
+          )}
+        </div>
 
         {trainers.length === 0 ? (
           <Card>
