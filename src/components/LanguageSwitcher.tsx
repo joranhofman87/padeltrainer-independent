@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -7,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Globe } from 'lucide-react';
+import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -15,8 +17,26 @@ const languages = [
 
 export function LanguageSwitcher() {
   const { i18n } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { lang } = useParams<{ lang: string }>();
 
-  const currentLanguage = languages.find(lang => lang.code === i18n.language) || languages[0];
+  const currentLanguage = languages.find(l => l.code === i18n.language) || languages[0];
+
+  const handleLanguageChange = (newLang: string) => {
+    // Check if we're on a language-prefixed route
+    const isLanguagePrefixedRoute = lang && SUPPORTED_LANGUAGES.includes(lang);
+    
+    if (isLanguagePrefixedRoute) {
+      // Replace the language prefix in the URL
+      const pathWithoutLang = location.pathname.replace(/^\/(en|nl)/, '');
+      const newPath = `/${newLang}${pathWithoutLang || ''}${location.search}`;
+      navigate(newPath);
+    } else {
+      // For app routes, just change the i18n language (uses localStorage)
+      i18n.changeLanguage(newLang);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -30,7 +50,7 @@ export function LanguageSwitcher() {
         {languages.map((language) => (
           <DropdownMenuItem
             key={language.code}
-            onClick={() => i18n.changeLanguage(language.code)}
+            onClick={() => handleLanguageChange(language.code)}
             className={i18n.language === language.code ? 'bg-accent' : ''}
           >
             <span className="mr-2">{language.flag}</span>

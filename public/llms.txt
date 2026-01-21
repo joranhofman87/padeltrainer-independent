@@ -1,89 +1,107 @@
 # PadelTrainer.ai
 
-> The platform connecting padel players with certified trainers in the Netherlands.
+> The marketplace connecting padel players with professional trainers in the Netherlands.
 
-## What is PadelTrainer.ai?
+## Overview
 
-PadelTrainer.ai is a marketplace that helps padel players find, book, and pay for lessons with professional trainers. Trainers can manage their availability, students, and payments all in one place.
+PadelTrainer.ai is a specialized platform for the growing padel community in the Netherlands. It serves three main user groups:
 
-## Who is it for?
+1. **Players** - Find and book lessons with certified padel trainers
+2. **Trainers** - Manage their availability, students, and payments
+3. **Clubs** - Manage their venue and connect with trainers
 
-- **Players**: Find trainers near you, view their profiles, specializations, ratings, and book lessons instantly
-- **Trainers**: Manage your schedule, accept bookings, create training cycles, and handle payments via Stripe or manual invoicing
-- **Clubs**: Claim your club profile, manage court information, and connect with trainers
+## Languages
+
+This platform is available in:
+- **English**: https://padeltrainer.ai/en/
+- **Dutch (Nederlands)**: https://padeltrainer.ai/nl/
 
 ## Key Features
 
 ### For Players
-- Browse verified trainers by location, price, and specialization
-- Book individual lessons or full training cycles
-- Follow trainers to get notified of new availability
-- Leave reviews and ratings
-- View lesson history and upcoming bookings
+- Search trainers by location, price, rating, and specialization
+- Book individual or group lessons
+- Track your padel rating (KNLTB, WPT, UTR integrated)
+- Follow favorite trainers and get notified of new availability
 
 ### For Trainers
-- Create and manage lesson types with custom pricing
-- Set up recurring training cycles (cyclus)
-- Accept or require approval for bookings
-- Manage guest players (non-registered)
-- Connect Stripe for automatic payments or use manual invoicing
-- Sync with Google Calendar
-- View analytics and earnings
+- Create and manage lesson types and pricing
+- Set availability and handle bookings
+- Accept payments via Stripe Connect
+- Generate invoices and track earnings
 
 ### For Clubs
-- Claim your club profile from our directory
+- Claim and manage your club's profile
 - Display club information, courts, and amenities
 - Invite trainers to be associated with your club
 
 ## Important Pages
 
+### Homepage
+- English: https://padeltrainer.ai/en/
+- Dutch: https://padeltrainer.ai/nl/
+
 ### Find a Trainer
-- All Trainers: https://padeltrainer.ai/trainers
-- Pricing & Plans: https://padeltrainer.ai/pricing
+- All Trainers (EN): https://padeltrainer.ai/en/trainers
+- All Trainers (NL): https://padeltrainer.ai/nl/trainers
+- Pricing (EN): https://padeltrainer.ai/en/pricing
+- Pricing (NL): https://padeltrainer.ai/nl/pricing
 
 ### Popular Cities
-- Amsterdam: https://padeltrainer.ai/trainers/amsterdam
-- Rotterdam: https://padeltrainer.ai/trainers/rotterdam
-- Utrecht: https://padeltrainer.ai/trainers/utrecht
-- Den Haag: https://padeltrainer.ai/trainers/den-haag
-- Eindhoven: https://padeltrainer.ai/trainers/eindhoven
+- Amsterdam (EN): https://padeltrainer.ai/en/trainers/amsterdam
+- Amsterdam (NL): https://padeltrainer.ai/nl/trainers/amsterdam
+- Rotterdam (EN): https://padeltrainer.ai/en/trainers/rotterdam
+- Rotterdam (NL): https://padeltrainer.ai/nl/trainers/rotterdam
+- Utrecht (EN): https://padeltrainer.ai/en/trainers/utrecht
+- Utrecht (NL): https://padeltrainer.ai/nl/trainers/utrecht
+- Den Haag (EN): https://padeltrainer.ai/en/trainers/den-haag
+- Den Haag (NL): https://padeltrainer.ai/nl/trainers/den-haag
+- Eindhoven (EN): https://padeltrainer.ai/en/trainers/eindhoven
+- Eindhoven (NL): https://padeltrainer.ai/nl/trainers/eindhoven
 
 ### Browse Locations
-- All Locations: https://padeltrainer.ai/locations
+- All Locations (EN): https://padeltrainer.ai/en/locations
+- All Locations (NL): https://padeltrainer.ai/nl/locations
 
 ### Information
-- About Us: https://padeltrainer.ai/about
-- Blog: https://padeltrainer.ai/blog
-- Partner With Us: https://padeltrainer.ai/partner
-- Privacy Policy: https://padeltrainer.ai/privacy
-- Terms of Service: https://padeltrainer.ai/terms
+- About Us (EN): https://padeltrainer.ai/en/about
+- About Us (NL): https://padeltrainer.ai/nl/about
+- Blog (EN): https://padeltrainer.ai/en/blog
+- Blog (NL): https://padeltrainer.ai/nl/blog
+- Partner With Us (EN): https://padeltrainer.ai/en/partner
+- Partner With Us (NL): https://padeltrainer.ai/nl/partner
+- Privacy Policy (EN): https://padeltrainer.ai/en/privacy
+- Privacy Policy (NL): https://padeltrainer.ai/nl/privacy
+- Terms of Service (EN): https://padeltrainer.ai/en/terms
+- Terms of Service (NL): https://padeltrainer.ai/nl/terms
 
 ## URL Structure
 
-- `/` - Homepage with platform overview
-- `/trainers` - Browse all trainers with filters
-- `/trainers/:city` - Trainers in a specific city (e.g., /trainers/amsterdam)
-- `/trainer/:id` - Individual trainer profile with booking
-- `/locations` - Browse all padel clubs/locations
-- `/locations/:slug` - Individual club page
-- `/pricing` - Subscription plans for trainers
-- `/about` - About the platform
-- `/blog` - Padel tips and news
-- `/blog/:slug` - Individual blog post
-- `/partner` - Partnership inquiry form
+- `/{lang}/` - Homepage with platform overview (lang: en or nl)
+- `/{lang}/trainers` - Browse all trainers with filters
+- `/{lang}/trainers/:city` - Trainers in a specific city (e.g., /en/trainers/amsterdam)
+- `/{lang}/trainer/:id` - Individual trainer profile with booking
+- `/{lang}/locations` - Browse all padel clubs/locations
+- `/{lang}/locations/:slug` - Individual club page
+- `/{lang}/pricing` - Subscription plans for trainers
+- `/{lang}/about` - About the platform
+- `/{lang}/blog` - Padel tips and news
+- `/{lang}/blog/:slug` - Individual blog post
+- `/{lang}/partner` - Partnership inquiry form
 
 ## Technology
 
-Built with React, TypeScript, and Tailwind CSS. Backend powered by Supabase (PostgreSQL, Auth, Edge Functions, Storage). Payments via Stripe Connect.
+Built with React, TypeScript, and Tailwind CSS. Backend powered by Supabase. Payments processed through Stripe Connect.
 
-## Languages
+## Supported Languages
 
-Available in English (en) and Dutch (nl).
+- English (en)
+- Dutch (nl)
 
 ## Contact
 
+- Email: hello@padeltrainer.ai
 - Website: https://padeltrainer.ai
-- Partner inquiries: info@padeltrainer.ai
 
 ## API
 
@@ -91,4 +109,4 @@ No public API is currently available. Trainer and location data is accessible th
 
 ## Sitemap
 
-For a complete list of all pages, see: https://padeltrainer.ai/sitemap.xml
+For a complete list of all pages in both languages, see: https://padeltrainer.ai/sitemap.xml

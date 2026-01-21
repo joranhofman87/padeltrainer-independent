@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
+const LANGUAGES = ['en', 'nl'];
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -19,19 +20,18 @@ Deno.serve(async (req) => {
 
     // Static pages with their priorities and change frequencies
     const staticPages = [
-      { url: '/', priority: '1.0', changefreq: 'daily' },
-      { url: '/about', priority: '0.8', changefreq: 'monthly' },
-      { url: '/pricing', priority: '0.9', changefreq: 'weekly' },
-      { url: '/trainers', priority: '0.9', changefreq: 'daily' },
-      { url: '/locations', priority: '0.8', changefreq: 'daily' },
-      { url: '/blog', priority: '0.7', changefreq: 'weekly' },
-      { url: '/partner', priority: '0.6', changefreq: 'monthly' },
-      { url: '/terms', priority: '0.3', changefreq: 'yearly' },
-      { url: '/privacy', priority: '0.3', changefreq: 'yearly' },
-      { url: '/auth', priority: '0.5', changefreq: 'monthly' },
+      { path: '', priority: '1.0', changefreq: 'daily' },
+      { path: '/about', priority: '0.8', changefreq: 'monthly' },
+      { path: '/pricing', priority: '0.9', changefreq: 'weekly' },
+      { path: '/trainers', priority: '0.9', changefreq: 'daily' },
+      { path: '/locations', priority: '0.8', changefreq: 'daily' },
+      { path: '/blog', priority: '0.7', changefreq: 'weekly' },
+      { path: '/partner', priority: '0.6', changefreq: 'monthly' },
+      { path: '/terms', priority: '0.3', changefreq: 'yearly' },
+      { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
     ];
 
-    // Fetch all trainers with public profiles (include all, not just verified)
+    // Fetch all trainers with public profiles
     const { data: trainers, error: trainersError } = await supabase
       .from('trainer_profiles')
       .select('user_id, updated_at');
@@ -64,59 +64,60 @@ Deno.serve(async (req) => {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Build sitemap XML
+    // Build sitemap XML with xhtml namespace for hreflang
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n';
 
-    // Add static pages
+    // Helper function to generate URL entry with hreflang links
+    const generateUrlEntry = (path: string, lastmod: string, changefreq: string, priority: string) => {
+      let entry = '';
+      for (const lang of LANGUAGES) {
+        const fullUrl = `${SITE_URL}/${lang}${path}`;
+        entry += '  <url>\n';
+        entry += `    <loc>${fullUrl}</loc>\n`;
+        entry += `    <lastmod>${lastmod}</lastmod>\n`;
+        entry += `    <changefreq>${changefreq}</changefreq>\n`;
+        entry += `    <priority>${priority}</priority>\n`;
+        // Add hreflang links for all languages
+        for (const altLang of LANGUAGES) {
+          entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${path}"/>\n`;
+        }
+        // Add x-default pointing to Dutch
+        entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${path}"/>\n`;
+        entry += '  </url>\n';
+      }
+      return entry;
+    };
+
+    // Add static pages (for each language)
     for (const page of staticPages) {
-      xml += '  <url>\n';
-      xml += `    <loc>${SITE_URL}${page.url}</loc>\n`;
-      xml += `    <lastmod>${today}</lastmod>\n`;
-      xml += `    <changefreq>${page.changefreq}</changefreq>\n`;
-      xml += `    <priority>${page.priority}</priority>\n`;
-      xml += '  </url>\n';
+      xml += generateUrlEntry(page.path, today, page.changefreq, page.priority);
     }
 
-    // Add trainer profile pages
+    // Add trainer profile pages (for each language)
     if (trainers) {
       for (const trainer of trainers) {
         const lastmod = trainer.updated_at 
           ? new Date(trainer.updated_at).toISOString().split('T')[0] 
           : today;
-        xml += '  <url>\n';
-        xml += `    <loc>${SITE_URL}/trainer/${trainer.user_id}</loc>\n`;
-        xml += `    <lastmod>${lastmod}</lastmod>\n`;
-        xml += `    <changefreq>weekly</changefreq>\n`;
-        xml += `    <priority>0.7</priority>\n`;
-        xml += '  </url>\n';
+        xml += generateUrlEntry(`/trainer/${trainer.user_id}`, lastmod, 'weekly', '0.7');
       }
     }
 
-    // Add location pages
+    // Add location pages (for each language)
     if (locations) {
       for (const location of locations) {
         const lastmod = location.updated_at 
           ? new Date(location.updated_at).toISOString().split('T')[0] 
           : today;
-        xml += '  <url>\n';
-        xml += `    <loc>${SITE_URL}/locations/${location.slug}</loc>\n`;
-        xml += `    <lastmod>${lastmod}</lastmod>\n`;
-        xml += `    <changefreq>weekly</changefreq>\n`;
-        xml += `    <priority>0.6</priority>\n`;
-        xml += '  </url>\n';
+        xml += generateUrlEntry(`/locations/${location.slug}`, lastmod, 'weekly', '0.6');
       }
     }
 
-    // Add city landing pages for SEO
+    // Add city landing pages for SEO (for each language)
     for (const cityName of uniqueCities) {
       const citySlug = cityName.toLowerCase().replace(/\s+/g, '-');
-      xml += '  <url>\n';
-      xml += `    <loc>${SITE_URL}/trainers/${citySlug}</loc>\n`;
-      xml += `    <lastmod>${today}</lastmod>\n`;
-      xml += `    <changefreq>weekly</changefreq>\n`;
-      xml += `    <priority>0.8</priority>\n`;
-      xml += '  </url>\n';
+      xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
     }
 
     xml += '</urlset>';
