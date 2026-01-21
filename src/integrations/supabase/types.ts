@@ -49,6 +49,7 @@ export type Database = {
       }
       availability_slots: {
         Row: {
+          court_type: string | null
           created_at: string
           cyclus_id: string | null
           cyclus_name: string | null
@@ -62,6 +63,7 @@ export type Database = {
           trainer_id: string
         }
         Insert: {
+          court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
           cyclus_name?: string | null
@@ -75,6 +77,7 @@ export type Database = {
           trainer_id: string
         }
         Update: {
+          court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
           cyclus_name?: string | null
@@ -106,6 +109,7 @@ export type Database = {
       }
       bookings: {
         Row: {
+          court_type: string | null
           created_at: string
           guest_player_id: string | null
           id: string
@@ -122,6 +126,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          court_type?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -138,6 +143,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          court_type?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -767,9 +773,11 @@ export type Database = {
           country: string
           created_at: string
           id: string
+          indoor_courts: number | null
           is_active: boolean
           name: string
           number_of_courts: number | null
+          outdoor_courts: number | null
           postal_code: string | null
           slug: string
           street_address: string | null
@@ -781,9 +789,11 @@ export type Database = {
           country?: string
           created_at?: string
           id?: string
+          indoor_courts?: number | null
           is_active?: boolean
           name: string
           number_of_courts?: number | null
+          outdoor_courts?: number | null
           postal_code?: string | null
           slug: string
           street_address?: string | null
@@ -795,9 +805,11 @@ export type Database = {
           country?: string
           created_at?: string
           id?: string
+          indoor_courts?: number | null
           is_active?: boolean
           name?: string
           number_of_courts?: number | null
+          outdoor_courts?: number | null
           postal_code?: string | null
           slug?: string
           street_address?: string | null

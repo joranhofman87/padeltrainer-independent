@@ -11,6 +11,8 @@ export interface Location {
   slug: string;
   is_active: boolean;
   number_of_courts: number | null;
+  indoor_courts: number | null;
+  outdoor_courts: number | null;
   created_at: string;
   updated_at: string;
 }

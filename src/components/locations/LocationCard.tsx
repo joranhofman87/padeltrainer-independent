@@ -1,4 +1,4 @@
-import { MapPin, ExternalLink, Users, CheckCircle, LayoutGrid } from 'lucide-react';
+import { MapPin, ExternalLink, Users, CheckCircle, Home, Sun } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,11 +65,17 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, on
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          {location.number_of_courts != null && location.number_of_courts > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {(location.indoor_courts != null && location.indoor_courts > 0) && (
             <Badge variant="outline" className="flex items-center gap-1">
-              <LayoutGrid className="h-3 w-3" />
-              {location.number_of_courts} {location.number_of_courts === 1 ? t('locations.court') : t('locations.courts')}
+              <Home className="h-3 w-3" />
+              {location.indoor_courts} {t('locations.indoorCourts')}
+            </Badge>
+          )}
+          {(location.outdoor_courts != null && location.outdoor_courts > 0) && (
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Sun className="h-3 w-3" />
+              {location.outdoor_courts} {t('locations.outdoorCourts')}
             </Badge>
           )}
           {trainerCount > 0 && (

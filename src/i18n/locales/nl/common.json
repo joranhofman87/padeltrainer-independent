@@ -108,6 +108,9 @@
     "verified": "Geverifieerde Club",
     "court": "baan",
     "courts": "banen",
+    "indoorCourts": "overdekt",
+    "outdoorCourts": "buiten",
+    "indoorCourtsFilter": "Overdekte banen beschikbaar",
     "aboutClub": "Over deze club",
     "quickStats": "Statistieken",
     "memberSince": "Lid sinds",
@@ -118,7 +121,11 @@
     "searchCountry": "Zoek land...",
     "searchCity": "Zoek stad...",
     "noCountryFound": "Geen land gevonden.",
-    "noCityFound": "Geen stad gevonden."
+    "noCityFound": "Geen stad gevonden.",
+    "courtType": "Baantype",
+    "indoor": "Overdekt",
+    "outdoor": "Buiten",
+    "anyCourtType": "Alle"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",

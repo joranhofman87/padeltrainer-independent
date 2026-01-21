@@ -76,6 +76,8 @@ export default function AdminLocations() {
     slug: '',
     is_active: true,
     number_of_courts: null as number | null,
+    indoor_courts: 0,
+    outdoor_courts: 0,
   });
   const [saving, setSaving] = useState(false);
 
@@ -156,6 +158,8 @@ export default function AdminLocations() {
       slug: '',
       is_active: true,
       number_of_courts: null,
+      indoor_courts: 0,
+      outdoor_courts: 0,
     });
     setDialogOpen(true);
   };
@@ -172,6 +176,8 @@ export default function AdminLocations() {
       slug: location.slug,
       is_active: location.is_active,
       number_of_courts: location.number_of_courts,
+      indoor_courts: location.indoor_courts ?? 0,
+      outdoor_courts: location.outdoor_courts ?? 0,
     });
     setDialogOpen(true);
   };
@@ -196,6 +202,8 @@ export default function AdminLocations() {
         postal_code: formData.postal_code || null,
         website_url: formData.website_url || null,
         number_of_courts: formData.number_of_courts ?? null,
+        indoor_courts: formData.indoor_courts ?? 0,
+        outdoor_courts: formData.outdoor_courts ?? 0,
       };
 
       if (editingLocation) {
@@ -362,6 +370,30 @@ export default function AdminLocations() {
                     placeholder="Auto-generated if empty"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="indoor_courts">Indoor Courts</Label>
+                    <Input
+                      id="indoor_courts"
+                      type="number"
+                      min="0"
+                      value={formData.indoor_courts}
+                      onChange={e => setFormData(prev => ({ ...prev, indoor_courts: parseInt(e.target.value) || 0 }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="outdoor_courts">Outdoor Courts</Label>
+                    <Input
+                      id="outdoor_courts"
+                      type="number"
+                      min="0"
+                      value={formData.outdoor_courts}
+                      onChange={e => setFormData(prev => ({ ...prev, outdoor_courts: parseInt(e.target.value) || 0 }))}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -417,7 +449,7 @@ export default function AdminLocations() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>City</TableHead>
-                <TableHead>Address</TableHead>
+                <TableHead className="text-center">Courts</TableHead>
                 <TableHead className="text-center">Trainers</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -426,7 +458,7 @@ export default function AdminLocations() {
             <TableBody>
               {filteredLocations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No locations found
                   </TableCell>
                 </TableRow>
@@ -440,8 +472,11 @@ export default function AdminLocations() {
                       </div>
                     </TableCell>
                     <TableCell>{location.city}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {location.street_address || '-'}
+                    <TableCell className="text-center text-sm">
+                      {(location.indoor_courts || 0) > 0 && <span title="Indoor">🏠{location.indoor_courts}</span>}
+                      {(location.indoor_courts || 0) > 0 && (location.outdoor_courts || 0) > 0 && ' / '}
+                      {(location.outdoor_courts || 0) > 0 && <span title="Outdoor">☀️{location.outdoor_courts}</span>}
+                      {!(location.indoor_courts || 0) && !(location.outdoor_courts || 0) && '-'}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
