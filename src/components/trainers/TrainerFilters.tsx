@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,14 +21,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SlidersHorizontal, X, Star } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { SlidersHorizontal, X, Star, MapPin, Check, ChevronsUpDown } from 'lucide-react';
+import { Location } from '@/lib/locations';
+import { cn } from '@/lib/utils';
 
 export interface TrainerFiltersState {
   priceRange: [number, number];
   minRating: number;
   specializations: string[];
   minExperience: number;
-  location: string;
+  locationId: string;
   verifiedOnly: boolean;
   minKnltbRating: number;
 }
@@ -36,7 +51,7 @@ export interface TrainerFiltersState {
 interface TrainerFiltersProps {
   filters: TrainerFiltersState;
   onChange: (filters: TrainerFiltersState) => void;
-  locations: string[];
+  locations: Location[];
   allSpecializations: string[];
   activeFilterCount: number;
 }
@@ -46,7 +61,7 @@ const DEFAULT_FILTERS: TrainerFiltersState = {
   minRating: 0,
   specializations: [],
   minExperience: 0,
-  location: 'all',
+  locationId: 'all',
   verifiedOnly: false,
   minKnltbRating: 0,
 };
@@ -60,6 +75,9 @@ export function TrainerFilters({
 }: TrainerFiltersProps) {
   const [open, setOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(filters);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<string>('all');
 
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
@@ -88,6 +106,44 @@ export function TrainerFilters({
     }));
   };
 
+  // Get unique countries
+  const availableCountries = useMemo(() => {
+    const countries = [...new Set(locations.map(l => l.country))].sort();
+    return countries;
+  }, [locations]);
+
+  // Get selected location details
+  const selectedLocation = useMemo(() => {
+    if (localFilters.locationId === 'all') return null;
+    return locations.find(l => l.id === localFilters.locationId);
+  }, [localFilters.locationId, locations]);
+
+  // Filter and group locations
+  const groupedLocations = useMemo(() => {
+    const filtered = locations.filter(loc => {
+      const matchesCountry = selectedCountry === 'all' || loc.country === selectedCountry;
+      const matchesSearch = !locationSearch || 
+        loc.name.toLowerCase().includes(locationSearch.toLowerCase()) ||
+        loc.city.toLowerCase().includes(locationSearch.toLowerCase());
+      return matchesCountry && matchesSearch;
+    });
+
+    // Group by city
+    const grouped = filtered.reduce((acc, loc) => {
+      if (!acc[loc.city]) acc[loc.city] = [];
+      acc[loc.city].push(loc);
+      return acc;
+    }, {} as Record<string, Location[]>);
+
+    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+  }, [locations, selectedCountry, locationSearch]);
+
+  const selectLocation = (locationId: string) => {
+    setLocalFilters(prev => ({ ...prev, locationId }));
+    setLocationOpen(false);
+    setLocationSearch('');
+  };
+
   return (
     <Sheet open={open} onOpenChange={handleOpen}>
       <SheetTrigger asChild>
@@ -110,23 +166,102 @@ export function TrainerFilters({
         </SheetHeader>
 
         <div className="space-y-6 py-6">
-          {/* Location */}
+          {/* Location - Club Picker */}
           <div className="space-y-2">
-            <Label>Location</Label>
-            <Select
-              value={localFilters.location}
-              onValueChange={(value) => setLocalFilters(prev => ({ ...prev, location: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map(loc => (
-                  <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Club Location</Label>
+            
+            {/* Country filter */}
+            {availableCountries.length > 1 && (
+              <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                <SelectTrigger className="w-full mb-2">
+                  <SelectValue placeholder="All Countries" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Countries</SelectItem>
+                  {availableCountries.map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Club picker */}
+            <Popover open={locationOpen} onOpenChange={setLocationOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={locationOpen}
+                  className="w-full justify-between"
+                >
+                  {selectedLocation ? (
+                    <span className="flex items-center gap-2 truncate">
+                      <MapPin className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{selectedLocation.name}</span>
+                      <span className="text-muted-foreground text-xs">({selectedLocation.city})</span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Select a club...</span>
+                  )}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput 
+                    placeholder="Search clubs..." 
+                    value={locationSearch}
+                    onValueChange={setLocationSearch}
+                  />
+                  <CommandList className="max-h-[300px]">
+                    <CommandEmpty>No clubs found.</CommandEmpty>
+                    <CommandItem
+                      value="all"
+                      onSelect={() => selectLocation('all')}
+                      className="font-medium"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          localFilters.locationId === 'all' ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      All Locations
+                    </CommandItem>
+                    {groupedLocations.map(([city, locs]) => (
+                      <CommandGroup key={city} heading={city}>
+                        {locs.map(loc => (
+                          <CommandItem
+                            key={loc.id}
+                            value={loc.id}
+                            onSelect={() => selectLocation(loc.id)}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                localFilters.locationId === loc.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="truncate">{loc.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {selectedLocation && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={() => setLocalFilters(prev => ({ ...prev, locationId: 'all' }))}
+              >
+                <X className="h-3 w-3 mr-1" /> Clear location
+              </Button>
+            )}
           </div>
 
           {/* Price Range */}
