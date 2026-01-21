@@ -35,16 +35,41 @@ PadelTrainer.ai is a marketplace that helps padel players find, book, and pay fo
 - Display club information, courts, and amenities
 - Invite trainers to be associated with your club
 
-## Main Pages
+## Important Pages
+
+### Find a Trainer
+- All Trainers: https://padeltrainer.ai/trainers
+- Pricing & Plans: https://padeltrainer.ai/pricing
+
+### Popular Cities
+- Amsterdam: https://padeltrainer.ai/trainers/amsterdam
+- Rotterdam: https://padeltrainer.ai/trainers/rotterdam
+- Utrecht: https://padeltrainer.ai/trainers/utrecht
+- Den Haag: https://padeltrainer.ai/trainers/den-haag
+- Eindhoven: https://padeltrainer.ai/trainers/eindhoven
+
+### Browse Locations
+- All Locations: https://padeltrainer.ai/locations
+
+### Information
+- About Us: https://padeltrainer.ai/about
+- Blog: https://padeltrainer.ai/blog
+- Partner With Us: https://padeltrainer.ai/partner
+- Privacy Policy: https://padeltrainer.ai/privacy
+- Terms of Service: https://padeltrainer.ai/terms
+
+## URL Structure
 
 - `/` - Homepage with platform overview
 - `/trainers` - Browse all trainers with filters
+- `/trainers/:city` - Trainers in a specific city (e.g., /trainers/amsterdam)
 - `/trainer/:id` - Individual trainer profile with booking
 - `/locations` - Browse all padel clubs/locations
 - `/locations/:slug` - Individual club page
 - `/pricing` - Subscription plans for trainers
 - `/about` - About the platform
 - `/blog` - Padel tips and news
+- `/blog/:slug` - Individual blog post
 - `/partner` - Partnership inquiry form
 
 ## Technology
@@ -63,3 +88,7 @@ Available in English (en) and Dutch (nl).
 ## API
 
 No public API is currently available. Trainer and location data is accessible through the public-facing website.
+
+## Sitemap
+
+For a complete list of all pages, see: https://padeltrainer.ai/sitemap.xml
