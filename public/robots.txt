@@ -27,7 +27,7 @@ Allow: /
 User-agent: *
 Allow: /
 
-# Sitemap location
+# Sitemap location (static file, regenerate with: bun run scripts/generate-sitemap.ts)
 Sitemap: https://padeltrainer.ai/sitemap.xml
 
 # LLM context file for AI crawlers

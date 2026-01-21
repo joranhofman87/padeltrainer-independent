@@ -40,27 +40,26 @@ Deno.serve(async (req) => {
       console.error('Error fetching trainers:', trainersError);
     }
 
-    // Fetch unique cities for city landing pages
-    const { data: cityData, error: citiesError } = await supabase
-      .from('locations')
-      .select('city')
-      .eq('is_active', true);
-
-    if (citiesError) {
-      console.error('Error fetching cities:', citiesError);
-    }
-
-    const uniqueCities = [...new Set(cityData?.map(l => l.city) || [])];
-
     // Fetch all active locations
     const { data: locations, error: locationsError } = await supabase
       .from('locations')
-      .select('slug, updated_at')
+      .select('slug, city, updated_at')
       .eq('is_active', true);
 
     if (locationsError) {
       console.error('Error fetching locations:', locationsError);
     }
+
+    // Extract unique cities and create slugs (deduplicated, case-insensitive)
+    // URL-encode special characters like apostrophes
+    const cityMap = new Map<string, string>();
+    locations?.forEach(loc => {
+      const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
+      if (!cityMap.has(citySlug)) {
+        cityMap.set(citySlug, loc.city);
+      }
+    });
+    const uniqueCitySlugs = Array.from(cityMap.keys());
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -115,8 +114,7 @@ Deno.serve(async (req) => {
     }
 
     // Add city landing pages for SEO (for each language)
-    for (const cityName of uniqueCities) {
-      const citySlug = cityName.toLowerCase().replace(/\s+/g, '-');
+    for (const citySlug of uniqueCitySlugs) {
       xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
     }
 
