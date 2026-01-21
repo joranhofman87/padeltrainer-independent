@@ -112,10 +112,10 @@ export default function ClubOnboarding() {
     setIsLoading(true);
 
     try {
-      const { clubProfile, error } = await claimClub(selectedLocation.id, user.id, contactEmail, contactPhone, description);
+      const { success, error } = await claimClub(selectedLocation.id, user.id, contactEmail, contactPhone, description);
       
-      if (error) {
-        throw error;
+      if (error || !success) {
+        throw error || new Error('Failed to submit claim');
       }
       
       // Clear the pending role since they've completed the club flow

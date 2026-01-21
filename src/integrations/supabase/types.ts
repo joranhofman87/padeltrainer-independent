@@ -350,6 +350,7 @@ export type Database = {
           claimed_at: string
           contact_email: string | null
           created_at: string
+          created_by: string | null
           description: string | null
           id: string
           is_verified: boolean
@@ -369,6 +370,7 @@ export type Database = {
           claimed_at?: string
           contact_email?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_verified?: boolean
@@ -388,6 +390,7 @@ export type Database = {
           claimed_at?: string
           contact_email?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_verified?: boolean

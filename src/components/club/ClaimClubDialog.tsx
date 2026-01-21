@@ -58,7 +58,7 @@ export function ClaimClubDialog({
 
     setLoading(true);
     try {
-      const { clubProfile, error } = await claimClub(
+      const { success, error } = await claimClub(
         locationId,
         userId,
         formData.contactEmail,
@@ -66,8 +66,8 @@ export function ClaimClubDialog({
         formData.description
       );
 
-      if (error) {
-        throw error;
+      if (error || !success) {
+        throw error || new Error('Failed to submit claim');
       }
 
       toast({
