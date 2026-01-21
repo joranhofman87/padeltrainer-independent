@@ -1,0 +1,249 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Get the authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify the admin user
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: adminUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !adminUser) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authorization token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if the caller is an admin
+    const { data: adminRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", adminUser.id)
+      .eq("role", "admin")
+      .single();
+
+    if (!adminRole) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Admin access required" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get the target user ID from request body
+    const { target_user_id } = await req.json();
+
+    if (!target_user_id) {
+      return new Response(
+        JSON.stringify({ error: "Missing target_user_id" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Prevent self-deletion
+    if (target_user_id === adminUser.id) {
+      return new Response(
+        JSON.stringify({ error: "Cannot delete your own account" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if target user is an admin (prevent deleting other admins)
+    const { data: targetAdminRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", target_user_id)
+      .eq("role", "admin")
+      .single();
+
+    if (targetAdminRole) {
+      return new Response(
+        JSON.stringify({ error: "Cannot delete admin users" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get target user info for logging
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("email, full_name")
+      .eq("user_id", target_user_id)
+      .single();
+
+    // Clean up related data in order (respecting foreign key constraints)
+    // 1. Delete calendar events
+    await supabaseAdmin
+      .from("calendar_events")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 2. Delete notification preferences
+    await supabaseAdmin
+      .from("notification_preferences")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 3. Delete club manager associations
+    await supabaseAdmin
+      .from("club_managers")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 4. Get trainer profile ID if exists
+    const { data: trainerProfile } = await supabaseAdmin
+      .from("trainer_profiles")
+      .select("id")
+      .eq("user_id", target_user_id)
+      .single();
+
+    if (trainerProfile) {
+      // Delete trainer-related data
+      await supabaseAdmin
+        .from("trainer_locations")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("trainer_followers")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("trainer_profile_views")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("availability_slots")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("lessons")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("guest_players")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      await supabaseAdmin
+        .from("invoices")
+        .delete()
+        .eq("trainer_id", trainerProfile.id);
+
+      // Delete trainer profile
+      await supabaseAdmin
+        .from("trainer_profiles")
+        .delete()
+        .eq("user_id", target_user_id);
+    }
+
+    // 5. Get player profile ID if exists
+    const { data: playerProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("user_id", target_user_id)
+      .single();
+
+    if (playerProfile) {
+      // Delete player-related data
+      await supabaseAdmin
+        .from("player_locations")
+        .delete()
+        .eq("profile_id", playerProfile.id);
+
+      await supabaseAdmin
+        .from("player_rating_history")
+        .delete()
+        .eq("profile_id", playerProfile.id);
+
+      await supabaseAdmin
+        .from("trainer_followers")
+        .delete()
+        .eq("player_id", playerProfile.id);
+
+      // Anonymize bookings (keep for record-keeping but remove player reference)
+      await supabaseAdmin
+        .from("bookings")
+        .update({ player_id: null })
+        .eq("player_id", playerProfile.id);
+
+      // Anonymize reviews
+      await supabaseAdmin
+        .from("reviews")
+        .update({ is_anonymous: true })
+        .eq("player_id", playerProfile.id);
+    }
+
+    // 6. Delete user roles
+    await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 7. Delete profile
+    await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 8. Finally, delete the auth user
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(target_user_id);
+
+    if (deleteError) {
+      console.error("Error deleting auth user:", deleteError);
+      return new Response(
+        JSON.stringify({ error: "Failed to delete user from auth system" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Log the deletion (using admin_impersonation_logs pattern for consistency)
+    console.log(`User deleted: ${target_user_id} (${targetProfile?.email}) by admin ${adminUser.id}`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "User deleted successfully",
+        deleted_user: {
+          id: target_user_id,
+          email: targetProfile?.email,
+          full_name: targetProfile?.full_name,
+        },
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
+    console.error("Error in delete-user function:", error);
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
