@@ -704,7 +704,15 @@ export default function BookLesson() {
                             {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
                           </p>
                           {cyclus.lesson && (
-                            <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
+                            <>
+                              <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
+                              {cyclus.lesson.location && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                  <MapPin className="h-3 w-3" />
+                                  {cyclus.lesson.location}
+                                </p>
+                              )}
+                            </>
                           )}
                           
                           {/* Rating requirement */}
@@ -802,6 +810,12 @@ export default function BookLesson() {
                           {slot.lessons && (
                             <div className="pt-2 border-t">
                               <p className="font-medium text-sm">{slot.lessons.title}</p>
+                              {slot.lessons.location && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                  <MapPin className="h-3 w-3" />
+                                  {slot.lessons.location}
+                                </p>
+                              )}
                               <div className="flex items-center gap-2 mt-1">
                                 <Euro className="h-4 w-4 text-primary" />
                                 <span className="font-semibold text-primary">

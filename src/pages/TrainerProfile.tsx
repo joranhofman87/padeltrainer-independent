@@ -44,11 +44,42 @@ interface ProfileData {
   location: string | null;
 }
 
+interface LessonData {
+  id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  duration_minutes: number;
+  location: string | null;
+  min_skill_rating: number | null;
+  max_skill_rating: number | null;
+  is_active: boolean;
+}
+
+interface TrainerLocationData {
+  id: string;
+  is_primary: boolean;
+  relationship_type: string;
+  location: {
+    id: string;
+    name: string;
+    city: string;
+    slug: string;
+  };
+  club?: {
+    id: string;
+    is_verified: boolean;
+    location_id: string;
+  } | null;
+}
+
 export default function TrainerProfile() {
   const { trainerId } = useParams<{ trainerId: string }>();
   const { t } = useTranslation('trainer');
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [lessons, setLessons] = useState<LessonData[]>([]);
+  const [trainerLocations, setTrainerLocations] = useState<TrainerLocationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -116,12 +147,65 @@ export default function TrainerProfile() {
 
     if (trainerResult.error) {
       console.error('Error fetching trainer:', trainerResult.error);
-    } else {
-      setTrainer(trainerResult.data);
-      // Fetch reviews for this trainer
-      const ratingRes = await getTrainerAverageRating(trainerResult.data.id);
-      setAverageRating(ratingRes.average);
-      setReviewCount(ratingRes.count);
+      setLoading(false);
+      return;
+    }
+    
+    setTrainer(trainerResult.data);
+    
+    // Fetch additional data in parallel
+    const [ratingRes, lessonsResult, locationsResult] = await Promise.all([
+      getTrainerAverageRating(trainerResult.data.id),
+      supabase
+        .from('lessons')
+        .select('id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating, is_active')
+        .eq('trainer_id', trainerResult.data.id)
+        .eq('is_active', true)
+        .order('title'),
+      supabase
+        .from('trainer_locations')
+        .select(`
+          id,
+          is_primary,
+          relationship_type,
+          location:locations(id, name, city, slug)
+        `)
+        .eq('trainer_id', trainerResult.data.id)
+    ]);
+
+    setAverageRating(ratingRes.average);
+    setReviewCount(ratingRes.count);
+    
+    if (lessonsResult.data) {
+      setLessons(lessonsResult.data);
+    }
+    
+    if (locationsResult.data) {
+      // Fetch club profiles for these locations
+      const locationIds = locationsResult.data
+        .map(l => (l.location as any)?.id)
+        .filter(Boolean);
+      
+      let clubsMap: Record<string, any> = {};
+      if (locationIds.length > 0) {
+        const { data: clubs } = await supabase
+          .from('club_profiles')
+          .select('id, location_id, is_verified')
+          .in('location_id', locationIds)
+          .eq('is_verified', true);
+        
+        if (clubs) {
+          clubs.forEach(club => {
+            clubsMap[club.location_id] = club;
+          });
+        }
+      }
+      
+      setTrainerLocations(locationsResult.data.map(loc => ({
+        ...loc,
+        location: loc.location as any,
+        club: clubsMap[(loc.location as any)?.id] || null
+      })));
     }
 
     if (profileResult.error) {
@@ -392,7 +476,45 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Available Lessons Placeholder */}
+            {/* Locations */}
+            {trainerLocations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-primary" />
+                    Training Locations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {trainerLocations.map((loc) => (
+                      <div key={loc.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                          <p className="font-medium">{loc.location.name}</p>
+                          <p className="text-sm text-muted-foreground">{loc.location.city}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {loc.is_primary && (
+                            <Badge variant="secondary" className="text-xs">Primary</Badge>
+                          )}
+                          {loc.club && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => navigate(`/locations/${loc.location.slug}`)}
+                            >
+                              View Club
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Available Lessons */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -400,15 +522,60 @@ export default function TrainerProfile() {
                   Available Lessons
                 </CardTitle>
                 <CardDescription>
-                  Open spots for booking
+                  Lesson types offered by this trainer
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No lessons available yet</p>
-                  <p className="text-sm">Check back soon for available training sessions</p>
-                </div>
+                {lessons.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No lessons available yet</p>
+                    <p className="text-sm">Check back soon for available training sessions</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {lessons.map((lesson) => (
+                      <div key={lesson.id} className="p-4 border rounded-lg">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-semibold">{lesson.title}</h4>
+                          <Badge variant="secondary" className="text-primary font-semibold">
+                            €{lesson.price}
+                          </Badge>
+                        </div>
+                        {lesson.description && (
+                          <p className="text-sm text-muted-foreground mb-2">{lesson.description}</p>
+                        )}
+                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {lesson.duration_minutes} min
+                          </span>
+                          {lesson.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {lesson.location}
+                            </span>
+                          )}
+                          {(lesson.min_skill_rating || lesson.max_skill_rating) && (
+                            <span className="flex items-center gap-1">
+                              <Star className="h-3 w-3" />
+                              Level: {lesson.min_skill_rating || '0'} - {lesson.max_skill_rating || '∞'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {user && role === 'player' && lessons.length > 0 && (
+                  <Button 
+                    className="w-full mt-4" 
+                    onClick={() => navigate(`/book/${trainerId}`)}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Book a Lesson
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
