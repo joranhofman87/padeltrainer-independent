@@ -87,7 +87,6 @@ export default function ClubLessons() {
   const [formDuration, setFormDuration] = useState(60);
   const [formPrice, setFormPrice] = useState(0);
   const [formMaxParticipants, setFormMaxParticipants] = useState(1);
-  const [formLocation, setFormLocation] = useState("");
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPaymentTiming, setFormPaymentTiming] = useState<"upfront" | "after">("upfront");
 
@@ -152,7 +151,6 @@ export default function ClubLessons() {
     setFormDuration(60);
     setFormPrice(0);
     setFormMaxParticipants(1);
-    setFormLocation("");
     setFormIsActive(true);
     setFormPaymentTiming("upfront");
     setEditingLesson(null);
@@ -166,7 +164,6 @@ export default function ClubLessons() {
     setFormDuration(lesson.duration_minutes);
     setFormPrice(lesson.price);
     setFormMaxParticipants(lesson.max_participants);
-    setFormLocation(lesson.location || "");
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
     setDialogOpen(true);
@@ -191,7 +188,6 @@ export default function ClubLessons() {
         duration_minutes: formDuration,
         price: formPrice,
         max_participants: formMaxParticipants,
-        location: formLocation || null,
         is_active: formIsActive,
         payment_timing: formPaymentTiming,
       };
@@ -265,7 +261,6 @@ export default function ClubLessons() {
     setFormDuration(lesson.duration_minutes);
     setFormPrice(lesson.price);
     setFormMaxParticipants(lesson.max_participants);
-    setFormLocation(lesson.location || "");
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
     setDialogOpen(true);
@@ -512,16 +507,6 @@ export default function ClubLessons() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            {/* Location */}
-            <div className="space-y-2">
-              <Label>{tTrainer("lessons.form.location")}</Label>
-              <Input 
-                value={formLocation} 
-                onChange={(e) => setFormLocation(e.target.value)}
-                placeholder={tTrainer("lessons.form.locationPlaceholder")}
-              />
             </div>
 
             {/* Active Toggle */}
