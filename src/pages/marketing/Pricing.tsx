@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -101,7 +101,7 @@ export default function Pricing() {
                 </div>
                 <div className="mt-8 text-center">
                   <Button size="lg" className="px-8" asChild>
-                    <Link to="/auth">{t('pricing.players.cta')}</Link>
+                    <LocalizedLink to="/auth">{t('pricing.players.cta')}</LocalizedLink>
                   </Button>
                 </div>
               </CardContent>
@@ -198,7 +198,7 @@ export default function Pricing() {
                         variant={plan.is_highlighted ? 'default' : 'outline'}
                         asChild
                       >
-                        <Link to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
+                        <LocalizedLink to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</LocalizedLink>
                       </Button>
                     </CardContent>
                   </Card>
@@ -266,7 +266,7 @@ export default function Pricing() {
                     ))}
                   </div>
                   <Button size="lg" className="w-full" asChild>
-                    <Link to="/signup/club">{t('pricing.clubs.cta')}</Link>
+                    <LocalizedLink to="/signup/club">{t('pricing.clubs.cta')}</LocalizedLink>
                   </Button>
                 </CardContent>
               </Card>

@@ -74,10 +74,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div className="hidden md:flex items-center gap-3">
               <LanguageSwitcher />
               <Button variant="ghost" asChild>
-                <Link to="/auth">{t('nav.signIn')}</Link>
+                <LocalizedLink to="/auth">{t('nav.signIn')}</LocalizedLink>
               </Button>
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                <LocalizedLink to="/signup/player">{t('nav.getStarted')}</LocalizedLink>
               </Button>
             </div>
 
@@ -119,10 +119,10 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <LanguageSwitcher />
                   </div>
                   <Button variant="ghost" asChild>
-                    <Link to="/auth">{t('nav.signIn')}</Link>
+                    <LocalizedLink to="/auth">{t('nav.signIn')}</LocalizedLink>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                    <LocalizedLink to="/signup/player">{t('nav.getStarted')}</LocalizedLink>
                   </Button>
                 </div>
               </nav>

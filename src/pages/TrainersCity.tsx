@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { LocalizedLink } from '@/components/LocalizedLink';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +49,7 @@ export default function TrainersCity() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useTranslation('common');
+  const localizePath = useLocalizedPathFn();
 
   // Format city name for display (capitalize first letter of each word)
   const displayCity = useMemo(() => {
@@ -225,9 +228,9 @@ export default function TrainersCity() {
       <div className="border-b bg-muted/30">
         <div className="container mx-auto px-4 py-3">
           <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link to="/" className="hover:text-primary transition-colors">Home</Link>
+            <LocalizedLink to="/" className="hover:text-primary transition-colors">Home</LocalizedLink>
             <ChevronRight className="h-4 w-4" />
-            <Link to="/trainers" className="hover:text-primary transition-colors">Trainers</Link>
+            <LocalizedLink to="/trainers" className="hover:text-primary transition-colors">Trainers</LocalizedLink>
             <ChevronRight className="h-4 w-4" />
             <span className="text-foreground font-medium">{displayCity}</span>
           </nav>
@@ -257,12 +260,12 @@ export default function TrainersCity() {
             </h2>
             <div className="flex flex-wrap gap-2">
               {locations.map(location => (
-                <Link key={location.id} to={`/locations/${location.slug}`}>
+                <LocalizedLink key={location.id} to={`/locations/${location.slug}`}>
                   <Badge variant="secondary" className="hover:bg-secondary/80 cursor-pointer">
                     {location.name}
                     {location.number_of_courts && ` • ${location.number_of_courts} courts`}
                   </Badge>
-                </Link>
+                </LocalizedLink>
               ))}
             </div>
           </div>
@@ -308,10 +311,10 @@ export default function TrainersCity() {
               <p className="text-muted-foreground mb-4">No trainers found in {displayCity}</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button variant="outline" asChild>
-                  <Link to="/trainers">View All Trainers</Link>
+                  <LocalizedLink to="/trainers">View All Trainers</LocalizedLink>
                 </Button>
                 <Button asChild>
-                  <Link to="/signup/trainer">Become a Trainer</Link>
+                  <LocalizedLink to="/signup/trainer">Become a Trainer</LocalizedLink>
                 </Button>
               </div>
             </CardContent>
@@ -322,7 +325,7 @@ export default function TrainersCity() {
               <Card
                 key={trainer.id}
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                onClick={() => navigate(`/trainer/${trainer.user_id}`)}
+                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-4">
@@ -435,7 +438,7 @@ export default function TrainersCity() {
                   <span key={l.id}>
                     {i > 0 && ', '}
                     {i === Math.min(locations.length - 1, 2) && i > 0 && 'and '}
-                    <Link to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</Link>
+                    <LocalizedLink to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</LocalizedLink>
                   </span>
                 ))}
                 {locations.length > 3 && ` and ${locations.length - 3} more`}.

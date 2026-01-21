@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,7 @@ export default function Trainers() {
   const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const localizePath = useLocalizedPathFn();
 
   // Parse filters from URL
   const searchQuery = searchParams.get('search') || '';
@@ -373,7 +375,7 @@ export default function Trainers() {
             <span className="font-bold text-lg sm:text-xl">Find Trainers</span>
           </div>
           {!user && (
-            <Button onClick={() => navigate('/auth')}>Sign In</Button>
+            <Button onClick={() => navigate(localizePath('/auth'))}>Sign In</Button>
           )}
         </div>
       </header>
@@ -493,7 +495,7 @@ export default function Trainers() {
               <Card 
                 key={trainer.id} 
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                onClick={() => navigate(`/trainer/${trainer.user_id}`)}
+                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-4">
