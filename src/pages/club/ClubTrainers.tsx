@@ -12,6 +12,7 @@ import { getUserClubProfiles, getClubTrainers } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
 import { ClubNavigation } from '@/components/club/ClubNavigation';
 import { CreateClubTrainerDialog } from '@/components/club/CreateClubTrainerDialog';
+import { EditClubTrainerDialog } from '@/components/club/EditClubTrainerDialog';
 
 interface TrainerWithProfile {
   id: string;
@@ -183,24 +184,28 @@ export default function ClubTrainers() {
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <EditClubTrainerDialog
+                      trainerId={trainer.trainer_id}
+                      userId={trainer.trainer_profiles.user_id}
+                      trainerName={trainer.profile?.full_name || 'Trainer'}
+                      onTrainerUpdated={fetchData}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1"
                       onClick={() => navigate(`/trainer/${trainer.trainer_id}`)}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Profile
+                      {t('trainers.viewProfile', 'Profile')}
                     </Button>
                     <Button
                       variant="default"
                       size="sm"
-                      className="flex-1"
                       onClick={() => navigate(`/club/calendar?trainer=${trainer.trainer_id}`)}
                     >
                       <Calendar className="h-4 w-4 mr-2" />
-                      Calendar
+                      {t('trainers.viewCalendar')}
                     </Button>
                   </div>
                 </CardContent>

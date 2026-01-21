@@ -67,9 +67,27 @@
     "emptyDescription": "Invite trainers to join your club or wait for trainers to select 'Club Trainer' when adding your location.",
     "inviteTrainer": "Invite Trainer",
     "viewCalendar": "View Calendar",
+    "viewProfile": "Profile",
+    "editProfile": "Edit",
     "manageBookings": "Manage Bookings",
     "pendingInvitations": "Pending Invitations",
     "sentOn": "Sent"
+  },
+  "editTrainer": {
+    "title": "Edit Trainer Profile",
+    "description": "Update the trainer's profile information.",
+    "success": "Profile Updated",
+    "successDescription": "The trainer profile has been updated.",
+    "bio": "Bio",
+    "hourlyRate": "Hourly Rate (€)",
+    "experience": "Experience (years)",
+    "ratingSystem": "Rating System",
+    "rating": "Rating",
+    "certifications": "Certifications",
+    "specializations": "Specializations",
+    "coachingMethod": "Coaching Method",
+    "quote": "Favourite Quote",
+    "videoUrl": "Video URL"
   },
   "trainerInvitation": {
     "invite": "Invite Trainer",

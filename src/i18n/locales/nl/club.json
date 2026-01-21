@@ -67,9 +67,27 @@
     "emptyDescription": "Nodig trainers uit om lid te worden of wacht tot trainers 'Clubtrainer' selecteren bij jouw locatie.",
     "inviteTrainer": "Trainer Uitnodigen",
     "viewCalendar": "Bekijk Kalender",
+    "viewProfile": "Profiel",
+    "editProfile": "Bewerken",
     "manageBookings": "Beheer Boekingen",
     "pendingInvitations": "Openstaande Uitnodigingen",
     "sentOn": "Verzonden"
+  },
+  "editTrainer": {
+    "title": "Trainersprofiel Bewerken",
+    "description": "Werk de profielgegevens van de trainer bij.",
+    "success": "Profiel Bijgewerkt",
+    "successDescription": "Het trainersprofiel is bijgewerkt.",
+    "bio": "Bio",
+    "hourlyRate": "Uurtarief (€)",
+    "experience": "Ervaring (jaren)",
+    "ratingSystem": "Ratingsysteem",
+    "rating": "Rating",
+    "certifications": "Certificeringen",
+    "specializations": "Specialisaties",
+    "coachingMethod": "Coachingmethode",
+    "quote": "Favoriete Citaat",
+    "videoUrl": "Video URL"
   },
   "trainerInvitation": {
     "invite": "Trainer Uitnodigen",
