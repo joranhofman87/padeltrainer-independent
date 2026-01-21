@@ -41,16 +41,12 @@ interface PendingClaim extends ClubProfile {
 
 // Fetch pending claims directly with the Supabase client
 async function fetchPendingClaims(): Promise<PendingClaim[]> {
-  const { data, error } = await supabase
+  // First fetch club profiles with locations
+  const { data: claims, error } = await supabase
     .from('club_profiles')
     .select(`
       *,
-      location:locations(*),
-      managers:club_managers(
-        user_id,
-        role,
-        profile:profiles(full_name, email)
-      )
+      location:locations(id, name, city, street_address)
     `)
     .eq('is_verified', false)
     .order('claimed_at', { ascending: false });
@@ -60,10 +56,34 @@ async function fetchPendingClaims(): Promise<PendingClaim[]> {
     return [];
   }
 
-  return (data || []).map((claim: any) => ({
-    ...claim,
-    owner: claim.managers?.find((m: any) => m.role === 'owner')?.profile || null,
-  }));
+  if (!claims || claims.length === 0) {
+    return [];
+  }
+
+  // Fetch managers separately to avoid RLS issues with nested profile joins
+  const clubIds = claims.map(c => c.id);
+  const { data: managers } = await supabase
+    .from('club_managers')
+    .select('club_profile_id, user_id, role')
+    .in('club_profile_id', clubIds)
+    .eq('role', 'owner');
+
+  // Fetch profile info for owners
+  const ownerUserIds = managers?.map(m => m.user_id).filter(Boolean) || [];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, email')
+    .in('user_id', ownerUserIds);
+
+  // Map owners to claims
+  return claims.map((claim: any) => {
+    const manager = managers?.find(m => m.club_profile_id === claim.id);
+    const ownerProfile = profiles?.find(p => p.user_id === manager?.user_id);
+    return {
+      ...claim,
+      owner: ownerProfile ? { full_name: ownerProfile.full_name, email: ownerProfile.email } : null,
+    };
+  });
 }
 
 export default function AdminClubClaims() {
