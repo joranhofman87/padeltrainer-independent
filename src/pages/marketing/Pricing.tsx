@@ -4,12 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { motion } from 'framer-motion';
-import { Check, X, HelpCircle, Building2 } from 'lucide-react';
+import { Check, X, HelpCircle, Building2, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
+import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
+  const { data: trainerPlans, isLoading: loadingTrainer } = useTrainerPlans();
+  const { data: clubPlan, isLoading: loadingClub } = useClubPlan();
 
   const playerFeatureKeys = [
     'pricing.players.features.browse',
@@ -19,54 +23,6 @@ export default function Pricing() {
     'pricing.players.features.calendar',
     'pricing.players.features.notifications',
     'pricing.players.features.tracking',
-  ];
-
-  const trainerPlans = [
-    {
-      planKey: 'starter',
-      platformFee: '10%',
-      features: [
-        { key: 'lessons', included: true },
-        { key: 'profile', included: true },
-        { key: 'bookings', included: true },
-        { key: 'notifications', included: true },
-        { key: 'calendar', included: false },
-        { key: 'analytics', included: false },
-        { key: 'support', included: false },
-        { key: 'multiTrainer', included: false },
-      ],
-      popular: false,
-    },
-    {
-      planKey: 'professional',
-      platformFee: '5%',
-      features: [
-        { key: 'lessons', included: true },
-        { key: 'profile', included: true },
-        { key: 'bookings', included: true },
-        { key: 'notifications', included: true },
-        { key: 'calendar', included: true },
-        { key: 'analytics', included: true },
-        { key: 'support', included: true },
-        { key: 'multiTrainer', included: false },
-      ],
-      popular: true,
-    },
-    {
-      planKey: 'academy',
-      platformFee: '2.5%',
-      features: [
-        { key: 'lessons', included: true },
-        { key: 'profile', included: true },
-        { key: 'bookings', included: true },
-        { key: 'notifications', included: true },
-        { key: 'calendar', included: true },
-        { key: 'analytics', included: true },
-        { key: 'support', included: true },
-        { key: 'multiTrainer', included: true },
-      ],
-      popular: false,
-    },
   ];
 
   const clubFeatureKeys = [
@@ -81,6 +37,21 @@ export default function Pricing() {
   ];
 
   const faqKeys = ['platformFee', 'changePlans', 'contract', 'payouts', 'clubTrial'];
+
+  // Map tier to feature keys for translations
+  const getFeatureList = (tier: string) => {
+    const features = [
+      { key: 'lessons', included: true },
+      { key: 'profile', included: true },
+      { key: 'bookings', included: true },
+      { key: 'notifications', included: true },
+      { key: 'calendar', included: tier !== 'starter' },
+      { key: 'analytics', included: tier !== 'starter' },
+      { key: 'support', included: tier !== 'starter' },
+      { key: 'multiTrainer', included: tier === 'academy' },
+    ];
+    return features;
+  };
 
   return (
     <MarketingLayout>
@@ -157,70 +128,84 @@ export default function Pricing() {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {trainerPlans.map((plan, index) => (
-              <motion.div
-                key={plan.planKey}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card className={`h-full relative ${plan.popular ? 'border-2 border-primary shadow-lg' : ''}`}>
-                  {plan.popular && (
-                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      {t('pricing.trainers.mostPopular')}
-                    </Badge>
-                  )}
-                  <CardHeader className="text-center">
-                    <CardTitle className="text-xl">{t(`pricing.trainers.plans.${plan.planKey}.name`)}</CardTitle>
-                    <CardDescription>{t(`pricing.trainers.plans.${plan.planKey}.description`)}</CardDescription>
-                    <div className="pt-4">
-                      <span className="text-4xl font-bold">{t(`pricing.trainers.plans.${plan.planKey}.price`)}</span>
-                      <span className="text-muted-foreground">{t(`pricing.trainers.plans.${plan.planKey}.period`, { defaultValue: '' })}</span>
-                      {plan.planKey !== 'starter' && (
-                        <p className="text-sm text-muted-foreground mt-1">{t(`pricing.trainers.plans.${plan.planKey}.yearlyPrice`)}</p>
-                      )}
-                    </div>
-                    <div className="pt-2 flex items-center justify-center gap-1">
-                      <Badge variant="outline">{plan.platformFee} {t('pricing.trainers.platformFee')}</Badge>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{t('pricing.trainers.feeTooltip')}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-3 mb-8">
-                      {plan.features.map((feature) => (
-                        <li key={feature.key} className="flex items-center gap-2">
-                          {feature.included ? (
-                            <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                          ) : (
-                            <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
-                          )}
-                          <span className={feature.included ? '' : 'text-muted-foreground/50'}>
-                            {t(`pricing.trainers.plans.${plan.planKey}.features.${feature.key}`)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button 
-                      className="w-full" 
-                      variant={plan.popular ? 'default' : 'outline'}
-                      asChild
-                    >
-                      <Link to="/auth">{t(`pricing.trainers.plans.${plan.planKey}.cta`)}</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+          {loadingTrainer ? (
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-[500px] rounded-lg" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {trainerPlans?.map((plan, index) => (
+                <motion.div
+                  key={plan.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Card className={`h-full relative ${plan.is_highlighted ? 'border-2 border-primary shadow-lg' : ''}`}>
+                    {plan.is_highlighted && (
+                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        {plan.badge || t('pricing.trainers.mostPopular')}
+                      </Badge>
+                    )}
+                    <CardHeader className="text-center">
+                      <CardTitle className="text-xl">{plan.name}</CardTitle>
+                      <CardDescription>{plan.description}</CardDescription>
+                      <div className="pt-4">
+                        <span className="text-4xl font-bold">
+                          {plan.monthly_price === 0 ? t('pricing.trainers.plans.starter.price') : `€${plan.monthly_price}`}
+                        </span>
+                        {plan.monthly_price > 0 && (
+                          <span className="text-muted-foreground">/month</span>
+                        )}
+                        {plan.yearly_price > 0 && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            €{plan.yearly_price}/year (save {Math.round((1 - plan.yearly_price / (plan.monthly_price * 12)) * 100)}%)
+                          </p>
+                        )}
+                      </div>
+                      <div className="pt-2 flex items-center justify-center gap-1">
+                        <Badge variant="outline">{plan.platform_fee_percent}% {t('pricing.trainers.platformFee')}</Badge>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{t('pricing.trainers.feeTooltip')}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-3 mb-8">
+                        {getFeatureList(plan.tier).map((feature) => (
+                          <li key={feature.key} className="flex items-center gap-2">
+                            {feature.included ? (
+                              <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                            ) : (
+                              <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
+                            )}
+                            <span className={feature.included ? '' : 'text-muted-foreground/50'}>
+                              {t(`pricing.trainers.plans.${plan.tier}.features.${feature.key}`)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button 
+                        className="w-full" 
+                        variant={plan.is_highlighted ? 'default' : 'outline'}
+                        asChild
+                      >
+                        <Link to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -248,40 +233,44 @@ export default function Pricing() {
             viewport={{ once: true }}
             className="max-w-2xl mx-auto"
           >
-            <Card className="border-2 border-primary shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-4 py-1 text-sm font-medium rounded-bl-lg">
-                {t('pricing.clubs.trialBadge')}
-              </div>
-              <CardHeader className="text-center pb-4 pt-8">
-                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                  <Building2 className="h-6 w-6 text-primary" />
+            {loadingClub ? (
+              <Skeleton className="h-[400px] rounded-lg" />
+            ) : (
+              <Card className="border-2 border-primary shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-4 py-1 text-sm font-medium rounded-bl-lg">
+                  {t('pricing.clubs.trialBadge')}
                 </div>
-                <CardTitle className="text-2xl">{t('pricing.clubs.title')}</CardTitle>
-                <CardDescription className="text-lg">
-                  {t('pricing.clubs.subtitle')}
-                </CardDescription>
-                <div className="pt-4">
-                  <span className="text-4xl font-bold">{t('pricing.clubs.price')}</span>
-                  <span className="text-muted-foreground">{t('pricing.clubs.period')}</span>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {t('pricing.clubs.billedAnnually')}
-                  </p>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid sm:grid-cols-2 gap-3 mb-8">
-                  {clubFeatureKeys.map((featureKey) => (
-                    <div key={featureKey} className="flex items-center gap-2">
-                      <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                      <span>{t(featureKey)}</span>
-                    </div>
-                  ))}
-                </div>
-                <Button size="lg" className="w-full" asChild>
-                  <Link to="/club/signup">{t('pricing.clubs.cta')}</Link>
-                </Button>
-              </CardContent>
-            </Card>
+                <CardHeader className="text-center pb-4 pt-8">
+                  <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                    <Building2 className="h-6 w-6 text-primary" />
+                  </div>
+                  <CardTitle className="text-2xl">{clubPlan?.name || t('pricing.clubs.title')}</CardTitle>
+                  <CardDescription className="text-lg">
+                    {clubPlan?.description || t('pricing.clubs.subtitle')}
+                  </CardDescription>
+                  <div className="pt-4">
+                    <span className="text-4xl font-bold">€{clubPlan?.monthly_price || 199}</span>
+                    <span className="text-muted-foreground">{t('pricing.clubs.period')}</span>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {t('pricing.clubs.billedAnnually')}
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid sm:grid-cols-2 gap-3 mb-8">
+                    {clubFeatureKeys.map((featureKey) => (
+                      <div key={featureKey} className="flex items-center gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                        <span>{t(featureKey)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button size="lg" className="w-full" asChild>
+                    <Link to="/signup/club">{t('pricing.clubs.cta')}</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </motion.div>
         </div>
       </section>
