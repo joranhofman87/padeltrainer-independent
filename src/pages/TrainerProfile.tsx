@@ -16,14 +16,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
-  ArrowLeft, MapPin, Star, Clock, Award, Mail, Phone, 
+  ArrowLeft, MapPin, Star, Clock, Award, Mail, 
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
-  Share2, Copy, Check, MessageCircle
+  Share2, Copy, Check, MessageCircle, Quote, Play,
+  Instagram, Youtube, Linkedin, Target, Sparkles
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { StarRating } from '@/components/reviews/StarRating';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
+import { parseVideoUrl } from '@/lib/videoEmbed';
+import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 
@@ -35,6 +38,16 @@ interface TrainerData {
   certifications: string[] | null;
   specializations: string[] | null;
   is_verified: boolean;
+  coaching_method: string | null;
+  favourite_quote: string | null;
+  video_url: string | null;
+  social_instagram: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
+  preferred_min_rating: number | null;
+  preferred_max_rating: number | null;
+  preferred_rating_system: string | null;
 }
 
 interface ProfileData {
@@ -84,6 +97,8 @@ export default function TrainerProfile() {
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const [preferredRatingSystemName, setPreferredRatingSystemName] = useState<string>('');
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
@@ -128,6 +143,15 @@ export default function TrainerProfile() {
       recordProfileView(trainer.id);
     }
   }, [trainer?.id]);
+
+  // Fetch preferred rating system name
+  useEffect(() => {
+    if (trainer?.preferred_rating_system) {
+      getRatingSystemByCode(trainer.preferred_rating_system).then(system => {
+        if (system) setPreferredRatingSystemName(system.name);
+      });
+    }
+  }, [trainer?.preferred_rating_system]);
 
   const fetchTrainerProfile = async () => {
     setLoading(true);
@@ -222,6 +246,24 @@ export default function TrainerProfile() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
+  const getSocialUrl = (platform: string, value: string | null) => {
+    if (!value) return null;
+    if (value.startsWith('http')) return value;
+    const cleanHandle = value.replace('@', '');
+    switch (platform) {
+      case 'instagram': return `https://instagram.com/${cleanHandle}`;
+      case 'tiktok': return `https://tiktok.com/@${cleanHandle}`;
+      case 'youtube': return value.startsWith('http') ? value : `https://youtube.com/@${cleanHandle}`;
+      case 'linkedin': return value;
+      default: return null;
+    }
+  };
+
+  const hasSocialLinks = trainer?.social_instagram || trainer?.social_tiktok || 
+                          trainer?.social_youtube || trainer?.social_linkedin;
+
+  const videoInfo = trainer?.video_url ? parseVideoUrl(trainer.video_url) : null;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -281,6 +323,7 @@ export default function TrainerProfile() {
         image={profile.avatar_url || undefined}
         structuredData={structuredData}
       />
+      
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -294,133 +337,272 @@ export default function TrainerProfile() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Profile Header */}
-        <Card className="mb-6">
-          <CardContent className="p-6 md:p-8">
-            <div className="flex flex-col md:flex-row gap-6">
-              <Avatar className="h-28 w-28 mx-auto md:mx-0">
-                <AvatarImage src={profile.avatar_url || undefined} />
-                <AvatarFallback className="text-3xl">
-                  {getInitials(profile.full_name)}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1 text-center md:text-left">
-                <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                  <h1 className="text-3xl font-bold">{profile.full_name || 'Trainer'}</h1>
-                  {trainer.is_verified && (
-                    <Badge className="w-fit mx-auto md:mx-0 bg-green-500 hover:bg-green-600">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Verified Trainer
-                    </Badge>
+      <main className="container mx-auto px-4 py-8 max-w-5xl">
+        {/* Hero Section */}
+        <Card className="mb-8 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="relative bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 md:p-10">
+              <div className="flex flex-col lg:flex-row gap-8">
+                {/* Avatar with video play button */}
+                <div className="relative mx-auto lg:mx-0">
+                  <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl">
+                    <AvatarImage src={profile.avatar_url || undefined} />
+                    <AvatarFallback className="text-4xl bg-primary text-primary-foreground">
+                      {getInitials(profile.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  {videoInfo && (
+                    <button 
+                      onClick={() => setShowVideo(true)}
+                      className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 hover:opacity-100 transition-opacity"
+                    >
+                      <div className="bg-white/90 rounded-full p-3">
+                        <Play className="h-6 w-6 text-primary fill-primary" />
+                      </div>
+                    </button>
                   )}
                 </div>
                 
-                {profile.location && (
-                  <p className="text-muted-foreground flex items-center justify-center md:justify-start gap-1 mb-4">
-                    <MapPin className="h-4 w-4" />
-                    {profile.location}
-                  </p>
-                )}
+                {/* Main Info */}
+                <div className="flex-1 text-center lg:text-left">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-3">
+                    <h1 className="text-3xl md:text-4xl font-bold">{profile.full_name || 'Trainer'}</h1>
+                    {trainer.is_verified && (
+                      <Badge className="w-fit mx-auto lg:mx-0 bg-green-500 hover:bg-green-600">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Verified
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Location & Quick Stats */}
+                  <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-4">
+                    {profile.location && (
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-4 w-4" />
+                        {profile.location}
+                      </span>
+                    )}
+                    {trainer.hourly_rate && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-bold text-xl text-primary">€{trainer.hourly_rate}</span>
+                        <span className="text-muted-foreground">/hour</span>
+                      </span>
+                    )}
+                    {trainer.experience_years && (
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {trainer.experience_years} years
+                      </span>
+                    )}
+                    {averageRating !== null && (
+                      <span className="flex items-center gap-1">
+                        <StarRating rating={averageRating} size="sm" />
+                        <span className="text-muted-foreground">({reviewCount})</span>
+                      </span>
+                    )}
+                  </div>
 
-                <div className="flex flex-wrap gap-4 justify-center md:justify-start text-sm">
-                  {trainer.hourly_rate && (
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-xl text-primary">€{trainer.hourly_rate}</span>
-                      <span className="text-muted-foreground">/hour</span>
+                  {/* Social Links */}
+                  {hasSocialLinks && (
+                    <div className="flex gap-3 justify-center lg:justify-start mb-4">
+                      {trainer.social_instagram && (
+                        <a 
+                          href={getSocialUrl('instagram', trainer.social_instagram) || '#'}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                        >
+                          <Instagram className="h-5 w-5" />
+                        </a>
+                      )}
+                      {trainer.social_tiktok && (
+                        <a 
+                          href={getSocialUrl('tiktok', trainer.social_tiktok) || '#'}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                        >
+                          <span className="text-lg font-bold">♪</span>
+                        </a>
+                      )}
+                      {trainer.social_youtube && (
+                        <a 
+                          href={getSocialUrl('youtube', trainer.social_youtube) || '#'}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                        >
+                          <Youtube className="h-5 w-5" />
+                        </a>
+                      )}
+                      {trainer.social_linkedin && (
+                        <a 
+                          href={getSocialUrl('linkedin', trainer.social_linkedin) || '#'}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
+                        >
+                          <Linkedin className="h-5 w-5" />
+                        </a>
+                      )}
                     </div>
                   )}
-                  {trainer.experience_years && (
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      {trainer.experience_years} years experience
-                    </div>
+
+                  {/* Favourite Quote */}
+                  {trainer.favourite_quote && (
+                    <blockquote className="relative pl-4 border-l-2 border-primary/50 italic text-muted-foreground mb-4">
+                      <Quote className="absolute -left-3 -top-2 h-5 w-5 text-primary/30" />
+                      "{trainer.favourite_quote}"
+                    </blockquote>
                   )}
-                  {averageRating !== null && (
-                    <div className="flex items-center gap-1">
-                      <StarRating rating={averageRating} size="sm" />
-                      <span className="text-muted-foreground">({reviewCount})</span>
-                    </div>
+
+                  {/* Preferred Player Levels Badge */}
+                  {trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
+                    <Badge variant="outline" className="mb-2">
+                      <Target className="h-3 w-3 mr-1" />
+                      {t('profile.bestFor', 'Best for')}: {trainer.preferred_min_rating} - {trainer.preferred_max_rating} {preferredRatingSystemName}
+                    </Badge>
                   )}
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[160px]">
-                {user && role === 'player' && (
-                  <Button size="lg" className="w-full" onClick={() => navigate(`/book/${trainerId}`)}>
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Book Lesson
-                  </Button>
-                )}
-                {canFollow && (
-                  <Button
-                    variant={isFollowing ? 'secondary' : 'outline'}
-                    size="lg"
-                    className="w-full"
-                    onClick={toggleFollow}
-                    disabled={followLoading}
-                  >
-                    {isFollowing ? (
-                      <>
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Following
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Follow
-                      </>
-                    )}
-                  </Button>
-                )}
-                <Button variant="outline" size="lg" className="w-full">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Contact
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="lg" className="w-full">
-                      {copied ? (
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-2 w-full lg:w-auto lg:min-w-[180px]">
+                  {user && role === 'player' && (
+                    <Button size="lg" className="w-full" onClick={() => navigate(`/book/${trainerId}`)}>
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Book Lesson
+                    </Button>
+                  )}
+                  {canFollow && (
+                    <Button
+                      variant={isFollowing ? 'secondary' : 'outline'}
+                      size="lg"
+                      className="w-full"
+                      onClick={toggleFollow}
+                      disabled={followLoading}
+                    >
+                      {isFollowing ? (
                         <>
-                          <Check className="h-4 w-4 mr-2" />
-                          {t('profile.copied')}
+                          <UserCheck className="h-4 w-4 mr-2" />
+                          Following
                         </>
                       ) : (
                         <>
-                          <Share2 className="h-4 w-4 mr-2" />
-                          {t('profile.shareProfile')}
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Follow
                         </>
                       )}
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={handleCopyLink}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      {t('profile.copyLink')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareWhatsApp}>
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      WhatsApp
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareTwitter}>
-                      <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
-                      Twitter / X
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareLinkedIn}>
-                      <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">in</span>
-                      LinkedIn
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  )}
+                  <Button variant="outline" size="lg" className="w-full">
+                    <Mail className="h-4 w-4 mr-2" />
+                    Contact
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="lg" className="w-full">
+                        {copied ? (
+                          <>
+                            <Check className="h-4 w-4 mr-2" />
+                            {t('profile.copied')}
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="h-4 w-4 mr-2" />
+                            {t('profile.shareProfile')}
+                          </>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={handleCopyLink}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        {t('profile.copyLink')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareWhatsApp}>
+                        <MessageCircle className="h-4 w-4 mr-2" />
+                        WhatsApp
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareTwitter}>
+                        <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
+                        Twitter / X
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareLinkedIn}>
+                        <Linkedin className="h-4 w-4 mr-2" />
+                        LinkedIn
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        {/* Video Modal */}
+        {showVideo && videoInfo && (
+          <div 
+            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowVideo(false)}
+          >
+            <div className="relative w-full max-w-4xl aspect-video">
+              <button 
+                onClick={() => setShowVideo(false)}
+                className="absolute -top-10 right-0 text-white hover:text-gray-300"
+              >
+                ✕ Close
+              </button>
+              <iframe
+                src={`${videoInfo.embedUrl}?autoplay=1`}
+                className="w-full h-full rounded-lg"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="grid lg:grid-cols-3 gap-6">
           {/* Main Content */}
-          <div className="md:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Coaching Style Card */}
+            {trainer.coaching_method && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    {t('profile.coachingMethod', 'My Coaching Style')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground whitespace-pre-line">{trainer.coaching_method}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Video Section */}
+            {videoInfo && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Play className="h-5 w-5 text-primary" />
+                    {t('profile.watchIntro', 'Meet Your Coach')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="aspect-video rounded-lg overflow-hidden bg-muted">
+                    <iframe
+                      src={videoInfo.embedUrl}
+                      className="w-full h-full"
+                      allow="fullscreen"
+                      allowFullScreen
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* About */}
             {profile.bio && (
               <Card>
@@ -535,7 +717,7 @@ export default function TrainerProfile() {
                 ) : (
                   <div className="space-y-3">
                     {lessons.map((lesson) => (
-                      <div key={lesson.id} className="p-4 border rounded-lg">
+                      <div key={lesson.id} className="p-4 border rounded-lg hover:border-primary/50 transition-colors">
                         <div className="flex items-start justify-between mb-2">
                           <h4 className="font-semibold">{lesson.title}</h4>
                           <Badge variant="secondary" className="text-primary font-semibold">
@@ -616,6 +798,20 @@ export default function TrainerProfile() {
                     {averageRating !== null ? `${averageRating} ★` : '—'}
                   </span>
                 </div>
+                {trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        Preferred Levels
+                      </span>
+                      <span className="font-semibold text-sm">
+                        {trainer.preferred_min_rating}-{trainer.preferred_max_rating}
+                      </span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -641,6 +837,41 @@ export default function TrainerProfile() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Social Links Card (Desktop) */}
+            {hasSocialLinks && (
+              <Card className="hidden lg:block">
+                <CardHeader>
+                  <CardTitle className="text-base">Follow Me</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-3">
+                    {trainer.social_instagram && (
+                      <a 
+                        href={getSocialUrl('instagram', trainer.social_instagram) || '#'}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors flex-1 flex flex-col items-center gap-1"
+                      >
+                        <Instagram className="h-5 w-5" />
+                        <span className="text-xs">Instagram</span>
+                      </a>
+                    )}
+                    {trainer.social_youtube && (
+                      <a 
+                        href={getSocialUrl('youtube', trainer.social_youtube) || '#'}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors flex-1 flex flex-col items-center gap-1"
+                      >
+                        <Youtube className="h-5 w-5" />
+                        <span className="text-xs">YouTube</span>
+                      </a>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </main>

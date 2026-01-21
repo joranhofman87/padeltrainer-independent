@@ -5,7 +5,21 @@
     "copyLink": "Copy Link",
     "linkCopied": "Profile link copied to clipboard!",
     "copied": "Copied!",
-    "shareMessage": "Check out {{name}}'s padel training profile!"
+    "shareMessage": "Check out {{name}}'s padel training profile!",
+    "coachingMethod": "My Coaching Style",
+    "coachingMethodPlaceholder": "Describe your training philosophy and methods...",
+    "favouriteQuote": "Favourite Quote",
+    "favouriteQuotePlaceholder": "Share your favourite padel quote or motto...",
+    "introVideo": "Intro Video",
+    "introVideoHelp": "Paste a YouTube or Vimeo URL",
+    "socialMedia": "Social Media",
+    "preferredLevels": "Preferred Player Levels",
+    "preferredLevelsDescription": "Which skill levels do you most enjoy training?",
+    "watchIntro": "Meet Your Coach",
+    "bestFor": "Best for",
+    "allLevels": "All levels welcome",
+    "branding": "Profile Branding",
+    "brandingDescription": "Make your profile stand out"
   },
   "dashboard": {
     "welcome": "Welcome back, Coach {{name}}! 💪",

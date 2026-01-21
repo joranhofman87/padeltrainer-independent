@@ -5,7 +5,21 @@
     "copyLink": "Link Kopiëren",
     "linkCopied": "Profiellink gekopieerd naar klembord!",
     "copied": "Gekopieerd!",
-    "shareMessage": "Bekijk het padel trainingsprofiel van {{name}}!"
+    "shareMessage": "Bekijk het padel trainingsprofiel van {{name}}!",
+    "coachingMethod": "Mijn Trainingsmethode",
+    "coachingMethodPlaceholder": "Beschrijf je trainingsfilosofie en methoden...",
+    "favouriteQuote": "Favoriete Quote",
+    "favouriteQuotePlaceholder": "Deel je favoriete padel quote of motto...",
+    "introVideo": "Intro Video",
+    "introVideoHelp": "Plak een YouTube of Vimeo URL",
+    "socialMedia": "Social Media",
+    "preferredLevels": "Voorkeur Spelersniveau",
+    "preferredLevelsDescription": "Welke niveaus train je het liefst?",
+    "watchIntro": "Ontmoet je Coach",
+    "bestFor": "Geschikt voor",
+    "allLevels": "Alle niveaus welkom",
+    "branding": "Profiel Branding",
+    "brandingDescription": "Laat je profiel opvallen"
   },
   "dashboard": {
     "welcome": "Welkom terug, Coach {{name}}! 💪",
