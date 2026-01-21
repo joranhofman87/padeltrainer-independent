@@ -69,6 +69,10 @@
       "calendarSync": {
         "title": "Calendar Sync",
         "description": "Sync with Google Calendar"
+      },
+      "myProfile": {
+        "title": "My Profile",
+        "description": "Edit your profile, add locations and update your details"
       }
     },
     "setup": {
