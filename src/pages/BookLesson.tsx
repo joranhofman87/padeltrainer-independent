@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat, AlertCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -661,48 +662,84 @@ export default function BookLesson() {
                   Training Cycles
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {cyclusBundles.map((cyclus) => (
-                    <Card
-                      key={cyclus.cyclus_id}
-                      className={`cursor-pointer transition-all ${
-                        selectedCyclus?.cyclus_id === cyclus.cyclus_id
-                          ? 'ring-2 ring-primary border-primary'
-                          : 'hover:border-primary/50'
-                      }`}
-                      onClick={() => {
-                        setSelectedCyclus(cyclus);
-                        setSelectedSlot(null);
-                      }}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Repeat className="h-4 w-4 text-primary" />
-                            <span className="font-semibold">{cyclus.cyclus_name}</span>
+                  {cyclusBundles.map((cyclus) => {
+                    const lesson = cyclus.lesson;
+                    const playerRating = profile?.skill_rating;
+                    const isTooLow = lesson?.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating);
+                    const isTooHigh = lesson?.max_skill_rating && playerRating && playerRating > lesson.max_skill_rating;
+                    const isIneligible = isTooLow || isTooHigh;
+                    const hasRatingRequirement = lesson?.min_skill_rating || lesson?.max_skill_rating;
+
+                    return (
+                      <Card
+                        key={cyclus.cyclus_id}
+                        className={`transition-all ${
+                          isIneligible 
+                            ? 'opacity-60 cursor-not-allowed border-muted'
+                            : selectedCyclus?.cyclus_id === cyclus.cyclus_id
+                              ? 'ring-2 ring-primary border-primary cursor-pointer'
+                              : 'hover:border-primary/50 cursor-pointer'
+                        }`}
+                        onClick={() => {
+                          if (!isIneligible) {
+                            setSelectedCyclus(cyclus);
+                            setSelectedSlot(null);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Repeat className="h-4 w-4 text-primary" />
+                              <span className="font-semibold">{cyclus.cyclus_name}</span>
+                            </div>
+                            {selectedCyclus?.cyclus_id === cyclus.cyclus_id && !isIneligible && (
+                              <Check className="h-5 w-5 text-primary" />
+                            )}
                           </div>
-                          {selectedCyclus?.cyclus_id === cyclus.cyclus_id && (
-                            <Check className="h-5 w-5 text-primary" />
+                          <Badge variant="secondary" className="mb-2">
+                            {cyclus.slots.length} sessions
+                          </Badge>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
+                          </p>
+                          {cyclus.lesson && (
+                            <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
                           )}
-                        </div>
-                        <Badge variant="secondary" className="mb-2">
-                          {cyclus.slots.length} sessions
-                        </Badge>
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
-                        </p>
-                        {cyclus.lesson && (
-                          <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
-                        )}
-                        <div className="flex items-center gap-2 pt-2 border-t">
-                          <Euro className="h-4 w-4 text-primary" />
-                          <span className="font-semibold text-primary">
-                            €{cyclus.totalPrice}
-                          </span>
-                          <span className="text-xs text-muted-foreground">total</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          
+                          {/* Rating requirement */}
+                          {hasRatingRequirement && (
+                            <div className={`flex items-center gap-2 text-xs mt-2 ${isIneligible ? 'text-destructive' : 'text-muted-foreground'}`}>
+                              <Star className="h-3 w-3" />
+                              <span>
+                                Level: {lesson?.min_skill_rating || '0'} - {lesson?.max_skill_rating || '∞'}
+                              </span>
+                              {isIneligible && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <AlertCircle className="h-3 w-3" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Your rating ({playerRating || 'none'}) is {isTooLow ? 'below' : 'above'} the required range</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-2 pt-2 border-t mt-2">
+                            <Euro className="h-4 w-4 text-primary" />
+                            <span className="font-semibold text-primary">
+                              €{cyclus.totalPrice}
+                            </span>
+                            <span className="text-xs text-muted-foreground">total</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -720,67 +757,103 @@ export default function BookLesson() {
                 <p className="text-sm text-muted-foreground">No individual sessions available</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {individualSlots.map((slot) => (
-                    <Card
-                      key={slot.id}
-                      className={`cursor-pointer transition-all ${
-                        selectedSlot?.id === slot.id
-                          ? 'ring-2 ring-primary border-primary'
-                          : 'hover:border-primary/50'
-                      }`}
-                      onClick={() => {
-                        setSelectedSlot(slot);
-                        setSelectedCyclus(null);
-                      }}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {format(parseISO(slot.start_time), 'EEE, MMM d')}
-                            </span>
-                          </div>
-                          {selectedSlot?.id === slot.id && (
-                            <Check className="h-5 w-5 text-primary" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                          <Clock className="h-4 w-4" />
-                          {format(parseISO(slot.start_time), 'HH:mm')} -{' '}
-                          {format(parseISO(slot.end_time), 'HH:mm')}
-                        </div>
-                        {slot.lessons && (
-                          <div className="pt-2 border-t">
-                            <p className="font-medium text-sm">{slot.lessons.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Euro className="h-4 w-4 text-primary" />
-                              <span className="font-semibold text-primary">
-                                €{slot.lessons.price}
+                  {individualSlots.map((slot) => {
+                    const lesson = slot.lessons;
+                    const playerRating = profile?.skill_rating;
+                    const isTooLow = lesson?.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating);
+                    const isTooHigh = lesson?.max_skill_rating && playerRating && playerRating > lesson.max_skill_rating;
+                    const isIneligible = isTooLow || isTooHigh;
+                    const hasRatingRequirement = lesson?.min_skill_rating || lesson?.max_skill_rating;
+
+                    return (
+                      <Card
+                        key={slot.id}
+                        className={`transition-all ${
+                          isIneligible 
+                            ? 'opacity-60 cursor-not-allowed border-muted'
+                            : selectedSlot?.id === slot.id
+                              ? 'ring-2 ring-primary border-primary cursor-pointer'
+                              : 'hover:border-primary/50 cursor-pointer'
+                        }`}
+                        onClick={() => {
+                          if (!isIneligible) {
+                            setSelectedSlot(slot);
+                            setSelectedCyclus(null);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">
+                                {format(parseISO(slot.start_time), 'EEE, MMM d')}
                               </span>
                             </div>
+                            {selectedSlot?.id === slot.id && !isIneligible && (
+                              <Check className="h-5 w-5 text-primary" />
+                            )}
                           </div>
-                        )}
-                        {/* Spots left and Average Level */}
-                        <div className="flex items-center justify-between mt-2 pt-2 border-t">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Users className="h-4 w-4" />
-                            <span>{slot.spotsLeft || 4}/4 spots left</span>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                            <Clock className="h-4 w-4" />
+                            {format(parseISO(slot.start_time), 'HH:mm')} -{' '}
+                            {format(parseISO(slot.end_time), 'HH:mm')}
                           </div>
-                          {slot.averageRating !== null && slot.averageRating !== undefined && (
-                            <div className="flex items-center gap-1">
-                              <Badge variant="secondary" className="text-xs">
-                                Avg: {slot.averageRating.toFixed(1)}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground uppercase">
-                                {slot.ratingSystem || 'knltb'}
-                              </span>
+                          {slot.lessons && (
+                            <div className="pt-2 border-t">
+                              <p className="font-medium text-sm">{slot.lessons.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Euro className="h-4 w-4 text-primary" />
+                                <span className="font-semibold text-primary">
+                                  €{slot.lessons.price}
+                                </span>
+                              </div>
                             </div>
                           )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          
+                          {/* Rating requirement */}
+                          {hasRatingRequirement && (
+                            <div className={`flex items-center gap-2 text-xs mt-2 ${isIneligible ? 'text-destructive' : 'text-muted-foreground'}`}>
+                              <Star className="h-3 w-3" />
+                              <span>
+                                Level: {lesson?.min_skill_rating || '0'} - {lesson?.max_skill_rating || '∞'}
+                              </span>
+                              {isIneligible && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <AlertCircle className="h-3 w-3" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Your rating ({playerRating || 'none'}) is {isTooLow ? 'below' : 'above'} the required range</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Spots left and Average Level */}
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Users className="h-4 w-4" />
+                              <span>{slot.spotsLeft || 4}/4 spots left</span>
+                            </div>
+                            {slot.averageRating !== null && slot.averageRating !== undefined && (
+                              <div className="flex items-center gap-1">
+                                <Badge variant="secondary" className="text-xs">
+                                  Avg: {slot.averageRating.toFixed(1)}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground uppercase">
+                                  {slot.ratingSystem || 'knltb'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
