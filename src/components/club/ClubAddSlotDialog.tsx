@@ -591,21 +591,17 @@ export function ClubBulkCreateSheet({
                     {/* Recurrence */}
                     <div className="space-y-1">
                       <Label className="text-xs">{tTrainer("calendar.repeatFor")}</Label>
-                      <Select
-                        value={slot.recurrenceWeeks.toString()}
-                        onValueChange={(v) => updateBulkSlot(index, { recurrenceWeeks: parseInt(v) })}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 4, 6, 8, 10, 12].map((weeks) => (
-                            <SelectItem key={weeks} value={weeks.toString()}>
-                              {weeks} {tTrainer("calendar.weeks")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={52}
+                          value={slot.recurrenceWeeks}
+                          onChange={(e) => updateBulkSlot(index, { recurrenceWeeks: Math.max(1, Math.min(52, parseInt(e.target.value) || 1)) })}
+                          className="h-8 w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">{tTrainer("calendar.weeks")}</span>
+                      </div>
                     </div>
                   </div>
 
