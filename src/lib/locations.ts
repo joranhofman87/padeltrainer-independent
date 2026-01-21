@@ -162,9 +162,23 @@ export interface TrainerLocationData {
 
 // Update trainer locations with relationship types
 export async function updateTrainerLocations(
-  trainerId: string,
+  userId: string,
   locationData: TrainerLocationData[]
 ): Promise<void> {
+  // First, get the trainer profile ID from the user ID
+  const { data: trainerProfile, error: profileError } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (profileError || !trainerProfile) {
+    console.error('Error fetching trainer profile:', profileError);
+    throw new Error('Trainer profile not found');
+  }
+
+  const trainerId = trainerProfile.id;
+
   // Delete existing locations
   const { error: deleteError } = await supabase
     .from('trainer_locations')
