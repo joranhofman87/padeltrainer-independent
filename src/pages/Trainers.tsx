@@ -15,6 +15,7 @@ import { getTrainerAverageRating } from '@/lib/reviews';
 import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
+import { Location } from '@/lib/locations';
 
 interface TrainerWithProfile {
   id: string;
@@ -41,7 +42,8 @@ export default function Trainers() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [locations, setLocations] = useState<string[]>([]);
+  const [clubLocations, setClubLocations] = useState<Location[]>([]);
+  const [trainerLocationMap, setTrainerLocationMap] = useState<Map<string, string[]>>(new Map());
   const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
   const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
   const navigate = useNavigate();
@@ -51,7 +53,7 @@ export default function Trainers() {
   const searchQuery = searchParams.get('search') || '';
   const sortBy = (searchParams.get('sort') as SortOption) || 'rating';
   const filters: TrainerFiltersState = useMemo(() => ({
-    location: searchParams.get('location') || 'all',
+    locationId: searchParams.get('locationId') || 'all',
     priceRange: [
       Number(searchParams.get('minPrice')) || 0,
       Number(searchParams.get('maxPrice')) || 200
@@ -90,10 +92,10 @@ export default function Trainers() {
     const newParams = new URLSearchParams(searchParams);
     
     // Location
-    if (newFilters.location !== 'all') {
-      newParams.set('location', newFilters.location);
+    if (newFilters.locationId !== 'all') {
+      newParams.set('locationId', newFilters.locationId);
     } else {
-      newParams.delete('location');
+      newParams.delete('locationId');
     }
     
     // Price range
@@ -182,6 +184,39 @@ export default function Trainers() {
       return;
     }
 
+    // Fetch trainer locations (which clubs they teach at)
+    const trainerIds = trainerProfiles.map(t => t.id);
+    const { data: trainerLocationData, error: tlError } = await supabase
+      .from('trainer_locations')
+      .select(`
+        trainer_id,
+        location:locations(id, name, city, country, slug)
+      `)
+      .in('trainer_id', trainerIds);
+
+    if (tlError) {
+      console.error('Error fetching trainer locations:', tlError);
+    }
+
+    // Build a map of trainer_id -> location_ids
+    const locationMap = new Map<string, string[]>();
+    const uniqueLocationsMap = new Map<string, Location>();
+    
+    trainerLocationData?.forEach(tl => {
+      if (tl.location) {
+        const loc = tl.location as unknown as Location;
+        const existing = locationMap.get(tl.trainer_id) || [];
+        existing.push(loc.id);
+        locationMap.set(tl.trainer_id, existing);
+        uniqueLocationsMap.set(loc.id, loc);
+      }
+    });
+    
+    setTrainerLocationMap(locationMap);
+    setClubLocations(Array.from(uniqueLocationsMap.values()).sort((a, b) => 
+      a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
+    ));
+
     // Fetch ratings for all trainers
     const trainersWithRatings = await Promise.all(
       trainerProfiles.map(async (trainer) => {
@@ -196,13 +231,6 @@ export default function Trainers() {
     );
 
     setTrainers(trainersWithRatings);
-    
-    // Extract unique locations for filter
-    const uniqueLocations = [...new Set(profiles
-      .map(p => p.location)
-      .filter((loc): loc is string => Boolean(loc))
-    )];
-    setLocations(uniqueLocations);
 
     // Extract unique specializations
     const specs = trainerProfiles.flatMap(t => t.specializations || []);
@@ -214,7 +242,7 @@ export default function Trainers() {
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filters.location !== 'all') count++;
+    if (filters.locationId !== 'all') count++;
     if (filters.priceRange[0] > 0 || filters.priceRange[1] < 200) count++;
     if (filters.minRating > 0) count++;
     if (filters.minExperience > 0) count++;
@@ -232,9 +260,9 @@ export default function Trainers() {
         trainer.profile?.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         trainer.specializations?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
       
-      // Location filter
-      const matchesLocation = filters.location === 'all' || 
-        trainer.profile?.location === filters.location;
+      // Location filter - now matches trainer_locations
+      const matchesLocation = filters.locationId === 'all' || 
+        trainerLocationMap.get(trainer.id)?.includes(filters.locationId);
       
       // Price range filter
       const rate = trainer.hourly_rate || 0;
@@ -279,7 +307,8 @@ export default function Trainers() {
     });
 
     return result;
-  }, [trainers, searchQuery, filters, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trainers, searchQuery, filters, sortBy, trainerLocationMap]);
 
   const getInitials = (name: string | null) => {
     if (!name) return 'T';
@@ -348,7 +377,7 @@ export default function Trainers() {
               <TrainerFilters
                 filters={filters}
                 onChange={setFilters}
-                locations={locations}
+                locations={clubLocations}
                 allSpecializations={allSpecializations}
                 activeFilterCount={activeFilterCount}
               />
@@ -371,9 +400,9 @@ export default function Trainers() {
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-sm text-muted-foreground">Active filters:</span>
-              {filters.location !== 'all' && (
+              {filters.locationId !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
-                  <MapPin className="h-3 w-3" /> {filters.location}
+                  <MapPin className="h-3 w-3" /> {clubLocations.find(l => l.id === filters.locationId)?.name || 'Location'}
                 </Badge>
               )}
               {(filters.priceRange[0] > 0 || filters.priceRange[1] < 200) && (
