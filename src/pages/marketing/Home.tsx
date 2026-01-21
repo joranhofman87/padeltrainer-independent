@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -180,13 +181,13 @@ export default function Home() {
               className="flex flex-col sm:flex-row gap-4 justify-center"
             >
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <LocalizedLink to="/signup/player">
+                <Link to="/signup/player">
                   {t('home.hero.cta')}
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </LocalizedLink>
+                </Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
-                <LocalizedLink to="/signup/trainer">{t('home.hero.ctaSecondary')}</LocalizedLink>
+                <Link to="/signup/trainer">{t('home.hero.ctaSecondary')}</Link>
               </Button>
             </motion.div>
 
