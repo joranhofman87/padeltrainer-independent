@@ -53,7 +53,9 @@ import {
   LogIn,
   ShieldAlert,
   Trash2,
+  Pencil,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -86,6 +88,9 @@ export default function AdminUsers() {
   const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -211,6 +216,42 @@ export default function AdminUsers() {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
       console.error("Failed to delete user:", error);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!selectedUser) return;
+
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke("update-user", {
+        body: {
+          target_user_id: selectedUser.user_id,
+          email: editEmail !== selectedUser.email ? editEmail : undefined,
+          full_name: editName,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "User updated",
+        description: "User details have been updated successfully.",
+      });
+
+      await invalidateUsers();
+      setEditDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to update user";
+      console.error("Failed to update user:", error);
       toast({
         title: "Error",
         description: errorMessage,
@@ -380,6 +421,17 @@ export default function AdminUsers() {
                             <UserCog className="mr-2 h-4 w-4" />
                             Change role
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setEditName(u.full_name || "");
+                              setEditEmail(u.email || "");
+                              setEditDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit user
+                          </DropdownMenuItem>
                           {u.role !== "admin" && (
                             <>
                               <DropdownMenuItem
@@ -449,6 +501,48 @@ export default function AdminUsers() {
             <Button onClick={handleChangeRole} disabled={actionLoading}>
               {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update details for {selectedUser?.full_name || selectedUser?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Enter full name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="Enter email"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditUser} disabled={actionLoading || !editEmail}>
+              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

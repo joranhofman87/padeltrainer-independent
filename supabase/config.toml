@@ -58,3 +58,6 @@ verify_jwt = false
 
 [functions.delete-user]
 verify_jwt = false
+
+[functions.update-user]
+verify_jwt = false
