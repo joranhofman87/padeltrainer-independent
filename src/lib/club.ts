@@ -69,15 +69,16 @@ export async function getClubProfileByLocation(locationId: string): Promise<Club
 }
 
 // Create a club claim (creates club_profile and club_manager)
+// Returns success boolean - the profile is pending verification and cannot be read back
 export async function claimClub(
   locationId: string,
   userId: string,
   contactEmail: string,
   phone?: string,
   description?: string
-): Promise<{ clubProfile: ClubProfile; error: Error | null }> {
-  // First, create the club profile
-  const { data: clubProfile, error: profileError } = await supabase
+): Promise<{ success: boolean; error: Error | null }> {
+  // Create the club profile with created_by to allow the user to see their pending claim
+  const { data: insertResult, error: profileError } = await supabase
     .from('club_profiles')
     .insert({
       location_id: locationId,
@@ -85,8 +86,9 @@ export async function claimClub(
       phone: phone || null,
       description: description || null,
       is_verified: false,
+      created_by: userId,
     })
-    .select()
+    .select('id')
     .single();
 
   if (profileError) {
@@ -94,14 +96,14 @@ export async function claimClub(
     const errorMessage = profileError.code === '23505' 
       ? 'This location has already been claimed'
       : `Failed to create club claim: ${profileError.message}`;
-    return { clubProfile: null as any, error: new Error(errorMessage) };
+    return { success: false, error: new Error(errorMessage) };
   }
 
-  // Then, add the user as the owner
+  // Add the user as the owner
   const { error: managerError } = await supabase
     .from('club_managers')
     .insert({
-      club_profile_id: clubProfile.id,
+      club_profile_id: insertResult.id,
       user_id: userId,
       role: 'owner',
     });
@@ -109,9 +111,9 @@ export async function claimClub(
   if (managerError) {
     console.error('Error creating club manager:', managerError);
     // Clean up the club profile if manager creation fails
-    await supabase.from('club_profiles').delete().eq('id', clubProfile.id);
+    await supabase.from('club_profiles').delete().eq('id', insertResult.id);
     const errorMessage = `Failed to assign ownership: ${managerError.message}. Please try again or contact support.`;
-    return { clubProfile: null as any, error: new Error(errorMessage) };
+    return { success: false, error: new Error(errorMessage) };
   }
 
   // Also assign the 'club' role to the user if they don't already have it
@@ -124,7 +126,7 @@ export async function claimClub(
     console.error('Error setting club role:', roleError);
   }
 
-  return { clubProfile, error: null };
+  return { success: true, error: null };
 }
 
 // Get user's club profiles (clubs they manage)
