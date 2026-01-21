@@ -918,6 +918,7 @@ export type Database = {
           comment: string | null
           created_at: string
           id: string
+          is_anonymous: boolean
           is_public: boolean
           player_id: string
           rating: number
@@ -929,6 +930,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           id?: string
+          is_anonymous?: boolean
           is_public?: boolean
           player_id: string
           rating: number
@@ -940,6 +942,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           id?: string
+          is_anonymous?: boolean
           is_public?: boolean
           player_id?: string
           rating?: number

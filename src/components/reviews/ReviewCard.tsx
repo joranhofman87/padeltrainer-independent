@@ -9,24 +9,30 @@ interface ReviewCardProps {
 }
 
 export function ReviewCard({ review }: ReviewCardProps) {
-  const initials = review.profiles?.full_name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase() || 'P';
+  const isAnonymous = review.is_anonymous;
+  
+  const displayName = isAnonymous 
+    ? 'Anonymous' 
+    : (review.profiles?.full_name || 'Player');
+  
+  const initials = isAnonymous 
+    ? '?' 
+    : (review.profiles?.full_name?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'P');
+  
+  const avatarUrl = isAnonymous ? undefined : review.profiles?.avatar_url;
 
   return (
     <Card>
       <CardContent className="pt-4">
         <div className="flex items-start gap-4">
           <Avatar className="h-10 w-10">
-            <AvatarImage src={review.profiles?.avatar_url || undefined} />
+            {!isAnonymous && <AvatarImage src={avatarUrl || undefined} />}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="font-medium truncate">
-                {review.profiles?.full_name || 'Anonymous'}
+                {displayName}
               </span>
               <span className="text-xs text-muted-foreground shrink-0">
                 {format(new Date(review.created_at), 'MMM d, yyyy')}
