@@ -9,6 +9,7 @@ import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -301,6 +302,7 @@ export default function TrainerDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
+            <ProfileSwitcher context="trainer" />
             <Button variant="ghost" size="icon" onClick={() => navigate('/trainer/settings')}>
               <Settings className="h-5 w-5" />
             </Button>

@@ -1,4 +1,10 @@
 {
+  "switchProfile": "Switch Profile",
+  "myClubs": "My Clubs",
+  "switchRole": "Switch Role",
+  "trainerDashboard": "Trainer Dashboard",
+  "clubDashboard": "Club Dashboard",
+  "signedOut": "Successfully signed out",
   "appName": "PadelTrainer.ai",
   "loading": "Loading...",
   "error": "Error",
