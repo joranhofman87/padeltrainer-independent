@@ -114,25 +114,37 @@ export async function getTrainersAtLocation(locationId: string) {
   return data || [];
 }
 
-// Fetch trainer's locations
-export async function getTrainerLocations(trainerId: string): Promise<(TrainerLocation & { location: Location })[]> {
+// Fetch trainer's locations by user ID
+export async function getTrainerLocations(userId: string): Promise<(TrainerLocation & { location: Location })[]> {
+  // First, get the trainer profile ID from the user ID
+  const { data: trainerProfile, error: profileError } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (profileError || !trainerProfile) {
+    console.error('Error fetching trainer profile for locations:', profileError);
+    return [];
+  }
+
   const { data, error } = await supabase
     .from('trainer_locations')
     .select(`
       *,
       location:locations(*)
     `)
-    .eq('trainer_id', trainerId);
+    .eq('trainer_id', trainerProfile.id);
 
   if (error) {
     console.error('Error fetching trainer locations:', error);
     throw error;
   }
 
-  // Cast relationship_type to our typed enum
+  // Cast relationship_type to our typed enum - handle both 'club' and 'club_trainer' values
   return (data || []).map(item => ({
     ...item,
-    relationship_type: (item.relationship_type || 'independent') as TrainerRelationshipType,
+    relationship_type: (item.relationship_type === 'club' ? 'club_trainer' : (item.relationship_type || 'independent')) as TrainerRelationshipType,
   }));
 }
 
