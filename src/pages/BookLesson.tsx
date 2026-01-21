@@ -86,28 +86,54 @@ export default function BookLesson() {
   }, [trainerId]);
 
   const fetchData = async () => {
-    // Fetch trainer info by user_id (the URL param is the user's id, not trainer_profiles.id)
-    const { data: trainerData } = await supabase
-      .from('trainer_profiles')
-      .select(`
-        id,
-        user_id,
-        hourly_rate,
-        experience_years,
-        specializations,
-        require_booking_approval,
-        use_manual_invoicing,
-        profiles(full_name, avatar_url, location, bio, email)
-      `)
-      .eq('user_id', trainerId)
-      .maybeSingle();
+    // Fetch trainer_profiles and profiles separately (no FK between them for PostgREST join)
+    const [trainerResult, profileResult] = await Promise.all([
+      supabase
+        .from('trainer_profiles')
+        .select(`
+          id,
+          user_id,
+          hourly_rate,
+          experience_years,
+          specializations,
+          require_booking_approval,
+          use_manual_invoicing
+        `)
+        .eq('user_id', trainerId)
+        .maybeSingle(),
+      supabase
+        .from('profiles_public')
+        .select('full_name, avatar_url, location, bio')
+        .eq('user_id', trainerId)
+        .maybeSingle()
+    ]);
+
+    const trainerData = trainerResult.data;
+    const profileData = profileResult.data;
 
     if (!trainerData) {
       setLoadingData(false);
       return;
     }
 
-    setTrainer(trainerData as unknown as TrainerWithProfile);
+    // Fetch trainer's email from profiles table for booking confirmation
+    const { data: profileWithEmail } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('user_id', trainerId)
+      .maybeSingle();
+
+    // Combine trainer and profile data
+    setTrainer({
+      ...trainerData,
+      profiles: {
+        full_name: profileData?.full_name || 'Trainer',
+        avatar_url: profileData?.avatar_url,
+        location: profileData?.location,
+        bio: profileData?.bio,
+        email: profileWithEmail?.email || null
+      }
+    } as unknown as TrainerWithProfile);
 
     // Fetch available slots using the trainer's actual id (not user_id)
     const { data: slotsData } = await supabase
