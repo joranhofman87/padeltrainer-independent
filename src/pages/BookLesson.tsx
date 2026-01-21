@@ -86,11 +86,12 @@ export default function BookLesson() {
   }, [trainerId]);
 
   const fetchData = async () => {
-    // Fetch trainer info
+    // Fetch trainer info by user_id (the URL param is the user's id, not trainer_profiles.id)
     const { data: trainerData } = await supabase
       .from('trainer_profiles')
       .select(`
         id,
+        user_id,
         hourly_rate,
         experience_years,
         specializations,
@@ -98,14 +99,17 @@ export default function BookLesson() {
         use_manual_invoicing,
         profiles(full_name, avatar_url, location, bio, email)
       `)
-      .eq('id', trainerId)
-      .single();
+      .eq('user_id', trainerId)
+      .maybeSingle();
 
-    if (trainerData) {
-      setTrainer(trainerData as unknown as TrainerWithProfile);
+    if (!trainerData) {
+      setLoadingData(false);
+      return;
     }
 
-    // Fetch available slots (exclude private slots)
+    setTrainer(trainerData as unknown as TrainerWithProfile);
+
+    // Fetch available slots using the trainer's actual id (not user_id)
     const { data: slotsData } = await supabase
       .from('availability_slots')
       .select(`
@@ -115,7 +119,7 @@ export default function BookLesson() {
         lesson_id,
         lessons(id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating)
       `)
-      .eq('trainer_id', trainerId)
+      .eq('trainer_id', trainerData.id)
       .eq('is_marked_full', false)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true });
