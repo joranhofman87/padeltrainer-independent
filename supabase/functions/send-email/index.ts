@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request";
   to: string;
   data: {
     playerName?: string;
@@ -46,6 +46,14 @@ interface EmailRequest {
     email?: string;
     phone?: string;
     message?: string;
+    // Location request fields
+    city?: string;
+    country?: string;
+    streetAddress?: string;
+    websiteUrl?: string;
+    additionalNotes?: string;
+    requestedBy?: string;
+    requestedByEmail?: string;
   };
 }
 
@@ -499,6 +507,32 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p style="white-space: pre-wrap;">${data.message}</p>
             </div>
             <p style="color: #6b7280; font-size: 14px;">This inquiry was submitted at ${new Date().toISOString()}</p>
+          </div>
+        `,
+      };
+
+    case "location_request":
+      return {
+        subject: `New Club Request: ${data.clubName} (${data.city})`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #2563eb;">New Club Request 📍</h1>
+            <p>A trainer has requested a new club to be added to the platform.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Club Details</h3>
+              <p><strong>Club Name:</strong> ${data.clubName}</p>
+              <p><strong>City:</strong> ${data.city}</p>
+              <p><strong>Country:</strong> ${data.country}</p>
+              ${data.streetAddress ? `<p><strong>Address:</strong> ${data.streetAddress}</p>` : ''}
+              ${data.websiteUrl ? `<p><strong>Website:</strong> <a href="${data.websiteUrl}">${data.websiteUrl}</a></p>` : ''}
+            </div>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Requested By</h3>
+              <p><strong>Trainer:</strong> ${data.requestedBy}</p>
+              <p><strong>Email:</strong> <a href="mailto:${data.requestedByEmail}">${data.requestedByEmail}</a></p>
+            </div>
+            ${data.additionalNotes ? `<div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;"><h3 style="margin-top: 0;">Additional Notes</h3><p style="white-space: pre-wrap;">${data.additionalNotes}</p></div>` : ''}
+            <p style="color: #6b7280; font-size: 14px;">This request was submitted at ${new Date().toISOString()}</p>
           </div>
         `,
       };

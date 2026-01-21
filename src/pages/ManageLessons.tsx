@@ -22,6 +22,8 @@ import {
 import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard, Copy, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
+import { LessonLocationPicker } from '@/components/trainer/LessonLocationPicker';
+import { RequestClubDialog } from '@/components/trainer/RequestClubDialog';
 
 export default function ManageLessons() {
   const { user, profile, role, loading } = useAuth();
@@ -31,6 +33,7 @@ export default function ManageLessons() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loadingLessons, setLoadingLessons] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [requestClubOpen, setRequestClubOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [saving, setSaving] = useState(false);
   
@@ -385,13 +388,19 @@ export default function ManageLessons() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
-                  <Input
-                    id="location"
-                    placeholder="e.g., Amsterdam Padel Club"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  <Label>Location</Label>
+                  <LessonLocationPicker
+                    value={null}
+                    onChange={(locationId, locationName) => {
+                      setFormData({ ...formData, location: locationName || '' });
+                    }}
+                    onRequestNewClub={() => setRequestClubOpen(true)}
                   />
+                  {formData.location && (
+                    <p className="text-xs text-muted-foreground">
+                      Selected: {formData.location}
+                    </p>
+                  )}
                 </div>
 
                 {/* Payment Timing Section */}
@@ -554,6 +563,8 @@ export default function ManageLessons() {
           </div>
         )}
       </main>
+
+      <RequestClubDialog open={requestClubOpen} onOpenChange={setRequestClubOpen} />
     </div>
   );
 }

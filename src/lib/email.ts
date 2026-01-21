@@ -19,7 +19,8 @@ export type EmailType =
   | "club_claim_rejected"
   | "club_trainer_invitation"
   | "club_trainer_invitation_accepted"
-  | "partner_inquiry";
+  | "partner_inquiry"
+  | "location_request";
 
 export interface EmailData {
   playerName?: string;
@@ -49,6 +50,14 @@ export interface EmailData {
   email?: string;
   phone?: string;
   message?: string;
+  // Location request fields
+  city?: string;
+  country?: string;
+  streetAddress?: string;
+  websiteUrl?: string;
+  additionalNotes?: string;
+  requestedBy?: string;
+  requestedByEmail?: string;
 }
 
 /**
