@@ -54,6 +54,7 @@ import FollowingList from "./pages/FollowingList";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLocations from "./pages/admin/AdminLocations";
 import AdminCertifications from "./pages/admin/AdminCertifications";
+import AdminRatingSystems from "./pages/admin/AdminRatingSystems";
 import Locations from "./pages/Locations";
 import LocationDetail from "./pages/LocationDetail";
 import ClubDashboard from "./pages/club/ClubDashboard";
@@ -126,6 +127,7 @@ const App = () => (
             <Route path="/admin/locations" element={<AdminLocations />} />
             <Route path="/admin/certifications" element={<AdminCertifications />} />
             <Route path="/admin/club-claims" element={<AdminClubClaims />} />
+            <Route path="/admin/rating-systems" element={<AdminRatingSystems />} />
             <Route path="/locations" element={<Locations />} />
             <Route path="/locations/:slug" element={<LocationDetail />} />
             <Route path="/club" element={<ClubDashboard />} />
