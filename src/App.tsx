@@ -19,6 +19,8 @@ import Partner from "./pages/marketing/Partner";
 
 // App pages
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import SelectRole from "./pages/SelectRole";
 import PlayerSignup from "./pages/PlayerSignup";
 import TrainerSignup from "./pages/TrainerSignup";
@@ -91,6 +93,8 @@ const App = () => (
             
             {/* App routes */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/signup/player" element={<PlayerSignup />} />
             <Route path="/signup/trainer" element={<TrainerSignup />} />
             <Route path="/signup/club" element={<ClubSignup />} />
