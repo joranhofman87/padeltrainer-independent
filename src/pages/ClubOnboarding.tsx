@@ -107,12 +107,21 @@ export default function ClubOnboarding() {
       return;
     }
 
-    if (!user) return;
+    // Validate session is ready before making the claim
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: t('claim.error', 'Error'),
+        description: t('claim.sessionExpired', 'Your session has expired. Please refresh the page and try again.'),
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsLoading(true);
 
     try {
-      const { success, error } = await claimClub(selectedLocation.id, user.id, contactEmail, contactPhone, description);
+      const { success, error } = await claimClub(selectedLocation.id, session.user.id, contactEmail, contactPhone, description);
       
       if (error || !success) {
         throw error || new Error('Failed to submit claim');
