@@ -1,10 +1,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AdminStats } from "@/lib/admin";
 
 interface AdminStatsCardsProps {
   stats: AdminStats;
+}
+
+function TrendBadge({ trend, thisMonth, lastMonth }: { trend: number; thisMonth: number; lastMonth: number }) {
+  const isPositive = trend >= 0;
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-2xl font-bold">{thisMonth}</span>
+      <div className={`flex items-center text-xs ${isPositive ? "text-emerald-500" : "text-red-500"}`}>
+        {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+        <span>{Math.abs(trend).toFixed(0)}%</span>
+      </div>
+    </div>
+  );
 }
 
 export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
@@ -15,6 +28,15 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       style: "currency",
       currency: "EUR",
     }).format(amount);
+  };
+
+  const signupTrends = stats.signupTrends || {
+    trainersThisMonth: 0,
+    trainersLastMonth: 0,
+    trainerTrend: 0,
+    playersThisMonth: 0,
+    playersLastMonth: 0,
+    playerTrend: 0,
   };
 
   const cards = [
@@ -31,6 +53,32 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `Avg ${stats.overview.avgFeePercent.toFixed(1)}% fee`,
       icon: DollarSign,
       color: "text-emerald-500",
+    },
+    {
+      title: "Trainer Signups",
+      customValue: (
+        <TrendBadge 
+          trend={signupTrends.trainerTrend} 
+          thisMonth={signupTrends.trainersThisMonth} 
+          lastMonth={signupTrends.trainersLastMonth} 
+        />
+      ),
+      description: `${signupTrends.trainersLastMonth} last month`,
+      icon: UserPlus,
+      color: "text-blue-500",
+    },
+    {
+      title: "Player Signups",
+      customValue: (
+        <TrendBadge 
+          trend={signupTrends.playerTrend} 
+          thisMonth={signupTrends.playersThisMonth} 
+          lastMonth={signupTrends.playersLastMonth} 
+        />
+      ),
+      description: `${signupTrends.playersLastMonth} last month`,
+      icon: UserPlus,
+      color: "text-violet-500",
     },
     {
       title: "Active Trainers",
@@ -96,7 +144,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
             <card.icon className={`h-4 w-4 ${card.color}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{card.value}</div>
+            {card.customValue ? card.customValue : <div className="text-2xl font-bold">{card.value}</div>}
             <p className="text-xs text-muted-foreground">{card.description}</p>
           </CardContent>
         </Card>
