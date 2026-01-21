@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { isUserAdmin } from "@/lib/admin";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,13 +50,14 @@ interface UserWithRole {
 
 export default function AdminUsers() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>(searchParams.get("role") || "all");
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState<string>("");

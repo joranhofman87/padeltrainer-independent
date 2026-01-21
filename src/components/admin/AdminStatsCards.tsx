@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, Shield } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { AdminStats } from "@/lib/admin";
 
 interface AdminStatsCardsProps {
@@ -7,6 +8,8 @@ interface AdminStatsCardsProps {
 }
 
 export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
+  const navigate = useNavigate();
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("nl-NL", {
       style: "currency",
@@ -35,6 +38,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.connectedAccounts} connected to Stripe`,
       icon: UserCheck,
       color: "text-blue-500",
+      onClick: () => navigate("/admin/users?role=trainer"),
     },
     {
       title: "Active Players",
@@ -42,6 +46,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.totalBookings} total bookings`,
       icon: Users,
       color: "text-violet-500",
+      onClick: () => navigate("/admin/users?role=player"),
     },
     {
       title: "Total Clubs",
@@ -49,6 +54,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.verifiedClubs || 0} verified, ${stats.overview.subscribedClubs || 0} subscribed`,
       icon: Building2,
       color: "text-teal-500",
+      onClick: () => navigate("/admin/clubs"),
     },
     {
       title: "Club Trials",
@@ -80,7 +86,11 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <Card key={card.title}>
+        <Card 
+          key={card.title} 
+          className={card.onClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
+          onClick={card.onClick}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
             <card.icon className={`h-4 w-4 ${card.color}`} />
