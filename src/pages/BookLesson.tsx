@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,6 +22,8 @@ interface SlotWithDetails {
   start_time: string;
   end_time: string;
   lesson_id: string | null;
+  cyclus_id?: string | null;
+  cyclus_name?: string | null;
   bookedPlayers?: BookedPlayerInfo[];
   averageRating?: number | null;
   ratingSystem?: string;
@@ -36,6 +38,16 @@ interface SlotWithDetails {
     min_skill_rating: number | null;
     max_skill_rating: number | null;
   } | null;
+}
+
+interface CyclusBundle {
+  cyclus_id: string;
+  cyclus_name: string;
+  slots: SlotWithDetails[];
+  totalPrice: number;
+  firstDate: string;
+  lastDate: string;
+  lesson: SlotWithDetails['lessons'];
 }
 
 interface TrainerWithProfile {
@@ -61,8 +73,10 @@ export default function BookLesson() {
   const { toast } = useToast();
 
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
-  const [slots, setSlots] = useState<SlotWithDetails[]>([]);
+  const [cyclusBundles, setCyclusBundles] = useState<CyclusBundle[]>([]);
+  const [individualSlots, setIndividualSlots] = useState<SlotWithDetails[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithDetails | null>(null);
+  const [selectedCyclus, setSelectedCyclus] = useState<CyclusBundle | null>(null);
   const [notes, setNotes] = useState('');
   const [loadingData, setLoadingData] = useState(true);
   const [booking, setBooking] = useState(false);
@@ -136,6 +150,7 @@ export default function BookLesson() {
     } as unknown as TrainerWithProfile);
 
     // Fetch available slots using the trainer's actual id (not user_id)
+    // Include cyclus_id and cyclus_name for grouping
     const { data: slotsData } = await supabase
       .from('availability_slots')
       .select(`
@@ -143,6 +158,8 @@ export default function BookLesson() {
         start_time,
         end_time,
         lesson_id,
+        cyclus_id,
+        cyclus_name,
         lessons(id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating)
       `)
       .eq('trainer_id', trainerData.id)
@@ -182,7 +199,7 @@ export default function BookLesson() {
         }
       });
 
-      // Only show slots that have available spots (max 4 per slot)
+      // Build available slots with cyclus info
       const availableSlots = slotsData
         .filter((s) => (slotBookingInfo[s.id]?.count || 0) < 4)
         .map((s) => {
@@ -206,18 +223,75 @@ export default function BookLesson() {
             ratingSystem,
           } as SlotWithDetails;
         });
-      
-      setSlots(availableSlots);
+
+      // Group slots by cyclus_id
+      const cyclusGroups: Record<string, SlotWithDetails[]> = {};
+      const standaloneSlots: SlotWithDetails[] = [];
+
+      // Also count total slots per cyclus (including ones with bookings)
+      const totalSlotsPerCyclus: Record<string, number> = {};
+      slotsData.forEach((s) => {
+        if (s.cyclus_id) {
+          totalSlotsPerCyclus[s.cyclus_id] = (totalSlotsPerCyclus[s.cyclus_id] || 0) + 1;
+        }
+      });
+
+      availableSlots.forEach((slot) => {
+        if (slot.cyclus_id) {
+          if (!cyclusGroups[slot.cyclus_id]) {
+            cyclusGroups[slot.cyclus_id] = [];
+          }
+          cyclusGroups[slot.cyclus_id].push(slot);
+        } else {
+          standaloneSlots.push(slot);
+        }
+      });
+
+      // Create bundles for full cycluses, individual slots for partial ones
+      const bundles: CyclusBundle[] = [];
+      const partialCyclusSlots: SlotWithDetails[] = [];
+
+      Object.entries(cyclusGroups).forEach(([cyclusId, cyclusSlots]) => {
+        const totalInCyclus = totalSlotsPerCyclus[cyclusId] || cyclusSlots.length;
+        
+        // If ALL slots in cyclus are available (no bookings on any)
+        if (cyclusSlots.length === totalInCyclus) {
+          const sortedSlots = cyclusSlots.sort((a, b) => 
+            new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+          );
+          const totalPrice = sortedSlots.reduce((sum, s) => 
+            sum + (s.lessons?.price || 0), 0
+          );
+          
+          bundles.push({
+            cyclus_id: cyclusId,
+            cyclus_name: sortedSlots[0].cyclus_name || 'Training Cycle',
+            slots: sortedSlots,
+            totalPrice,
+            firstDate: sortedSlots[0].start_time,
+            lastDate: sortedSlots[sortedSlots.length - 1].start_time,
+            lesson: sortedSlots[0].lessons,
+          });
+        } else {
+          // Partial cyclus - show remaining slots individually
+          partialCyclusSlots.push(...cyclusSlots);
+        }
+      });
+
+      setCyclusBundles(bundles);
+      setIndividualSlots([...standaloneSlots, ...partialCyclusSlots]);
     }
 
     setLoadingData(false);
   };
 
   const handleBook = async () => {
-    if (!selectedSlot || !profile?.id || !trainer) return;
+    if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
 
+    // Get the lesson to check skill requirements
+    const lesson = selectedCyclus ? selectedCyclus.lesson : selectedSlot?.lessons;
+    
     // Check skill rating requirements
-    const lesson = selectedSlot.lessons;
     if (lesson) {
       const playerRating = profile.skill_rating;
       if (lesson.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating)) {
@@ -241,6 +315,75 @@ export default function BookLesson() {
     setBooking(true);
 
     try {
+      // Handle cyclus bundle booking
+      if (selectedCyclus) {
+        const requiresApproval = trainer.require_booking_approval;
+        const useManualInvoicing = trainer.use_manual_invoicing;
+        
+        // Create bookings for all slots in the cyclus
+        const bookings = selectedCyclus.slots.map((slot) => ({
+          player_id: profile.id,
+          slot_id: slot.id,
+          lesson_id: slot.lesson_id,
+          notes: notes || null,
+          status: requiresApproval ? 'pending_approval' : (useManualInvoicing ? 'confirmed' : 'pending'),
+          payment_status: 'pending',
+        }));
+
+        const { error } = await supabase.from('bookings').insert(bookings);
+        if (error) throw error;
+
+        // Send appropriate email
+        const firstSlot = selectedCyclus.slots[0];
+        const firstDate = format(parseISO(firstSlot.start_time), 'EEE, MMM d, yyyy');
+        const firstTime = format(parseISO(firstSlot.start_time), 'HH:mm');
+
+        if (requiresApproval) {
+          await supabase.functions.invoke('send-email', {
+            body: {
+              type: 'booking_request',
+              to: trainer.profiles.email,
+              data: {
+                trainerName: trainer.profiles.full_name,
+                playerName: profile.full_name,
+                playerEmail: profile.email,
+                lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
+                lessonDate: firstDate,
+                lessonTime: firstTime,
+                location: selectedCyclus.lesson?.location,
+                price: selectedCyclus.totalPrice,
+              },
+            },
+          });
+          setRequestSent(true);
+          toast({
+            title: 'Request Sent!',
+            description: `Your booking request for ${selectedCyclus.slots.length} sessions has been sent.`,
+          });
+        } else {
+          await supabase.functions.invoke('send-email', {
+            body: {
+              type: 'manual_booking_confirmation',
+              to: profile.email,
+              data: {
+                playerName: profile.full_name,
+                trainerName: trainer.profiles.full_name,
+                lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
+                lessonDate: firstDate,
+                lessonTime: firstTime,
+                location: selectedCyclus.lesson?.location,
+                price: selectedCyclus.totalPrice,
+              },
+            },
+          });
+          setBooked(true);
+        }
+        return;
+      }
+
+      // Handle single slot booking (existing logic)
+      if (!selectedSlot) return;
+      
       const price = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
       const requiresApproval = trainer.require_booking_approval;
       const useManualInvoicing = trainer.use_manual_invoicing;
@@ -510,16 +653,74 @@ export default function BookLesson() {
               </CardContent>
             </Card>
 
-            {/* Available Slots */}
+            {/* Training Cycle Bundles */}
+            {cyclusBundles.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Repeat className="h-5 w-5 text-primary" />
+                  Training Cycles
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {cyclusBundles.map((cyclus) => (
+                    <Card
+                      key={cyclus.cyclus_id}
+                      className={`cursor-pointer transition-all ${
+                        selectedCyclus?.cyclus_id === cyclus.cyclus_id
+                          ? 'ring-2 ring-primary border-primary'
+                          : 'hover:border-primary/50'
+                      }`}
+                      onClick={() => {
+                        setSelectedCyclus(cyclus);
+                        setSelectedSlot(null);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Repeat className="h-4 w-4 text-primary" />
+                            <span className="font-semibold">{cyclus.cyclus_name}</span>
+                          </div>
+                          {selectedCyclus?.cyclus_id === cyclus.cyclus_id && (
+                            <Check className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="mb-2">
+                          {cyclus.slots.length} sessions
+                        </Badge>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
+                        </p>
+                        {cyclus.lesson && (
+                          <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
+                        )}
+                        <div className="flex items-center gap-2 pt-2 border-t">
+                          <Euro className="h-4 w-4 text-primary" />
+                          <span className="font-semibold text-primary">
+                            €{cyclus.totalPrice}
+                          </span>
+                          <span className="text-xs text-muted-foreground">total</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Individual Slots */}
             <div>
-              <h3 className="text-lg font-semibold mb-4">Available Time Slots</h3>
-              {slots.length === 0 ? (
+              <h3 className="text-lg font-semibold mb-4">
+                {cyclusBundles.length > 0 ? 'Individual Sessions' : 'Available Time Slots'}
+              </h3>
+              {individualSlots.length === 0 && cyclusBundles.length === 0 ? (
                 <Card className="p-8 text-center">
                   <p className="text-muted-foreground">No available slots at the moment</p>
                 </Card>
+              ) : individualSlots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No individual sessions available</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {slots.map((slot) => (
+                  {individualSlots.map((slot) => (
                     <Card
                       key={slot.id}
                       className={`cursor-pointer transition-all ${
@@ -527,7 +728,10 @@ export default function BookLesson() {
                           ? 'ring-2 ring-primary border-primary'
                           : 'hover:border-primary/50'
                       }`}
-                      onClick={() => setSelectedSlot(slot)}
+                      onClick={() => {
+                        setSelectedSlot(slot);
+                        setSelectedCyclus(null);
+                      }}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
@@ -590,7 +794,62 @@ export default function BookLesson() {
                 <CardDescription>Review your lesson booking</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {selectedSlot ? (
+                {selectedCyclus ? (
+                  <>
+                    <div className="p-4 bg-muted rounded-lg space-y-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Repeat className="h-4 w-4 text-primary" />
+                        <p className="font-semibold">{selectedCyclus.cyclus_name}</p>
+                      </div>
+                      <Badge variant="secondary" className="mb-2">
+                        {selectedCyclus.slots.length} sessions
+                      </Badge>
+                      {selectedCyclus.lesson && (
+                        <p className="text-sm">{selectedCyclus.lesson.title}</p>
+                      )}
+                      <div className="text-sm text-muted-foreground space-y-1 mt-2 max-h-32 overflow-y-auto">
+                        {selectedCyclus.slots.map((slot) => (
+                          <p key={slot.id} className="flex items-center gap-2">
+                            <Calendar className="h-3 w-3" />
+                            {format(parseISO(slot.start_time), 'EEE, MMM d')} at {format(parseISO(slot.start_time), 'HH:mm')}
+                          </p>
+                        ))}
+                      </div>
+                      {selectedCyclus.lesson?.location && (
+                        <p className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                          <MapPin className="h-4 w-4" />
+                          {selectedCyclus.lesson.location}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="notes">Notes for trainer (optional)</Label>
+                      <Textarea
+                        id="notes"
+                        placeholder="Any special requests or information..."
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <div className="flex justify-between items-center text-lg font-semibold">
+                        <span>Total ({selectedCyclus.slots.length} sessions)</span>
+                        <span>€{selectedCyclus.totalPrice}</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={handleBook}
+                      disabled={booking}
+                    >
+                      {booking ? 'Booking...' : `Book Entire Cycle (${selectedCyclus.slots.length} sessions)`}
+                    </Button>
+                  </>
+                ) : selectedSlot ? (
                   <>
                     <div className="p-4 bg-muted rounded-lg space-y-2">
                       <p className="font-semibold">
@@ -645,7 +904,7 @@ export default function BookLesson() {
                   </>
                 ) : (
                   <p className="text-muted-foreground text-center py-8">
-                    Select a time slot to continue
+                    Select a time slot or training cycle to continue
                   </p>
                 )}
               </CardContent>
