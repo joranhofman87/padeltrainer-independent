@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   ArrowLeft, 
   Check, 
@@ -22,78 +23,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { SUBSCRIPTION_TIERS, STARTER_TIER, SubscriptionTier } from '@/lib/subscription';
-
-interface PricingPlan {
-  id: SubscriptionTier;
-  name: string;
-  price: number;
-  yearlyPrice: number;
-  period: string;
-  description: string;
-  features: string[];
-  highlighted?: boolean;
-  badge?: string;
-  priceIdMonthly?: string;
-  priceIdYearly?: string;
-}
-
-const pricingPlans: PricingPlan[] = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: STARTER_TIER.monthlyPrice,
-    yearlyPrice: STARTER_TIER.yearlyPrice,
-    period: 'month',
-    description: 'Perfect for getting started',
-    features: [
-      `Create up to ${STARTER_TIER.maxLessons} lessons`,
-      'Basic profile page',
-      'Accept bookings',
-      `${STARTER_TIER.platformFeePercent}% platform fee`,
-    ],
-  },
-  {
-    id: 'professional',
-    name: 'Professional',
-    price: SUBSCRIPTION_TIERS.professional.monthlyPrice,
-    yearlyPrice: SUBSCRIPTION_TIERS.professional.yearlyPrice,
-    period: 'month',
-    description: 'Everything you need to grow',
-    features: [
-      'Unlimited lessons',
-      'Priority in search results',
-      'Advanced analytics',
-      'Custom availability',
-      `${SUBSCRIPTION_TIERS.professional.platformFeePercent}% platform fee`,
-      'Priority support',
-    ],
-    highlighted: true,
-    badge: 'Most Popular',
-    priceIdMonthly: SUBSCRIPTION_TIERS.professional.priceIdMonthly,
-    priceIdYearly: SUBSCRIPTION_TIERS.professional.priceIdYearly,
-  },
-  {
-    id: 'academy',
-    name: 'Academy',
-    price: SUBSCRIPTION_TIERS.academy.monthlyPrice,
-    yearlyPrice: SUBSCRIPTION_TIERS.academy.yearlyPrice,
-    period: 'month',
-    description: 'For clubs and academies',
-    features: [
-      'Everything in Professional',
-      'Multiple trainer accounts',
-      'Group management',
-      'Branded booking page',
-      `${SUBSCRIPTION_TIERS.academy.platformFeePercent}% platform fee`,
-      'Dedicated account manager',
-      'API access',
-    ],
-    badge: 'Best Value',
-    priceIdMonthly: SUBSCRIPTION_TIERS.academy.priceIdMonthly,
-    priceIdYearly: SUBSCRIPTION_TIERS.academy.priceIdYearly,
-  },
-];
+import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
 
 export default function TrainerSubscription() {
   const navigate = useNavigate();
@@ -103,6 +33,8 @@ export default function TrainerSubscription() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
+  
+  const { data: plans, isLoading: loadingPlans } = useTrainerPlans();
 
   // Handle success/cancel from Stripe checkout
   useEffect(() => {
@@ -115,7 +47,6 @@ export default function TrainerSubscription() {
         description: 'Your subscription is now active. Enjoy your new features!',
       });
       refreshSubscription();
-      // Clean up URL
       window.history.replaceState({}, '', '/subscription');
     } else if (canceled === 'true') {
       toast({
@@ -137,19 +68,33 @@ export default function TrainerSubscription() {
     }
   }, [user, role, loading, navigate]);
 
-  if (loading) {
+  if (loading || loadingPlans) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10" />
+              <Skeleton className="h-8 w-48" />
+            </div>
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-8">
+          <Skeleton className="h-24 mb-8" />
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-[400px]" />
+            ))}
+          </div>
+        </main>
       </div>
     );
   }
 
   const currentPlan = subscription?.tier || 'starter';
 
-  const handleSelectPlan = async (plan: PricingPlan) => {
-    if (plan.id === 'starter') {
-      // Can't upgrade to starter - they need to cancel via portal
+  const handleSelectPlan = async (plan: SubscriptionPlan) => {
+    if (plan.tier === 'starter') {
       toast({
         title: 'Use Manage Billing',
         description: 'To downgrade, please use the Manage Billing option.',
@@ -157,7 +102,9 @@ export default function TrainerSubscription() {
       return;
     }
 
-    if (!plan.priceIdMonthly || !plan.priceIdYearly) {
+    const priceId = billingCycle === 'monthly' ? plan.stripe_price_id_monthly : plan.stripe_price_id_yearly;
+
+    if (!priceId) {
       toast({
         title: 'Configuration Error',
         description: 'This plan is not properly configured.',
@@ -165,8 +112,6 @@ export default function TrainerSubscription() {
       });
       return;
     }
-
-    const priceId = billingCycle === 'monthly' ? plan.priceIdMonthly : plan.priceIdYearly;
 
     setProcessingPlan(plan.id);
 
@@ -181,7 +126,6 @@ export default function TrainerSubscription() {
       if (error) throw error;
 
       if (data?.url) {
-        // Open in new tab to handle iframe restrictions
         window.open(data.url, '_blank');
         setProcessingPlan(null);
         return;
@@ -323,20 +267,20 @@ export default function TrainerSubscription() {
 
         {/* Pricing Cards */}
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
-          {pricingPlans.map((plan) => (
+          {plans?.map((plan) => (
             <Card 
               key={plan.id}
-              className={`relative ${plan.highlighted ? 'border-primary shadow-lg scale-105' : ''} ${currentPlan === plan.id ? 'ring-2 ring-primary' : ''}`}
+              className={`relative ${plan.is_highlighted ? 'border-primary shadow-lg scale-105' : ''} ${currentPlan === plan.tier ? 'ring-2 ring-primary' : ''}`}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className={plan.highlighted ? 'bg-primary' : 'bg-orange-500'}>
+                  <Badge className={plan.is_highlighted ? 'bg-primary' : 'bg-orange-500'}>
                     <Sparkles className="h-3 w-3 mr-1" />
                     {plan.badge}
                   </Badge>
                 </div>
               )}
-              {currentPlan === plan.id && (
+              {currentPlan === plan.tier && (
                 <div className="absolute -top-3 right-4">
                   <Badge variant="outline" className="bg-background border-primary text-primary">
                     Your Plan
@@ -348,7 +292,7 @@ export default function TrainerSubscription() {
                 <CardDescription>{plan.description}</CardDescription>
                 <div className="pt-4">
                   <span className="text-4xl font-bold">
-                    €{billingCycle === 'yearly' ? plan.yearlyPrice : plan.price}
+                    €{billingCycle === 'yearly' ? plan.yearly_price : plan.monthly_price}
                   </span>
                   <span className="text-muted-foreground">
                     /{billingCycle === 'yearly' ? 'year' : 'month'}
@@ -364,13 +308,17 @@ export default function TrainerSubscription() {
                       <span className="text-sm">{feature}</span>
                     </li>
                   ))}
+                  <li className="flex items-start gap-2">
+                    <Check className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                    <span className="text-sm">{plan.platform_fee_percent}% platform fee</span>
+                  </li>
                 </ul>
               </CardContent>
               <CardFooter>
                 <Button 
                   className="w-full" 
-                  variant={plan.highlighted ? 'default' : 'outline'}
-                  disabled={currentPlan === plan.id || processingPlan !== null}
+                  variant={plan.is_highlighted ? 'default' : 'outline'}
+                  disabled={currentPlan === plan.tier || processingPlan !== null}
                   onClick={() => handleSelectPlan(plan)}
                 >
                   {processingPlan === plan.id ? (
@@ -378,9 +326,9 @@ export default function TrainerSubscription() {
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Processing...
                     </>
-                  ) : currentPlan === plan.id ? (
+                  ) : currentPlan === plan.tier ? (
                     'Current Plan'
-                  ) : plan.price === 0 ? (
+                  ) : plan.monthly_price === 0 ? (
                     'Free Plan'
                   ) : (
                     'Upgrade'

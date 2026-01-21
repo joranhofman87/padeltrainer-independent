@@ -12,15 +12,27 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CHECK-TRAINER-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
-// Product IDs for subscription tiers
-const TIER_PRODUCTS = {
-  // Professional tier products (monthly and yearly are different products)
-  'prod_TnaKMqklQL0csZ': 'professional', // Professional Monthly
-  'prod_TnaK7n69g3z1go': 'professional', // Professional Yearly
-  // Academy tier products
-  'prod_TnaKlteqteiFWb': 'academy', // Academy Monthly
-  'prod_TnaLKqo3OnQCOd': 'academy', // Academy Yearly
-};
+// Get tier from database based on Stripe product ID
+async function getTierFromDB(supabaseClient: any, productId: string): Promise<string> {
+  try {
+    const { data, error } = await supabaseClient
+      .from('subscription_plans')
+      .select('tier')
+      .or(`stripe_product_id_monthly.eq.${productId},stripe_product_id_yearly.eq.${productId}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      logStep("Could not find tier in DB, defaulting to starter", { productId, error });
+      return 'starter';
+    }
+
+    return data.tier;
+  } catch (error) {
+    logStep("Error fetching tier from DB", { error });
+    return 'starter';
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -85,7 +97,9 @@ serve(async (req) => {
       const subscription = subscriptions.data[0];
       subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
       productId = subscription.items.data[0].price.product as string;
-      tier = TIER_PRODUCTS[productId as keyof typeof TIER_PRODUCTS] || 'starter';
+      
+      // Get tier from database instead of hardcoded map
+      tier = await getTierFromDB(supabaseClient, productId);
       logStep("Active subscription found", { subscriptionId: subscription.id, productId, tier, endDate: subscriptionEnd });
     } else {
       logStep("No active subscription found");

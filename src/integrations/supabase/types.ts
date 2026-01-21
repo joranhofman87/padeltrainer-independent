@@ -1111,6 +1111,75 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_plans: {
+        Row: {
+          badge: string | null
+          created_at: string
+          description: string | null
+          display_order: number
+          features: Json | null
+          id: string
+          is_active: boolean
+          is_highlighted: boolean
+          max_lessons: number | null
+          monthly_price: number
+          name: string
+          plan_type: string
+          platform_fee_percent: number
+          stripe_price_id_monthly: string | null
+          stripe_price_id_yearly: string | null
+          stripe_product_id_monthly: string | null
+          stripe_product_id_yearly: string | null
+          tier: string
+          updated_at: string
+          yearly_price: number
+        }
+        Insert: {
+          badge?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          features?: Json | null
+          id?: string
+          is_active?: boolean
+          is_highlighted?: boolean
+          max_lessons?: number | null
+          monthly_price?: number
+          name: string
+          plan_type?: string
+          platform_fee_percent?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          stripe_product_id_monthly?: string | null
+          stripe_product_id_yearly?: string | null
+          tier: string
+          updated_at?: string
+          yearly_price?: number
+        }
+        Update: {
+          badge?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          features?: Json | null
+          id?: string
+          is_active?: boolean
+          is_highlighted?: boolean
+          max_lessons?: number | null
+          monthly_price?: number
+          name?: string
+          plan_type?: string
+          platform_fee_percent?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          stripe_product_id_monthly?: string | null
+          stripe_product_id_yearly?: string | null
+          tier?: string
+          updated_at?: string
+          yearly_price?: number
+        }
+        Relationships: []
+      }
       trainer_followers: {
         Row: {
           created_at: string

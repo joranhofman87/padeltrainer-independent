@@ -12,20 +12,32 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CREATE-CHECKOUT] ${step}${detailsStr}`);
 };
 
-// Subscription tier product IDs -> platform fee percentages
-const TIER_FEES: Record<string, number> = {
-  // Professional tier products
-  'prod_TnaKMqklQL0csZ': 5, // Professional Monthly
-  'prod_TnaK7n69g3z1go': 5, // Professional Yearly
-  // Academy tier products
-  'prod_TnaKlteqteiFWb': 2.5, // Academy Monthly
-  'prod_TnaLKqo3OnQCOd': 2.5, // Academy Yearly
-};
-
 const STARTER_FEE = 10; // 10% for starter/free tier
 const CLUB_FEE = 5; // 5% fee for club payments
 
-async function getTrainerPlatformFee(stripe: Stripe, trainerEmail: string): Promise<number> {
+// Get platform fee from database based on Stripe product ID
+async function getPlatformFeeFromDB(supabaseClient: any, productId: string): Promise<number> {
+  try {
+    const { data, error } = await supabaseClient
+      .from('subscription_plans')
+      .select('platform_fee_percent')
+      .or(`stripe_product_id_monthly.eq.${productId},stripe_product_id_yearly.eq.${productId}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      logStep("Could not find plan in DB, using starter fee", { productId, error });
+      return STARTER_FEE;
+    }
+
+    return data.platform_fee_percent;
+  } catch (error) {
+    logStep("Error fetching platform fee from DB", { error });
+    return STARTER_FEE;
+  }
+}
+
+async function getTrainerPlatformFee(stripe: Stripe, supabaseClient: any, trainerEmail: string): Promise<number> {
   try {
     // Find trainer's Stripe customer
     const customers = await stripe.customers.list({ email: trainerEmail, limit: 1 });
@@ -47,7 +59,9 @@ async function getTrainerPlatformFee(stripe: Stripe, trainerEmail: string): Prom
     }
 
     const productId = subscriptions.data[0].items.data[0].price.product as string;
-    return TIER_FEES[productId] ?? STARTER_FEE;
+    
+    // Get fee from database
+    return await getPlatformFeeFromDB(supabaseClient, productId);
   } catch (error) {
     console.error('Error getting trainer platform fee:', error);
     return STARTER_FEE;
@@ -205,8 +219,8 @@ serve(async (req) => {
         .single();
 
       if (trainerProfile?.email) {
-        platformFeePercent = await getTrainerPlatformFee(stripe, trainerProfile.email);
-        logStep("Got trainer platform fee", { email: trainerProfile.email, feePercent: platformFeePercent });
+        platformFeePercent = await getTrainerPlatformFee(stripe, supabaseClient, trainerProfile.email);
+        logStep("Got trainer platform fee from DB", { email: trainerProfile.email, feePercent: platformFeePercent });
       }
 
       // Calculate platform fee in cents based on trainer's subscription tier
