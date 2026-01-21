@@ -20,7 +20,14 @@ export default function SelectRole() {
       if (!user) {
         navigate('/auth');
       } else if (role) {
-        navigate(role === 'trainer' ? '/trainer' : '/player');
+        // Priority: admin > trainer > player
+        if (role === 'admin') {
+          navigate('/admin');
+        } else if (role === 'trainer') {
+          navigate('/trainer');
+        } else {
+          navigate('/player');
+        }
       }
     }
   }, [user, role, loading, navigate]);

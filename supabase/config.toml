@@ -52,3 +52,6 @@ verify_jwt = false
 
 [functions.check-club-connect-status]
 verify_jwt = false
+
+[functions.impersonate-user]
+verify_jwt = false
