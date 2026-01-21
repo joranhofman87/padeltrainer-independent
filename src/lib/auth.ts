@@ -144,3 +144,15 @@ export async function getTrainerProfile(userId: string): Promise<TrainerProfile 
   if (error || !data) return null;
   return data as TrainerProfile;
 }
+
+export async function sendPasswordResetEmail(email: string) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  return { data, error };
+}
+
+export async function updatePassword(newPassword: string) {
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  return { data, error };
+}
