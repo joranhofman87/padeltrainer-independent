@@ -28,6 +28,7 @@ interface TrainerProfileData {
   certifications: string[];
   specializations: string[];
   knltb_rating: number | null;
+  trainer_rating_system: string;
   coaching_method: string;
   favourite_quote: string;
   video_url: string;
@@ -67,6 +68,7 @@ export default function EditProfile() {
     certifications: [],
     specializations: [],
     knltb_rating: null,
+    trainer_rating_system: 'knltb',
     coaching_method: '',
     favourite_quote: '',
     video_url: '',
@@ -199,6 +201,7 @@ export default function EditProfile() {
         certifications: data.certifications || [],
         specializations: data.specializations || [],
         knltb_rating: data.knltb_rating,
+        trainer_rating_system: 'knltb', // Default to knltb as the field is named knltb_rating in DB
         coaching_method: data.coaching_method || '',
         favourite_quote: data.favourite_quote || '',
         video_url: data.video_url || '',
@@ -875,24 +878,66 @@ export default function EditProfile() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="knltb_rating">KNLTB Rating</Label>
-                    <Input
-                      id="knltb_rating"
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="9.9"
-                      value={trainerData.knltb_rating || ''}
-                      onChange={(e) => setTrainerData({ 
-                        ...trainerData, 
-                        knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
-                      })}
-                      placeholder="7.5"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Your official KNLTB rating (0.1 - 9.9)
-                    </p>
+                  <div className="space-y-4">
+                    <Label>Your Padel Rating</Label>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="trainer_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                        <Select
+                          value={trainerData.trainer_rating_system}
+                          onValueChange={(value) => {
+                            const system = ratingSystems.find(s => s.code === value);
+                            setTrainerData({ 
+                              ...trainerData, 
+                              trainer_rating_system: value,
+                              knltb_rating: null, // Reset rating when system changes
+                            });
+                          }}
+                          disabled={loadingRatingSystems}
+                        >
+                          <SelectTrigger id="trainer_rating_system">
+                            <SelectValue placeholder="Select rating system" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ratingSystems.map((system) => (
+                              <SelectItem key={system.code} value={system.code}>
+                                {system.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">Rating</Label>
+                        {(() => {
+                          const trainerRatingSystem = ratingSystems.find(s => s.code === trainerData.trainer_rating_system);
+                          return (
+                            <>
+                              <Input
+                                id="trainer_rating"
+                                type="number"
+                                step={trainerRatingSystem?.step || 0.1}
+                                min={trainerRatingSystem?.min_rating || 0.1}
+                                max={trainerRatingSystem?.max_rating || 10}
+                                value={trainerData.knltb_rating || ''}
+                                onChange={(e) => setTrainerData({ 
+                                  ...trainerData, 
+                                  knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
+                                })}
+                                placeholder={trainerRatingSystem?.max_rating?.toString() || ''}
+                                disabled={!trainerRatingSystem}
+                              />
+                              {trainerRatingSystem && (
+                                <p className="text-xs text-muted-foreground">
+                                  {trainerRatingSystem.min_rating} - {trainerRatingSystem.max_rating}
+                                  {trainerRatingSystem.lower_is_better && ' (lower is better)'}
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
