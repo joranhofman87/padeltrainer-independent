@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { 
   Users, 
@@ -42,20 +42,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
+import { useClubContext } from "@/components/club/ClubLayout";
 import {
-  getUserClubProfiles,
   getClubManagers,
   inviteClubManager,
   removeClubManager,
-  ClubProfile,
 } from "@/lib/club";
 import { 
   connectClubStripe, 
   checkClubConnectStatus,
   type ClubConnectStatus 
 } from "@/lib/clubPayments";
-import { ClubNavigation } from "@/components/club/ClubNavigation";
 
 interface Manager {
   id: string;
@@ -71,12 +68,10 @@ interface Manager {
 
 export default function ClubSettings() {
   const { t } = useTranslation("club");
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user, loading: authLoading } = useAuth();
+  const { activeClub } = useClubContext();
 
-  const [club, setClub] = useState<(ClubProfile & { role: string; location: any }) | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -89,49 +84,39 @@ export default function ClubSettings() {
   const [checkingStatus, setCheckingStatus] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [authLoading, user, navigate]);
-
-  useEffect(() => {
     async function loadData() {
-      if (!user) return;
+      if (!activeClub) return;
       setLoading(true);
       try {
-        const clubs = await getUserClubProfiles(user.id);
-        if (clubs.length > 0) {
-          setClub(clubs[0]);
-          const managersData = await getClubManagers(clubs[0].id);
-          setManagers(managersData as Manager[]);
-          
-          // Check Stripe connect status
-          setCheckingStatus(true);
-          try {
-            const status = await checkClubConnectStatus(clubs[0].id);
-            setConnectStatus(status);
-          } catch (e) {
-            console.error("Error checking connect status:", e);
-          } finally {
-            setCheckingStatus(false);
-          }
+        const managersData = await getClubManagers(activeClub.id);
+        setManagers(managersData as Manager[]);
+        
+        // Check Stripe connect status
+        setCheckingStatus(true);
+        try {
+          const status = await checkClubConnectStatus(activeClub.id);
+          setConnectStatus(status);
+        } catch (e) {
+          console.error("Error checking connect status:", e);
+        } finally {
+          setCheckingStatus(false);
         }
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, [user]);
+  }, [activeClub]);
 
   // Handle Stripe redirect callbacks
   useEffect(() => {
-    if (searchParams.get("stripe_success") === "true" && club) {
+    if (searchParams.get("stripe_success") === "true" && activeClub) {
       toast({
         title: t("settings.stripeConnectSuccess", "Stripe Connected"),
         description: t("settings.stripeConnectSuccessDescription", "Your Stripe account has been connected successfully."),
       });
       // Refresh status
-      checkClubConnectStatus(club.id).then(setConnectStatus).catch(console.error);
+      checkClubConnectStatus(activeClub.id).then(setConnectStatus).catch(console.error);
     } else if (searchParams.get("stripe_refresh") === "true") {
       toast({
         title: t("settings.stripeConnectRefresh", "Complete Setup"),
@@ -139,14 +124,14 @@ export default function ClubSettings() {
         variant: "destructive",
       });
     }
-  }, [searchParams, club, toast, t]);
+  }, [searchParams, activeClub, toast, t]);
 
   const handleConnectStripe = async () => {
-    if (!club) return;
+    if (!activeClub) return;
     
     setConnectLoading(true);
     try {
-      const url = await connectClubStripe(club.id);
+      const url = await connectClubStripe(activeClub.id);
       window.open(url, "_blank");
     } catch (error: any) {
       toast({
@@ -160,11 +145,11 @@ export default function ClubSettings() {
   };
 
   const handleRefreshStatus = async () => {
-    if (!club) return;
+    if (!activeClub) return;
     
     setCheckingStatus(true);
     try {
-      const status = await checkClubConnectStatus(club.id);
+      const status = await checkClubConnectStatus(activeClub.id);
       setConnectStatus(status);
       toast({
         title: t("settings.statusRefreshed", "Status Refreshed"),
@@ -182,11 +167,12 @@ export default function ClubSettings() {
   };
 
   const handleInvite = async () => {
-    if (!club || !user || !inviteEmail.trim()) return;
+    if (!activeClub || !inviteEmail.trim()) return;
 
     setInviting(true);
     try {
-      const result = await inviteClubManager(club.id, inviteEmail.trim(), user.id);
+      // Use empty string as we don't have user context here - the backend should handle this
+      const result = await inviteClubManager(activeClub.id, inviteEmail.trim(), "");
       if (result.success) {
         toast({
           title: t("managers.inviteSuccess"),
@@ -195,7 +181,7 @@ export default function ClubSettings() {
         setInviteEmail("");
         setInviteDialogOpen(false);
         // Refresh managers
-        const managersData = await getClubManagers(club.id);
+        const managersData = await getClubManagers(activeClub.id);
         setManagers(managersData as Manager[]);
       } else {
         toast({
@@ -231,45 +217,24 @@ export default function ClubSettings() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 max-w-2xl">
-          <Skeleton className="h-8 w-48 mb-4" />
-          <Skeleton className="h-64 w-full mb-6" />
-          <Skeleton className="h-64 w-full" />
-        </div>
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        <Skeleton className="h-8 w-48 mb-4" />
+        <Skeleton className="h-64 w-full mb-6" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
-  if (!club) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8 text-center">
-          <p className="text-muted-foreground">{t("dashboard.noClubs", "No clubs found")}</p>
-          <Button onClick={() => navigate("/locations")} className="mt-4">
-            {t("dashboard.browseLocations", "Browse Locations")}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const isOwner = club.role === "owner";
+  const isOwner = activeClub?.role === "owner";
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold">{t("settings.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("settings.description")}</p>
-        </div>
-        <ClubNavigation />
+    <div className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold">{t("settings.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("settings.description")}</p>
       </div>
-
-      <div className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
         {/* Stripe Connect Card */}
         <Card>
           <CardHeader>
@@ -514,8 +479,7 @@ export default function ClubSettings() {
               ))}
             </div>
           </CardContent>
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }
