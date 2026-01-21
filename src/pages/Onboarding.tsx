@@ -38,33 +38,6 @@ export default function Onboarding() {
     }
   }, [user, role, loading, navigate, pendingRole]);
 
-  const triggerRatingScrape = async (profileId: string, knltb: string) => {
-    try {
-      console.log('Triggering rating scrape for profile:', profileId, 'KNLTB:', knltb);
-      const { data, error } = await supabase.functions.invoke('scrape-knltb-rating', {
-        body: {
-          knltbNumber: knltb,
-          profileId: profileId,
-          storeHistory: true,
-        },
-      });
-      
-      if (error) {
-        console.error('Rating scrape error:', error);
-      } else if (data?.success) {
-        console.log('Rating scraped successfully:', data.data?.rating);
-        toast({
-          title: t('onboarding.ratingFound', 'Rating Found!'),
-          description: t('onboarding.ratingFoundDescription', 'Your KNLTB rating has been automatically retrieved.'),
-        });
-      } else {
-        console.log('Rating scrape did not find rating:', data?.error);
-        // Silently fail - user can enter manually later
-      }
-    } catch (err) {
-      console.error('Failed to trigger rating scrape:', err);
-    }
-  };
 
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,11 +72,6 @@ export default function Onboarding() {
       // Set the user role
       await setUserRole(user.id, pendingRole);
       
-      // Trigger rating scrape if KNLTB number was provided
-      if (pendingRole === 'player' && knltbNumber.trim() && profileData?.id) {
-        // Don't await - let it run in background
-        triggerRatingScrape(profileData.id, knltbNumber.trim());
-      }
       
       // Clear session storage
       sessionStorage.removeItem('pendingRole');
@@ -168,7 +136,7 @@ export default function Onboarding() {
                   onChange={(e) => setKnltbNumber(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {t('onboarding.knltbDescription', "We'll automatically track your official rating and show your progress over time.")}
+                  {t('onboarding.knltbDescription', 'Your official KNLTB registration number for player identification.')}
                 </p>
               </div>
             )}
@@ -208,7 +176,7 @@ export default function Onboarding() {
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-primary" />
-                      {t('onboarding.playerBenefit3', 'Automatic KNLTB rating tracking')}
+                      {t('onboarding.playerBenefit3', 'Track your rating progress over time')}
                     </li>
                   </>
                 ) : (

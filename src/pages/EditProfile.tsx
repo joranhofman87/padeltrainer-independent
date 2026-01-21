@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, RefreshCw, Camera, Loader2, MapPin } from 'lucide-react';
+import { ArrowLeft, Save, User, Camera, Loader2, MapPin } from 'lucide-react';
 import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYSTEM } from '@/lib/ratingSystem';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
@@ -35,7 +35,6 @@ export default function EditProfile() {
   const { t } = useTranslation('player');
   
   const [saving, setSaving] = useState(false);
-  const [syncingRating, setSyncingRating] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,60 +161,6 @@ export default function EditProfile() {
     }
   };
 
-  const handleSyncRating = async () => {
-    if (!profile?.knltb_number || !profile?.id) {
-      toast({
-        title: t('ratingHistory.syncError'),
-        description: 'Please enter your KNLTB number first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSyncingRating(true);
-    toast({
-      title: t('ratingHistory.syncing'),
-      description: 'This may take a moment...',
-    });
-
-    try {
-      const { data, error } = await supabase.functions.invoke('scrape-knltb-rating', {
-        body: {
-          knltbNumber: profile.knltb_number,
-          profileId: profile.id,
-          storeHistory: true,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.data?.rating) {
-        setFormData(prev => ({
-          ...prev,
-          skill_rating: data.data.rating.toString(),
-          rating_system: 'knltb',
-        }));
-
-        toast({
-          title: t('ratingHistory.syncSuccess'),
-          description: `Your rating: ${data.data.rating}`,
-        });
-
-        await refreshAuth();
-      } else {
-        throw new Error(data?.error || 'Failed to fetch rating');
-      }
-    } catch (error: any) {
-      console.error('Sync error:', error);
-      toast({
-        title: t('ratingHistory.syncError'),
-        description: error.message || 'Could not fetch your rating from KNLTB',
-        variant: 'destructive',
-      });
-    } finally {
-      setSyncingRating(false);
-    }
-  };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -511,24 +456,8 @@ export default function EditProfile() {
           {role === 'player' && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Player Details</CardTitle>
-                    <CardDescription>Your padel skill information</CardDescription>
-                  </div>
-                  {formData.rating_system === 'knltb' && formData.knltb_number && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSyncRating}
-                      disabled={syncingRating}
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${syncingRating ? 'animate-spin' : ''}`} />
-                      {syncingRating ? t('ratingHistory.syncing') : t('ratingHistory.refresh')}
-                    </Button>
-                  )}
-                </div>
+                <CardTitle>Player Details</CardTitle>
+                <CardDescription>Your padel skill information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">

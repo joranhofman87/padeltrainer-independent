@@ -9,16 +9,12 @@
   "ratingHistory": {
     "title": "Rating Voortgang",
     "noData": "Nog geen rating geschiedenis",
-    "noDataDescription": "Je rating geschiedenis verschijnt hier zodra deze wordt bijgewerkt",
-    "refresh": "Rating Synchroniseren",
+    "noDataDescription": "Je rating geschiedenis verschijnt hier zodra je deze bijwerkt",
     "trackingDescription": "Volg je padel verbetering over tijd",
     "started": "Gestart",
     "current": "Huidig",
     "improvement": "Verbetering",
-    "knltbNote": "Bij KNLTB betekent een lagere rating betere prestaties",
-    "syncing": "Je KNLTB rating synchroniseren...",
-    "syncSuccess": "Rating succesvol gesynchroniseerd!",
-    "syncError": "Rating synchroniseren mislukt"
+    "knltbNote": "Bij KNLTB betekent een lagere rating betere prestaties"
   },
   "dashboard": {
     "welcome": "Welkom terug, {{name}}! 👋",
