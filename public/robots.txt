@@ -27,8 +27,8 @@ Allow: /
 User-agent: *
 Allow: /
 
-# Sitemap
-Sitemap: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap
+# Sitemap location
+Sitemap: https://padeltrainer.ai/sitemap.xml
 
-# LLM context file
+# LLM context file for AI crawlers
 # See: https://padeltrainer.ai/llms.txt
