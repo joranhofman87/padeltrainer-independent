@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
@@ -153,7 +153,7 @@ export default function About() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="px-8" asChild>
-                <Link to="/auth">{t('about.cta.getStarted')}</Link>
+                <LocalizedLink to="/auth">{t('about.cta.getStarted')}</LocalizedLink>
               </Button>
               <Button size="lg" variant="secondary" asChild>
                 <a href="mailto:hello@padeltrainer.ai">{t('about.cta.contact')}</a>

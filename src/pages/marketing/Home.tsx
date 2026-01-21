@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -180,13 +180,13 @@ export default function Home() {
               className="flex flex-col sm:flex-row gap-4 justify-center"
             >
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <Link to="/signup/player">
+                <LocalizedLink to="/signup/player">
                   {t('home.hero.cta')}
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
+                </LocalizedLink>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
-                <Link to="/signup/trainer">{t('home.hero.ctaSecondary')}</Link>
+                <LocalizedLink to="/signup/trainer">{t('home.hero.ctaSecondary')}</LocalizedLink>
               </Button>
             </motion.div>
 
@@ -369,13 +369,13 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <Link to="/signup/player">
+                <LocalizedLink to="/signup/player">
                   {t('home.cta.button')}
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
+                </LocalizedLink>
               </Button>
               <Button size="lg" variant="secondary" className="text-lg px-8 h-14" asChild>
-                <Link to="/trainers">{t('home.cta.browseTrainers')}</Link>
+                <LocalizedLink to="/trainers">{t('home.cta.browseTrainers')}</LocalizedLink>
               </Button>
             </div>
           </motion.div>

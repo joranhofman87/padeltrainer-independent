@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
+import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -102,8 +103,10 @@ export default function TrainerProfile() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
+  const localizePath = useLocalizedPathFn();
+  const currentLang = useCurrentLanguage();
 
-  const profileUrl = `${window.location.origin}/trainer/${trainerId}`;
+  const profileUrl = `${window.location.origin}/${currentLang}/trainer/${trainerId}`;
   const trainerName = profile?.full_name || 'Trainer';
 
   const handleCopyLink = async () => {
@@ -286,7 +289,7 @@ export default function TrainerProfile() {
         <main className="container mx-auto px-4 py-12 text-center">
           <h1 className="text-2xl font-bold mb-2">Trainer Not Found</h1>
           <p className="text-muted-foreground mb-4">This trainer profile doesn't exist or has been removed.</p>
-          <Button onClick={() => navigate('/trainers')}>Browse Trainers</Button>
+          <Button onClick={() => navigate(localizePath('/trainers'))}>Browse Trainers</Button>
         </main>
       </div>
     );
@@ -332,7 +335,7 @@ export default function TrainerProfile() {
             Back
           </Button>
           {!user && (
-            <Button onClick={() => navigate('/auth')}>Sign In to Book</Button>
+            <Button onClick={() => navigate(localizePath('/auth'))}>Sign In to Book</Button>
           )}
         </div>
       </header>
@@ -469,7 +472,7 @@ export default function TrainerProfile() {
                 {/* Action Buttons */}
                 <div className="flex flex-col gap-2 w-full lg:w-auto lg:min-w-[180px]">
                   {user && role === 'player' && (
-                    <Button size="lg" className="w-full" onClick={() => navigate(`/book/${trainerId}`)}>
+                    <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerId}`))}>
                       <Calendar className="h-4 w-4 mr-2" />
                       Book Lesson
                     </Button>

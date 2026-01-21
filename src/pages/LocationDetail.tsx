@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, ExternalLink, ArrowLeft, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings } from 'lucide-react';
+import { LocalizedLink } from '@/components/LocalizedLink';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +68,7 @@ export default function LocationDetail() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['common', 'club']);
   const { user } = useAuth();
+  const localizePath = useLocalizedPathFn();
   const [location, setLocation] = useState<Location | null>(null);
   const [clubProfile, setClubProfile] = useState<ClubProfile | null>(null);
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
@@ -83,7 +86,7 @@ export default function LocationDetail() {
       try {
         const locationData = await getLocationBySlug(slug);
         if (!locationData) {
-          navigate('/locations');
+          navigate(localizePath('/locations'));
           return;
         }
         
@@ -220,13 +223,13 @@ export default function LocationDetail() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link to="/">{t('navigation.home')}</Link>
+                    <LocalizedLink to="/">{t('navigation.home')}</LocalizedLink>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link to="/locations">{t('locations.title')}</Link>
+                    <LocalizedLink to="/locations">{t('locations.title')}</LocalizedLink>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -282,7 +285,7 @@ export default function LocationDetail() {
                     variant="default"
                     onClick={() => {
                       if (!user) {
-                        navigate('/auth');
+                        navigate(localizePath('/auth'));
                         return;
                       }
                       setShowClaimDialog(true);
@@ -413,7 +416,7 @@ export default function LocationDetail() {
                   <Card
                     key={trainer.id}
                     className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-                    onClick={() => navigate(`/trainer/${trainer.trainer_id}`)}
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-start gap-4">

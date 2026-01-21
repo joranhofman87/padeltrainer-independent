@@ -1,4 +1,5 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -107,10 +108,10 @@ export default function BlogPost() {
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
           <Button variant="ghost" asChild>
-            <Link to="/blog" className="flex items-center gap-2">
+            <LocalizedLink to="/blog" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('blog.backToBlog')}
-            </Link>
+            </LocalizedLink>
           </Button>
         </div>
         <BlogPostSkeleton />
@@ -127,7 +128,7 @@ export default function BlogPost() {
             {t('blog.notFound.description')}
           </p>
           <Button asChild>
-            <Link to="/blog">{t('blog.notFound.backToBlog')}</Link>
+            <LocalizedLink to="/blog">{t('blog.notFound.backToBlog')}</LocalizedLink>
           </Button>
         </div>
       </MarketingLayout>
@@ -139,10 +140,10 @@ export default function BlogPost() {
       {/* Back Button */}
         <div className="container mx-auto px-4 pt-8">
           <Button variant="ghost" asChild>
-            <Link to="/blog" className="flex items-center gap-2">
+            <LocalizedLink to="/blog" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('blog.backToBlog')}
-            </Link>
+            </LocalizedLink>
           </Button>
         </div>
 
@@ -210,7 +211,7 @@ export default function BlogPost() {
             {t('blog.browseTrainers')}
           </p>
           <Button asChild>
-            <Link to="/trainers">{t('blog.findTrainers')}</Link>
+            <LocalizedLink to="/trainers">{t('blog.findTrainers')}</LocalizedLink>
           </Button>
         </motion.div>
       </article>
