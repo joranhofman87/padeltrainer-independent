@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "next-themes";
+import { LanguageRouter, RootRedirect } from "@/components/LanguageRouter";
 import "@/i18n";
 
 // Marketing pages
@@ -84,17 +85,28 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
           <Routes>
-            {/* Marketing routes */}
-            <Route path="/" element={<Home />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/blog" element={<Blog />} />
-            <Route path="/blog/:slug" element={<BlogPost />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/partner" element={<Partner />} />
+            {/* Root redirect - detects browser language */}
+            <Route path="/" element={<RootRedirect />} />
             
-            {/* App routes */}
+            {/* Language-prefixed marketing routes */}
+            <Route path="/:lang" element={<LanguageRouter />}>
+              <Route index element={<Home />} />
+              <Route path="pricing" element={<Pricing />} />
+              <Route path="about" element={<About />} />
+              <Route path="blog" element={<Blog />} />
+              <Route path="blog/:slug" element={<BlogPost />} />
+              <Route path="privacy" element={<Privacy />} />
+              <Route path="terms" element={<Terms />} />
+              <Route path="partner" element={<Partner />} />
+              <Route path="trainers" element={<Trainers />} />
+              <Route path="trainers/:city" element={<TrainersCity />} />
+              <Route path="trainer/:trainerId" element={<TrainerProfile />} />
+              <Route path="locations" element={<Locations />} />
+              <Route path="locations/:slug" element={<LocationDetail />} />
+              <Route path="book/:trainerId" element={<BookLesson />} />
+            </Route>
+            
+            {/* App routes - language agnostic (uses localStorage preference) */}
             <Route path="/auth" element={<Auth />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -108,16 +120,12 @@ const App = () => (
             <Route path="/trainer" element={<TrainerDashboard />} />
             <Route path="/trainer/settings" element={<TrainerSettings />} />
             <Route path="/trainer/settings/bookings" element={<TrainerBookingSettings />} />
-            <Route path="/trainers" element={<Trainers />} />
-            <Route path="/trainers/:city" element={<TrainersCity />} />
-            <Route path="/trainer/:trainerId" element={<TrainerProfile />} />
             <Route path="/profile/edit" element={<EditProfile />} />
             <Route path="/lessons" element={<ManageLessons />} />
             <Route path="/availability" element={<TrainerCalendar />} />
             <Route path="/schedule" element={<TrainerCalendar />} />
             <Route path="/bookings" element={<PlayerBookings />} />
             <Route path="/trainer-bookings" element={<TrainerBookings />} />
-            <Route path="/book/:trainerId" element={<BookLesson />} />
             
             <Route path="/booking-success" element={<BookingSuccess />} />
             <Route path="/earnings" element={<TrainerEarnings />} />
@@ -138,8 +146,6 @@ const App = () => (
             <Route path="/admin/club-claims" element={<AdminClubClaims />} />
             <Route path="/admin/rating-systems" element={<AdminRatingSystems />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />
-            <Route path="/locations" element={<Locations />} />
-            <Route path="/locations/:slug" element={<LocationDetail />} />
             <Route path="/club" element={<ClubDashboard />} />
             <Route path="/club/profile" element={<ClubProfile />} />
             <Route path="/club/players" element={<ClubPlayers />} />

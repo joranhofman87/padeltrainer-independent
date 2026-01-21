@@ -40,11 +40,13 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
+    fallbackLng: 'nl', // Default to Dutch for Netherlands-focused service
     defaultNS: 'common',
     ns: ['common', 'marketing', 'auth', 'player', 'trainer', 'club'],
     detection: {
-      order: ['localStorage', 'navigator'],
+      // For marketing pages, URL takes precedence; for app pages, localStorage
+      order: ['path', 'localStorage', 'navigator'],
+      lookupFromPathIndex: 0,
       caches: ['localStorage'],
     },
     interpolation: {

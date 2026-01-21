@@ -5,6 +5,8 @@ import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
+import { LocalizedLink } from '@/components/LocalizedLink';
+import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 
 interface MarketingLayoutProps {
   children: React.ReactNode;
@@ -14,13 +16,30 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useTranslation('marketing');
+  
+  // Get localized paths
+  const homePath = useLocalizedPath('/');
+  const pricingPath = useLocalizedPath('/pricing');
+  const aboutPath = useLocalizedPath('/about');
+  const blogPath = useLocalizedPath('/blog');
+  const trainersPath = useLocalizedPath('/trainers');
+  const locationsPath = useLocalizedPath('/locations');
+  const partnerPath = useLocalizedPath('/partner');
+  const privacyPath = useLocalizedPath('/privacy');
+  const termsPath = useLocalizedPath('/terms');
 
   const navLinks = [
-    { href: '/', label: t('nav.home') },
-    { href: '/pricing', label: t('nav.pricing') },
-    { href: '/about', label: t('nav.about') },
-    { href: '/blog', label: t('nav.blog') },
+    { href: homePath, label: t('nav.home'), path: '/' },
+    { href: pricingPath, label: t('nav.pricing'), path: '/pricing' },
+    { href: aboutPath, label: t('nav.about'), path: '/about' },
+    { href: blogPath, label: t('nav.blog'), path: '/blog' },
   ];
+
+  // Check if current path matches (ignoring language prefix)
+  const isActive = (path: string) => {
+    const currentPath = location.pathname.replace(/^\/(en|nl)/, '');
+    return currentPath === path || (path === '/' && currentPath === '');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -29,11 +48,11 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2">
+            <LocalizedLink to="/" className="flex items-center gap-2">
               <span className="font-bold text-xl tracking-tight">
                 PadelTrainer<span className="text-primary">.ai</span>
               </span>
-            </Link>
+            </LocalizedLink>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-8">
@@ -42,7 +61,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   key={link.href}
                   to={link.href}
                   className={`text-sm font-medium transition-colors hover:text-primary ${
-                    location.pathname === link.href
+                    isActive(link.path)
                       ? 'text-primary'
                       : 'text-muted-foreground'
                   }`}
@@ -86,7 +105,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     to={link.href}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`text-sm font-medium transition-colors hover:text-primary ${
-                      location.pathname === link.href
+                      isActive(link.path)
                         ? 'text-primary'
                         : 'text-muted-foreground'
                     }`}
@@ -121,11 +140,11 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {/* Brand */}
             <div className="col-span-2 md:col-span-1">
-              <Link to="/" className="flex items-center gap-2 mb-4">
+              <LocalizedLink to="/" className="flex items-center gap-2 mb-4">
                 <span className="font-bold text-lg">
                   PadelTrainer<span className="text-primary">.ai</span>
                 </span>
-              </Link>
+              </LocalizedLink>
               <p className="text-sm text-muted-foreground">
                 {t('footer.tagline')}
               </p>
@@ -134,29 +153,29 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div>
               <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</Link></li>
-                <li><Link to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</Link></li>
-                <li><Link to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</Link></li>
-                <li><Link to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</Link></li>
+                <li><LocalizedLink to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</LocalizedLink></li>
+                <li><LocalizedLink to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</LocalizedLink></li>
+                <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
+                <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">Popular Cities</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/trainers/amsterdam" className="hover:text-primary transition-colors">Amsterdam</Link></li>
-                <li><Link to="/trainers/rotterdam" className="hover:text-primary transition-colors">Rotterdam</Link></li>
-                <li><Link to="/trainers/den-haag" className="hover:text-primary transition-colors">Den Haag</Link></li>
-                <li><Link to="/trainers/utrecht" className="hover:text-primary transition-colors">Utrecht</Link></li>
-                <li><Link to="/trainers/eindhoven" className="hover:text-primary transition-colors">Eindhoven</Link></li>
+                <li><LocalizedLink to="/trainers/amsterdam" className="hover:text-primary transition-colors">Amsterdam</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/rotterdam" className="hover:text-primary transition-colors">Rotterdam</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/den-haag" className="hover:text-primary transition-colors">Den Haag</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/utrecht" className="hover:text-primary transition-colors">Utrecht</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/eindhoven" className="hover:text-primary transition-colors">Eindhoven</LocalizedLink></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</Link></li>
-                <li><Link to="/partner" className="hover:text-primary transition-colors">{t('footer.becomePartner')}</Link></li>
+                <li><LocalizedLink to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</LocalizedLink></li>
+                <li><LocalizedLink to="/partner" className="hover:text-primary transition-colors">{t('footer.becomePartner')}</LocalizedLink></li>
                 <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">{t('footer.contact')}</a></li>
               </ul>
             </div>
@@ -164,8 +183,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div>
               <h4 className="font-semibold mb-4">{t('footer.legal')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/privacy" className="hover:text-primary transition-colors">{t('footer.privacyPolicy')}</Link></li>
-                <li><Link to="/terms" className="hover:text-primary transition-colors">{t('footer.termsOfService')}</Link></li>
+                <li><LocalizedLink to="/privacy" className="hover:text-primary transition-colors">{t('footer.privacyPolicy')}</LocalizedLink></li>
+                <li><LocalizedLink to="/terms" className="hover:text-primary transition-colors">{t('footer.termsOfService')}</LocalizedLink></li>
               </ul>
             </div>
           </div>
