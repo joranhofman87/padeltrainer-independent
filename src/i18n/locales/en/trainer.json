@@ -134,7 +134,10 @@
       "minSkill": "Min Skill",
       "maxSkill": "Max Skill",
       "active": "Active",
-      "activeDescription": "Lesson is visible and bookable"
+      "activeDescription": "Lesson is visible and bookable",
+      "paymentTiming": "Payment Timing",
+      "upfront": "Upfront",
+      "after": "After Lesson"
     },
     "status": {
       "active": "Active",

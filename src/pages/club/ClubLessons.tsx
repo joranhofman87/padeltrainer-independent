@@ -436,21 +436,21 @@ export default function ClubLessons() {
 
             {/* Title */}
             <div className="space-y-2">
-              <Label>{tTrainer("lessons.title")} *</Label>
+              <Label>{tTrainer("lessons.form.title")} *</Label>
               <Input 
                 value={formTitle} 
                 onChange={(e) => setFormTitle(e.target.value)}
-                placeholder={tTrainer("lessons.titlePlaceholder")}
+                placeholder={tTrainer("lessons.form.titlePlaceholder")}
               />
             </div>
 
             {/* Description */}
             <div className="space-y-2">
-              <Label>{tTrainer("lessons.description")}</Label>
+              <Label>{tTrainer("lessons.form.description")}</Label>
               <Textarea 
                 value={formDescription} 
                 onChange={(e) => setFormDescription(e.target.value)}
-                placeholder={tTrainer("lessons.descriptionPlaceholder")}
+                placeholder={tTrainer("lessons.form.descriptionPlaceholder")}
                 rows={3}
               />
             </div>
@@ -458,7 +458,7 @@ export default function ClubLessons() {
             <div className="grid grid-cols-2 gap-4">
               {/* Duration */}
               <div className="space-y-2">
-                <Label>{tTrainer("lessons.duration")}</Label>
+                <Label>{tTrainer("lessons.form.duration")}</Label>
                 <Select value={formDuration.toString()} onValueChange={(v) => setFormDuration(parseInt(v))}>
                   <SelectTrigger>
                     <SelectValue />
@@ -475,7 +475,7 @@ export default function ClubLessons() {
 
               {/* Price */}
               <div className="space-y-2">
-                <Label>{tTrainer("lessons.price")} (€)</Label>
+                <Label>{tTrainer("lessons.form.price")}</Label>
                 <Input 
                   type="number" 
                   value={formPrice} 
@@ -489,7 +489,7 @@ export default function ClubLessons() {
             <div className="grid grid-cols-2 gap-4">
               {/* Max Participants */}
               <div className="space-y-2">
-                <Label>{tTrainer("lessons.maxParticipants")}</Label>
+                <Label>{tTrainer("lessons.form.maxParticipants")}</Label>
                 <Input 
                   type="number" 
                   value={formMaxParticipants} 
@@ -501,14 +501,14 @@ export default function ClubLessons() {
 
               {/* Payment Timing */}
               <div className="space-y-2">
-                <Label>{tTrainer("lessons.paymentTiming")}</Label>
+                <Label>{tTrainer("lessons.form.paymentTiming", "Payment Timing")}</Label>
                 <Select value={formPaymentTiming} onValueChange={(v: "upfront" | "after") => setFormPaymentTiming(v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="upfront">{tTrainer("lessons.upfront")}</SelectItem>
-                    <SelectItem value="after">{tTrainer("lessons.after")}</SelectItem>
+                    <SelectItem value="upfront">{tTrainer("lessons.form.upfront", "Upfront")}</SelectItem>
+                    <SelectItem value="after">{tTrainer("lessons.form.after", "After Lesson")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -516,17 +516,17 @@ export default function ClubLessons() {
 
             {/* Location */}
             <div className="space-y-2">
-              <Label>{tTrainer("lessons.location")}</Label>
+              <Label>{tTrainer("lessons.form.location")}</Label>
               <Input 
                 value={formLocation} 
                 onChange={(e) => setFormLocation(e.target.value)}
-                placeholder={tTrainer("lessons.locationPlaceholder")}
+                placeholder={tTrainer("lessons.form.locationPlaceholder")}
               />
             </div>
 
             {/* Active Toggle */}
             <div className="flex items-center justify-between">
-              <Label>{tTrainer("lessons.isActive")}</Label>
+              <Label>{tTrainer("lessons.form.active")}</Label>
               <Switch checked={formIsActive} onCheckedChange={setFormIsActive} />
             </div>
 
