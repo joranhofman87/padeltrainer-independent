@@ -471,6 +471,27 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
 
   const trainerIds = trainers.map((t: any) => t.trainer_profiles.id);
 
+  // Build a map of trainer_id to profile info from trainers data
+  const trainerProfileMap: Record<string, { user_id: string }> = {};
+  trainers.forEach((t: any) => {
+    trainerProfileMap[t.trainer_profiles.id] = {
+      user_id: t.trainer_profiles.user_id,
+    };
+  });
+
+  // Fetch all user profiles for trainers
+  const userIds = trainers.map((t: any) => t.trainer_profiles.user_id);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, avatar_url')
+    .in('user_id', userIds);
+
+  const profileMap: Record<string, { full_name: string; avatar_url: string | null }> = {};
+  (profiles || []).forEach((p: any) => {
+    profileMap[p.user_id] = { full_name: p.full_name, avatar_url: p.avatar_url };
+  });
+
+  // Fetch slots without the problematic inner join (no FK from availability_slots.trainer_id to trainer_profiles.id)
   const { data: slots, error } = await supabase
     .from('availability_slots')
     .select(`
@@ -480,12 +501,7 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
       end_time,
       lesson_id,
       is_marked_full,
-      lessons:lesson_id(title, max_participants),
-      trainer:trainer_profiles!inner(
-        id,
-        user_id,
-        profiles:profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
-      )
+      lessons:lesson_id(title, max_participants)
     `)
     .in('trainer_id', trainerIds)
     .gte('start_time', startDate.toISOString())
@@ -522,13 +538,17 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
     }
   });
 
-  return (slots || []).map((slot: any) => ({
-    ...slot,
-    active_bookings: bookingCounts[slot.id]?.confirmed || 0,
-    pending_bookings: bookingCounts[slot.id]?.pending || 0,
-    trainer_name: slot.trainer?.profiles?.full_name || 'Unknown Trainer',
-    trainer_avatar: slot.trainer?.profiles?.avatar_url || null,
-  }));
+  return (slots || []).map((slot: any) => {
+    const trainerInfo = trainerProfileMap[slot.trainer_id];
+    const profile = trainerInfo ? profileMap[trainerInfo.user_id] : null;
+    return {
+      ...slot,
+      active_bookings: bookingCounts[slot.id]?.confirmed || 0,
+      pending_bookings: bookingCounts[slot.id]?.pending || 0,
+      trainer_name: profile?.full_name || 'Unknown Trainer',
+      trainer_avatar: profile?.avatar_url || null,
+    };
+  });
 }
 
 // ============= Trainer Invitation System =============
