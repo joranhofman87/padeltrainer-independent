@@ -113,6 +113,27 @@
     "trainerRequiredDescription": "You need a trainer account to accept this invitation.",
     "becomeTrainer": "Become a Trainer"
   },
+  "createTrainer": {
+    "button": "Create Trainer",
+    "title": "Create Trainer Account",
+    "description": "Create a new trainer account or link an existing user to your club.",
+    "fullName": "Full Name",
+    "fullNamePlaceholder": "John Doe",
+    "email": "Email",
+    "emailPlaceholder": "trainer@example.com",
+    "phone": "Phone (optional)",
+    "phonePlaceholder": "+31 6 12345678",
+    "create": "Create Trainer",
+    "success": "Trainer Created",
+    "newUserCreated": "A new trainer account has been created.",
+    "existingUserLinked": "The trainer has been linked to your club.",
+    "error": "Error",
+    "successTitle": "Trainer Created!",
+    "successNewUser": "The trainer account has been created. Share the login credentials below.",
+    "successExistingUser": "The existing user has been linked to your club as a trainer.",
+    "credentials": "Login Credentials",
+    "shareNote": "Share these credentials securely with the trainer. They should change their password after first login."
+  },
   "players": {
     "title": "Club Players",
     "description": "Players registered with your club.",
