@@ -45,6 +45,7 @@ export default function Trainers() {
   const [clubLocations, setClubLocations] = useState<Location[]>([]);
   const [trainerLocationMap, setTrainerLocationMap] = useState<Map<string, string[]>>(new Map());
   const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
+  const [allCertifications, setAllCertifications] = useState<string[]>([]);
   const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -61,6 +62,7 @@ export default function Trainers() {
     minRating: Number(searchParams.get('minRating')) || 0,
     minExperience: Number(searchParams.get('minExperience')) || 0,
     specializations: searchParams.get('specializations')?.split(',').filter(Boolean) || [],
+    certifications: searchParams.get('certifications')?.split(',').filter(Boolean) || [],
     verifiedOnly: searchParams.get('verified') === 'true',
     minKnltbRating: Number(searchParams.get('minKnltb')) || 0,
   }), [searchParams]);
@@ -129,6 +131,13 @@ export default function Trainers() {
       newParams.set('specializations', newFilters.specializations.join(','));
     } else {
       newParams.delete('specializations');
+    }
+    
+    // Certifications
+    if (newFilters.certifications.length > 0) {
+      newParams.set('certifications', newFilters.certifications.join(','));
+    } else {
+      newParams.delete('certifications');
     }
     
     // Verified
@@ -232,10 +241,14 @@ export default function Trainers() {
 
     setTrainers(trainersWithRatings);
 
-    // Extract unique specializations
+    // Extract unique specializations and certifications
     const specs = trainerProfiles.flatMap(t => t.specializations || []);
     const uniqueSpecs = [...new Set(specs)].sort();
     setAllSpecializations(uniqueSpecs);
+    
+    const certs = trainerProfiles.flatMap(t => t.certifications || []);
+    const uniqueCerts = [...new Set(certs)].sort();
+    setAllCertifications(uniqueCerts);
     
     setLoading(false);
   };
@@ -247,6 +260,7 @@ export default function Trainers() {
     if (filters.minRating > 0) count++;
     if (filters.minExperience > 0) count++;
     if (filters.specializations.length > 0) count++;
+    if (filters.certifications.length > 0) count++;
     if (filters.verifiedOnly) count++;
     if (filters.minKnltbRating > 0) count++;
     return count;
@@ -279,6 +293,10 @@ export default function Trainers() {
       const matchesSpecializations = filters.specializations.length === 0 ||
         filters.specializations.some(s => trainer.specializations?.includes(s));
       
+      // Certifications filter
+      const matchesCertifications = filters.certifications.length === 0 ||
+        filters.certifications.some(c => trainer.certifications?.includes(c));
+      
       // KNLTB Rating filter
       const trainerKnltb = trainer.knltb_rating || 0;
       const matchesKnltbRating = trainerKnltb >= filters.minKnltbRating;
@@ -287,7 +305,7 @@ export default function Trainers() {
       const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
       
       return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
-             matchesExperience && matchesSpecializations && matchesKnltbRating && matchesVerified;
+             matchesExperience && matchesSpecializations && matchesCertifications && matchesKnltbRating && matchesVerified;
     });
 
     // Sort
@@ -379,6 +397,7 @@ export default function Trainers() {
                 onChange={setFilters}
                 locations={clubLocations}
                 allSpecializations={allSpecializations}
+                allCertifications={allCertifications}
                 activeFilterCount={activeFilterCount}
               />
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
@@ -422,6 +441,9 @@ export default function Trainers() {
               )}
               {filters.specializations.map(spec => (
                 <Badge key={spec} variant="secondary">{spec}</Badge>
+              ))}
+              {filters.certifications.map(cert => (
+                <Badge key={cert} variant="secondary">{cert}</Badge>
               ))}
               {filters.minKnltbRating > 0 && (
                 <Badge variant="secondary">KNLTB {filters.minKnltbRating}+</Badge>

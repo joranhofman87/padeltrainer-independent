@@ -16,6 +16,9 @@ import { RATING_SYSTEMS, RatingSystem, getRatingSystemConfig, DEFAULT_RATING_SYS
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
 import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateTrainerLocations, TrainerLocationData } from '@/lib/locations';
+import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
+import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
+import { getTrainerCountry } from '@/lib/certifications';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -55,8 +58,8 @@ export default function EditProfile() {
     knltb_rating: null,
   });
   
-  const [certificationsInput, setCertificationsInput] = useState('');
-  const [specializationsInput, setSpecializationsInput] = useState('');
+  // Trainer country for certifications picker
+  const [trainerCountry, setTrainerCountry] = useState<string>('NL');
   
   // Player location state
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
@@ -101,10 +104,11 @@ export default function EditProfile() {
     }
   }, [role, profile?.id]);
 
-  // Fetch trainer locations when profile is loaded and role is trainer
+  // Fetch trainer locations and country when profile is loaded and role is trainer
   useEffect(() => {
     if (role === 'trainer' && user) {
       fetchTrainerLocations();
+      getTrainerCountry(user.id).then(setTrainerCountry);
     }
   }, [role, user]);
 
@@ -155,8 +159,6 @@ export default function EditProfile() {
         specializations: data.specializations || [],
         knltb_rating: data.knltb_rating,
       });
-      setCertificationsInput((data.certifications || []).join(', '));
-      setSpecializationsInput((data.specializations || []).join(', '));
     }
   };
 
@@ -317,14 +319,8 @@ export default function EditProfile() {
 
       // Update trainer profile if trainer
       if (role === 'trainer') {
-        const certifications = certificationsInput
-          .split(',')
-          .map(c => c.trim())
-          .filter(c => c);
-        const specializations = specializationsInput
-          .split(',')
-          .map(s => s.trim())
-          .filter(s => s);
+        const certifications = trainerData.certifications;
+        const specializations = trainerData.specializations;
         
         const { error: trainerError } = await supabase
           .from('trainer_profiles')
@@ -674,22 +670,19 @@ export default function EditProfile() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="certifications">Certifications (comma-separated)</Label>
-                  <Input
-                    id="certifications"
-                    value={certificationsInput}
-                    onChange={(e) => setCertificationsInput(e.target.value)}
-                    placeholder="KNLTB Level 3, WPT Coach Certificate"
+                  <Label>Certifications</Label>
+                  <CertificationsPicker
+                    selectedCertifications={trainerData.certifications}
+                    onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
+                    trainerCountry={trainerCountry}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="specializations">Specializations (comma-separated)</Label>
-                  <Input
-                    id="specializations"
-                    value={specializationsInput}
-                    onChange={(e) => setSpecializationsInput(e.target.value)}
-                    placeholder="Beginners, Advanced Technique, Competition Prep"
+                  <Label>Specializations</Label>
+                  <SpecializationsPicker
+                    selectedSpecializations={trainerData.specializations}
+                    onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
                   />
                 </div>
 
