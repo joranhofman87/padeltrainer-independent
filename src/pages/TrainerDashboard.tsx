@@ -7,13 +7,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2 } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
+import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
 
 interface DashboardStats {
   totalStudents: number;
@@ -29,6 +30,7 @@ interface SetupStatus {
   hasAvailability: boolean;
   stripeComplete: boolean;
   hasPlayers: boolean;
+  clubPaymentInfo?: ClubPaymentInfo;
 }
 
 export default function TrainerDashboard() {
@@ -51,6 +53,7 @@ export default function TrainerDashboard() {
     hasAvailability: false,
     stripeComplete: false,
     hasPlayers: false,
+    clubPaymentInfo: undefined,
   });
   const [setupLoading, setSetupLoading] = useState(true);
   const [isSetupExpanded, setIsSetupExpanded] = useState(() => {
@@ -129,8 +132,17 @@ export default function TrainerDashboard() {
         .eq('trainer_id', trainerId)
         .maybeSingle();
 
-      // Payment is complete if Stripe is set up OR manual invoicing is enabled
-      const paymentsComplete = !!(stripeData?.onboarding_complete && stripeData?.charges_enabled) || !!trainerProfile.use_manual_invoicing;
+      // Check if trainer is covered by club payments
+      const clubPaymentInfo = await getClubPaymentInfo(trainerId);
+
+      // Payment is complete if:
+      // 1. Stripe is set up OR
+      // 2. Manual invoicing is enabled OR
+      // 3. Trainer is a club trainer and club has Stripe connected
+      const paymentsComplete = 
+        !!(stripeData?.onboarding_complete && stripeData?.charges_enabled) || 
+        !!trainerProfile.use_manual_invoicing ||
+        (clubPaymentInfo.isClubTrainer && clubPaymentInfo.clubChargesEnabled);
 
       // Check if trainer has players
       const { count: playerCount } = await supabase
@@ -146,6 +158,7 @@ export default function TrainerDashboard() {
         hasAvailability,
         stripeComplete: paymentsComplete,
         hasPlayers,
+        clubPaymentInfo,
       });
     } catch (error) {
       console.error('Error fetching setup status:', error);
@@ -524,11 +537,25 @@ interface SetupChecklistProps {
 }
 
 function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: SetupChecklistProps) {
+  const { t } = useTranslation('trainer');
+  const clubInfo = setupStatus.clubPaymentInfo;
+  
+  // Determine payment step label based on club status
+  let paymentLabel = 'Connect Stripe or setup manual payments';
+  let paymentSubLabel = '';
+  
+  if (clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled) {
+    paymentLabel = t('dashboard.setup.steps.payments.clubManaged', { clubName: clubInfo.clubName || 'Your club' });
+    paymentSubLabel = t('dashboard.setup.steps.payments.clubManagedDescription');
+  } else if (clubInfo?.isClubTrainer && !clubInfo?.clubChargesEnabled) {
+    paymentLabel = t('clubPayments.clubNeedsSetup', { clubName: clubInfo.clubName || 'Your club' });
+  }
+  
   const steps = [
     { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
     { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
     { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
-    { key: 'stripeComplete', label: 'Connect Stripe or setup manual payments', route: '/earnings', complete: setupStatus.stripeComplete },
+    { key: 'stripeComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/earnings', complete: setupStatus.stripeComplete, isClubManaged: clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled },
     { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
   ];
 
@@ -583,17 +610,28 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
                 >
                   <div className="flex items-center gap-3">
                     {step.complete ? (
-                      <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center">
-                        <Check className="h-4 w-4 text-white" />
+                      <div className={`h-6 w-6 rounded-full flex items-center justify-center ${(step as any).isClubManaged ? 'bg-blue-500' : 'bg-green-500'}`}>
+                        {(step as any).isClubManaged ? (
+                          <Building2 className="h-3.5 w-3.5 text-white" />
+                        ) : (
+                          <Check className="h-4 w-4 text-white" />
+                        )}
                       </div>
                     ) : (
                       <div className="h-6 w-6 rounded-full border-2 border-orange-400 flex items-center justify-center text-xs font-medium text-orange-600">
                         {index + 1}
                       </div>
                     )}
-                    <span className={step.complete ? 'text-muted-foreground line-through' : ''}>
-                      {step.label}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className={step.complete ? 'text-muted-foreground line-through' : ''}>
+                        {step.label}
+                      </span>
+                      {(step as any).subLabel && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400">
+                          {(step as any).subLabel}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>

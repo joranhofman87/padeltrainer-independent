@@ -94,7 +94,9 @@
         },
         "payments": {
           "title": "Connect Payments",
-          "description": "Set up Stripe to receive payouts"
+          "description": "Set up Stripe to receive payouts",
+          "clubManaged": "Handled by {{clubName}}",
+          "clubManagedDescription": "Your club collects payments for your lessons"
         },
         "players": {
           "title": "Add Players",
@@ -102,6 +104,16 @@
         }
       }
     }
+  },
+  "clubPayments": {
+    "handledByClub": "Payments handled by {{clubName}}",
+    "clubCollectsPayments": "Your club collects payments for lessons at this location",
+    "clubNeedsSetup": "{{clubName}} needs to complete payment setup",
+    "contactClubOwner": "Contact your club owner to set up Stripe payments",
+    "independentLessons": "For independent lessons, connect your own Stripe account",
+    "clubEarnings": "Club Earnings",
+    "paidToClub": "Paid to {{clubName}}",
+    "viewClubDashboard": "View in club dashboard"
   },
   "lessons": {
     "title": "My Lessons",
