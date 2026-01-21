@@ -114,6 +114,16 @@ export async function claimClub(
     return { clubProfile: null as any, error: new Error(errorMessage) };
   }
 
+  // Also assign the 'club' role to the user if they don't already have it
+  const { error: roleError } = await supabase
+    .from('user_roles')
+    .insert({ user_id: userId, role: 'club' });
+
+  // Ignore duplicate key error (user might already have this role)
+  if (roleError && roleError.code !== '23505') {
+    console.error('Error setting club role:', roleError);
+  }
+
   return { clubProfile, error: null };
 }
 

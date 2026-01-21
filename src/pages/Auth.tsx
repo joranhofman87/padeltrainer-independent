@@ -22,11 +22,13 @@ export default function Auth() {
   useEffect(() => {
     if (!loading && user) {
       if (role) {
-        // Priority: admin > trainer > player
+        // Priority: admin > trainer > club > player
         if (role === 'admin') {
           navigate('/admin');
         } else if (role === 'trainer') {
           navigate('/trainer');
+        } else if (role === 'club') {
+          navigate('/club');
         } else {
           navigate('/player');
         }
