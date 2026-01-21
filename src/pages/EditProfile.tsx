@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, Camera, Loader2, MapPin } from 'lucide-react';
+import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Video, Instagram, Youtube, Linkedin, Sparkles } from 'lucide-react';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
@@ -19,6 +20,7 @@ import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateT
 import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
+import { isValidVideoUrl, getVideoThumbnail } from '@/lib/videoEmbed';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -26,6 +28,16 @@ interface TrainerProfileData {
   certifications: string[];
   specializations: string[];
   knltb_rating: number | null;
+  coaching_method: string;
+  favourite_quote: string;
+  video_url: string;
+  social_instagram: string;
+  social_tiktok: string;
+  social_youtube: string;
+  social_linkedin: string;
+  preferred_min_rating: number | null;
+  preferred_max_rating: number | null;
+  preferred_rating_system: string;
 }
 
 export default function EditProfile() {
@@ -55,6 +67,16 @@ export default function EditProfile() {
     certifications: [],
     specializations: [],
     knltb_rating: null,
+    coaching_method: '',
+    favourite_quote: '',
+    video_url: '',
+    social_instagram: '',
+    social_tiktok: '',
+    social_youtube: '',
+    social_linkedin: '',
+    preferred_min_rating: null,
+    preferred_max_rating: null,
+    preferred_rating_system: 'knltb',
   });
   
   // Rating systems from database
@@ -166,7 +188,7 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating')
+      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, coaching_method, favourite_quote, video_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)
       .single();
     
@@ -177,6 +199,16 @@ export default function EditProfile() {
         certifications: data.certifications || [],
         specializations: data.specializations || [],
         knltb_rating: data.knltb_rating,
+        coaching_method: data.coaching_method || '',
+        favourite_quote: data.favourite_quote || '',
+        video_url: data.video_url || '',
+        social_instagram: data.social_instagram || '',
+        social_tiktok: data.social_tiktok || '',
+        social_youtube: data.social_youtube || '',
+        social_linkedin: data.social_linkedin || '',
+        preferred_min_rating: data.preferred_min_rating,
+        preferred_max_rating: data.preferred_max_rating,
+        preferred_rating_system: data.preferred_rating_system || 'knltb',
       });
     }
   };
@@ -297,6 +329,16 @@ export default function EditProfile() {
             certifications,
             specializations,
             knltb_rating: trainerData.knltb_rating,
+            coaching_method: trainerData.coaching_method || null,
+            favourite_quote: trainerData.favourite_quote || null,
+            video_url: trainerData.video_url || null,
+            social_instagram: trainerData.social_instagram || null,
+            social_tiktok: trainerData.social_tiktok || null,
+            social_youtube: trainerData.social_youtube || null,
+            social_linkedin: trainerData.social_linkedin || null,
+            preferred_min_rating: trainerData.preferred_min_rating,
+            preferred_max_rating: trainerData.preferred_max_rating,
+            preferred_rating_system: trainerData.preferred_rating_system,
           })
           .eq('user_id', user.id);
         
@@ -583,98 +625,311 @@ export default function EditProfile() {
 
           {/* Trainer-specific fields */}
           {role === 'trainer' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Trainer Details</CardTitle>
-                <CardDescription>Your professional information</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-4">
+            <>
+              {/* Profile Branding Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    {t('trainer:profile.branding', 'Profile Branding')}
+                  </CardTitle>
+                  <CardDescription>{t('trainer:profile.brandingDescription', 'Make your profile stand out')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Coaching Method */}
                   <div className="space-y-2">
-                    <Label htmlFor="hourly_rate">Hourly Rate (€)</Label>
+                    <Label htmlFor="coaching_method">{t('trainer:profile.coachingMethod', 'My Coaching Style')}</Label>
+                    <Textarea
+                      id="coaching_method"
+                      value={trainerData.coaching_method}
+                      onChange={(e) => setTrainerData({ ...trainerData, coaching_method: e.target.value })}
+                      placeholder={t('trainer:profile.coachingMethodPlaceholder', 'Describe your training philosophy...')}
+                      maxLength={300}
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground text-right">
+                      {trainerData.coaching_method.length}/300
+                    </p>
+                  </div>
+
+                  {/* Favourite Quote */}
+                  <div className="space-y-2">
+                    <Label htmlFor="favourite_quote" className="flex items-center gap-2">
+                      <Quote className="h-4 w-4" />
+                      {t('trainer:profile.favouriteQuote', 'Favourite Quote')}
+                    </Label>
                     <Input
-                      id="hourly_rate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={trainerData.hourly_rate || ''}
-                      onChange={(e) => setTrainerData({ 
-                        ...trainerData, 
-                        hourly_rate: e.target.value ? parseFloat(e.target.value) : null 
-                      })}
-                      placeholder="50.00"
+                      id="favourite_quote"
+                      value={trainerData.favourite_quote}
+                      onChange={(e) => setTrainerData({ ...trainerData, favourite_quote: e.target.value })}
+                      placeholder={t('trainer:profile.favouriteQuotePlaceholder', 'Share your favourite padel quote...')}
+                      maxLength={150}
                     />
                   </div>
+
+                  {/* Video URL */}
                   <div className="space-y-2">
-                    <Label htmlFor="experience_years">Years of Experience</Label>
+                    <Label htmlFor="video_url" className="flex items-center gap-2">
+                      <Video className="h-4 w-4" />
+                      {t('trainer:profile.introVideo', 'Intro Video')}
+                    </Label>
                     <Input
-                      id="experience_years"
+                      id="video_url"
+                      value={trainerData.video_url}
+                      onChange={(e) => setTrainerData({ ...trainerData, video_url: e.target.value })}
+                      placeholder="https://youtube.com/watch?v=..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t('trainer:profile.introVideoHelp', 'Paste a YouTube or Vimeo URL')}
+                    </p>
+                    {trainerData.video_url && isValidVideoUrl(trainerData.video_url) && (
+                      <div className="mt-2 rounded-lg overflow-hidden border">
+                        <img 
+                          src={getVideoThumbnail(trainerData.video_url) || ''} 
+                          alt="Video thumbnail"
+                          className="w-full h-32 object-cover"
+                        />
+                        <p className="text-xs text-green-600 p-2 bg-green-50 dark:bg-green-900/20">
+                          ✓ Valid video URL
+                        </p>
+                      </div>
+                    )}
+                    {trainerData.video_url && !isValidVideoUrl(trainerData.video_url) && (
+                      <p className="text-xs text-destructive">
+                        Invalid video URL. Please use a YouTube or Vimeo link.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Social Media */}
+                  <div className="space-y-4">
+                    <Label className="flex items-center gap-2">
+                      {t('trainer:profile.socialMedia', 'Social Media')}
+                    </Label>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="social_instagram" className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Instagram className="h-3 w-3" />
+                          Instagram
+                        </Label>
+                        <Input
+                          id="social_instagram"
+                          value={trainerData.social_instagram}
+                          onChange={(e) => setTrainerData({ ...trainerData, social_instagram: e.target.value })}
+                          placeholder="@username"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="social_tiktok" className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="text-xs font-bold">♪</span>
+                          TikTok
+                        </Label>
+                        <Input
+                          id="social_tiktok"
+                          value={trainerData.social_tiktok}
+                          onChange={(e) => setTrainerData({ ...trainerData, social_tiktok: e.target.value })}
+                          placeholder="@username"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="social_youtube" className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Youtube className="h-3 w-3" />
+                          YouTube
+                        </Label>
+                        <Input
+                          id="social_youtube"
+                          value={trainerData.social_youtube}
+                          onChange={(e) => setTrainerData({ ...trainerData, social_youtube: e.target.value })}
+                          placeholder="https://youtube.com/@channel"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="social_linkedin" className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Linkedin className="h-3 w-3" />
+                          LinkedIn
+                        </Label>
+                        <Input
+                          id="social_linkedin"
+                          value={trainerData.social_linkedin}
+                          onChange={(e) => setTrainerData({ ...trainerData, social_linkedin: e.target.value })}
+                          placeholder="https://linkedin.com/in/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preferred Player Levels */}
+                  <div className="space-y-4 pt-4 border-t">
+                    <div>
+                      <Label>{t('trainer:profile.preferredLevels', 'Preferred Player Levels')}</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {t('trainer:profile.preferredLevelsDescription', 'Which skill levels do you most enjoy training?')}
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                      <Select
+                        value={trainerData.preferred_rating_system}
+                        onValueChange={(value) => {
+                          const system = ratingSystems.find(s => s.code === value);
+                          setTrainerData({ 
+                            ...trainerData, 
+                            preferred_rating_system: value,
+                            preferred_min_rating: system?.min_rating || null,
+                            preferred_max_rating: system?.max_rating || null,
+                          });
+                        }}
+                        disabled={loadingRatingSystems}
+                      >
+                        <SelectTrigger id="preferred_rating_system">
+                          <SelectValue placeholder="Select rating system" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ratingSystems.map((system) => (
+                            <SelectItem key={system.code} value={system.code}>
+                              {system.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(() => {
+                      const preferredSystem = ratingSystems.find(s => s.code === trainerData.preferred_rating_system);
+                      if (!preferredSystem) return null;
+                      
+                      const minVal = trainerData.preferred_min_rating ?? preferredSystem.min_rating;
+                      const maxVal = trainerData.preferred_max_rating ?? preferredSystem.max_rating;
+                      
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Level range:</span>
+                            <span className="font-medium">
+                              {minVal} - {maxVal} ({preferredSystem.name})
+                            </span>
+                          </div>
+                          <div className="px-2">
+                            <Slider
+                              value={[minVal, maxVal]}
+                              min={preferredSystem.min_rating}
+                              max={preferredSystem.max_rating}
+                              step={preferredSystem.step}
+                              onValueChange={([min, max]) => {
+                                setTrainerData({
+                                  ...trainerData,
+                                  preferred_min_rating: min,
+                                  preferred_max_rating: max,
+                                });
+                              }}
+                            />
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>{preferredSystem.min_rating}</span>
+                              <span>{preferredSystem.max_rating}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Trainer Details Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Trainer Details</CardTitle>
+                  <CardDescription>Your professional information</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hourly_rate">Hourly Rate (€)</Label>
+                      <Input
+                        id="hourly_rate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={trainerData.hourly_rate || ''}
+                        onChange={(e) => setTrainerData({ 
+                          ...trainerData, 
+                          hourly_rate: e.target.value ? parseFloat(e.target.value) : null 
+                        })}
+                        placeholder="50.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="experience_years">Years of Experience</Label>
+                      <Input
+                        id="experience_years"
+                        type="number"
+                        min="0"
+                        value={trainerData.experience_years || ''}
+                        onChange={(e) => setTrainerData({ 
+                          ...trainerData, 
+                          experience_years: e.target.value ? parseInt(e.target.value) : null 
+                        })}
+                        placeholder="5"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="knltb_rating">KNLTB Rating</Label>
+                    <Input
+                      id="knltb_rating"
                       type="number"
-                      min="0"
-                      value={trainerData.experience_years || ''}
+                      step="0.1"
+                      min="0.1"
+                      max="9.9"
+                      value={trainerData.knltb_rating || ''}
                       onChange={(e) => setTrainerData({ 
                         ...trainerData, 
-                        experience_years: e.target.value ? parseInt(e.target.value) : null 
+                        knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
                       })}
-                      placeholder="5"
+                      placeholder="7.5"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your official KNLTB rating (0.1 - 9.9)
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Certifications</Label>
+                    <CertificationsPicker
+                      selectedCertifications={trainerData.certifications}
+                      onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
+                      trainerCountry={trainerCountry}
                     />
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="knltb_rating">KNLTB Rating</Label>
-                  <Input
-                    id="knltb_rating"
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="9.9"
-                    value={trainerData.knltb_rating || ''}
-                    onChange={(e) => setTrainerData({ 
-                      ...trainerData, 
-                      knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
-                    })}
-                    placeholder="7.5"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your official KNLTB rating (0.1 - 9.9)
-                  </p>
-                </div>
+                  <div className="space-y-2">
+                    <Label>Specializations</Label>
+                    <SpecializationsPicker
+                      selectedSpecializations={trainerData.specializations}
+                      onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Certifications</Label>
-                  <CertificationsPicker
-                    selectedCertifications={trainerData.certifications}
-                    onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
-                    trainerCountry={trainerCountry}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Specializations</Label>
-                  <SpecializationsPicker
-                    selectedSpecializations={trainerData.specializations}
-                    onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
-                  />
-                </div>
-
-                {/* Trainer Teaching Locations */}
-                <div className="space-y-2 pt-4 border-t">
-                  <Label className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4" />
-                    Teaching Locations
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
-                  </p>
-                  <TrainerLocationPicker
-                    selectedLocations={trainerLocations}
-                    onChange={setTrainerLocations}
-                    disabled={loadingLocations}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                  {/* Trainer Teaching Locations */}
+                  <div className="space-y-2 pt-4 border-t">
+                    <Label className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Teaching Locations
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
+                    </p>
+                    <TrainerLocationPicker
+                      selectedLocations={trainerLocations}
+                      onChange={setTrainerLocations}
+                      disabled={loadingLocations}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </>
           )}
 
           <Button type="submit" className="w-full" disabled={saving}>

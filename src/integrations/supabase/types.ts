@@ -1202,8 +1202,10 @@ export type Database = {
           business_address: string | null
           business_name: string | null
           certifications: string[] | null
+          coaching_method: string | null
           created_at: string
           experience_years: number | null
+          favourite_quote: string | null
           hourly_rate: number | null
           iban: string | null
           id: string
@@ -1211,16 +1213,24 @@ export type Database = {
           knltb_rating: number | null
           kvk_number: string | null
           payment_terms_days: number | null
+          preferred_max_rating: number | null
+          preferred_min_rating: number | null
+          preferred_rating_system: string | null
           require_booking_approval: boolean | null
           schedule_weeks_ahead: number
           slot_duration_minutes: number
           slot_gap_minutes: number
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
           specializations: string[] | null
           stripe_account_id: string | null
           subscription_status: string | null
           updated_at: string
           use_manual_invoicing: boolean | null
           user_id: string
+          video_url: string | null
         }
         Insert: {
           bic?: string | null
@@ -1228,8 +1238,10 @@ export type Database = {
           business_address?: string | null
           business_name?: string | null
           certifications?: string[] | null
+          coaching_method?: string | null
           created_at?: string
           experience_years?: number | null
+          favourite_quote?: string | null
           hourly_rate?: number | null
           iban?: string | null
           id?: string
@@ -1237,16 +1249,24 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          preferred_max_rating?: number | null
+          preferred_min_rating?: number | null
+          preferred_rating_system?: string | null
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id: string
+          video_url?: string | null
         }
         Update: {
           bic?: string | null
@@ -1254,8 +1274,10 @@ export type Database = {
           business_address?: string | null
           business_name?: string | null
           certifications?: string[] | null
+          coaching_method?: string | null
           created_at?: string
           experience_years?: number | null
+          favourite_quote?: string | null
           hourly_rate?: number | null
           iban?: string | null
           id?: string
@@ -1263,16 +1285,24 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          preferred_max_rating?: number | null
+          preferred_min_rating?: number | null
+          preferred_rating_system?: string | null
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           specializations?: string[] | null
           stripe_account_id?: string | null
           subscription_status?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id?: string
+          video_url?: string | null
         }
         Relationships: []
       }
