@@ -64,6 +64,7 @@ import AdminPricing from "./pages/admin/AdminPricing";
 import Locations from "./pages/Locations";
 import LocationDetail from "./pages/LocationDetail";
 import ClubDashboard from "./pages/club/ClubDashboard";
+import ClubLayout from "./components/club/ClubLayout";
 import ClubPlayers from "./pages/club/ClubPlayers";
 import ClubTrainers from "./pages/club/ClubTrainers";
 import ClubProfile from "./pages/club/ClubProfile";
@@ -147,15 +148,17 @@ const App = () => (
             <Route path="/admin/club-claims" element={<AdminClubClaims />} />
             <Route path="/admin/rating-systems" element={<AdminRatingSystems />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />
-            <Route path="/club" element={<ClubDashboard />} />
-            <Route path="/club/profile" element={<ClubProfile />} />
-            <Route path="/club/players" element={<ClubPlayers />} />
-            <Route path="/club/trainers" element={<ClubTrainers />} />
-            <Route path="/club/calendar" element={<ClubCalendar />} />
-            <Route path="/club/lessons" element={<ClubLessons />} />
-            <Route path="/club/settings" element={<ClubSettings />} />
-            <Route path="/club/subscription" element={<ClubSubscription />} />
-            <Route path="/club/invitation/:token" element={<ClubTrainerInvitation />} />
+            <Route path="/club" element={<ClubLayout />}>
+              <Route index element={<ClubDashboard />} />
+              <Route path="profile" element={<ClubProfile />} />
+              <Route path="players" element={<ClubPlayers />} />
+              <Route path="trainers" element={<ClubTrainers />} />
+              <Route path="calendar" element={<ClubCalendar />} />
+              <Route path="lessons" element={<ClubLessons />} />
+              <Route path="settings" element={<ClubSettings />} />
+              <Route path="subscription" element={<ClubSubscription />} />
+              <Route path="invitation/:token" element={<ClubTrainerInvitation />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>
