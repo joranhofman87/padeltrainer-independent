@@ -89,7 +89,6 @@ export default function Auth() {
           <div className="mb-4">
             <span className="font-bold text-2xl">PadelTrainer<span className="text-primary">.ai</span></span>
           </div>
-          <CardTitle className="text-2xl font-bold">{t('title')}</CardTitle>
           <CardDescription>
             {t('subtitle')}
           </CardDescription>
