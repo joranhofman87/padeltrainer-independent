@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type UserRole = 'player' | 'trainer' | 'admin';
+export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
 
 export interface UserProfile {
   id: string;
@@ -80,14 +80,25 @@ export async function signOut() {
 }
 
 export async function getUserRole(userId: string): Promise<UserRole | null> {
+  const roles = await getUserRoles(userId);
+  if (roles.length === 0) return null;
+  
+  // Return primary role based on priority: admin > trainer > club > player
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('trainer')) return 'trainer';
+  if (roles.includes('club')) return 'club';
+  if (roles.includes('player')) return 'player';
+  return null;
+}
+
+export async function getUserRoles(userId: string): Promise<UserRole[]> {
   const { data, error } = await supabase
     .from('user_roles')
     .select('role')
-    .eq('user_id', userId)
-    .single();
+    .eq('user_id', userId);
   
-  if (error || !data) return null;
-  return data.role as UserRole;
+  if (error || !data) return [];
+  return data.map(d => d.role as UserRole);
 }
 
 export async function setUserRole(userId: string, role: UserRole) {

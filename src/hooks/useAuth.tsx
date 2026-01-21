@@ -1,14 +1,17 @@
 import { useEffect, useState, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { getUserRole, getProfile, UserRole, UserProfile } from '@/lib/auth';
+import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
 import { SubscriptionInfo, getTierFromProductId } from '@/lib/subscription';
+import { isUserClubManager } from '@/lib/club';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
   role: UserRole | null;
+  roles: UserRole[];
+  isClubManager: boolean;
   subscription: SubscriptionInfo | null;
   loading: boolean;
   refreshAuth: () => Promise<void>;
@@ -20,6 +23,8 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   profile: null,
   role: null,
+  roles: [],
+  isClubManager: false,
   subscription: null,
   loading: true,
   refreshAuth: async () => {},
@@ -31,15 +36,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
+  const [roles, setRoles] = useState<UserRole[]>([]);
+  const [isClubManager, setIsClubManager] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    const [userRole, userProfile] = await Promise.all([
-      getUserRole(userId),
+    const [userRoles, userProfile, clubManagerStatus] = await Promise.all([
+      getUserRoles(userId),
       getProfile(userId),
+      isUserClubManager(userId),
     ]);
-    setRole(userRole);
+    
+    // Determine primary role based on priority: admin > trainer > club > player
+    const primaryRole = userRoles.includes('admin') ? 'admin'
+      : userRoles.includes('trainer') ? 'trainer'
+      : userRoles.includes('club') ? 'club'
+      : userRoles.includes('player') ? 'player'
+      : null;
+    
+    setRoles(userRoles);
+    setRole(primaryRole);
+    setIsClubManager(clubManagerStatus);
     setProfile(userProfile);
   };
 
@@ -109,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setProfile(null);
           setRole(null);
+          setRoles([]);
+          setIsClubManager(false);
           setSubscription(null);
         }
         setLoading(false);
@@ -152,7 +172,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, 
       session, 
       profile, 
-      role, 
+      role,
+      roles,
+      isClubManager,
       subscription,
       loading, 
       refreshAuth,
