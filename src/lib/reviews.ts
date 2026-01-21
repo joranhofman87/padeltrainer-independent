@@ -8,6 +8,7 @@ export interface Review {
   rating: number;
   comment: string | null;
   is_public: boolean;
+  is_anonymous: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -25,7 +26,7 @@ export async function createReview(
   trainerId: string,
   rating: number,
   comment?: string,
-  isPublic: boolean = true
+  isAnonymous: boolean = false
 ) {
   return supabase
     .from('reviews')
@@ -35,19 +36,19 @@ export async function createReview(
       trainer_id: trainerId,
       rating,
       comment,
-      is_public: isPublic,
+      is_public: true,
+      is_anonymous: isAnonymous,
     })
     .select()
     .single();
 }
 
 export async function getTrainerReviews(trainerId: string) {
-  // First get reviews
+  // First get all reviews (no is_public filter - all reviews are shown)
   const { data: reviews, error } = await supabase
     .from('reviews')
     .select('*')
     .eq('trainer_id', trainerId)
-    .eq('is_public', true)
     .order('created_at', { ascending: false });
 
   if (error || !reviews) return { data: null, error };
@@ -70,11 +71,11 @@ export async function getTrainerReviews(trainerId: string) {
 }
 
 export async function getTrainerAverageRating(trainerId: string) {
+  // Include all reviews in average calculation
   const { data, error } = await supabase
     .from('reviews')
     .select('rating')
-    .eq('trainer_id', trainerId)
-    .eq('is_public', true);
+    .eq('trainer_id', trainerId);
 
   if (error || !data || data.length === 0) {
     return { average: null, count: 0, error };

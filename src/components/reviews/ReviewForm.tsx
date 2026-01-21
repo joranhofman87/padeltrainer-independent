@@ -35,7 +35,7 @@ export function ReviewForm({
   const { toast } = useToast();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,7 +57,7 @@ export function ReviewForm({
       trainerId,
       rating,
       comment || undefined,
-      isPublic
+      isAnonymous
     );
 
     if (error) {
@@ -119,15 +119,15 @@ export function ReviewForm({
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="public">Public review</Label>
+              <Label htmlFor="anonymous">Post anonymously</Label>
               <p className="text-xs text-muted-foreground">
-                Other players can see this review
+                Your name will be hidden from other players
               </p>
             </div>
             <Switch
-              id="public"
-              checked={isPublic}
-              onCheckedChange={setIsPublic}
+              id="anonymous"
+              checked={isAnonymous}
+              onCheckedChange={setIsAnonymous}
             />
           </div>
 
