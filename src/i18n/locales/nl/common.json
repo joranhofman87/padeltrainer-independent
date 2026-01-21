@@ -1,4 +1,10 @@
 {
+  "switchProfile": "Wissel Profiel",
+  "myClubs": "Mijn Clubs",
+  "switchRole": "Wissel Rol",
+  "trainerDashboard": "Trainer Dashboard",
+  "clubDashboard": "Club Dashboard",
+  "signedOut": "Succesvol uitgelogd",
   "appName": "PadelTrainer.ai",
   "loading": "Laden...",
   "error": "Fout",

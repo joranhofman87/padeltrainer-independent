@@ -7,7 +7,9 @@ import {
   Calendar, 
   AlertCircle, 
   ArrowRight,
-  MapPin
+  MapPin,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +19,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, getClubPlayers, getClubTrainers, type ClubProfile } from '@/lib/club';
 import { ClubNavigation } from '@/components/club/ClubNavigation';
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { signOut } from '@/lib/auth';
+import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
 
 interface ClubWithLocation extends ClubProfile {
@@ -28,6 +34,7 @@ export default function ClubDashboard() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [clubs, setClubs] = useState<ClubWithLocation[]>([]);
   const [activeClub, setActiveClub] = useState<ClubWithLocation | null>(null);
   const [stats, setStats] = useState({ trainers: 0, players: 0 });
@@ -72,6 +79,34 @@ export default function ClubDashboard() {
     fetchClubs();
   }, [user]);
 
+  const handleClubChange = async (club: ClubWithLocation) => {
+    setActiveClub(club);
+    
+    // Fetch stats for selected club
+    try {
+      const [trainersData, playersData] = await Promise.all([
+        getClubTrainers(club.id),
+        getClubPlayers(club.id),
+      ]);
+      
+      setStats({
+        trainers: trainersData.length,
+        players: playersData.length,
+      });
+    } catch (error) {
+      console.error('Error fetching club stats:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: t('common:success'),
+      description: t('common:signedOut', 'Successfully signed out'),
+    });
+    navigate('/');
+  };
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -113,7 +148,29 @@ export default function ClubDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Top Header Bar */}
+      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-lg sm:text-xl">PadelTrainer<span className="text-primary">.ai</span></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ProfileSwitcher 
+              activeClubId={activeClub?.id} 
+              onClubChange={handleClubChange} 
+            />
+            <Button variant="ghost" size="icon" onClick={() => navigate('/club/settings')}>
+              <Settings className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleSignOut}>
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Club Info Section */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col gap-4">
