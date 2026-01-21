@@ -497,6 +497,7 @@ export default function BookLesson() {
               trainerName: trainer.profiles.full_name,
               price,
               trainerId: trainer.id,
+              slotId: selectedSlot.id,
             },
           }
         );

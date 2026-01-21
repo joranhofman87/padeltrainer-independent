@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.club-customer-portal]
 verify_jwt = false
+
+[functions.connect-club]
+verify_jwt = false
+
+[functions.check-club-connect-status]
+verify_jwt = false
