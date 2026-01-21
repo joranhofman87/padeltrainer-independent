@@ -233,6 +233,13 @@ export default function TrainerSignup() {
               {t('trainerSignup.joinAsPlayer', 'Join as Player')}
             </Link>
           </p>
+          
+          <p className="text-center text-sm text-muted-foreground">
+            {t('signIn.clubOwner', 'Are you a club owner?')}{' '}
+            <Link to="/signup/club" className="text-primary hover:underline font-medium">
+              {t('signIn.registerClub', 'Register your club')}
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>
