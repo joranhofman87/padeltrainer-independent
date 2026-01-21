@@ -106,7 +106,44 @@ Deno.serve(async (req) => {
       .delete()
       .eq("user_id", target_user_id);
 
-    // 3. Delete club manager associations
+    // 3. Get club profiles created by this user and delete them
+    const { data: userClubProfiles } = await supabaseAdmin
+      .from("club_profiles")
+      .select("id")
+      .eq("created_by", target_user_id);
+
+    if (userClubProfiles && userClubProfiles.length > 0) {
+      const clubIds = userClubProfiles.map((c) => c.id);
+      
+      // Delete club-related data first
+      await supabaseAdmin
+        .from("club_trainer_invitations")
+        .delete()
+        .in("club_profile_id", clubIds);
+
+      await supabaseAdmin
+        .from("club_players")
+        .delete()
+        .in("club_profile_id", clubIds);
+
+      await supabaseAdmin
+        .from("club_stripe_accounts")
+        .delete()
+        .in("club_profile_id", clubIds);
+
+      await supabaseAdmin
+        .from("club_managers")
+        .delete()
+        .in("club_profile_id", clubIds);
+
+      // Delete the club profiles
+      await supabaseAdmin
+        .from("club_profiles")
+        .delete()
+        .in("id", clubIds);
+    }
+
+    // 4. Delete remaining club manager associations (where user was manager but not creator)
     await supabaseAdmin
       .from("club_managers")
       .delete()
