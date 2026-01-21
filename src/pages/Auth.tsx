@@ -22,7 +22,14 @@ export default function Auth() {
   useEffect(() => {
     if (!loading && user) {
       if (role) {
-        navigate(role === 'trainer' ? '/trainer' : '/player');
+        // Priority: admin > trainer > player
+        if (role === 'admin') {
+          navigate('/admin');
+        } else if (role === 'trainer') {
+          navigate('/trainer');
+        } else {
+          navigate('/player');
+        }
       } else {
         // User without role - check for pending role from signup
         const pendingRole = sessionStorage.getItem('pendingRole');

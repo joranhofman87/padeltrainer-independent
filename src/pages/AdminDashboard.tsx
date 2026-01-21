@@ -6,7 +6,7 @@ import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { AdminCharts } from "@/components/admin/AdminCharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin, Award } from "lucide-react";
+import { Loader2, RefreshCw, ShieldAlert, LogOut, Building2, MapPin, Award, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -141,6 +141,20 @@ export default function AdminDashboard() {
           <div className="space-y-8">
             {/* Admin Actions */}
             <div className="grid gap-4 md:grid-cols-2">
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/users")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">User Management</h3>
+                    <p className="text-sm text-muted-foreground">Manage users, roles, and access</p>
+                  </div>
+                </div>
+              </div>
               <div
                 className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => navigate("/admin/club-claims")}
