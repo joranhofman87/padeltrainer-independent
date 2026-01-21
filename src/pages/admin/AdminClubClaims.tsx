@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ArrowLeft, Building2, Check, X, Loader2, Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,9 +21,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { isUserAdmin } from "@/lib/admin";
-import { getPendingClubClaims, verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
+import { useIsAdmin } from "@/hooks/useAdminData";
+import { verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
 import { sendEmail } from "@/lib/email";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PendingClaim extends ClubProfile {
   location: {
@@ -37,44 +39,57 @@ interface PendingClaim extends ClubProfile {
   } | null;
 }
 
+// Fetch pending claims directly with the Supabase client
+async function fetchPendingClaims(): Promise<PendingClaim[]> {
+  const { data, error } = await supabase
+    .from('club_profiles')
+    .select(`
+      *,
+      location:locations(*),
+      managers:club_managers(
+        user_id,
+        role,
+        profile:profiles(full_name, email)
+      )
+    `)
+    .eq('is_verified', false)
+    .order('claimed_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching pending claims:', error);
+    return [];
+  }
+
+  return (data || []).map((claim: any) => ({
+    ...claim,
+    owner: claim.managers?.find((m: any) => m.role === 'owner')?.profile || null,
+  }));
+}
+
 export default function AdminClubClaims() {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { user, loading: authLoading } = useAuth();
+  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
 
-  const [claims, setClaims] = useState<PendingClaim[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [authLoading, user, navigate]);
+  // Use React Query for claims
+  const { data: claims = [], isLoading: claimsLoading } = useQuery({
+    queryKey: ["admin", "pendingClaimsList"],
+    queryFn: fetchPendingClaims,
+    enabled: isAdmin === true,
+    staleTime: 1000 * 60 * 2,
+  });
 
-  useEffect(() => {
-    async function checkAdminAndLoad() {
-      if (!user) return;
+  const loading = authLoading || adminLoading || claimsLoading;
 
-      const adminStatus = await isUserAdmin(user.id);
-      setIsAdmin(adminStatus);
-
-      if (!adminStatus) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const pendingClaims = await getPendingClubClaims();
-        setClaims(pendingClaims as PendingClaim[]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    checkAdminAndLoad();
-  }, [user]);
+  const invalidateClaims = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin", "pendingClaimsList"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "pendingClaims"] });
+  };
 
   const handleVerify = async (claim: PendingClaim) => {
     setProcessing(claim.id);
@@ -89,7 +104,7 @@ export default function AdminClubClaims() {
           });
         }
         
-        setClaims((prev) => prev.filter((c) => c.id !== claim.id));
+        invalidateClaims();
         toast({
           title: "Club Verified",
           description: "The club claim has been approved and the owner has been notified.",
@@ -119,7 +134,7 @@ export default function AdminClubClaims() {
       
       const success = await rejectClubClaim(claim.id);
       if (success) {
-        setClaims((prev) => prev.filter((c) => c.id !== claim.id));
+        invalidateClaims();
         toast({
           title: "Claim Rejected",
           description: "The club claim has been rejected and the user has been notified.",
