@@ -206,7 +206,7 @@ serve(async (req) => {
         .single();
 
       if (!stripeAccount?.charges_enabled || !stripeAccount?.stripe_account_id) {
-        throw new Error("Trainer has not connected their Stripe account. Please ask them to set up payouts first.");
+        throw new Error("This trainer has not connected their Stripe account. Please contact them to set up payments or choose a different trainer.");
       }
 
       connectedAccountId = stripeAccount.stripe_account_id;

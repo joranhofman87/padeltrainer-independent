@@ -7,11 +7,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat, AlertCircle, Building2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { hasValidPaymentSetup } from '@/lib/clubTrainerPayments';
 
 interface BookedPlayerInfo {
   skillRating: number | null;
@@ -472,6 +473,23 @@ export default function BookLesson() {
         setBooked(true);
       } else {
         // Auto-accept with Stripe payment (existing flow)
+        // First, check if trainer/club has valid payment setup
+        const paymentSetup = await hasValidPaymentSetup(
+          trainerId!,
+          trainer.id,
+          trainer.use_manual_invoicing ?? false
+        );
+
+        if (!paymentSetup.valid) {
+          toast({
+            title: 'Payment Not Available',
+            description: paymentSetup.message || 'This trainer has not set up payments yet',
+            variant: 'destructive',
+          });
+          setBooking(false);
+          return;
+        }
+
         const { data: bookingData, error } = await supabase
           .from('bookings')
           .insert({
