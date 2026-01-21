@@ -1,5 +1,5 @@
 export interface VideoEmbedInfo {
-  platform: 'youtube' | 'vimeo';
+  platform: 'youtube' | 'vimeo' | 'tiktok';
   videoId: string;
   embedUrl: string;
   thumbnailUrl: string;
@@ -43,6 +43,28 @@ export function parseVideoUrl(url: string): VideoEmbedInfo | null {
       embedUrl: `https://player.vimeo.com/video/${videoId}`,
       thumbnailUrl: `https://vumbnail.com/${videoId}.jpg`,
     };
+  }
+  
+  // TikTok patterns
+  // Supports: tiktok.com/@user/video/123, vm.tiktok.com/123, tiktok.com/t/123
+  const tiktokPatterns = [
+    /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
+    /vm\.tiktok\.com\/(\w+)/,
+    /tiktok\.com\/t\/(\w+)/,
+  ];
+  
+  for (const pattern of tiktokPatterns) {
+    const match = trimmedUrl.match(pattern);
+    if (match && match[1]) {
+      const videoId = match[1];
+      return {
+        platform: 'tiktok',
+        videoId,
+        embedUrl: `https://www.tiktok.com/embed/v2/${videoId}`,
+        // TikTok doesn't have a simple thumbnail API, use a placeholder
+        thumbnailUrl: '',
+      };
+    }
   }
   
   return null;
