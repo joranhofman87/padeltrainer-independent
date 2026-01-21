@@ -69,6 +69,10 @@
       "calendarSync": {
         "title": "Agenda Sync",
         "description": "Synchroniseer met Google Agenda"
+      },
+      "myProfile": {
+        "title": "Mijn Profiel",
+        "description": "Bewerk je profiel, voeg locaties toe en werk je gegevens bij"
       }
     },
     "setup": {

@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
@@ -424,8 +424,8 @@ export default function TrainerDashboard() {
           </Card>
         </div>
 
-        {/* Quick Actions - Simplified to 3 cards */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
+        {/* Quick Actions - 4 cards */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/lessons')}
@@ -479,6 +479,25 @@ export default function TrainerDashboard() {
             <CardContent>
               <CardDescription>
                 {t('dashboard.quickActions.bookings.description')}
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/profile/edit')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <UserCircle className="h-5 w-5 text-emerald-600" />
+                </div>
+                <CardTitle className="text-lg">{t('dashboard.quickActions.myProfile.title', 'My Profile')}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                {t('dashboard.quickActions.myProfile.description', 'Edit your profile, add locations and update your details')}
               </CardDescription>
             </CardContent>
           </Card>
