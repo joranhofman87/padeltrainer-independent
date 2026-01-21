@@ -30,9 +30,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -43,6 +52,7 @@ import {
   UserCog,
   LogIn,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -74,6 +84,8 @@ export default function AdminUsers() {
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState<string>("");
   const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -163,11 +175,45 @@ export default function AdminUsers() {
 
       setImpersonateDialogOpen(false);
       setSelectedUser(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate impersonation link";
       console.error("Failed to impersonate:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to generate impersonation link",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser || deleteConfirmText !== "DELETE") return;
+
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("delete-user", {
+        body: { target_user_id: selectedUser.user_id },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "User deleted",
+        description: `${selectedUser.full_name || selectedUser.email} has been permanently deleted.`,
+      });
+
+      await invalidateUsers();
+      setDeleteDialogOpen(false);
+      setSelectedUser(null);
+      setDeleteConfirmText("");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
+      console.error("Failed to delete user:", error);
+      toast({
+        title: "Error",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -335,15 +381,29 @@ export default function AdminUsers() {
                             Change role
                           </DropdownMenuItem>
                           {u.role !== "admin" && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedUser(u);
-                                setImpersonateDialogOpen(true);
-                              }}
-                            >
-                              <LogIn className="mr-2 h-4 w-4" />
-                              Login as user
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedUser(u);
+                                  setImpersonateDialogOpen(true);
+                                }}
+                              >
+                                <LogIn className="mr-2 h-4 w-4" />
+                                Login as user
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => {
+                                  setSelectedUser(u);
+                                  setDeleteConfirmText("");
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete user
+                              </DropdownMenuItem>
+                            </>
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -422,6 +482,66 @@ export default function AdminUsers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Delete User Permanently
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                You are about to permanently delete{" "}
+                <strong>{selectedUser?.full_name || selectedUser?.email}</strong>.
+              </p>
+              <p className="text-sm">
+                This will remove:
+              </p>
+              <ul className="text-sm list-disc list-inside space-y-1">
+                <li>User profile and account</li>
+                <li>All trainer data (if applicable)</li>
+                <li>Notification preferences</li>
+                <li>Calendar events</li>
+                <li>Club manager associations</li>
+              </ul>
+              <p className="text-sm text-destructive font-medium">
+                This action cannot be undone.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium">
+              Type <span className="font-mono bg-muted px-1 rounded">DELETE</span> to confirm:
+            </label>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="mt-2"
+            />
+          </div>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setDeleteConfirmText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteUser}
+              disabled={actionLoading || deleteConfirmText !== "DELETE"}
+            >
+              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete User
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
