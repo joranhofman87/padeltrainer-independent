@@ -70,6 +70,35 @@ export function TrainerCalendarGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
+  // Calculate slot duration in hours for visual spanning
+  const getSlotDurationHours = (slot: SlotWithBookings) => {
+    const startTime = new Date(slot.start_time).getTime();
+    const endTime = new Date(slot.end_time).getTime();
+    return Math.max(1, Math.ceil((endTime - startTime) / (60 * 60 * 1000)));
+  };
+
+  // Track which cells are occupied by spanning slots to prevent clicks
+  const occupiedCells = useMemo(() => {
+    const occupied = new Set<string>();
+    
+    slots.forEach((slot) => {
+      const slotDate = new Date(slot.start_time);
+      const dayKey = format(slotDate, "yyyy-MM-dd");
+      const startHour = slotDate.getHours();
+      const durationHours = getSlotDurationHours(slot);
+      
+      // Mark all hours except the first as occupied (the first shows the slot card)
+      for (let h = 1; h < durationHours; h++) {
+        const occupiedHour = startHour + h;
+        if (occupiedHour <= 23) {
+          occupied.add(`${dayKey}-${occupiedHour}`);
+        }
+      }
+    });
+    
+    return occupied;
+  }, [slots]);
+
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, SlotWithBookings[]>> = {};
     
@@ -176,6 +205,8 @@ export function TrainerCalendarGrid({
                 {weekDays.map((day) => {
                   const dayKey = format(day, "yyyy-MM-dd");
                   const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
+                  const cellKey = `${dayKey}-${hour}`;
+                  const isCellOccupied = occupiedCells.has(cellKey);
 
                     const isPastCell = isBefore(
                       new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
@@ -184,14 +215,14 @@ export function TrainerCalendarGrid({
 
                     return (
                       <div
-                        key={`${dayKey}-${hour}`}
+                        key={cellKey}
                         className={cn(
                           "border-l p-1 space-y-1 min-h-[80px] group relative",
                           isToday(day) && "bg-primary/5",
-                          !isPastCell && slotsInCell.length === 0 && onCellClick && "cursor-pointer hover:bg-muted/50"
+                          !isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && "cursor-pointer hover:bg-muted/50"
                         )}
                         onClick={() => {
-                          if (!isPastCell && slotsInCell.length === 0 && onCellClick) {
+                          if (!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick) {
                             onCellClick(day, hour);
                           }
                         }}
@@ -200,6 +231,7 @@ export function TrainerCalendarGrid({
                           <CalendarSlotCard 
                             key={slot.id} 
                             slot={slot} 
+                            durationHours={getSlotDurationHours(slot)}
                             onBookForPlayer={onBookForPlayer}
                             onDuplicateCyclus={onDuplicateCyclus}
                             onDeleteSlot={onDeleteSlot}
@@ -207,7 +239,7 @@ export function TrainerCalendarGrid({
                             onToggleMarkedFull={onToggleMarkedFull}
                           />
                         ))}
-                        {!isPastCell && slotsInCell.length === 0 && onCellClick && (
+                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && (
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <div className="bg-primary/10 rounded-md p-2">
                               <Plus className="h-4 w-4 text-primary" />
