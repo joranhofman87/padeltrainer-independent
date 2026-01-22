@@ -380,20 +380,11 @@ export default function Trainers() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Search and Filters */}
-        <div className="mb-8 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search trainers by name, specialty..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
+      <main className="container mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Filters Sidebar */}
+          <aside className="w-full lg:w-72 lg:shrink-0">
+            <div className="lg:sticky lg:top-20">
               <TrainerFilters
                 filters={filters}
                 onChange={setFilters}
@@ -402,187 +393,205 @@ export default function Trainers() {
                 allCertifications={allCertifications}
                 activeFilterCount={activeFilterCount}
               />
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rating">Top Rated</SelectItem>
-                  <SelectItem value="price-low">Price: Low to High</SelectItem>
-                  <SelectItem value="price-high">Price: High to Low</SelectItem>
-                  <SelectItem value="experience">Most Experienced</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
-          </div>
+          </aside>
 
-          {/* Active filters display */}
-          {activeFilterCount > 0 && (
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-sm text-muted-foreground">Active filters:</span>
-              {filters.locationId !== 'all' && (
-                <Badge variant="secondary" className="gap-1">
-                  <MapPin className="h-3 w-3" /> {clubLocations.find(l => l.id === filters.locationId)?.name || 'Location'}
-                </Badge>
-              )}
-              {(filters.priceRange[0] > 0 || filters.priceRange[1] < 200) && (
-                <Badge variant="secondary">
-                  €{filters.priceRange[0]} - €{filters.priceRange[1]}
-                </Badge>
-              )}
-              {filters.minRating > 0 && (
-                <Badge variant="secondary" className="gap-1">
-                  {filters.minRating}+ <Star className="h-3 w-3 fill-current" />
-                </Badge>
-              )}
-              {filters.minExperience > 0 && (
-                <Badge variant="secondary">
-                  {filters.minExperience}+ years
-                </Badge>
-              )}
-              {filters.specializations.map(spec => (
-                <Badge key={spec} variant="secondary">{spec}</Badge>
-              ))}
-              {filters.certifications.map(cert => (
-                <Badge key={cert} variant="secondary">{cert}</Badge>
-              ))}
-              {filters.minKnltbRating > 0 && (
-                <Badge variant="secondary">KNLTB {filters.minKnltbRating}+</Badge>
-              )}
-              {filters.verifiedOnly && (
-                <Badge variant="secondary">Verified only</Badge>
-              )}
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-6 text-xs"
-                onClick={() => setFilters(DEFAULT_FILTERS)}
-              >
-                Clear all
-              </Button>
-            </div>
-          )}
+          {/* Main Content */}
+          <div className="flex-1 min-w-0">
+            {/* Search and Sort */}
+            <div className="mb-6 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search trainers by name, specialty..."
+                    className="pl-10"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                  <SelectTrigger className="w-full sm:w-[160px]">
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="rating">Top Rated</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="experience">Most Experienced</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <p className="text-sm text-muted-foreground">
-            {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
-          </p>
-        </div>
-
-        {/* Trainers Grid */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : filteredAndSortedTrainers.length === 0 ? (
-          <Card className="text-center py-12">
-            <CardContent>
-              <p className="text-muted-foreground mb-4">No trainers found</p>
-              {searchQuery || activeFilterCount > 0 ? (
-                <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
-                  Clear Filters
-                </Button>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Be the first trainer to join!
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAndSortedTrainers.map((trainer) => (
-              <Card 
-                key={trainer.id} 
-                className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="h-16 w-16">
-                      <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                      <AvatarFallback className="text-lg">
-                        {getInitials(trainer.profile?.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <CardTitle className="text-lg truncate">
-                          {trainer.profile?.full_name || 'Trainer'}
-                        </CardTitle>
-                        {trainer.is_verified && (
-                          <Badge variant="secondary" className="shrink-0">
-                            Verified
-                          </Badge>
-                        )}
-                        <div className="ml-auto">
-                          <FollowButton trainerProfileId={trainer.id} />
-                        </div>
-                      </div>
-                      {trainer.profile?.location && (
-                        <CardDescription className="flex items-center gap-1 mt-1">
-                          <MapPin className="h-3 w-3" />
-                          {trainer.profile.location}
-                        </CardDescription>
-                      )}
-                      {trainer.reviewCount > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium">{trainer.averageRating.toFixed(1)}</span>
-                          <span className="text-sm text-muted-foreground">
-                            ({trainer.reviewCount} review{trainer.reviewCount !== 1 ? 's' : ''})
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {trainer.profile?.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {trainer.profile.bio}
-                    </p>
+              {/* Active filters display (mobile summary) */}
+              {activeFilterCount > 0 && (
+                <div className="flex flex-wrap gap-2 items-center lg:hidden">
+                  <span className="text-sm text-muted-foreground">Active filters:</span>
+                  {filters.locationId !== 'all' && (
+                    <Badge variant="secondary" className="gap-1">
+                      <MapPin className="h-3 w-3" /> {clubLocations.find(l => l.id === filters.locationId)?.name || 'Location'}
+                    </Badge>
                   )}
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">
-                        €{trainer.hourly_rate}/hour
-                      </span>
-                    )}
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      {trainer.knltb_rating && (
-                        <span className="font-medium text-foreground">
-                          KNLTB {trainer.knltb_rating}
-                        </span>
-                      )}
-                      {trainer.experience_years && (
-                        <span>
-                          {trainer.experience_years}y exp.
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  {(filters.priceRange[0] > 0 || filters.priceRange[1] < 200) && (
+                    <Badge variant="secondary">
+                      €{filters.priceRange[0]} - €{filters.priceRange[1]}
+                    </Badge>
+                  )}
+                  {filters.minRating > 0 && (
+                    <Badge variant="secondary" className="gap-1">
+                      {filters.minRating}+ <Star className="h-3 w-3 fill-current" />
+                    </Badge>
+                  )}
+                  {filters.minExperience > 0 && (
+                    <Badge variant="secondary">
+                      {filters.minExperience}+ years
+                    </Badge>
+                  )}
+                  {filters.specializations.map(spec => (
+                    <Badge key={spec} variant="secondary">{spec}</Badge>
+                  ))}
+                  {filters.certifications.map(cert => (
+                    <Badge key={cert} variant="secondary">{cert}</Badge>
+                  ))}
+                  {filters.minKnltbRating > 0 && (
+                    <Badge variant="secondary">KNLTB {filters.minKnltbRating}+</Badge>
+                  )}
+                  {filters.verifiedOnly && (
+                    <Badge variant="secondary">Verified only</Badge>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 text-xs"
+                    onClick={() => setFilters(DEFAULT_FILTERS)}
+                  >
+                    Clear all
+                  </Button>
+                </div>
+              )}
 
-                  {trainer.specializations && trainer.specializations.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {trainer.specializations.slice(0, 3).map((spec, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          {spec}
-                        </Badge>
-                      ))}
-                      {trainer.specializations.length > 3 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{trainer.specializations.length - 3}
-                        </Badge>
-                      )}
-                    </div>
+              <p className="text-sm text-muted-foreground">
+                {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
+              </p>
+            </div>
+
+            {/* Trainers Grid */}
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : filteredAndSortedTrainers.length === 0 ? (
+              <Card className="text-center py-12">
+                <CardContent>
+                  <p className="text-muted-foreground mb-4">No trainers found</p>
+                  {searchQuery || activeFilterCount > 0 ? (
+                    <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
+                      Clear Filters
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Be the first trainer to join!
+                    </p>
                   )}
                 </CardContent>
               </Card>
-            ))}
+            ) : (
+              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredAndSortedTrainers.map((trainer) => (
+                  <Card 
+                    key={trainer.id} 
+                    className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start gap-4">
+                        <Avatar className="h-14 w-14">
+                          <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                          <AvatarFallback className="text-lg">
+                            {getInitials(trainer.profile?.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <CardTitle className="text-base truncate">
+                              {trainer.profile?.full_name || 'Trainer'}
+                            </CardTitle>
+                            {trainer.is_verified && (
+                              <Badge variant="secondary" className="shrink-0 text-xs">
+                                Verified
+                              </Badge>
+                            )}
+                            <div className="ml-auto">
+                              <FollowButton trainerProfileId={trainer.id} />
+                            </div>
+                          </div>
+                          {trainer.profile?.location && (
+                            <CardDescription className="flex items-center gap-1 mt-1 text-xs">
+                              <MapPin className="h-3 w-3" />
+                              {trainer.profile.location}
+                            </CardDescription>
+                          )}
+                          {trainer.reviewCount > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                              <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
+                              <span className="text-xs text-muted-foreground">
+                                ({trainer.reviewCount})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pt-0">
+                      {trainer.profile?.bio && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {trainer.profile.bio}
+                        </p>
+                      )}
+                      
+                      <div className="flex items-center justify-between text-sm">
+                        {trainer.hourly_rate && (
+                          <span className="font-semibold text-primary">
+                            €{trainer.hourly_rate}/hr
+                          </span>
+                        )}
+                        <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                          {trainer.knltb_rating && (
+                            <span className="font-medium text-foreground">
+                              KNLTB {trainer.knltb_rating}
+                            </span>
+                          )}
+                          {trainer.experience_years && (
+                            <span>
+                              {trainer.experience_years}y exp
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {trainer.specializations && trainer.specializations.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {trainer.specializations.slice(0, 2).map((spec, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {spec}
+                            </Badge>
+                          ))}
+                          {trainer.specializations.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{trainer.specializations.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
