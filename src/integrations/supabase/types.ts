@@ -519,7 +519,7 @@ export type Database = {
       guest_players: {
         Row: {
           created_at: string
-          email: string
+          email: string | null
           full_name: string
           id: string
           linked_profile_id: string | null
@@ -532,7 +532,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          email: string
+          email?: string | null
           full_name: string
           id?: string
           linked_profile_id?: string | null
@@ -545,7 +545,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          email?: string
+          email?: string | null
           full_name?: string
           id?: string
           linked_profile_id?: string | null
