@@ -368,24 +368,58 @@ export function BulkCreateSheet({
   }, [open, defaultDate]);
 
   const addBulkSlotConfig = () => {
-    const newStartDate = getInitialStartDate();
-    const newStartTime = getInitialStartTime();
-    setBulkSlots([
-      ...bulkSlots,
-      {
-        startDate: newStartDate,
-        startTime: newStartTime,
-        durationMinutes: defaultDuration,
-        recurrenceWeeks: defaultWeeks,
-        lessonId: null,
-        cyclusName: generateCyclusName(newStartDate, newStartTime, null),
-        addPlayers: false,
-        selectedPlayers: [],
-        courtType: null,
-        locationId: null,
-        isMarkedFull: false,
-      },
-    ]);
+    // If there's an existing slot, copy its settings
+    if (bulkSlots.length > 0) {
+      const lastSlot = bulkSlots[bulkSlots.length - 1];
+      
+      // Calculate next available time (increment by duration)
+      const lastTimeMinutes = parseInt(lastSlot.startTime.split(':')[0]) * 60 
+                            + parseInt(lastSlot.startTime.split(':')[1]);
+      const nextTimeMinutes = lastTimeMinutes + lastSlot.durationMinutes;
+      const nextHours = Math.floor(nextTimeMinutes / 60);
+      const nextMins = nextTimeMinutes % 60;
+      const newStartTime = nextHours < 24 
+        ? `${nextHours.toString().padStart(2, '0')}:${nextMins.toString().padStart(2, '0')}`
+        : lastSlot.startTime; // Fallback if exceeds 24h
+      
+      const newCyclusName = generateCyclusName(lastSlot.startDate, newStartTime, lastSlot.lessonId);
+      
+      setBulkSlots([
+        ...bulkSlots,
+        {
+          startDate: lastSlot.startDate,           // Copy
+          startTime: newStartTime,                  // Auto-increment
+          durationMinutes: lastSlot.durationMinutes, // Copy
+          recurrenceWeeks: lastSlot.recurrenceWeeks, // Copy
+          lessonId: lastSlot.lessonId,              // Copy
+          locationId: lastSlot.locationId,          // Copy
+          courtType: lastSlot.courtType,            // Copy
+          cyclusName: newCyclusName,                // Auto-generate
+          addPlayers: false,                        // Reset (different players)
+          selectedPlayers: [],                      // Reset
+          isMarkedFull: false,                      // Reset
+        },
+      ]);
+    } else {
+      // No existing slots - use defaults
+      const newStartDate = getInitialStartDate();
+      const newStartTime = getInitialStartTime();
+      setBulkSlots([
+        {
+          startDate: newStartDate,
+          startTime: newStartTime,
+          durationMinutes: defaultDuration,
+          recurrenceWeeks: defaultWeeks,
+          lessonId: null,
+          cyclusName: generateCyclusName(newStartDate, newStartTime, null),
+          addPlayers: false,
+          selectedPlayers: [],
+          courtType: null,
+          locationId: null,
+          isMarkedFull: false,
+        },
+      ]);
+    }
   };
 
   const updateBulkSlot = (index: number, updates: Partial<BulkSlotConfig>) => {
