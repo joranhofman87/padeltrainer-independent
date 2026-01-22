@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, MapPin, Star, ArrowLeft, TrendingUp, Building2, ChevronRight } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
-import { getActiveLocations, type Location } from '@/lib/locations';
+import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
+import { LocationCard } from '@/components/locations/LocationCard';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
@@ -43,6 +44,8 @@ export default function TrainersCity() {
   const { city } = useParams<{ city: string }>();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
+  const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('rating');
@@ -69,12 +72,19 @@ export default function TrainersCity() {
   const fetchData = async () => {
     setLoading(true);
 
-    // Fetch locations in this city
-    const allLocations = await getActiveLocations();
+    // Fetch locations in this city, trainer counts, and claimed IDs in parallel
+    const [allLocations, allTrainerCounts, allClaimedIds] = await Promise.all([
+      getActiveLocations(),
+      getLocationTrainerCounts(),
+      getClaimedLocationIds()
+    ]);
+    
     const cityLocations = allLocations.filter(
       l => l.city.toLowerCase().replace(/\s+/g, '-') === city?.toLowerCase()
     );
     setLocations(cityLocations);
+    setTrainerCounts(allTrainerCounts);
+    setClaimedLocationIds(allClaimedIds);
 
     // Fetch trainers at locations in this city OR with location field matching city
     const { data: trainerProfiles, error: trainerError } = await supabase
@@ -251,26 +261,6 @@ export default function TrainersCity() {
           </p>
         </div>
 
-        {/* Clubs in this city */}
-        {locations.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Padel Clubs in {displayCity}
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {locations.map(location => (
-                <LocalizedLink key={location.id} to={`/locations/${location.slug}`}>
-                  <Badge variant="secondary" className="hover:bg-secondary/80 cursor-pointer">
-                    {location.name}
-                    {location.number_of_courts && ` • ${location.number_of_courts} courts`}
-                  </Badge>
-                </LocalizedLink>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Search and Sort */}
         <div className="mb-6 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -412,6 +402,29 @@ export default function TrainersCity() {
               </Card>
             ))}
           </div>
+        )}
+
+        {/* Clubs Section */}
+        {locations.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+              <Building2 className="h-6 w-6" />
+              Padel Clubs in {displayCity}
+            </h2>
+            <p className="text-muted-foreground mb-6">
+              {locations.length} padel club{locations.length !== 1 ? 's' : ''} in {displayCity}
+            </p>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {locations.map(location => (
+                <LocationCard
+                  key={location.id}
+                  location={location}
+                  trainerCount={trainerCounts[location.id] || 0}
+                  isClaimed={claimedLocationIds.has(location.id)}
+                />
+              ))}
+            </div>
+          </section>
         )}
 
         {/* SEO Content Section */}
