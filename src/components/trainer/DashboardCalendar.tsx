@@ -134,6 +134,35 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
+  // Calculate slot duration in hours for visual spanning
+  const getSlotDurationHours = (slot: SlotSummary) => {
+    const startTime = new Date(slot.start_time).getTime();
+    const endTime = new Date(slot.end_time).getTime();
+    return Math.max(1, Math.ceil((endTime - startTime) / (60 * 60 * 1000)));
+  };
+
+  // Track which cells are occupied by spanning slots
+  const occupiedCells = useMemo(() => {
+    const occupied = new Set<string>();
+    
+    slots.forEach((slot) => {
+      const slotDate = new Date(slot.start_time);
+      const dayKey = format(slotDate, "yyyy-MM-dd");
+      const startHour = slotDate.getHours();
+      const durationHours = getSlotDurationHours(slot);
+      
+      // Mark all hours except the first as occupied
+      for (let h = 1; h < durationHours; h++) {
+        const occupiedHour = startHour + h;
+        if (occupiedHour <= 23) {
+          occupied.add(`${dayKey}-${occupiedHour}`);
+        }
+      }
+    });
+    
+    return occupied;
+  }, [slots]);
+
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, SlotSummary[]>> = {};
 
@@ -373,9 +402,11 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
                   <div className="p-1 text-[10px] text-muted-foreground text-right pr-2 pt-0.5">
                     {String(hour).padStart(2, "0")}:00
                   </div>
-                  {weekDays.map((day) => {
+                {weekDays.map((day) => {
                     const dayKey = format(day, "yyyy-MM-dd");
                     const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
+                    const cellKey = `${dayKey}-${hour}`;
+                    const isCellOccupied = occupiedCells.has(cellKey);
                     const isPast = isBefore(
                       new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
                       new Date()
@@ -383,31 +414,38 @@ export function DashboardCalendar({ trainerId }: DashboardCalendarProps) {
 
                     return (
                       <div
-                        key={`${dayKey}-${hour}`}
+                        key={cellKey}
                         className={cn(
-                          "border-l p-0.5 min-h-[28px]",
+                          "border-l p-0.5 min-h-[28px] relative",
                           isToday(day) && "bg-primary/5",
-                          isPast && "bg-muted/20"
+                          (isPast || isCellOccupied) && "bg-muted/20"
                         )}
                       >
-                        {slotsInCell.map((slot) => (
-                          <div
-                            key={slot.id}
-                            className={cn(
-                              "text-[9px] px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-80",
-                              getSlotColor(slot)
-                            )}
-                            onClick={() => navigate("/trainer/calendar")}
-                            title={`${slot.lesson_title || "Slot"} - ${slot.active_bookings}/${slot.max_participants}`}
-                          >
-                            <span className="font-medium">
-                              {format(new Date(slot.start_time), "HH:mm")}
-                            </span>
-                            <span className="ml-1 opacity-70">
-                              {slot.active_bookings}/{slot.max_participants}
-                            </span>
-                          </div>
-                        ))}
+                        {slotsInCell.map((slot) => {
+                          const durationHours = getSlotDurationHours(slot);
+                          const spanHeight = durationHours > 1 ? `${durationHours * 28 - 4}px` : undefined;
+                          
+                          return (
+                            <div
+                              key={slot.id}
+                              className={cn(
+                                "text-[9px] px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-80",
+                                getSlotColor(slot),
+                                durationHours > 1 && "absolute left-0.5 right-0.5 z-10"
+                              )}
+                              style={spanHeight ? { height: spanHeight } : undefined}
+                              onClick={() => navigate("/trainer/calendar")}
+                              title={`${slot.lesson_title || "Slot"} - ${slot.active_bookings}/${slot.max_participants}`}
+                            >
+                              <span className="font-medium">
+                                {format(new Date(slot.start_time), "HH:mm")}
+                              </span>
+                              <span className="ml-1 opacity-70">
+                                {slot.active_bookings}/{slot.max_participants}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}
