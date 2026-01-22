@@ -32,13 +32,19 @@ interface SlotWithDetails {
   averageRating?: number | null;
   ratingSystem?: string;
   spotsLeft?: number;
+  location_id?: string | null;
+  location?: {
+    id: string;
+    name: string;
+    city: string;
+    street_address: string | null;
+  } | null;
   lessons?: {
     id: string;
     title: string;
     description: string | null;
     price: number;
     duration_minutes: number;
-    location: string | null;
     min_skill_rating: number | null;
     max_skill_rating: number | null;
   } | null;
@@ -52,6 +58,7 @@ interface CyclusBundle {
   firstDate: string;
   lastDate: string;
   lesson: SlotWithDetails['lessons'];
+  location?: SlotWithDetails['location'];
 }
 
 interface TrainerWithProfile {
@@ -155,7 +162,7 @@ export default function BookLesson() {
     } as unknown as TrainerWithProfile);
 
     // Fetch available slots using the trainer's actual id (not user_id)
-    // Include cyclus_id and cyclus_name for grouping
+    // Include cyclus_id and cyclus_name for grouping, and location via location_id
     const { data: slotsData } = await supabase
       .from('availability_slots')
       .select(`
@@ -166,7 +173,9 @@ export default function BookLesson() {
         cyclus_id,
         cyclus_name,
         court_type,
-        lessons(id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating)
+        location_id,
+        locations:location_id(id, name, city, street_address),
+        lessons(id, title, description, price, duration_minutes, min_skill_rating, max_skill_rating)
       `)
       .eq('trainer_id', trainerData.id)
       .eq('is_marked_full', false)
@@ -224,6 +233,7 @@ export default function BookLesson() {
           
           return {
             ...s,
+            location: s.locations as SlotWithDetails['location'],
             spotsLeft: 4 - bookingCount,
             averageRating,
             ratingSystem,
@@ -277,6 +287,7 @@ export default function BookLesson() {
             firstDate: sortedSlots[0].start_time,
             lastDate: sortedSlots[sortedSlots.length - 1].start_time,
             lesson: sortedSlots[0].lessons,
+            location: sortedSlots[0].location,
           });
         } else {
           // Partial cyclus - show remaining slots individually
@@ -356,7 +367,7 @@ export default function BookLesson() {
                 lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
                 lessonDate: firstDate,
                 lessonTime: firstTime,
-                location: selectedCyclus.lesson?.location,
+                location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
                 price: selectedCyclus.totalPrice,
               },
             },
@@ -377,7 +388,7 @@ export default function BookLesson() {
                 lessonTitle: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
                 lessonDate: firstDate,
                 lessonTime: firstTime,
-                location: selectedCyclus.lesson?.location,
+                location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
                 price: selectedCyclus.totalPrice,
               },
             },
@@ -426,7 +437,7 @@ export default function BookLesson() {
               lessonTitle: selectedSlot.lessons?.title || 'Training Session',
               lessonDate,
               lessonTime,
-              location: selectedSlot.lessons?.location,
+              location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null,
               price,
             },
           },
@@ -468,7 +479,7 @@ export default function BookLesson() {
               lessonTitle: selectedSlot.lessons?.title || 'Training Session',
               lessonDate,
               lessonTime,
-              location: selectedSlot.lessons?.location,
+              location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null,
               price,
             },
           },
@@ -729,10 +740,10 @@ export default function BookLesson() {
                           {cyclus.lesson && (
                             <>
                               <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
-                              {cyclus.lesson.location && (
+                              {cyclus.location && (
                                 <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                                   <MapPin className="h-3 w-3" />
-                                  {cyclus.lesson.location}
+                                  {cyclus.location.name}, {cyclus.location.city}
                                 </p>
                               )}
                             </>
@@ -833,10 +844,10 @@ export default function BookLesson() {
                           {slot.lessons && (
                             <div className="pt-2 border-t">
                               <p className="font-medium text-sm">{slot.lessons.title}</p>
-                              {slot.lessons.location && (
+                              {slot.location && (
                                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                   <MapPin className="h-3 w-3" />
-                                  {slot.lessons.location}
+                                  {slot.location.name}, {slot.location.city}
                                 </p>
                               )}
                               {slot.court_type && (
@@ -931,10 +942,10 @@ export default function BookLesson() {
                           </p>
                         ))}
                       </div>
-                      {selectedCyclus.lesson?.location && (
+                      {selectedCyclus.location && (
                         <p className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
                           <MapPin className="h-4 w-4" />
-                          {selectedCyclus.lesson.location}
+                          {selectedCyclus.location.name}, {selectedCyclus.location.city}
                         </p>
                       )}
                     </div>
@@ -981,10 +992,10 @@ export default function BookLesson() {
                           {format(parseISO(selectedSlot.start_time), 'HH:mm')} -{' '}
                           {format(parseISO(selectedSlot.end_time), 'HH:mm')}
                         </p>
-                        {selectedSlot.lessons?.location && (
+                        {selectedSlot.location && (
                           <p className="flex items-center gap-2">
                             <MapPin className="h-4 w-4" />
-                            {selectedSlot.lessons.location}
+                            {selectedSlot.location.name}, {selectedSlot.location.city}
                           </p>
                         )}
                       </div>
