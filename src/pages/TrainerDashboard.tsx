@@ -187,23 +187,11 @@ export default function TrainerDashboard() {
       const monthStart = startOfMonth(now);
       const monthEnd = endOfMonth(now);
 
-      // 1. Unique students (distinct player_ids from all confirmed bookings)
-      const { data: allBookings } = await supabase
-        .from('bookings')
-        .select(`
-          player_id,
-          guest_player_id,
-          availability_slots!inner(trainer_id)
-        `)
-        .eq('availability_slots.trainer_id', currentTrainerId)
-        .eq('status', 'confirmed');
-
-      // Count unique players (both registered players and guest players)
-      const uniquePlayerIds = new Set<string>();
-      allBookings?.forEach(b => {
-        if (b.player_id) uniquePlayerIds.add(b.player_id);
-        if (b.guest_player_id) uniquePlayerIds.add(b.guest_player_id);
-      });
+      // 1. Total students = guest players managed by trainer
+      const { count: guestPlayerCount } = await supabase
+        .from('guest_players')
+        .select('id', { count: 'exact', head: true })
+        .eq('trainer_id', currentTrainerId);
 
       // 2. Open slots - future slots that are not marked full and have available spots
       const { data: futureSlots } = await supabase
@@ -262,7 +250,7 @@ export default function TrainerDashboard() {
         .gte('viewed_at', thirtyDaysAgo.toISOString());
 
       setStats({
-        totalStudents: uniquePlayerIds.size,
+        totalStudents: guestPlayerCount || 0,
         openSlots: openSlotsCount,
         monthlyEarnings: netEarnings,
         followerCount: followerCount || 0,
