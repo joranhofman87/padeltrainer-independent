@@ -9,6 +9,8 @@ import {
   subWeeks,
   addMonths,
   subMonths,
+  addDays,
+  subDays,
   startOfMonth,
   endOfMonth,
 } from "date-fns";
@@ -16,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
+  Calendar,
   LayoutGrid,
   ArrowLeft,
   Plus,
@@ -55,7 +58,7 @@ export default function TrainerCalendar() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const [view, setView] = useState<"week" | "month">("week");
+  const [view, setView] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +151,11 @@ export default function TrainerCalendar() {
       let rangeStart: Date;
       let rangeEnd: Date;
 
-      if (view === "week") {
+      if (view === "day") {
+        // For day view, fetch just that day's slots
+        rangeStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 0, 0, 0);
+        rangeEnd = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59);
+      } else if (view === "week") {
         rangeStart = startOfWeek(currentDate, { weekStartsOn: 1 });
         rangeEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
       } else {
@@ -275,7 +282,9 @@ export default function TrainerCalendar() {
   };
 
   const navigatePrevious = () => {
-    if (view === "week") {
+    if (view === "day") {
+      setCurrentDate(subDays(currentDate, 1));
+    } else if (view === "week") {
       setCurrentDate(subWeeks(currentDate, 1));
     } else {
       setCurrentDate(subMonths(currentDate, 1));
@@ -283,7 +292,9 @@ export default function TrainerCalendar() {
   };
 
   const navigateNext = () => {
-    if (view === "week") {
+    if (view === "day") {
+      setCurrentDate(addDays(currentDate, 1));
+    } else if (view === "week") {
       setCurrentDate(addWeeks(currentDate, 1));
     } else {
       setCurrentDate(addMonths(currentDate, 1));
@@ -295,6 +306,9 @@ export default function TrainerCalendar() {
   };
 
   const getDateRangeLabel = () => {
+    if (view === "day") {
+      return format(currentDate, "EEEE, MMMM d, yyyy");
+    }
     if (view === "week") {
       const start = startOfWeek(currentDate, { weekStartsOn: 1 });
       const end = endOfWeek(currentDate, { weekStartsOn: 1 });
@@ -508,22 +522,30 @@ export default function TrainerCalendar() {
               </div>
 
               {/* View Toggle */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={view === "day" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setView("day")}
+                >
+                  <Calendar className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.dayView")}</span>
+                </Button>
                 <Button
                   variant={view === "week" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setView("week")}
                 >
-                  <CalendarDays className="h-4 w-4 mr-2" />
-                  {t("calendar.weekView")}
+                  <CalendarDays className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.weekView")}</span>
                 </Button>
                 <Button
                   variant={view === "month" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setView("month")}
                 >
-                  <LayoutGrid className="h-4 w-4 mr-2" />
-                  {t("calendar.monthView")}
+                  <LayoutGrid className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.monthView")}</span>
                 </Button>
               </div>
             </div>

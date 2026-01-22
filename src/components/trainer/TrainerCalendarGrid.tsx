@@ -2,14 +2,14 @@ import { useMemo, useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subDays, isToday, isBefore, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
+import { DayViewSlotCard } from "./DayViewSlotCard";
 import { useTranslation } from "react-i18next";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
 interface TrainerCalendarGridProps {
   slots: SlotWithBookings[];
   currentDate: Date;
-  view: "week" | "month";
+  view: "day" | "week" | "month";
   onCellClick?: (date: Date, hour: number) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
@@ -93,6 +93,23 @@ export function TrainerCalendarGrid({
 
     return map;
   }, [slots, weekDays]);
+
+  if (view === "day") {
+    return (
+      <DayView 
+        slots={slots} 
+        currentDate={currentDate} 
+        onCellClick={onCellClick}
+        onBookForPlayer={onBookForPlayer} 
+        onDuplicateCyclus={onDuplicateCyclus} 
+        onDeleteSlot={onDeleteSlot} 
+        onEditBooking={onEditBooking} 
+        onToggleMarkedFull={onToggleMarkedFull}
+        onNavigatePrevious={onNavigatePrevious}
+        onNavigateNext={onNavigateNext}
+      />
+    );
+  }
 
   if (view === "month") {
     return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} onEditBooking={onEditBooking} onToggleMarkedFull={onToggleMarkedFull} />;
@@ -341,6 +358,150 @@ function MobileDayView({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+interface DayViewProps {
+  slots: SlotWithBookings[];
+  currentDate: Date;
+  onCellClick?: (date: Date, hour: number) => void;
+  onBookForPlayer?: (slot: SlotWithBookings) => void;
+  onDuplicateCyclus?: (cyclusId: string) => void;
+  onDeleteSlot?: (slot: SlotWithBookings) => void;
+  onEditBooking?: (bookingId: string) => void;
+  onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
+  onNavigatePrevious?: () => void;
+  onNavigateNext?: () => void;
+}
+
+function DayView({ 
+  slots, 
+  currentDate, 
+  onCellClick,
+  onBookForPlayer, 
+  onDuplicateCyclus, 
+  onDeleteSlot, 
+  onEditBooking, 
+  onToggleMarkedFull,
+  onNavigatePrevious,
+  onNavigateNext
+}: DayViewProps) {
+  const { t } = useTranslation("trainer");
+
+  // Filter slots for the current day
+  const daySlots = useMemo(() => {
+    const dayKey = format(currentDate, "yyyy-MM-dd");
+    return slots
+      .filter((slot) => format(new Date(slot.start_time), "yyyy-MM-dd") === dayKey)
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+  }, [slots, currentDate]);
+
+  // Get hours that have slots
+  const hoursWithSlots = useMemo(() => {
+    const hours = new Set<number>();
+    daySlots.forEach((slot) => {
+      hours.add(new Date(slot.start_time).getHours());
+    });
+    return hours;
+  }, [daySlots]);
+
+  // Get available hours for adding new slots
+  const availableHours = useMemo(() => {
+    const hours: number[] = [];
+    const now = new Date();
+    for (let h = 8; h <= 23; h++) {
+      const slotTime = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), h);
+      if (!hoursWithSlots.has(h) && slotTime > now) {
+        hours.push(h);
+      }
+    }
+    return hours;
+  }, [currentDate, hoursWithSlots]);
+
+  return (
+    <div className="space-y-4">
+      {/* Day Navigation Header */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNavigatePrevious}
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <div className="text-center">
+          <div className={cn("font-semibold text-xl", isToday(currentDate) && "text-primary")}>
+            {format(currentDate, "EEEE")}
+          </div>
+          <div className="text-muted-foreground">
+            {format(currentDate, "MMMM d, yyyy")}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNavigateNext}
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Slots List */}
+      {daySlots.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <p className="text-lg font-medium mb-2">{t("calendar.noSlotsToday", "No slots scheduled for today")}</p>
+          {onCellClick && availableHours.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => onCellClick(currentDate, availableHours[0])}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {t("calendar.addFirstSlot", "Add your first slot")}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {daySlots.map((slot) => (
+            <DayViewSlotCard
+              key={slot.id}
+              slot={slot}
+              onBookForPlayer={onBookForPlayer}
+              onDuplicateCyclus={onDuplicateCyclus}
+              onDeleteSlot={onDeleteSlot}
+              onEditBooking={onEditBooking}
+              onToggleMarkedFull={onToggleMarkedFull}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Add Slot Buttons for Available Hours */}
+      {onCellClick && daySlots.length > 0 && availableHours.length > 0 && (
+        <div className="pt-4 border-t">
+          <p className="text-sm text-muted-foreground mb-3">{t("calendar.addSlotAtTime", "Add slot at:")}</p>
+          <div className="flex flex-wrap gap-2">
+            {availableHours.slice(0, 8).map((hour) => (
+              <Button
+                key={hour}
+                variant="outline"
+                size="sm"
+                onClick={() => onCellClick(currentDate, hour)}
+                className="gap-1"
+              >
+                <Plus className="h-3 w-3" />
+                {String(hour).padStart(2, "0")}:00
+              </Button>
+            ))}
+            {availableHours.length > 8 && (
+              <span className="text-sm text-muted-foreground self-center">
+                +{availableHours.length - 8} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
