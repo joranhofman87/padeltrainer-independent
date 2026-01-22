@@ -441,12 +441,17 @@ export function BulkCreateSheet({
 
       const existingTimes = new Set(existingSlots?.map((s) => s.start_time) || []);
 
-      for (const config of bulkSlots) {
+      // Map to track which cyclus_id belongs to which config index
+      const configCyclusMap = new Map<number, string>();
+
+      for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
+        const config = bulkSlots[configIndex];
         const [startH, startM] = config.startTime.split(":").map(Number);
         let slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
         // Generate a unique cyclus ID for this recurring slot configuration
         const cyclusId = crypto.randomUUID();
+        configCyclusMap.set(configIndex, cyclusId);
 
         // Generate slots for each week in the recurrence period
         for (let week = 0; week < config.recurrenceWeeks; week++) {
@@ -490,42 +495,23 @@ export function BulkCreateSheet({
         .select("id, cyclus_id");
       if (error) throw error;
 
-      // Create bookings for selected players
+      // Create bookings for selected players using the config-to-cyclus mapping
       let totalBookingsCreated = 0;
-      for (const config of bulkSlots) {
+      for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
+        const config = bulkSlots[configIndex];
+        
         if (config.addPlayers && config.selectedPlayers.length > 0) {
-          // Find slots that belong to this config's cyclus
-          const configCyclusSlots = insertedSlots?.filter((slot) => {
-            // Match by cyclus_id - we need to find which cyclus_id was generated for this config
-            return slotsToInsert.some(
-              (s) =>
-                s.cyclus_name === config.cyclusName &&
-                insertedSlots.some((is) => is.cyclus_id === slot.cyclus_id)
-            );
-          });
+          // Get the cyclus_id that was generated for this specific config
+          const cyclusId = configCyclusMap.get(configIndex);
+          
+          // Find slots that belong to THIS config's cyclus
+          const configSlots = insertedSlots?.filter(
+            (slot) => slot.cyclus_id === cyclusId
+          ) || [];
 
-          // Group inserted slots by cyclus_id to find the right ones
-          const cyclusGroups = new Map<string, typeof insertedSlots>();
-          insertedSlots?.forEach((slot) => {
-            if (slot.cyclus_id) {
-              if (!cyclusGroups.has(slot.cyclus_id)) {
-                cyclusGroups.set(slot.cyclus_id, []);
-              }
-              cyclusGroups.get(slot.cyclus_id)!.push(slot);
-            }
-          });
-
-          // Find the cyclus that matches this config's expected session count
-          let matchingSlots: typeof insertedSlots = [];
-          cyclusGroups.forEach((slots, cyclusId) => {
-            if (slots.length === config.recurrenceWeeks) {
-              matchingSlots = slots;
-            }
-          });
-
-          if (matchingSlots.length > 0) {
+          if (configSlots.length > 0) {
             const bookingsToInsert = [];
-            for (const slot of matchingSlots) {
+            for (const slot of configSlots) {
               for (const playerId of config.selectedPlayers) {
                 if (playerId) {
                   bookingsToInsert.push({
