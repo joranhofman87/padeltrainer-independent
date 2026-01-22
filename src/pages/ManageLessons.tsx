@@ -19,11 +19,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, MapPin, CreditCard, Copy, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Users, Euro, CreditCard, Copy, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { createLesson, getTrainerLessons, updateLesson, deleteLesson, type Lesson } from '@/lib/lessons';
-import { LessonLocationPicker } from '@/components/trainer/LessonLocationPicker';
-import { RequestClubDialog } from '@/components/trainer/RequestClubDialog';
 
 export default function ManageLessons() {
   const { user, profile, role, loading } = useAuth();
@@ -33,7 +31,6 @@ export default function ManageLessons() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loadingLessons, setLoadingLessons] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [requestClubOpen, setRequestClubOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [saving, setSaving] = useState(false);
   
@@ -46,7 +43,6 @@ export default function ManageLessons() {
     max_participants: 4,
     min_skill_rating: '',
     max_skill_rating: '',
-    location: '',
     is_active: true,
     payment_timing: 'upfront' as 'upfront' | 'after',
   });
@@ -99,7 +95,6 @@ export default function ManageLessons() {
       max_participants: 4,
       min_skill_rating: '',
       max_skill_rating: '',
-      location: '',
       is_active: true,
       payment_timing: 'upfront',
     });
@@ -116,7 +111,6 @@ export default function ManageLessons() {
       max_participants: lesson.max_participants,
       min_skill_rating: lesson.min_skill_rating?.toString() || '',
       max_skill_rating: lesson.max_skill_rating?.toString() || '',
-      location: lesson.location || '',
       is_active: lesson.is_active,
       payment_timing: lesson.payment_timing || 'upfront',
     });
@@ -154,7 +148,7 @@ export default function ManageLessons() {
         max_participants: formData.max_participants,
         min_skill_rating: formData.min_skill_rating ? parseFloat(formData.min_skill_rating) : null,
         max_skill_rating: formData.max_skill_rating ? parseFloat(formData.max_skill_rating) : null,
-        location: formData.location || null,
+        location: null, // Deprecated - location now on slots
         is_active: formData.is_active,
         is_recurring: false,
         recurrence_type: null,
@@ -226,7 +220,7 @@ export default function ManageLessons() {
         max_participants: lesson.max_participants,
         min_skill_rating: lesson.min_skill_rating,
         max_skill_rating: lesson.max_skill_rating,
-        location: lesson.location || null,
+        location: null, // Deprecated - location now on slots
         is_active: true,
         is_recurring: false,
         recurrence_type: null,
@@ -387,21 +381,6 @@ export default function ManageLessons() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Location</Label>
-                  <LessonLocationPicker
-                    value={null}
-                    onChange={(locationId, locationName) => {
-                      setFormData({ ...formData, location: locationName || '' });
-                    }}
-                    onRequestNewClub={() => setRequestClubOpen(true)}
-                  />
-                  {formData.location && (
-                    <p className="text-xs text-muted-foreground">
-                      Selected: {formData.location}
-                    </p>
-                  )}
-                </div>
 
                 {/* Payment Timing Section */}
                 <div className="border-t pt-4 mt-4">
@@ -545,12 +524,6 @@ export default function ManageLessons() {
                       <Euro className="h-4 w-4" />
                       €{lesson.price}
                     </div>
-                    {lesson.location && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        <span className="truncate">{lesson.location}</span>
-                      </div>
-                    )}
                   </div>
                   {(lesson.min_skill_rating || lesson.max_skill_rating) && (
                     <div className="mt-3 pt-3 border-t text-sm text-muted-foreground">
@@ -563,8 +536,6 @@ export default function ManageLessons() {
           </div>
         )}
       </main>
-
-      <RequestClubDialog open={requestClubOpen} onOpenChange={setRequestClubOpen} />
     </div>
   );
 }

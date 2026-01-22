@@ -62,6 +62,7 @@ interface ClubAddSlotDialogProps {
   defaultDate?: Date;
   defaultTime?: string;
   defaultDuration: number;
+  clubLocationId?: string;
   onSlotsCreated: () => void;
 }
 
@@ -74,6 +75,7 @@ export function ClubAddSlotDialog({
   defaultDate,
   defaultTime,
   defaultDuration,
+  clubLocationId,
   onSlotsCreated,
 }: ClubAddSlotDialogProps) {
   const { t } = useTranslation("club");
@@ -119,6 +121,7 @@ export function ClubAddSlotDialog({
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         lesson_id: slotLessonId,
+        location_id: clubLocationId || null,
       });
 
       if (error) throw error;
@@ -283,6 +286,7 @@ interface ClubBulkCreateSheetProps {
   defaultTime?: string;
   defaultDuration: number;
   defaultWeeks: number;
+  clubLocationId?: string;
   onSlotsCreated: () => void;
 }
 
@@ -306,6 +310,7 @@ export function ClubBulkCreateSheet({
   defaultTime,
   defaultDuration,
   defaultWeeks,
+  clubLocationId,
   onSlotsCreated,
 }: ClubBulkCreateSheetProps) {
   const { t } = useTranslation("club");
@@ -406,6 +411,7 @@ export function ClubBulkCreateSheet({
         lesson_id: string | null;
         cyclus_id: string | null;
         cyclus_name: string | null;
+        location_id: string | null;
       }[] = [];
 
       for (const config of bulkSlots) {
@@ -426,6 +432,7 @@ export function ClubBulkCreateSheet({
             lesson_id: config.lessonId,
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
+            location_id: clubLocationId || null,
           });
         }
       }

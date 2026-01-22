@@ -37,7 +37,6 @@ interface Lesson {
   title: string;
   price: number;
   duration_minutes: number;
-  location: string | null;
 }
 
 interface EditSlotDialogProps {
