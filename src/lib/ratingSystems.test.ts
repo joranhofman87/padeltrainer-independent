@@ -84,11 +84,15 @@ describe('validateRating', () => {
 });
 
 describe('formatRatingWithSystem', () => {
-  it('formats rating with system name', () => {
-    expect(formatRatingWithSystem(5.5, 'KNLTB')).toBe('5.5 (KNLTB)');
+  it('formats KNLTB rating with 4 decimal places', () => {
+    expect(formatRatingWithSystem(5.5691, 'KNLTB')).toBe('5.5691 (KNLTB)');
   });
 
-  it('formats rating with one decimal place', () => {
+  it('formats KNLTB rating with trailing zeros', () => {
+    expect(formatRatingWithSystem(5.5, 'KNLTB')).toBe('5.5000 (KNLTB)');
+  });
+
+  it('formats Playtomic rating with one decimal place', () => {
     expect(formatRatingWithSystem(5, 'Playtomic')).toBe('5.0 (Playtomic)');
   });
 
