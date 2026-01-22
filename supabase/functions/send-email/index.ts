@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin";
   to: string;
   data: {
     playerName?: string;
@@ -54,6 +54,9 @@ interface EmailRequest {
     additionalNotes?: string;
     requestedBy?: string;
     requestedByEmail?: string;
+    // Password reset admin fields
+    resetLink?: string;
+    userName?: string;
   };
 }
 
@@ -533,6 +536,28 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             ${data.additionalNotes ? `<div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;"><h3 style="margin-top: 0;">Additional Notes</h3><p style="white-space: pre-wrap;">${data.additionalNotes}</p></div>` : ''}
             <p style="color: #6b7280; font-size: 14px;">This request was submitted at ${new Date().toISOString()}</p>
+          </div>
+        `,
+      };
+
+    case "password_reset_admin":
+      return {
+        subject: `Password Reset Request - PadelTrainer.ai`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #2563eb;">Password Reset 🔐</h1>
+            <p>Hi ${data.userName},</p>
+            <p>An administrator has requested a password reset for your account.</p>
+            <p style="margin-top: 24px;">
+              <a href="${data.resetLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+            </p>
+            <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+              If you did not expect this email, you can safely ignore it. Your password will remain unchanged.
+            </p>
+            <p style="color: #6b7280; font-size: 14px;">
+              This link will expire in 24 hours.
+            </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
