@@ -54,6 +54,7 @@ import {
   ShieldAlert,
   Trash2,
   Pencil,
+  KeyRound,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -91,6 +92,7 @@ export default function AdminUsers() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -252,6 +254,37 @@ export default function AdminUsers() {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update user";
       console.error("Failed to update user:", error);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUser) return;
+
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+        body: { target_user_id: selectedUser.user_id },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Password reset email sent",
+        description: `A password reset link has been sent to ${data?.email || selectedUser.email}.`,
+      });
+
+      setResetPasswordDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to send reset email";
+      console.error("Failed to reset password:", error);
       toast({
         title: "Error",
         description: errorMessage,
@@ -431,6 +464,15 @@ export default function AdminUsers() {
                           >
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit user
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setResetPasswordDialogOpen(true);
+                            }}
+                          >
+                            <KeyRound className="mr-2 h-4 w-4" />
+                            Reset password
                           </DropdownMenuItem>
                           {u.role !== "admin" && (
                             <>
@@ -636,6 +678,36 @@ export default function AdminUsers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset User Password</DialogTitle>
+            <DialogDescription>
+              Send a password reset email to{" "}
+              {selectedUser?.full_name || selectedUser?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-sm text-muted-foreground">
+            <p>
+              A password reset link will be sent to <strong>{selectedUser?.email}</strong>.
+            </p>
+            <p className="mt-2">
+              The user will be able to set a new password using this link.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleResetPassword} disabled={actionLoading}>
+              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Send Reset Email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
