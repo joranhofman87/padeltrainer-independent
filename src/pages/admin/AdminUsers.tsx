@@ -93,6 +93,7 @@ export default function AdminUsers() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -265,26 +266,36 @@ export default function AdminUsers() {
   };
 
   const handleResetPassword = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !newPassword) return;
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setActionLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-reset-password", {
-        body: { target_user_id: selectedUser.user_id },
+        body: { target_user_id: selectedUser.user_id, new_password: newPassword },
       });
 
       if (error) throw error;
 
       toast({
-        title: "Password reset email sent",
-        description: `A password reset link has been sent to ${data?.email || selectedUser.email}.`,
+        title: "Password updated",
+        description: `Password has been updated for ${data?.email || selectedUser.email}.`,
       });
 
       setResetPasswordDialogOpen(false);
       setSelectedUser(null);
+      setNewPassword("");
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to send reset email";
-      console.error("Failed to reset password:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update password";
+      console.error("Failed to update password:", error);
       toast({
         title: "Error",
         description: errorMessage,
@@ -680,30 +691,42 @@ export default function AdminUsers() {
       </AlertDialog>
 
       {/* Reset Password Dialog */}
-      <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
+      <Dialog open={resetPasswordDialogOpen} onOpenChange={(open) => {
+        setResetPasswordDialogOpen(open);
+        if (!open) setNewPassword("");
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset User Password</DialogTitle>
+            <DialogTitle>Set New Password</DialogTitle>
             <DialogDescription>
-              Send a password reset email to{" "}
-              {selectedUser?.full_name || selectedUser?.email}
+              Enter a new password for {selectedUser?.full_name || selectedUser?.email}
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 text-sm text-muted-foreground">
-            <p>
-              A password reset link will be sent to <strong>{selectedUser?.email}</strong>.
-            </p>
-            <p className="mt-2">
-              The user will be able to set a new password using this link.
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password (min 6 characters)"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              The user will be able to log in immediately with this new password.
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleResetPassword} disabled={actionLoading}>
+            <Button 
+              onClick={handleResetPassword} 
+              disabled={actionLoading || newPassword.length < 6}
+            >
               {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Send Reset Email
+              Set Password
             </Button>
           </DialogFooter>
         </DialogContent>
