@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { Trash2, AlertTriangle, Loader2, Bell, Calendar } from "lucide-react";
@@ -40,19 +40,28 @@ export function DeleteSlotDialog({
   const [isDeleting, setIsDeleting] = useState(false);
   const [cyclusSlotCount, setCyclusSlotCount] = useState(0);
 
-  // Fetch cyclus info when dialog opens
-  useState(() => {
-    if (open && slot?.cyclus_id) {
-      supabase
-        .from("availability_slots")
-        .select("id", { count: "exact" })
-        .eq("cyclus_id", slot.cyclus_id)
-        .gte("start_time", new Date().toISOString())
-        .then(({ count }) => {
-          setCyclusSlotCount(count || 0);
-        });
+  // Reset state and fetch cyclus info when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Reset state when dialog opens
+      setDeleteMode("single");
+      setNotifyPlayers(true);
+      setIsDeleting(false);
+      
+      if (slot?.cyclus_id) {
+        supabase
+          .from("availability_slots")
+          .select("id", { count: "exact" })
+          .eq("cyclus_id", slot.cyclus_id)
+          .gte("start_time", new Date().toISOString())
+          .then(({ count }) => {
+            setCyclusSlotCount(count || 0);
+          });
+      } else {
+        setCyclusSlotCount(0);
+      }
     }
-  });
+  }, [open, slot?.cyclus_id]);
 
   const handleDelete = async () => {
     if (!slot) return;
