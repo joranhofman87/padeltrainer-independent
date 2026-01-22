@@ -151,8 +151,8 @@ export function AddPlayerDialog({
         .insert({
           trainer_id: trainerId,
           full_name: fullName.trim(),
-          email: email.trim().toLowerCase() || "",
-          phone: phone.trim() || "",
+          email: email.trim().toLowerCase() || null,
+          phone: phone.trim() || null,
           skill_rating: skillRating ? parseFloat(skillRating) : null,
           rating_system: ratingSystem,
           notes: notes.trim() || null,
