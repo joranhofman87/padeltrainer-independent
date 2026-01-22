@@ -445,6 +445,8 @@
     "deleteScope": "Which slots to delete?",
     "deleteFutureOnly": "Future slots only ({{count}} slots)",
     "deleteAllSlots": "All slots including past ({{count}} slots)",
+    "markAsPrivate": "Mark cyclus as private",
+    "markAsPrivateHint": "Private slots won't appear on player booking pages",
     "deleteCyclus": "Delete Cyclus",
     "cyclusDeleted": "Cyclus deleted",
     "cyclusDeletedDescription": "Deleted {{count}} slots and cancelled associated bookings",

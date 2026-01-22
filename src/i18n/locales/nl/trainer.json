@@ -445,6 +445,8 @@
     "deleteScope": "Welke slots verwijderen?",
     "deleteFutureOnly": "Alleen toekomstige slots ({{count}} slots)",
     "deleteAllSlots": "Alle slots inclusief verleden ({{count}} slots)",
+    "markAsPrivate": "Markeer cyclus als privé",
+    "markAsPrivateHint": "Privé slots zijn niet zichtbaar voor spelers",
     "deleteCyclus": "Cyclus Verwijderen",
     "cyclusDeleted": "Cyclus verwijderd",
     "cyclusDeletedDescription": "{{count}} slots verwijderd en bijbehorende boekingen geannuleerd",

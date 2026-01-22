@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -61,6 +61,7 @@ interface BulkSlotConfig {
   selectedPlayers: string[];
   courtType: 'indoor' | 'outdoor' | null;
   locationId: string | null;
+  isMarkedFull: boolean;
 }
 
 interface AddSlotDialogProps {
@@ -360,6 +361,7 @@ export function BulkCreateSheet({
           selectedPlayers: [],
           courtType: null,
           locationId: null,
+          isMarkedFull: false,
         },
       ]);
     }
@@ -381,6 +383,7 @@ export function BulkCreateSheet({
         selectedPlayers: [],
         courtType: null,
         locationId: null,
+        isMarkedFull: false,
       },
     ]);
   };
@@ -426,6 +429,7 @@ export function BulkCreateSheet({
         cyclus_name: string | null;
         court_type: 'indoor' | 'outdoor' | null;
         location_id: string | null;
+        is_marked_full: boolean;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -463,6 +467,7 @@ export function BulkCreateSheet({
             cyclus_name: config.cyclusName,
             court_type: config.courtType,
             location_id: config.locationId,
+            is_marked_full: config.isMarkedFull,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -880,6 +885,24 @@ export function BulkCreateSheet({
                       </div>
                     )}
                   </div>
+
+                  {/* Mark as Private Checkbox */}
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox
+                      id={`mark-full-${index}`}
+                      checked={slot.isMarkedFull}
+                      onCheckedChange={(checked) =>
+                        updateBulkSlot(index, { isMarkedFull: !!checked })
+                      }
+                    />
+                    <Label htmlFor={`mark-full-${index}`} className="text-sm cursor-pointer flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      {t("calendar.markAsPrivate")}
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-6">
+                    {t("calendar.markAsPrivateHint")}
+                  </p>
 
                   <p className="text-xs text-muted-foreground">
                     {t("calendar.recurringSummary", {
