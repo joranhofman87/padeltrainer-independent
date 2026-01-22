@@ -36,29 +36,41 @@ export function DeleteSlotDialog({
   const { toast } = useToast();
 
   const [deleteMode, setDeleteMode] = useState<"single" | "cyclus">("single");
+  const [deleteScope, setDeleteScope] = useState<"future" | "all">("future");
   const [notifyPlayers, setNotifyPlayers] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [cyclusSlotCount, setCyclusSlotCount] = useState(0);
+  const [totalCyclusSlotCount, setTotalCyclusSlotCount] = useState(0);
 
   // Reset state and fetch cyclus info when dialog opens
   useEffect(() => {
     if (open) {
       // Reset state when dialog opens
       setDeleteMode("single");
+      setDeleteScope("future");
       setNotifyPlayers(true);
       setIsDeleting(false);
       
       if (slot?.cyclus_id) {
-        supabase
+        // Fetch both future and total slot counts
+        const futureQuery = supabase
           .from("availability_slots")
           .select("id", { count: "exact" })
           .eq("cyclus_id", slot.cyclus_id)
-          .gte("start_time", new Date().toISOString())
-          .then(({ count }) => {
-            setCyclusSlotCount(count || 0);
-          });
+          .gte("start_time", new Date().toISOString());
+
+        const allQuery = supabase
+          .from("availability_slots")
+          .select("id", { count: "exact" })
+          .eq("cyclus_id", slot.cyclus_id);
+
+        Promise.all([futureQuery, allQuery]).then(([future, all]) => {
+          setCyclusSlotCount(future.count || 0);
+          setTotalCyclusSlotCount(all.count || 0);
+        });
       } else {
         setCyclusSlotCount(0);
+        setTotalCyclusSlotCount(0);
       }
     }
   }, [open, slot?.cyclus_id]);
@@ -71,12 +83,18 @@ export function DeleteSlotDialog({
       const hasBookings = slot.active_bookings > 0 || slot.pending_bookings > 0;
 
       if (deleteMode === "cyclus" && slot.cyclus_id) {
-        // Get all future slots in cyclus
-        const { data: cyclusSlots, error: fetchError } = await supabase
+        // Get slots in cyclus based on scope selection
+        let query = supabase
           .from("availability_slots")
           .select("id")
-          .eq("cyclus_id", slot.cyclus_id)
-          .gte("start_time", new Date().toISOString());
+          .eq("cyclus_id", slot.cyclus_id);
+        
+        // Only filter to future slots if that scope is selected
+        if (deleteScope === "future") {
+          query = query.gte("start_time", new Date().toISOString());
+        }
+
+        const { data: cyclusSlots, error: fetchError } = await query;
 
         if (fetchError) throw fetchError;
 
@@ -231,11 +249,37 @@ export function DeleteSlotDialog({
                     onChange={() => setDeleteMode("cyclus")}
                     className="mt-1"
                   />
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium text-destructive">{t("calendar.deleteEntireCyclus", "Delete entire cyclus")}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {t("calendar.deleteEntireCyclusDescription", "Delete all {{count}} future slots in '{{name}}'", { count: cyclusSlotCount, name: slot.cyclus_name })}
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {t("calendar.deleteEntireCyclusDescription", "Delete slots in '{{name}}'", { name: slot.cyclus_name })}
                     </p>
+                    
+                    {deleteMode === "cyclus" && (
+                      <div className="space-y-2 pt-2 border-t">
+                        <p className="text-xs font-medium text-muted-foreground">{t("calendar.deleteScope", "Which slots to delete?")}</p>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="deleteScope"
+                            value="future"
+                            checked={deleteScope === "future"}
+                            onChange={() => setDeleteScope("future")}
+                          />
+                          <span>{t("calendar.deleteFutureOnly", "Future slots only ({{count}} slots)", { count: cyclusSlotCount })}</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="radio"
+                            name="deleteScope"
+                            value="all"
+                            checked={deleteScope === "all"}
+                            onChange={() => setDeleteScope("all")}
+                          />
+                          <span>{t("calendar.deleteAllSlots", "All slots including past ({{count}} slots)", { count: totalCyclusSlotCount })}</span>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 </label>
               </div>
