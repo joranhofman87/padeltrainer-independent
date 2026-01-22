@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { target_user_id } = await req.json();
+    const { target_user_id, new_password } = await req.json();
 
     if (!target_user_id) {
       return new Response(
@@ -64,7 +64,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the target user's email
+    if (!new_password) {
+      return new Response(
+        JSON.stringify({ error: "new_password is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (new_password.length < 6) {
+      return new Response(
+        JSON.stringify({ error: "Password must be at least 6 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get the target user to verify they exist
     const { data: targetUser, error: userError } = await supabaseAdmin.auth.admin.getUserById(target_user_id);
 
     if (userError || !targetUser?.user) {
@@ -74,58 +88,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    const targetEmail = targetUser.user.email;
-    if (!targetEmail) {
-      return new Response(
-        JSON.stringify({ error: "User has no email address" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Update the user's password directly
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      target_user_id,
+      { password: new_password }
+    );
 
-    // Generate password reset link
-    const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "recovery",
-      email: targetEmail,
-      options: {
-        redirectTo: `${req.headers.get("origin") || "https://padeltrainer.lovable.app"}/reset-password`,
-      },
-    });
-
-    if (resetError) {
-      console.error("Reset error:", resetError);
+    if (updateError) {
+      console.error("Password update error:", updateError);
       return new Response(
-        JSON.stringify({ error: "Failed to generate reset link" }),
+        JSON.stringify({ error: "Failed to update password" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    // Send the password reset email using the send-email function
-    const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        to: targetEmail,
-        type: "password_reset_admin",
-        data: {
-          resetLink: resetData.properties?.action_link,
-          userName: targetUser.user.user_metadata?.full_name || targetEmail,
-        },
-      }),
-    });
-
-    if (!emailResponse.ok) {
-      console.error("Email send failed:", await emailResponse.text());
-      // Still return success since the link was generated
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Password reset email sent",
-        email: targetEmail 
+        message: "Password updated successfully",
+        email: targetUser.user.email 
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
