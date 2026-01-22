@@ -36,8 +36,8 @@ export function EditPlayerDialog({
 
   const [isLoading, setIsLoading] = useState(false);
   const [fullName, setFullName] = useState(player.full_name);
-  const [email, setEmail] = useState(player.email);
-  const [phone, setPhone] = useState(player.phone);
+  const [email, setEmail] = useState(player.email || "");
+  const [phone, setPhone] = useState(player.phone || "");
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [ratingSystem, setRatingSystem] = useState<string>(player.rating_system || "knltb");
   const [skillRating, setSkillRating] = useState(
@@ -65,8 +65,8 @@ export function EditPlayerDialog({
   // Reset form when player changes
   useEffect(() => {
     setFullName(player.full_name);
-    setEmail(player.email);
-    setPhone(player.phone);
+    setEmail(player.email || "");
+    setPhone(player.phone || "");
     setRatingSystem(player.rating_system || "knltb");
     setSkillRating(player.skill_rating?.toString() || "");
     setNotes(player.notes || "");
@@ -83,8 +83,8 @@ export function EditPlayerDialog({
         .from("guest_players")
         .update({
           full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
+          email: email.trim().toLowerCase() || null,
+          phone: phone.trim() || null,
           skill_rating: skillRating ? parseFloat(skillRating) : null,
           rating_system: ratingSystem,
           notes: notes.trim() || null,
@@ -145,26 +145,24 @@ export function EditPlayerDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-email">{t("players.email")} *</Label>
+            <Label htmlFor="edit-email">{t("players.email")}</Label>
             <Input
               id="edit-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t("players.emailPlaceholder")}
-              required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-phone">{t("players.phone")} *</Label>
+            <Label htmlFor="edit-phone">{t("players.phone")}</Label>
             <Input
               id="edit-phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder={t("players.phonePlaceholder")}
-              required
             />
           </div>
 
