@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { format, addDays } from "date-fns";
-import { Loader2, Calendar, Clock, MapPin, Euro, Repeat } from "lucide-react";
+import { format, addDays, differenceInMinutes } from "date-fns";
+import { Loader2, Calendar, Clock, MapPin, Euro, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -14,11 +14,26 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { GuestPlayer } from "./AddPlayerDialog";
+import { cn } from "@/lib/utils";
+import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
 
 interface AvailableSlot {
   id: string;
@@ -60,26 +75,69 @@ export function QuickBookDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [cyclusSlotCount, setCyclusSlotCount] = useState(0);
+  const [cyclusSlots, setCyclusSlots] = useState<{ id: string; start_time: string; end_time: string }[]>([]);
+  const [hourlyRate, setHourlyRate] = useState<number>(50);
+  
+  // Discount state
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountReason, setDiscountReason] = useState("");
 
   useEffect(() => {
     if (open && trainerId) {
       fetchAvailableSlots();
+      fetchHourlyRate();
       setSelectedSlotId(null);
       setNotes("");
       setBookScope("single");
+      setShowDiscount(false);
+      setDiscountType("percentage");
+      setDiscountValue(0);
+      setDiscountReason("");
     }
   }, [open, trainerId]);
+
+  const fetchHourlyRate = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("trainer_profiles")
+        .select("hourly_rate")
+        .eq("id", trainerId)
+        .single();
+      
+      if (error) throw error;
+      if (data?.hourly_rate) {
+        setHourlyRate(data.hourly_rate);
+      }
+    } catch (error) {
+      console.error("Error fetching hourly rate:", error);
+    }
+  };
 
   useEffect(() => {
     if (selectedSlotId) {
       const slot = slots.find((s) => s.id === selectedSlotId);
       if (slot?.cyclus_id) {
-        fetchCyclusSlotCount(slot.cyclus_id);
+        fetchCyclusSlots(slot.cyclus_id);
       } else {
         setCyclusSlotCount(0);
+        setCyclusSlots([]);
       }
     }
   }, [selectedSlotId, slots]);
+
+  const fetchCyclusSlots = async (cyclusId: string) => {
+    const { data } = await supabase
+      .from("availability_slots")
+      .select("id, start_time, end_time")
+      .eq("cyclus_id", cyclusId)
+      .gte("start_time", new Date().toISOString())
+      .order("start_time");
+
+    setCyclusSlots(data || []);
+    setCyclusSlotCount(data?.length || 0);
+  };
 
   const fetchAvailableSlots = async () => {
     setIsFetching(true);
@@ -143,54 +201,44 @@ export function QuickBookDialog({
     }
   };
 
-  const fetchCyclusSlotCount = async (cyclusId: string) => {
-    const { count } = await supabase
-      .from("availability_slots")
-      .select("id", { count: "exact" })
-      .eq("cyclus_id", cyclusId)
-      .gte("start_time", new Date().toISOString());
-
-    setCyclusSlotCount(count || 0);
-  };
+  // Calculate pricing
+  const selectedSlot = slots.find((s) => s.id === selectedSlotId);
+  const slotDurationMinutes = selectedSlot 
+    ? differenceInMinutes(new Date(selectedSlot.end_time), new Date(selectedSlot.start_time))
+    : 60;
+  const pricePerSession = calculateSlotPrice(hourlyRate, slotDurationMinutes);
+  const sessionsCount = bookScope === "cyclus" && cyclusSlotCount > 1 ? cyclusSlotCount : 1;
+  const subtotal = pricePerSession * sessionsCount;
+  const { finalAmount, discountAmount: calculatedDiscount } = applyDiscount(subtotal, discountType, discountValue);
 
   const handleBook = async () => {
-    if (!selectedSlotId) return;
+    if (!selectedSlotId || !selectedSlot) return;
 
     setIsLoading(true);
     try {
-      const selectedSlot = slots.find((s) => s.id === selectedSlotId);
-      if (!selectedSlot) throw new Error("Slot not found");
+      let slotsToBook = bookScope === "cyclus" && selectedSlot.cyclus_id && cyclusSlots.length > 0
+        ? cyclusSlots
+        : [{ id: selectedSlot.id, start_time: selectedSlot.start_time, end_time: selectedSlot.end_time }];
 
-      let slotsToBook = [selectedSlot];
-
-      // If booking entire cyclus
-      if (bookScope === "cyclus" && selectedSlot.cyclus_id) {
-        const { data: cyclusSlots, error } = await supabase
-          .from("availability_slots")
-          .select("id, start_time, end_time, lesson_id")
-          .eq("cyclus_id", selectedSlot.cyclus_id)
-          .gte("start_time", new Date().toISOString())
-          .order("start_time");
-
-        if (error) throw error;
-
-        slotsToBook = (cyclusSlots || []).map((cs) => ({
-          ...selectedSlot,
-          id: cs.id,
-          start_time: cs.start_time,
-          end_time: cs.end_time,
-        }));
-      }
-
-      // Create bookings
-      const bookingsToInsert = slotsToBook.map((slot) => ({
-        slot_id: slot.id,
-        guest_player_id: player.id,
-        lesson_id: selectedSlot.lesson?.id || null,
-        status: "confirmed",
-        payment_status: "pending",
-        notes: notes || null,
-      }));
+      // Create bookings with pricing
+      const bookingsToInsert = slotsToBook.map((slot, index) => {
+        const slotDuration = differenceInMinutes(new Date(slot.end_time), new Date(slot.start_time));
+        const slotPrice = calculateSlotPrice(hourlyRate, slotDuration);
+        const isFirstSlot = index === 0;
+        
+        return {
+          slot_id: slot.id,
+          guest_player_id: player.id,
+          lesson_id: selectedSlot.lesson?.id || null,
+          status: "confirmed",
+          payment_status: "pending",
+          original_amount: slotPrice,
+          discount_amount: isFirstSlot ? calculatedDiscount : 0,
+          discount_reason: isFirstSlot && discountReason ? discountReason : null,
+          payment_amount: slotPrice - (isFirstSlot ? calculatedDiscount / slotsToBook.length : 0),
+          notes: notes || null,
+        };
+      });
 
       const { error: insertError } = await supabase
         .from("bookings")
@@ -216,8 +264,6 @@ export function QuickBookDialog({
       setIsLoading(false);
     }
   };
-
-  const selectedSlot = slots.find((s) => s.id === selectedSlotId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -324,15 +370,54 @@ export function QuickBookDialog({
             </div>
           )}
 
+          {/* Discount Section */}
+          {selectedSlot && (
+            <Collapsible open={showDiscount} onOpenChange={setShowDiscount}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full py-2">
+                <Percent className="h-4 w-4" />
+                <span>{t("bookings.addDiscount", "Add discount")}</span>
+                <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", showDiscount && "rotate-180")} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2 space-y-3">
+                <div className="flex gap-2">
+                  <Select value={discountType} onValueChange={(v) => setDiscountType(v as "percentage" | "fixed")}>
+                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">%</SelectItem>
+                      <SelectItem value="fixed">€</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" min="0" value={discountValue || ""} onChange={(e) => setDiscountValue(Number(e.target.value))} placeholder={t("bookings.discountAmount")} className="flex-1" />
+                </div>
+                <Textarea placeholder={t("bookings.discountReason")} value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} rows={1} />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
+          {/* Price Summary */}
+          {selectedSlot && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{sessionsCount} {sessionsCount === 1 ? t("calendar.session") : t("calendar.sessions")} × {formatPrice(pricePerSession)}</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+              {calculatedDiscount > 0 && (
+                <div className="flex justify-between text-green-600 dark:text-green-400">
+                  <span>{t("bookings.discount")}</span>
+                  <span>-{formatPrice(calculatedDiscount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-medium border-t pt-1">
+                <span>{t("bookings.total")}</span>
+                <span>{formatPrice(finalAmount)}</span>
+              </div>
+            </div>
+          )}
+
           {/* Notes */}
           <div className="space-y-2">
             <Label>{t("bookings.notes")}</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("bookings.notesPlaceholder")}
-              rows={2}
-            />
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("bookings.notesPlaceholder")} rows={2} />
           </div>
         </div>
 

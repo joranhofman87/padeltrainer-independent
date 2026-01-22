@@ -121,10 +121,13 @@ export type Database = {
         Row: {
           court_type: string | null
           created_at: string
+          discount_amount: number | null
+          discount_reason: string | null
           guest_player_id: string | null
           id: string
           lesson_id: string | null
           notes: string | null
+          original_amount: number | null
           paid_at: string | null
           payment_amount: number | null
           payment_status: string
@@ -138,10 +141,13 @@ export type Database = {
         Insert: {
           court_type?: string | null
           created_at?: string
+          discount_amount?: number | null
+          discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
           notes?: string | null
+          original_amount?: number | null
           paid_at?: string | null
           payment_amount?: number | null
           payment_status?: string
@@ -155,10 +161,13 @@ export type Database = {
         Update: {
           court_type?: string | null
           created_at?: string
+          discount_amount?: number | null
+          discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
           notes?: string | null
+          original_amount?: number | null
           paid_at?: string | null
           payment_amount?: number | null
           payment_status?: string
