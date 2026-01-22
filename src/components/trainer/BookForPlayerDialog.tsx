@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
+import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -21,11 +22,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X, Check, Users } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Loader2, UserPlus, Clock, MapPin, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { cn } from "@/lib/utils";
+import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
 
 interface Lesson {
   id: string;
@@ -74,12 +81,21 @@ export function BookForPlayerDialog({
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
   const [cyclusSlotsCount, setCyclusSlotsCount] = useState(0);
+  const [cyclusSlots, setCyclusSlots] = useState<{ id: string; start_time: string; end_time: string }[]>([]);
+  const [hourlyRate, setHourlyRate] = useState<number>(50);
+  
+  // Discount state
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountReason, setDiscountReason] = useState("");
 
   useEffect(() => {
     if (open && trainerId) {
       fetchPlayers();
+      fetchHourlyRate();
       if (slot?.cyclus_id) {
-        fetchCyclusSlotsCount(slot.cyclus_id);
+        fetchCyclusSlots(slot.cyclus_id);
       }
     }
   }, [open, trainerId, slot?.cyclus_id]);
@@ -91,8 +107,30 @@ export function BookForPlayerDialog({
       setNotes("");
       setBookingScope("single");
       setCyclusSlotsCount(0);
+      setCyclusSlots([]);
+      setShowDiscount(false);
+      setDiscountType("percentage");
+      setDiscountValue(0);
+      setDiscountReason("");
     }
   }, [open]);
+
+  const fetchHourlyRate = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("trainer_profiles")
+        .select("hourly_rate")
+        .eq("id", trainerId)
+        .single();
+      
+      if (error) throw error;
+      if (data?.hourly_rate) {
+        setHourlyRate(data.hourly_rate);
+      }
+    } catch (error) {
+      console.error("Error fetching hourly rate:", error);
+    }
+  };
 
   const fetchPlayers = async () => {
     setIsFetching(true);
@@ -112,18 +150,20 @@ export function BookForPlayerDialog({
     }
   };
 
-  const fetchCyclusSlotsCount = async (cyclusId: string) => {
+  const fetchCyclusSlots = async (cyclusId: string) => {
     try {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from("availability_slots")
-        .select("*", { count: "exact", head: true })
+        .select("id, start_time, end_time")
         .eq("cyclus_id", cyclusId)
-        .gte("start_time", new Date().toISOString());
+        .gte("start_time", new Date().toISOString())
+        .order("start_time");
 
       if (error) throw error;
-      setCyclusSlotsCount(count || 0);
+      setCyclusSlots(data || []);
+      setCyclusSlotsCount(data?.length || 0);
     } catch (error) {
-      console.error("Error fetching cyclus slots count:", error);
+      console.error("Error fetching cyclus slots:", error);
     }
   };
 
@@ -162,6 +202,27 @@ export function BookForPlayerDialog({
   const selectedCount = selectedPlayerIds.filter(id => id).length;
   const hasAtLeastOnePlayer = selectedCount > 0;
 
+  // Calculate price based on slot duration and hourly rate
+  const slotDurationMinutes = slot 
+    ? differenceInMinutes(new Date(slot.end_time), new Date(slot.start_time))
+    : 60;
+  const pricePerSession = calculateSlotPrice(hourlyRate, slotDurationMinutes);
+  
+  // Calculate total based on scope and number of players
+  const sessionsCount = bookingScope === "cyclus" && cyclusSlotsCount > 1 ? cyclusSlotsCount : 1;
+  const subtotal = pricePerSession * sessionsCount * selectedCount;
+  
+  // Apply discount
+  const { finalAmount, discountAmount: calculatedDiscount } = applyDiscount(
+    subtotal,
+    discountType,
+    discountValue
+  );
+  
+  // Price per player for bookings
+  const totalDiscountPerPlayer = selectedCount > 0 ? calculatedDiscount / selectedCount : 0;
+  const finalPricePerPlayer = selectedCount > 0 ? finalAmount / selectedCount : 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slot || !hasAtLeastOnePlayer) return;
@@ -174,33 +235,38 @@ export function BookForPlayerDialog({
         .map(id => players.find(p => p.id === id)!)
         .filter(Boolean);
 
-      if (bookingScope === "cyclus" && slot.cyclus_id) {
-        // Get all future slots in this cyclus
-        const { data: cyclusSlots, error: cyclusError } = await supabase
-          .from("availability_slots")
-          .select("id, start_time, end_time")
-          .eq("cyclus_id", slot.cyclus_id)
-          .gte("start_time", new Date().toISOString())
-          .order("start_time");
+      if (bookingScope === "cyclus" && slot.cyclus_id && cyclusSlots.length > 0) {
+        // Use already fetched cyclus slots
+        const slotsToBook = cyclusSlots;
 
-        if (cyclusError) throw cyclusError;
-
-        if (!cyclusSlots || cyclusSlots.length === 0) {
+        if (slotsToBook.length === 0) {
           throw new Error("No future slots found in this cyclus");
         }
 
-        // Create bookings for all cyclus slots for ALL selected players
-        const bookingsToInsert = cyclusSlots.flatMap(s =>
-          selectedPlayers.map(player => ({
-            slot_id: s.id,
-            guest_player_id: player.id,
-            lesson_id: lesson?.id || null,
-            status: "confirmed",
-            payment_status: "pending",
-            payment_amount: lesson?.price || null,
-            notes: notes.trim() || null,
-          }))
-        );
+        // Calculate price per session for each slot
+        const bookingsToInsert = slotsToBook.flatMap((s, slotIndex) => {
+          const slotDuration = differenceInMinutes(new Date(s.end_time), new Date(s.start_time));
+          const slotPrice = calculateSlotPrice(hourlyRate, slotDuration);
+          
+          return selectedPlayers.map((player, playerIndex) => {
+            // Apply discount proportionally across all bookings (to first booking per player)
+            const isFirstSlotForPlayer = slotIndex === 0;
+            const playerDiscountAmount = isFirstSlotForPlayer ? totalDiscountPerPlayer : 0;
+            
+            return {
+              slot_id: s.id,
+              guest_player_id: player.id,
+              lesson_id: lesson?.id || null,
+              status: "confirmed",
+              payment_status: "pending",
+              original_amount: slotPrice,
+              discount_amount: playerDiscountAmount,
+              discount_reason: isFirstSlotForPlayer && discountReason ? discountReason : null,
+              payment_amount: slotPrice - (isFirstSlotForPlayer ? playerDiscountAmount / slotsToBook.length : 0),
+              notes: notes.trim() || null,
+            };
+          });
+        });
 
         const { error: bookingError } = await supabase
           .from("bookings")
@@ -208,9 +274,9 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
-        // Send email notifications to all players with authentication
-        const firstSlot = cyclusSlots[0];
-        const lastSlot = cyclusSlots[cyclusSlots.length - 1];
+        // Send email notifications
+        const firstSlot = slotsToBook[0];
+        const lastSlot = slotsToBook[slotsToBook.length - 1];
         
         const { data: { session } } = await supabase.auth.getSession();
         await Promise.all(
@@ -221,11 +287,11 @@ export function BookForPlayerDialog({
                 to: player.email,
                 data: {
                   playerName: player.full_name,
-                  lessonTitle: `${slot.cyclus_name || lesson?.title || t("bookings.lesson")} (${cyclusSlots.length} ${t("calendar.sessions")})`,
+                  lessonTitle: `${slot.cyclus_name || lesson?.title || t("bookings.lesson")} (${slotsToBook.length} ${t("calendar.sessions")})`,
                   lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
                   lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
                   location: lesson?.location,
-                  price: lesson?.price ? lesson.price * cyclusSlots.length : null,
+                  price: finalPricePerPlayer,
                 },
               },
               headers: {
@@ -235,26 +301,33 @@ export function BookForPlayerDialog({
           )
         );
 
-        const totalBookings = selectedPlayers.length * cyclusSlots.length;
+        const totalBookings = selectedPlayers.length * slotsToBook.length;
         toast({
           title: t("bookings.bookingCreated"),
           description: t("bookings.multiBookingCreated", { 
             players: selectedPlayers.length, 
-            sessions: cyclusSlots.length,
+            sessions: slotsToBook.length,
             total: totalBookings
           }),
         });
       } else {
         // Single slot booking for all selected players
-        const bookingsToInsert = selectedPlayers.map(player => ({
-          slot_id: slot.id,
-          guest_player_id: player.id,
-          lesson_id: lesson?.id || null,
-          status: "confirmed",
-          payment_status: "pending",
-          payment_amount: lesson?.price || null,
-          notes: notes.trim() || null,
-        }));
+        const bookingsToInsert = selectedPlayers.map((player, index) => {
+          const playerDiscountAmount = index === 0 ? calculatedDiscount : 0;
+          
+          return {
+            slot_id: slot.id,
+            guest_player_id: player.id,
+            lesson_id: lesson?.id || null,
+            status: "confirmed",
+            payment_status: "pending",
+            original_amount: pricePerSession,
+            discount_amount: playerDiscountAmount,
+            discount_reason: index === 0 && discountReason ? discountReason : null,
+            payment_amount: pricePerSession - (playerDiscountAmount / selectedPlayers.length),
+            notes: notes.trim() || null,
+          };
+        });
 
         const { error: bookingError } = await supabase
           .from("bookings")
@@ -262,7 +335,7 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
-        // Send email notifications to all players with authentication
+        // Send email notifications
         const { data: { session: emailSession } } = await supabase.auth.getSession();
         await Promise.all(
           selectedPlayers.map(player =>
@@ -276,7 +349,7 @@ export function BookForPlayerDialog({
                   lessonDate: format(new Date(slot.start_time), "EEEE, MMMM d, yyyy"),
                   lessonTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
                   location: lesson?.location,
-                  price: lesson?.price,
+                  price: finalPricePerPlayer / selectedPlayers.length,
                 },
               },
               headers: {
@@ -372,11 +445,14 @@ export function BookForPlayerDialog({
                     <span>{lesson.location}</span>
                   </div>
                 )}
-                <div className="text-sm text-muted-foreground">
-                  €{lesson.price}
-                </div>
               </>
             )}
+            <div className="flex items-center gap-2 text-sm">
+              <Euro className="h-4 w-4 text-muted-foreground" />
+              <span>
+                {formatPrice(pricePerSession)} / {slotDurationMinutes} min
+              </span>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -560,6 +636,74 @@ export function BookForPlayerDialog({
                     </Label>
                   </div>
                 </RadioGroup>
+              </div>
+            )}
+
+            {/* Discount Section - Collapsible */}
+            {hasAtLeastOnePlayer && (
+              <Collapsible open={showDiscount} onOpenChange={setShowDiscount}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full py-2">
+                  <Percent className="h-4 w-4" />
+                  <span>{t("bookings.addDiscount", "Add discount")}</span>
+                  <ChevronDown className={cn(
+                    "h-4 w-4 ml-auto transition-transform",
+                    showDiscount && "rotate-180"
+                  )} />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2 space-y-3">
+                  <div className="flex gap-2">
+                    <Select
+                      value={discountType}
+                      onValueChange={(v) => setDiscountType(v as "percentage" | "fixed")}
+                    >
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">%</SelectItem>
+                        <SelectItem value="fixed">€</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="0"
+                      step={discountType === "percentage" ? "1" : "0.01"}
+                      max={discountType === "percentage" ? "100" : undefined}
+                      value={discountValue || ""}
+                      onChange={(e) => setDiscountValue(Number(e.target.value))}
+                      placeholder={t("bookings.discountAmount", "Amount")}
+                      className="flex-1"
+                    />
+                  </div>
+                  <Textarea
+                    placeholder={t("bookings.discountReason", "Reason (optional)")}
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    rows={1}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Price Summary */}
+            {hasAtLeastOnePlayer && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {selectedCount} {selectedCount === 1 ? t("bookings.player") : t("bookings.players")} × {sessionsCount} {sessionsCount === 1 ? t("calendar.session", "session") : t("calendar.sessions")} × {formatPrice(pricePerSession)}
+                  </span>
+                  <span>{formatPrice(subtotal)}</span>
+                </div>
+                {calculatedDiscount > 0 && (
+                  <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
+                    <span>{t("bookings.discount", "Discount")}</span>
+                    <span>-{formatPrice(calculatedDiscount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-medium border-t pt-2">
+                  <span>{t("bookings.total", "Total")}</span>
+                  <span>{formatPrice(finalAmount)}</span>
+                </div>
               </div>
             )}
 
