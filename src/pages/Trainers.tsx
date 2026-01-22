@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight } from 'lucide-react';
-import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
+import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { SEO } from '@/components/SEO';
@@ -27,6 +27,7 @@ interface TrainerWithProfile {
   specializations: string[] | null;
   is_verified: boolean;
   knltb_rating: number | null;
+  trainer_rating_system: string | null;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
@@ -48,6 +49,7 @@ export default function Trainers() {
   const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
   const [allCertifications, setAllCertifications] = useState<string[]>([]);
   const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
+  const [ratingSystems, setRatingSystems] = useState<RatingSystem[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
@@ -66,7 +68,8 @@ export default function Trainers() {
     specializations: searchParams.get('specializations')?.split(',').filter(Boolean) || [],
     certifications: searchParams.get('certifications')?.split(',').filter(Boolean) || [],
     verifiedOnly: searchParams.get('verified') === 'true',
-    minKnltbRating: Number(searchParams.get('minKnltb')) || 0,
+    ratingSystem: searchParams.get('ratingSystem') || '',
+    minTrainerRating: Number(searchParams.get('minTrainerRating')) || 0,
   }), [searchParams]);
 
   // Update URL when search changes
@@ -149,11 +152,16 @@ export default function Trainers() {
       newParams.delete('verified');
     }
     
-    // KNLTB
-    if (newFilters.minKnltbRating > 0) {
-      newParams.set('minKnltb', String(newFilters.minKnltbRating));
+    // Rating system filter
+    if (newFilters.ratingSystem) {
+      newParams.set('ratingSystem', newFilters.ratingSystem);
     } else {
-      newParams.delete('minKnltb');
+      newParams.delete('ratingSystem');
+    }
+    if (newFilters.minTrainerRating > 0) {
+      newParams.set('minTrainerRating', String(newFilters.minTrainerRating));
+    } else {
+      newParams.delete('minTrainerRating');
     }
     
     setSearchParams(newParams, { replace: true });
@@ -165,8 +173,20 @@ export default function Trainers() {
 
   useEffect(() => {
     fetchTrainers();
+    fetchRatingSystems();
     getPopularCities(8).then(setPopularCities);
   }, []);
+
+  const fetchRatingSystems = async () => {
+    const { data } = await supabase
+      .from('rating_systems')
+      .select('code, name, min_rating, max_rating, lower_is_better, step')
+      .eq('is_active', true)
+      .order('display_order');
+    if (data) {
+      setRatingSystems(data);
+    }
+  };
 
   const fetchTrainers = async () => {
     setLoading(true);
@@ -174,7 +194,7 @@ export default function Trainers() {
     // Fetch trainer profiles with their general profiles
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles')
-      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating');
+      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, trainer_rating_system');
     
     if (trainerError) {
       console.error('Error fetching trainers:', trainerError);
@@ -264,7 +284,8 @@ export default function Trainers() {
     if (filters.specializations.length > 0) count++;
     if (filters.certifications.length > 0) count++;
     if (filters.verifiedOnly) count++;
-    if (filters.minKnltbRating > 0) count++;
+    if (filters.ratingSystem) count++;
+    if (filters.minTrainerRating > 0) count++;
     return count;
   }, [filters]);
 
@@ -299,15 +320,33 @@ export default function Trainers() {
       const matchesCertifications = filters.certifications.length === 0 ||
         filters.certifications.some(c => trainer.certifications?.includes(c));
       
-      // KNLTB Rating filter
-      const trainerKnltb = trainer.knltb_rating || 0;
-      const matchesKnltbRating = trainerKnltb >= filters.minKnltbRating;
+      // Trainer rating system filter
+      let matchesTrainerRating = true;
+      if (filters.ratingSystem && filters.minTrainerRating > 0) {
+        // Only apply if trainer uses the selected rating system
+        if (trainer.trainer_rating_system === filters.ratingSystem) {
+          const trainerRating = trainer.knltb_rating || 0;
+          const ratingSystemDef = ratingSystems.find(rs => rs.code === filters.ratingSystem);
+          if (ratingSystemDef?.lower_is_better) {
+            // Lower is better (e.g., KNLTB): trainer rating should be <= filter value
+            matchesTrainerRating = trainerRating > 0 && trainerRating <= filters.minTrainerRating;
+          } else {
+            // Higher is better: trainer rating should be >= filter value
+            matchesTrainerRating = trainerRating >= filters.minTrainerRating;
+          }
+        } else {
+          matchesTrainerRating = false; // Trainer doesn't use selected system
+        }
+      } else if (filters.ratingSystem && !filters.minTrainerRating) {
+        // Just filter by system, any rating
+        matchesTrainerRating = trainer.trainer_rating_system === filters.ratingSystem;
+      }
       
       // Verified filter
       const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
       
       return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
-             matchesExperience && matchesSpecializations && matchesCertifications && matchesKnltbRating && matchesVerified;
+             matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified;
     });
 
     // Sort
@@ -381,217 +420,164 @@ export default function Trainers() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Filters Sidebar */}
-          <aside className="w-full lg:w-72 lg:shrink-0">
-            <div className="lg:sticky lg:top-20">
-              <TrainerFilters
-                filters={filters}
-                onChange={setFilters}
-                locations={clubLocations}
-                allSpecializations={allSpecializations}
-                allCertifications={allCertifications}
-                activeFilterCount={activeFilterCount}
+        {/* Filters at top */}
+        <div className="mb-6">
+          <TrainerFilters
+            filters={filters}
+            onChange={setFilters}
+            locations={clubLocations}
+            allSpecializations={allSpecializations}
+            allCertifications={allCertifications}
+            ratingSystems={ratingSystems}
+            activeFilterCount={activeFilterCount}
+          />
+        </div>
+
+        {/* Search and Sort */}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search trainers by name, specialty..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-          </aside>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rating">Top Rated</SelectItem>
+                <SelectItem value="price-low">Price: Low to High</SelectItem>
+                <SelectItem value="price-high">Price: High to Low</SelectItem>
+                <SelectItem value="experience">Most Experienced</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          {/* Main Content */}
-          <div className="flex-1 min-w-0">
-            {/* Search and Sort */}
-            <div className="mb-6 space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search trainers by name, specialty..."
-                    className="pl-10"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="w-full sm:w-[160px]">
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rating">Top Rated</SelectItem>
-                    <SelectItem value="price-low">Price: Low to High</SelectItem>
-                    <SelectItem value="price-high">Price: High to Low</SelectItem>
-                    <SelectItem value="experience">Most Experienced</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <p className="text-sm text-muted-foreground">
+            {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
 
-              {/* Active filters display (mobile summary) */}
-              {activeFilterCount > 0 && (
-                <div className="flex flex-wrap gap-2 items-center lg:hidden">
-                  <span className="text-sm text-muted-foreground">Active filters:</span>
-                  {filters.locationId !== 'all' && (
-                    <Badge variant="secondary" className="gap-1">
-                      <MapPin className="h-3 w-3" /> {clubLocations.find(l => l.id === filters.locationId)?.name || 'Location'}
-                    </Badge>
-                  )}
-                  {(filters.priceRange[0] > 0 || filters.priceRange[1] < 200) && (
-                    <Badge variant="secondary">
-                      €{filters.priceRange[0]} - €{filters.priceRange[1]}
-                    </Badge>
-                  )}
-                  {filters.minRating > 0 && (
-                    <Badge variant="secondary" className="gap-1">
-                      {filters.minRating}+ <Star className="h-3 w-3 fill-current" />
-                    </Badge>
-                  )}
-                  {filters.minExperience > 0 && (
-                    <Badge variant="secondary">
-                      {filters.minExperience}+ years
-                    </Badge>
-                  )}
-                  {filters.specializations.map(spec => (
-                    <Badge key={spec} variant="secondary">{spec}</Badge>
-                  ))}
-                  {filters.certifications.map(cert => (
-                    <Badge key={cert} variant="secondary">{cert}</Badge>
-                  ))}
-                  {filters.minKnltbRating > 0 && (
-                    <Badge variant="secondary">KNLTB {filters.minKnltbRating}+</Badge>
-                  )}
-                  {filters.verifiedOnly && (
-                    <Badge variant="secondary">Verified only</Badge>
-                  )}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-6 text-xs"
-                    onClick={() => setFilters(DEFAULT_FILTERS)}
-                  >
-                    Clear all
-                  </Button>
-                </div>
+        {/* Trainers Grid */}
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : filteredAndSortedTrainers.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardContent>
+              <p className="text-muted-foreground mb-4">No trainers found</p>
+              {searchQuery || activeFilterCount > 0 ? (
+                <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
+                  Clear Filters
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Be the first trainer to join!
+                </p>
               )}
-
-              <p className="text-sm text-muted-foreground">
-                {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
-              </p>
-            </div>
-
-            {/* Trainers Grid */}
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : filteredAndSortedTrainers.length === 0 ? (
-              <Card className="text-center py-12">
-                <CardContent>
-                  <p className="text-muted-foreground mb-4">No trainers found</p>
-                  {searchQuery || activeFilterCount > 0 ? (
-                    <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
-                      Clear Filters
-                    </Button>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Be the first trainer to join!
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredAndSortedTrainers.map((trainer) => (
+              <Card 
+                key={trainer.id} 
+                className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
+                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="h-14 w-14">
+                      <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                      <AvatarFallback className="text-lg">
+                        {getInitials(trainer.profile?.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base truncate">
+                          {trainer.profile?.full_name || 'Trainer'}
+                        </CardTitle>
+                        {trainer.is_verified && (
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            Verified
+                          </Badge>
+                        )}
+                        <div className="ml-auto">
+                          <FollowButton trainerProfileId={trainer.id} />
+                        </div>
+                      </div>
+                      {trainer.profile?.location && (
+                        <CardDescription className="flex items-center gap-1 mt-1 text-xs">
+                          <MapPin className="h-3 w-3" />
+                          {trainer.profile.location}
+                        </CardDescription>
+                      )}
+                      {trainer.reviewCount > 0 && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                          <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({trainer.reviewCount})
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-0">
+                  {trainer.profile?.bio && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {trainer.profile.bio}
                     </p>
+                  )}
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    {trainer.hourly_rate && (
+                      <span className="font-semibold text-primary">
+                        €{trainer.hourly_rate}/hr
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                      {trainer.knltb_rating && trainer.trainer_rating_system && (
+                        <span className="font-medium text-foreground">
+                          {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
+                        </span>
+                      )}
+                      {trainer.experience_years && (
+                        <span>
+                          {trainer.experience_years}y exp
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {trainer.specializations && trainer.specializations.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {trainer.specializations.slice(0, 2).map((spec, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {spec}
+                        </Badge>
+                      ))}
+                      {trainer.specializations.length > 2 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{trainer.specializations.length - 2}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
-            ) : (
-              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredAndSortedTrainers.map((trainer) => (
-                  <Card 
-                    key={trainer.id} 
-                    className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                    onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start gap-4">
-                        <Avatar className="h-14 w-14">
-                          <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                          <AvatarFallback className="text-lg">
-                            {getInitials(trainer.profile?.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <CardTitle className="text-base truncate">
-                              {trainer.profile?.full_name || 'Trainer'}
-                            </CardTitle>
-                            {trainer.is_verified && (
-                              <Badge variant="secondary" className="shrink-0 text-xs">
-                                Verified
-                              </Badge>
-                            )}
-                            <div className="ml-auto">
-                              <FollowButton trainerProfileId={trainer.id} />
-                            </div>
-                          </div>
-                          {trainer.profile?.location && (
-                            <CardDescription className="flex items-center gap-1 mt-1 text-xs">
-                              <MapPin className="h-3 w-3" />
-                              {trainer.profile.location}
-                            </CardDescription>
-                          )}
-                          {trainer.reviewCount > 0 && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                              <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                              <span className="text-xs text-muted-foreground">
-                                ({trainer.reviewCount})
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3 pt-0">
-                      {trainer.profile?.bio && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {trainer.profile.bio}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        {trainer.hourly_rate && (
-                          <span className="font-semibold text-primary">
-                            €{trainer.hourly_rate}/hr
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                          {trainer.knltb_rating && (
-                            <span className="font-medium text-foreground">
-                              KNLTB {trainer.knltb_rating}
-                            </span>
-                          )}
-                          {trainer.experience_years && (
-                            <span>
-                              {trainer.experience_years}y exp
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {trainer.specializations && trainer.specializations.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {trainer.specializations.slice(0, 2).map((spec, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
-                              {spec}
-                            </Badge>
-                          ))}
-                          {trainer.specializations.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{trainer.specializations.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
