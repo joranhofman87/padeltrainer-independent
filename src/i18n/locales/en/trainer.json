@@ -214,7 +214,20 @@
       "cancelAndReopen": "Cancel & Reopen for Others",
       "cancelAndReopenDescription": "Keep slot available and notify followers",
       "keepBooking": "Keep Booking"
-    }
+    },
+    "editBooking": "Edit Booking",
+    "bookingUpdated": "Booking updated",
+    "bookingUpdatedDescription": "The booking has been updated successfully",
+    "bookingDeleted": "Booking deleted",
+    "bookingDeletedDescription": "The player has been removed from this slot",
+    "deleteBookingConfirm": "Remove player from booking?",
+    "deleteBookingWarning": "This action cannot be undone. The slot will become available again.",
+    "removePlayer": "Remove Player",
+    "paymentStatus": "Payment Status",
+    "paymentPending": "Pending",
+    "paymentPaid": "Paid",
+    "paymentWaived": "Waived",
+    "playerWillBeSwapped": "Player will be changed to the selected one"
   },
   "players": {
     "title": "My Players",

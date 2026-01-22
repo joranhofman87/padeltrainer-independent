@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
-import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw } from "lucide-react";
+import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -12,6 +12,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -74,6 +85,7 @@ export function EditBookingDialog({
   const [players, setPlayers] = useState<GuestPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (booking && open) {
@@ -148,6 +160,37 @@ export function EditBookingDialog({
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!booking) return;
+
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .delete()
+        .eq("id", booking.id);
+
+      if (error) throw error;
+
+      toast({
+        title: t("bookings.bookingDeleted", "Booking deleted"),
+        description: t("bookings.bookingDeletedDescription", "The player has been removed from this slot"),
+      });
+
+      onBookingUpdated();
+      onOpenChange(false);
+    } catch (error: any) {
+      console.error("Error deleting booking:", error);
+      toast({
+        title: t("common:error"),
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -257,14 +300,46 @@ export function EditBookingDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-            {t("common:cancel")}
-          </Button>
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t("common:save", "Save")}
-          </Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button 
+                variant="destructive" 
+                className="w-full sm:w-auto sm:mr-auto"
+                disabled={isLoading || isDeleting}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("bookings.removePlayer", "Remove Player")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("bookings.deleteBookingConfirm", "Remove player from booking?")}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("bookings.deleteBookingWarning", "This action cannot be undone. The slot will become available again.")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t("bookings.removePlayer", "Remove Player")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading || isDeleting} className="flex-1 sm:flex-none">
+              {t("common:cancel")}
+            </Button>
+            <Button onClick={handleSave} disabled={isLoading || isDeleting} className="flex-1 sm:flex-none">
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t("common:save", "Save")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

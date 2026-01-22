@@ -214,7 +214,20 @@
       "cancelAndReopen": "Annuleren & Heropenen voor Anderen",
       "cancelAndReopenDescription": "Houd slot beschikbaar en informeer volgers",
       "keepBooking": "Boeking Behouden"
-    }
+    },
+    "editBooking": "Boeking Bewerken",
+    "bookingUpdated": "Boeking bijgewerkt",
+    "bookingUpdatedDescription": "De boeking is succesvol bijgewerkt",
+    "bookingDeleted": "Boeking verwijderd",
+    "bookingDeletedDescription": "De speler is verwijderd van deze slot",
+    "deleteBookingConfirm": "Speler verwijderen van boeking?",
+    "deleteBookingWarning": "Deze actie kan niet ongedaan worden gemaakt. De slot wordt weer beschikbaar.",
+    "removePlayer": "Speler Verwijderen",
+    "paymentStatus": "Betaalstatus",
+    "paymentPending": "In afwachting",
+    "paymentPaid": "Betaald",
+    "paymentWaived": "Kwijtgescholden",
+    "playerWillBeSwapped": "Speler wordt gewijzigd naar de geselecteerde"
   },
   "players": {
     "title": "Mijn Spelers",
