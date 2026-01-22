@@ -117,7 +117,9 @@ export function validateRating(rating: number | null | undefined, system: Rating
 
 export function formatRatingWithSystem(rating: number | null | undefined, systemName: string): string {
   if (rating === null || rating === undefined) return '—';
-  return `${rating.toFixed(1)} (${systemName})`;
+  // KNLTB uses 4 decimal places, others use 1
+  const decimals = systemName.toUpperCase() === 'KNLTB' ? 4 : 1;
+  return `${rating.toFixed(decimals)} (${systemName})`;
 }
 
 // Country code to display name mapping
