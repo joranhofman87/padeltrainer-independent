@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Collapsible,
   CollapsibleContent,
@@ -35,6 +35,15 @@ import { SlidersHorizontal, X, Star, MapPin, Check, ChevronsUpDown, ChevronDown,
 import { Location } from '@/lib/locations';
 import { cn } from '@/lib/utils';
 
+export interface RatingSystem {
+  code: string;
+  name: string;
+  min_rating: number;
+  max_rating: number;
+  lower_is_better: boolean;
+  step: number;
+}
+
 export interface TrainerFiltersState {
   priceRange: [number, number];
   minRating: number;
@@ -43,7 +52,8 @@ export interface TrainerFiltersState {
   minExperience: number;
   locationId: string;
   verifiedOnly: boolean;
-  minKnltbRating: number;
+  ratingSystem: string;
+  minTrainerRating: number;
 }
 
 interface TrainerFiltersProps {
@@ -52,6 +62,7 @@ interface TrainerFiltersProps {
   locations: Location[];
   allSpecializations: string[];
   allCertifications: string[];
+  ratingSystems: RatingSystem[];
   activeFilterCount: number;
 }
 
@@ -63,7 +74,8 @@ const DEFAULT_FILTERS: TrainerFiltersState = {
   minExperience: 0,
   locationId: 'all',
   verifiedOnly: false,
-  minKnltbRating: 0,
+  ratingSystem: '',
+  minTrainerRating: 0,
 };
 
 export function TrainerFilters({
@@ -72,12 +84,13 @@ export function TrainerFilters({
   locations,
   allSpecializations,
   allCertifications,
+  ratingSystems,
   activeFilterCount,
 }: TrainerFiltersProps) {
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const handleReset = () => {
     onChange(DEFAULT_FILTERS);
@@ -139,58 +152,46 @@ export function TrainerFilters({
     setLocationSearch('');
   };
 
+  // Get selected rating system details
+  const selectedRatingSystem = useMemo(() => {
+    return ratingSystems.find(rs => rs.code === filters.ratingSystem);
+  }, [filters.ratingSystem, ratingSystems]);
+
+  // Generate rating options based on selected system
+  const ratingOptions = useMemo(() => {
+    if (!selectedRatingSystem) return [];
+    const { min_rating, max_rating, lower_is_better, step } = selectedRatingSystem;
+    const options: number[] = [0]; // 0 = Any
+    
+    if (lower_is_better) {
+      // For lower_is_better (like KNLTB), show lower values as "better"
+      // User wants trainers with rating <= X
+      const values = [8, 7, 6, 5, 4, 3].filter(v => v >= min_rating && v <= max_rating);
+      options.push(...values);
+    } else {
+      // For higher_is_better (like Playtomic), show higher values
+      // User wants trainers with rating >= X
+      if (max_rating <= 10) {
+        const values = [2, 3, 4, 5, 6].filter(v => v >= min_rating && v <= max_rating);
+        options.push(...values);
+      } else {
+        // For large ranges like Tennis Vlaanderen (50-1000)
+        const values = [100, 200, 300, 500, 700].filter(v => v >= min_rating && v <= max_rating);
+        options.push(...values);
+      }
+    }
+    return options;
+  }, [selectedRatingSystem]);
+
   return (
     <Card className="w-full">
       <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4" />
-              <CardTitle className="text-base">Filters</CardTitle>
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {activeFilterCount > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleReset} className="h-8 text-xs gap-1">
-                  <RotateCcw className="h-3 w-3" />
-                  Reset
-                </Button>
-              )}
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 lg:hidden">
-                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-          </div>
-        </CardHeader>
-        
-        <CollapsibleContent>
-          <CardContent className="space-y-5 pt-0">
-            {/* Location - Club Picker */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Club Location</Label>
-              
-              {/* Country filter */}
-              {availableCountries.length > 1 && (
-                <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                  <SelectTrigger className="w-full h-9 text-sm">
-                    <SelectValue placeholder="All Countries" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Countries</SelectItem>
-                    {availableCountries.map(country => (
-                      <SelectItem key={country} value={country}>{country}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {/* Club picker */}
+        <CardContent className="py-4">
+          {/* Always visible: Primary filters row */}
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Location */}
+            <div className="flex-1 min-w-[180px] max-w-[250px] space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Location</Label>
               <Popover open={locationOpen} onOpenChange={setLocationOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -200,14 +201,14 @@ export function TrainerFilters({
                     className="w-full justify-between h-9 text-sm"
                   >
                     {selectedLocation ? (
-                      <span className="flex items-center gap-2 truncate">
+                      <span className="flex items-center gap-1.5 truncate">
                         <MapPin className="h-3 w-3 shrink-0" />
                         <span className="truncate">{selectedLocation.name}</span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">Select a club...</span>
+                      <span className="text-muted-foreground">All locations</span>
                     )}
-                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[280px] p-0" align="start">
@@ -217,6 +218,21 @@ export function TrainerFilters({
                       value={locationSearch}
                       onValueChange={setLocationSearch}
                     />
+                    {availableCountries.length > 1 && (
+                      <div className="p-2 border-b">
+                        <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="All Countries" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Countries</SelectItem>
+                            {availableCountries.map(country => (
+                              <SelectItem key={country} value={country}>{country}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <CommandList className="max-h-[250px]">
                       <CommandEmpty>No clubs found.</CommandEmpty>
                       <CommandItem
@@ -255,73 +271,47 @@ export function TrainerFilters({
                   </Command>
                 </PopoverContent>
               </Popover>
-
-              {selectedLocation && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs p-0"
-                  onClick={() => onChange({ ...filters, locationId: 'all' })}
-                >
-                  <X className="h-3 w-3 mr-1" /> Clear location
-                </Button>
-              )}
             </div>
 
             {/* Price Range */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Price Range</Label>
-                <span className="text-xs text-muted-foreground">
-                  €{filters.priceRange[0]} - €{filters.priceRange[1]}
-                </span>
-              </div>
-              <Slider
-                value={filters.priceRange}
-                onValueChange={(value) => onChange({ ...filters, priceRange: value as [number, number] })}
-                min={0}
-                max={200}
-                step={5}
-                className="w-full"
-              />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Input
-                    type="number"
-                    value={filters.priceRange[0]}
-                    onChange={(e) => onChange({
-                      ...filters,
-                      priceRange: [Number(e.target.value), filters.priceRange[1]]
-                    })}
-                    className="h-8 text-sm"
-                    placeholder="Min"
-                  />
-                </div>
-                <div className="flex-1">
-                  <Input
-                    type="number"
-                    value={filters.priceRange[1]}
-                    onChange={(e) => onChange({
-                      ...filters,
-                      priceRange: [filters.priceRange[0], Number(e.target.value)]
-                    })}
-                    className="h-8 text-sm"
-                    placeholder="Max"
-                  />
-                </div>
+            <div className="flex-1 min-w-[140px] max-w-[180px] space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Price (€{filters.priceRange[0]}-€{filters.priceRange[1]})
+              </Label>
+              <div className="flex gap-1.5">
+                <Input
+                  type="number"
+                  value={filters.priceRange[0]}
+                  onChange={(e) => onChange({
+                    ...filters,
+                    priceRange: [Number(e.target.value), filters.priceRange[1]]
+                  })}
+                  className="h-9 text-sm w-16"
+                  placeholder="Min"
+                />
+                <Input
+                  type="number"
+                  value={filters.priceRange[1]}
+                  onChange={(e) => onChange({
+                    ...filters,
+                    priceRange: [filters.priceRange[0], Number(e.target.value)]
+                  })}
+                  className="h-9 text-sm w-16"
+                  placeholder="Max"
+                />
               </div>
             </div>
 
-            {/* Minimum Rating */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Min Rating</Label>
-              <div className="flex gap-1 flex-wrap">
+            {/* Min Review Rating */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Min Reviews</Label>
+              <div className="flex gap-1">
                 {[0, 3, 4, 4.5].map((rating) => (
                   <Button
                     key={rating}
                     variant={filters.minRating === rating ? 'default' : 'outline'}
                     size="sm"
-                    className="h-7 text-xs px-2"
+                    className="h-9 text-xs px-2"
                     onClick={() => onChange({ ...filters, minRating: rating })}
                   >
                     {rating === 0 ? 'Any' : (
@@ -334,104 +324,155 @@ export function TrainerFilters({
               </div>
             </div>
 
-            {/* Minimum KNLTB Rating */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Trainer KNLTB</Label>
-              <div className="flex gap-1 flex-wrap">
-                {[0, 4, 5, 6, 7, 8].map((rating) => (
-                  <Button
-                    key={rating}
-                    variant={filters.minKnltbRating === rating ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    onClick={() => onChange({ ...filters, minKnltbRating: rating })}
+            {/* Trainer Rating System */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Trainer Level</Label>
+              <div className="flex gap-1.5">
+                <Select 
+                  value={filters.ratingSystem || 'any'} 
+                  onValueChange={(v) => onChange({ ...filters, ratingSystem: v === 'any' ? '' : v, minTrainerRating: 0 })}
+                >
+                  <SelectTrigger className="h-9 text-sm w-[100px]">
+                    <SelectValue placeholder="System" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any</SelectItem>
+                    {ratingSystems.map(rs => (
+                      <SelectItem key={rs.code} value={rs.code}>{rs.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedRatingSystem && ratingOptions.length > 1 && (
+                  <Select 
+                    value={String(filters.minTrainerRating)} 
+                    onValueChange={(v) => onChange({ ...filters, minTrainerRating: Number(v) })}
                   >
-                    {rating === 0 ? 'Any' : `${rating}+`}
-                  </Button>
-                ))}
+                    <SelectTrigger className="h-9 text-sm w-[80px]">
+                      <SelectValue placeholder="Level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ratingOptions.map(val => (
+                        <SelectItem key={val} value={String(val)}>
+                          {val === 0 ? 'Any' : (
+                            selectedRatingSystem.lower_is_better ? `≤${val}` : `≥${val}`
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
-            {/* Minimum Experience */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Experience</Label>
-              <div className="flex gap-1 flex-wrap">
-                {[0, 1, 3, 5, 10].map((years) => (
-                  <Button
-                    key={years}
-                    variant={filters.minExperience === years ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    onClick={() => onChange({ ...filters, minExperience: years })}
-                  >
-                    {years === 0 ? 'Any' : `${years}+ yr`}
-                  </Button>
-                ))}
-              </div>
-            </div>
+            {/* More Filters Toggle */}
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                More
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+            </CollapsibleTrigger>
 
-            {/* Specializations */}
-            {allSpecializations.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Specializations</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {allSpecializations.map((spec) => (
-                    <Badge
-                      key={spec}
-                      variant={filters.specializations.includes(spec) ? 'default' : 'outline'}
-                      className="cursor-pointer hover:bg-primary/80 text-xs"
-                      onClick={() => toggleSpecialization(spec)}
-                    >
-                      {spec}
-                      {filters.specializations.includes(spec) && (
-                        <X className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
+            {/* Reset */}
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={handleReset} className="h-9 text-xs gap-1">
+                <RotateCcw className="h-3 w-3" />
+                Reset
+              </Button>
+            )}
+          </div>
+
+          {/* Expanded: Additional filters */}
+          <CollapsibleContent>
+            <div className="mt-4 pt-4 border-t space-y-4">
+              <div className="flex flex-wrap gap-6">
+                {/* Experience */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground">Experience</Label>
+                  <div className="flex gap-1 flex-wrap">
+                    {[0, 1, 3, 5, 10].map((years) => (
+                      <Button
+                        key={years}
+                        variant={filters.minExperience === years ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => onChange({ ...filters, minExperience: years })}
+                      >
+                        {years === 0 ? 'Any' : `${years}+ yr`}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Verified Only */}
+                <div className="flex items-center space-x-2 pt-5">
+                  <Checkbox
+                    id="verified"
+                    checked={filters.verifiedOnly}
+                    onCheckedChange={(checked) => 
+                      onChange({ ...filters, verifiedOnly: checked === true })
+                    }
+                  />
+                  <label
+                    htmlFor="verified"
+                    className="text-sm font-medium leading-none cursor-pointer"
+                  >
+                    Verified only
+                  </label>
                 </div>
               </div>
-            )}
 
-            {/* Certifications */}
-            {allCertifications.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Certifications</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {allCertifications.map((cert) => (
-                    <Badge
-                      key={cert}
-                      variant={filters.certifications.includes(cert) ? 'default' : 'outline'}
-                      className="cursor-pointer hover:bg-primary/80 text-xs"
-                      onClick={() => toggleCertification(cert)}
-                    >
-                      {cert}
-                      {filters.certifications.includes(cert) && (
-                        <X className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
+              {/* Specializations */}
+              {allSpecializations.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground">Specializations</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allSpecializations.map((spec) => (
+                      <Badge
+                        key={spec}
+                        variant={filters.specializations.includes(spec) ? 'default' : 'outline'}
+                        className="cursor-pointer hover:bg-primary/80 text-xs"
+                        onClick={() => toggleSpecialization(spec)}
+                      >
+                        {spec}
+                        {filters.specializations.includes(spec) && (
+                          <X className="h-3 w-3 ml-1" />
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Verified Only */}
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="verified"
-                checked={filters.verifiedOnly}
-                onCheckedChange={(checked) => 
-                  onChange({ ...filters, verifiedOnly: checked === true })
-                }
-              />
-              <label
-                htmlFor="verified"
-                className="text-sm font-medium leading-none cursor-pointer"
-              >
-                Verified trainers only
-              </label>
+              {/* Certifications */}
+              {allCertifications.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground">Certifications</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allCertifications.map((cert) => (
+                      <Badge
+                        key={cert}
+                        variant={filters.certifications.includes(cert) ? 'default' : 'outline'}
+                        className="cursor-pointer hover:bg-primary/80 text-xs"
+                        onClick={() => toggleCertification(cert)}
+                      >
+                        {cert}
+                        {filters.certifications.includes(cert) && (
+                          <X className="h-3 w-3 ml-1" />
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </CardContent>
-        </CollapsibleContent>
+          </CollapsibleContent>
+        </CardContent>
       </Collapsible>
     </Card>
   );
