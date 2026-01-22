@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { SlotLocationPicker } from "./SlotLocationPicker";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -59,6 +60,7 @@ interface BulkSlotConfig {
   addPlayers: boolean;
   selectedPlayers: string[];
   courtType: 'indoor' | 'outdoor' | null;
+  locationId: string | null;
 }
 
 interface AddSlotDialogProps {
@@ -92,6 +94,7 @@ export function AddSlotDialog({
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
   const [slotLessonId, setSlotLessonId] = useState<string | null>(null);
   const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
+  const [slotLocationId, setSlotLocationId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleAddSingleSlot = async () => {
@@ -109,6 +112,7 @@ export function AddSlotDialog({
         end_time: endDateTime.toISOString(),
         lesson_id: slotLessonId,
         court_type: slotCourtType,
+        location_id: slotLocationId,
       });
 
       if (error) throw error;
@@ -228,6 +232,16 @@ export function AddSlotDialog({
             </Select>
           </div>
 
+          {/* Location */}
+          <div className="space-y-2">
+            <Label>{t("calendar.location", "Location")}</Label>
+            <SlotLocationPicker
+              value={slotLocationId}
+              onChange={setSlotLocationId}
+              trainerId={trainerId}
+            />
+          </div>
+
           {/* Court Type */}
           <div className="space-y-2">
             <Label>{t("calendar.courtType", "Court Type")}</Label>
@@ -345,6 +359,7 @@ export function BulkCreateSheet({
           addPlayers: false,
           selectedPlayers: [],
           courtType: null,
+          locationId: null,
         },
       ]);
     }
@@ -365,6 +380,7 @@ export function BulkCreateSheet({
         addPlayers: false,
         selectedPlayers: [],
         courtType: null,
+        locationId: null,
       },
     ]);
   };
@@ -409,6 +425,7 @@ export function BulkCreateSheet({
         cyclus_id: string | null;
         cyclus_name: string | null;
         court_type: 'indoor' | 'outdoor' | null;
+        location_id: string | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -445,6 +462,7 @@ export function BulkCreateSheet({
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             court_type: config.courtType,
+            location_id: config.locationId,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -742,6 +760,17 @@ export function BulkCreateSheet({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Location */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("calendar.location", "Location")}</Label>
+                    <SlotLocationPicker
+                      value={slot.locationId}
+                      onChange={(locationId) => updateBulkSlot(index, { locationId })}
+                      trainerId={trainerId}
+                      compact
+                    />
                   </div>
 
                   {/* Court Type */}

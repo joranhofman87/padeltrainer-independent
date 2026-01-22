@@ -58,6 +58,7 @@ export type Database = {
           is_marked_full: boolean
           is_recurring: boolean
           lesson_id: string | null
+          location_id: string | null
           recurrence_rule: string | null
           start_time: string
           trainer_id: string
@@ -72,6 +73,7 @@ export type Database = {
           is_marked_full?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
+          location_id?: string | null
           recurrence_rule?: string | null
           start_time: string
           trainer_id: string
@@ -86,6 +88,7 @@ export type Database = {
           is_marked_full?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
+          location_id?: string | null
           recurrence_rule?: string | null
           start_time?: string
           trainer_id?: string
@@ -96,6 +99,13 @@ export type Database = {
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
