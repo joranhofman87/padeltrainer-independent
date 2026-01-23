@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { claimClub } from '@/lib/club';
 import { Loader2, Building2 } from 'lucide-react';
+import { validatePhone } from '@/lib/validation';
 
 interface ClaimClubDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function ClaimClubDialog({
   const { toast } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     contactEmail: userEmail || '',
     phone: '',
@@ -123,11 +125,20 @@ export function ClaimClubDialog({
               id="phone"
               type="tel"
               value={formData.phone}
-              onChange={(e) =>
-                setFormData({ ...formData, phone: e.target.value })
-              }
+              onChange={(e) => {
+                setFormData({ ...formData, phone: e.target.value });
+                setPhoneError(null);
+              }}
+              onBlur={() => {
+                const error = validatePhone(formData.phone);
+                setPhoneError(error ? t(`auth:${error}`) : null);
+              }}
               placeholder={t('claim.phonePlaceholder')}
+              className={phoneError ? 'border-destructive' : ''}
             />
+            {phoneError && (
+              <p className="text-xs text-destructive">{phoneError}</p>
+            )}
           </div>
 
           <div className="space-y-2">

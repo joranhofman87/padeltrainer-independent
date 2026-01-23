@@ -15,6 +15,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { validatePhone } from '@/lib/validation';
 
 export default function ClubOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -23,6 +24,7 @@ export default function ClubOnboarding() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isAlreadyClaimed, setIsAlreadyClaimed] = useState(false);
   const { toast } = useToast();
@@ -268,9 +270,20 @@ export default function ClubOnboarding() {
                     id="contact-phone"
                     type="tel"
                     value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
+                    onChange={(e) => {
+                      setContactPhone(e.target.value);
+                      setPhoneError(null);
+                    }}
+                    onBlur={() => {
+                      const error = validatePhone(contactPhone);
+                      setPhoneError(error ? t(`auth:${error}`) : null);
+                    }}
                     placeholder={t('claim.phonePlaceholder', '+31 6 12345678')}
+                    className={phoneError ? 'border-destructive' : ''}
                   />
+                  {phoneError && (
+                    <p className="text-xs text-destructive">{phoneError}</p>
+                  )}
                 </div>
 
                 {/* Description */}
