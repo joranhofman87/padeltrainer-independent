@@ -14,7 +14,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, updateClubProfile, type ClubProfile } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
 import type { Location } from '@/lib/locations';
-import { ClubNavigation } from '@/components/club/ClubNavigation';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -202,8 +201,8 @@ export default function ClubProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+      {/* Action Header */}
+      <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <span className="font-bold text-xl">{t('profile.title')}</span>
           <Button onClick={handleSubmit} disabled={saving}>
@@ -211,8 +210,7 @@ export default function ClubProfile() {
             {saving ? t('common:saving') : t('common:save')}
           </Button>
         </div>
-        <ClubNavigation />
-      </header>
+      </div>
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6">

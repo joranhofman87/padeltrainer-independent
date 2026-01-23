@@ -36,7 +36,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { ClubNavigation } from "@/components/club/ClubNavigation";
 import { getUserClubProfiles, getClubTrainers } from "@/lib/club";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -287,16 +286,6 @@ export default function ClubLessons() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold">{clubName} - {t("lessons.title", "Lessons")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("lessons.description", "Create and manage lessons for your trainers")}
-          </p>
-        </div>
-        <ClubNavigation />
-      </div>
 
       <div className="container mx-auto px-4 py-8">
         <Card>
