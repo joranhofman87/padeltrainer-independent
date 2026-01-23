@@ -1,0 +1,202 @@
+{
+  "title": "Training Cycles",
+  "cycle": "Cycle",
+  "cycles": "Cycles",
+  "createCycle": "Create Cycle",
+  "editCycle": "Edit Cycle",
+  "deleteCycle": "Delete Cycle",
+  "noCycles": "No training cycles yet",
+  "noCyclesDescription": "Create your first training cycle to start accepting applications",
+  
+  "status": {
+    "draft": "Draft",
+    "open": "Open",
+    "closed": "Closed",
+    "archived": "Archived"
+  },
+  
+  "form": {
+    "name": "Cycle Name",
+    "namePlaceholder": "e.g., Spring Cycle 2026",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe this training cycle...",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "enrollmentDeadline": "Enrollment Deadline",
+    "lessonTypes": "Lesson Types Offered",
+    "showPreferredTrainer": "Allow trainer preference",
+    "showPreferredTrainerHelp": "Players can indicate a preferred trainer when applying",
+    "maxGroupSize": "Max Group Size",
+    "applicableTrainers": "Applicable Trainers",
+    "applicableTrainersHelp": "Which trainers can be assigned to this cycle",
+    "save": "Save Cycle",
+    "saveAndOpen": "Save & Open Enrollment"
+  },
+  
+  "actions": {
+    "openEnrollment": "Open Enrollment",
+    "closeEnrollment": "Close Enrollment",
+    "generateProposals": "Generate Proposals",
+    "viewRequests": "View Requests",
+    "archive": "Archive"
+  },
+  
+  "stats": {
+    "applications": "Applications",
+    "new": "New",
+    "proposed": "Proposed",
+    "confirmed": "Confirmed",
+    "waitlist": "Waitlist"
+  },
+  
+  "application": {
+    "title": "Apply for Lessons",
+    "subtitle": "Submit your application for {{cycleName}}",
+    "applyButton": "Apply for Lessons",
+    "loginRequired": "Please log in to apply",
+    "alreadyApplied": "You have already applied",
+    "enrollmentClosed": "Enrollment is closed",
+    "deadlinePassed": "The enrollment deadline has passed",
+    
+    "form": {
+      "personalInfo": "Personal Information",
+      "name": "Full Name",
+      "email": "Email",
+      "phone": "Phone (optional)",
+      "rating": "Your Rating/Level",
+      "ratingSystem": "Rating System",
+      
+      "preferences": "Training Preferences",
+      "lessonType": "Lesson Type",
+      "lessonTypes": {
+        "private": "Private (1:1)",
+        "duo": "Duo (2 players)",
+        "group": "Group (3+ players)",
+        "kids": "Kids Training"
+      },
+      "preferredDuration": "Preferred Duration",
+      "preferredTrainer": "Preferred Trainer (optional)",
+      "noPreference": "No preference",
+      "location": "Preferred Location",
+      
+      "availability": "Your Availability",
+      "preferredDays": "Preferred Days",
+      "days": {
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday",
+        "sunday": "Sunday"
+      },
+      "timeWindows": "Preferred Times",
+      "timePresets": {
+        "morning": "Mornings (8:00-12:00)",
+        "afternoon": "Afternoons (12:00-17:00)",
+        "evening": "Evenings (17:00-21:00)",
+        "weekend": "Weekends"
+      },
+      "customTimes": "Or set specific times",
+      
+      "additional": "Additional Information",
+      "notes": "Notes (optional)",
+      "notesPlaceholder": "Any additional information or preferences...",
+      "consent": "I agree to be contacted regarding my application and consent to the processing of my data.",
+      "consentRequired": "You must agree to continue",
+      
+      "submit": "Submit Application",
+      "submitting": "Submitting..."
+    },
+    
+    "success": {
+      "title": "Application Submitted!",
+      "message": "Thank you for your application. You will receive a confirmation email shortly.",
+      "whatNext": "What happens next?",
+      "step1": "We will review your application and availability",
+      "step2": "You will be matched with an appropriate training slot",
+      "step3": "You will receive an email with your confirmed schedule",
+      "backToProfile": "Back to Profile"
+    }
+  },
+  
+  "intakeRequests": {
+    "title": "Intake Requests",
+    "noRequests": "No intake requests yet",
+    "noRequestsDescription": "Requests will appear here when players apply",
+    "filters": {
+      "all": "All",
+      "new": "New",
+      "proposed": "Proposed",
+      "confirmed": "Confirmed",
+      "waitlist": "Waitlist",
+      "rejected": "Rejected"
+    },
+    "table": {
+      "player": "Player",
+      "lessonType": "Lesson Type",
+      "rating": "Rating",
+      "availability": "Availability",
+      "preferredTrainer": "Pref. Trainer",
+      "status": "Status",
+      "applied": "Applied"
+    },
+    "detail": {
+      "title": "Request Details",
+      "contactInfo": "Contact Information",
+      "preferences": "Preferences",
+      "availability": "Availability",
+      "notes": "Notes",
+      "proposal": "Proposed Assignment",
+      "noProposal": "No proposal generated yet"
+    },
+    "actions": {
+      "propose": "Generate Proposal",
+      "confirm": "Confirm",
+      "reject": "Reject",
+      "waitlist": "Move to Waitlist",
+      "viewProposal": "View Proposal"
+    }
+  },
+  
+  "proposals": {
+    "title": "Proposed Assignments",
+    "noProposals": "No proposals yet",
+    "noProposalsDescription": "Generate proposals from the intake requests",
+    "generateAll": "Generate All Proposals",
+    "approveAll": "Approve All",
+    "generating": "Generating proposals...",
+    "card": {
+      "player": "Player",
+      "slot": "Proposed Slot",
+      "trainer": "Trainer",
+      "confidence": "Match Score",
+      "rationale": "Why this match?"
+    },
+    "rationaleTypes": {
+      "time_match": "Time preference matched",
+      "preferred_trainer": "Preferred trainer matched",
+      "level_compatible": "Level compatible",
+      "priority_bonus": "Early registration bonus",
+      "capacity_available": "Slot has capacity"
+    },
+    "actions": {
+      "approve": "Approve",
+      "edit": "Edit",
+      "reject": "Reject",
+      "changeSlot": "Change Slot",
+      "changeTrainer": "Change Trainer"
+    },
+    "confirmDialog": {
+      "title": "Confirm Assignment",
+      "message": "This will add the player to the slot and send them a confirmation email.",
+      "confirm": "Confirm & Notify",
+      "cancel": "Cancel"
+    }
+  },
+  
+  "emails": {
+    "applicationReceived": "Application Received",
+    "scheduleConfirmed": "Your Training Schedule is Confirmed"
+  }
+}

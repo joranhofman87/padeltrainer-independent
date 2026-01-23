@@ -1,0 +1,202 @@
+{
+  "title": "Trainingscycli",
+  "cycle": "Cyclus",
+  "cycles": "Cycli",
+  "createCycle": "Cyclus Aanmaken",
+  "editCycle": "Cyclus Bewerken",
+  "deleteCycle": "Cyclus Verwijderen",
+  "noCycles": "Nog geen trainingscycli",
+  "noCyclesDescription": "Maak je eerste trainingscyclus aan om aanmeldingen te accepteren",
+  
+  "status": {
+    "draft": "Concept",
+    "open": "Open",
+    "closed": "Gesloten",
+    "archived": "Gearchiveerd"
+  },
+  
+  "form": {
+    "name": "Cyclus Naam",
+    "namePlaceholder": "bijv. Voorjaarscyclus 2026",
+    "description": "Beschrijving",
+    "descriptionPlaceholder": "Beschrijf deze trainingscyclus...",
+    "startDate": "Startdatum",
+    "endDate": "Einddatum",
+    "enrollmentDeadline": "Inschrijfdeadline",
+    "lessonTypes": "Aangeboden Lesvormen",
+    "showPreferredTrainer": "Trainer voorkeur toestaan",
+    "showPreferredTrainerHelp": "Spelers kunnen een voorkeurscoach aangeven bij aanmelding",
+    "maxGroupSize": "Max Groepsgrootte",
+    "applicableTrainers": "Beschikbare Trainers",
+    "applicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze cyclus",
+    "save": "Cyclus Opslaan",
+    "saveAndOpen": "Opslaan & Inschrijving Openen"
+  },
+  
+  "actions": {
+    "openEnrollment": "Inschrijving Openen",
+    "closeEnrollment": "Inschrijving Sluiten",
+    "generateProposals": "Voorstellen Genereren",
+    "viewRequests": "Aanmeldingen Bekijken",
+    "archive": "Archiveren"
+  },
+  
+  "stats": {
+    "applications": "Aanmeldingen",
+    "new": "Nieuw",
+    "proposed": "Voorgesteld",
+    "confirmed": "Bevestigd",
+    "waitlist": "Wachtlijst"
+  },
+  
+  "application": {
+    "title": "Aanmelden voor Lessen",
+    "subtitle": "Dien je aanmelding in voor {{cycleName}}",
+    "applyButton": "Aanmelden voor Lessen",
+    "loginRequired": "Log in om je aan te melden",
+    "alreadyApplied": "Je hebt je al aangemeld",
+    "enrollmentClosed": "Inschrijving is gesloten",
+    "deadlinePassed": "De inschrijfdeadline is verstreken",
+    
+    "form": {
+      "personalInfo": "Persoonlijke Informatie",
+      "name": "Volledige Naam",
+      "email": "E-mail",
+      "phone": "Telefoon (optioneel)",
+      "rating": "Je Rating/Niveau",
+      "ratingSystem": "Ratingsysteem",
+      
+      "preferences": "Trainingsvoorkeuren",
+      "lessonType": "Lesvorm",
+      "lessonTypes": {
+        "private": "Privé (1:1)",
+        "duo": "Duo (2 spelers)",
+        "group": "Groep (3+ spelers)",
+        "kids": "Kindertraining"
+      },
+      "preferredDuration": "Gewenste Duur",
+      "preferredTrainer": "Voorkeurstrainer (optioneel)",
+      "noPreference": "Geen voorkeur",
+      "location": "Voorkeurslocatie",
+      
+      "availability": "Je Beschikbaarheid",
+      "preferredDays": "Voorkeursdagen",
+      "days": {
+        "monday": "Maandag",
+        "tuesday": "Dinsdag",
+        "wednesday": "Woensdag",
+        "thursday": "Donderdag",
+        "friday": "Vrijdag",
+        "saturday": "Zaterdag",
+        "sunday": "Zondag"
+      },
+      "timeWindows": "Voorkeurstijden",
+      "timePresets": {
+        "morning": "Ochtenden (8:00-12:00)",
+        "afternoon": "Middagen (12:00-17:00)",
+        "evening": "Avonden (17:00-21:00)",
+        "weekend": "Weekenden"
+      },
+      "customTimes": "Of stel specifieke tijden in",
+      
+      "additional": "Aanvullende Informatie",
+      "notes": "Opmerkingen (optioneel)",
+      "notesPlaceholder": "Eventuele aanvullende informatie of voorkeuren...",
+      "consent": "Ik ga akkoord om te worden gecontacteerd over mijn aanmelding en stem in met de verwerking van mijn gegevens.",
+      "consentRequired": "Je moet akkoord gaan om door te gaan",
+      
+      "submit": "Aanmelding Indienen",
+      "submitting": "Bezig met indienen..."
+    },
+    
+    "success": {
+      "title": "Aanmelding Ingediend!",
+      "message": "Bedankt voor je aanmelding. Je ontvangt binnenkort een bevestigingsmail.",
+      "whatNext": "Wat gebeurt er nu?",
+      "step1": "We bekijken je aanmelding en beschikbaarheid",
+      "step2": "Je wordt gekoppeld aan een passend trainingsmoment",
+      "step3": "Je ontvangt een e-mail met je bevestigde schema",
+      "backToProfile": "Terug naar Profiel"
+    }
+  },
+  
+  "intakeRequests": {
+    "title": "Aanmeldingen",
+    "noRequests": "Nog geen aanmeldingen",
+    "noRequestsDescription": "Aanmeldingen verschijnen hier wanneer spelers zich aanmelden",
+    "filters": {
+      "all": "Alle",
+      "new": "Nieuw",
+      "proposed": "Voorgesteld",
+      "confirmed": "Bevestigd",
+      "waitlist": "Wachtlijst",
+      "rejected": "Afgewezen"
+    },
+    "table": {
+      "player": "Speler",
+      "lessonType": "Lesvorm",
+      "rating": "Rating",
+      "availability": "Beschikbaarheid",
+      "preferredTrainer": "Voork. Trainer",
+      "status": "Status",
+      "applied": "Aangemeld"
+    },
+    "detail": {
+      "title": "Aanmeldingsdetails",
+      "contactInfo": "Contactgegevens",
+      "preferences": "Voorkeuren",
+      "availability": "Beschikbaarheid",
+      "notes": "Opmerkingen",
+      "proposal": "Voorgestelde Toewijzing",
+      "noProposal": "Nog geen voorstel gegenereerd"
+    },
+    "actions": {
+      "propose": "Voorstel Genereren",
+      "confirm": "Bevestigen",
+      "reject": "Afwijzen",
+      "waitlist": "Naar Wachtlijst",
+      "viewProposal": "Voorstel Bekijken"
+    }
+  },
+  
+  "proposals": {
+    "title": "Voorgestelde Toewijzingen",
+    "noProposals": "Nog geen voorstellen",
+    "noProposalsDescription": "Genereer voorstellen vanuit de aanmeldingen",
+    "generateAll": "Alle Voorstellen Genereren",
+    "approveAll": "Alles Goedkeuren",
+    "generating": "Voorstellen genereren...",
+    "card": {
+      "player": "Speler",
+      "slot": "Voorgesteld Moment",
+      "trainer": "Trainer",
+      "confidence": "Match Score",
+      "rationale": "Waarom deze match?"
+    },
+    "rationaleTypes": {
+      "time_match": "Tijdvoorkeur gematcht",
+      "preferred_trainer": "Voorkeurstrainer gematcht",
+      "level_compatible": "Niveau compatibel",
+      "priority_bonus": "Vroege inschrijfbonus",
+      "capacity_available": "Slot heeft capaciteit"
+    },
+    "actions": {
+      "approve": "Goedkeuren",
+      "edit": "Bewerken",
+      "reject": "Afwijzen",
+      "changeSlot": "Moment Wijzigen",
+      "changeTrainer": "Trainer Wijzigen"
+    },
+    "confirmDialog": {
+      "title": "Toewijzing Bevestigen",
+      "message": "Dit voegt de speler toe aan het moment en stuurt een bevestigingsmail.",
+      "confirm": "Bevestigen & Versturen",
+      "cancel": "Annuleren"
+    }
+  },
+  
+  "emails": {
+    "applicationReceived": "Aanmelding Ontvangen",
+    "scheduleConfirmed": "Je Trainingsschema is Bevestigd"
+  }
+}
