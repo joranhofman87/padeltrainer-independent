@@ -110,11 +110,20 @@ export async function setUserRole(userId: string, role: UserRole) {
   
   if (error) throw error;
   
-  // If trainer, also create trainer profile
+  // If trainer, also create trainer profile with trial dates
   if (role === 'trainer') {
+    const now = new Date();
+    const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    
     const { error: trainerError } = await supabase
       .from('trainer_profiles')
-      .insert({ user_id: userId });
+      .insert({ 
+        user_id: userId,
+        trial_started_at: now.toISOString(),
+        trial_ends_at: trialEnd.toISOString(),
+        subscription_status: 'trial',
+        is_public: false,
+      });
     
     if (trainerError) throw trainerError;
   }

@@ -87,9 +87,13 @@ export default function TrainersCity() {
     setClaimedLocationIds(allClaimedIds);
 
     // Fetch trainers at locations in this city OR with location field matching city
+    // Only show trainers who are: is_public=true AND (subscription_status='active' OR trial_ends_at > now())
+    const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles')
-      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating');
+      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, is_public, subscription_status, trial_ends_at')
+      .eq('is_public', true)
+      .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
 
     if (trainerError) {
       console.error('Error fetching trainers:', trainerError);

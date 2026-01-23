@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2, CalendarDays } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2, CalendarDays, AlertTriangle } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +18,7 @@ import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
 import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
+import { getTrialDaysRemaining } from '@/lib/subscription';
 
 interface DashboardStats {
   totalStudents: number;
@@ -36,7 +38,7 @@ interface SetupStatus {
 }
 
 export default function TrainerDashboard() {
-  const { user, profile, role, loading } = useAuth();
+  const { user, profile, role, loading, subscription } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation('trainer');
@@ -325,6 +327,14 @@ export default function TrainerDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Trial Banner */}
+        {subscription && !subscription.isSubscribed && (
+          <TrialBanner 
+            trialEndsAt={subscription.trialEndsAt}
+            onUpgrade={() => navigate('/subscription')}
+          />
+        )}
+
         {/* Setup Checklist - Only show if not all complete */}
         {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete && setupStatus.hasPlayers) && (
           <SetupChecklist
@@ -534,6 +544,37 @@ export default function TrainerDashboard() {
 
       </main>
     </div>
+  );
+}
+
+// Trial Banner Component
+interface TrialBannerProps {
+  trialEndsAt: string | null;
+  onUpgrade: () => void;
+}
+
+function TrialBanner({ trialEndsAt, onUpgrade }: TrialBannerProps) {
+  const { t } = useTranslation('trainer');
+  const daysRemaining = getTrialDaysRemaining(trialEndsAt);
+  const isExpired = daysRemaining === 0;
+  
+  return (
+    <Alert variant={isExpired ? 'destructive' : 'default'} className="mb-6">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertDescription className="flex items-center justify-between">
+        <span>
+          {isExpired 
+            ? t('dashboard.trialBanner.expired')
+            : daysRemaining === 1
+              ? t('dashboard.trialBanner.lastDay')
+              : t('dashboard.trialBanner.daysLeft', { days: daysRemaining })
+          }
+        </span>
+        <Button size="sm" variant={isExpired ? 'default' : 'outline'} onClick={onUpgrade}>
+          {isExpired ? t('dashboard.trialBanner.subscribe') : t('dashboard.trialBanner.upgrade')}
+        </Button>
+      </AlertDescription>
+    </Alert>
   );
 }
 

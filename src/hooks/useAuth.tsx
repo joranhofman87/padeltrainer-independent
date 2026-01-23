@@ -78,9 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Error fetching subscription:', error);
         setSubscription({
           isSubscribed: false,
-          tier: 'starter',
+          tier: 'trial',
           productId: null,
           subscriptionEnd: null,
+          trialEndsAt: null,
+          isInTrial: false,
+          isPublic: false,
         });
         return;
       }
@@ -90,14 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tier: data.tier || getTierFromProductId(data.product_id),
         productId: data.product_id,
         subscriptionEnd: data.subscription_end,
+        trialEndsAt: data.trial_ends_at,
+        isInTrial: data.is_trial || false,
+        isPublic: data.is_public || false,
       });
     } catch (err) {
       console.error('Error fetching subscription:', err);
       setSubscription({
         isSubscribed: false,
-        tier: 'starter',
+        tier: 'trial',
         productId: null,
         subscriptionEnd: null,
+        trialEndsAt: null,
+        isInTrial: false,
+        isPublic: false,
       });
     }
   }, [session?.access_token]);

@@ -1583,6 +1583,7 @@ export type Database = {
           hourly_rate: number | null
           iban: string | null
           id: string
+          is_public: boolean | null
           is_verified: boolean | null
           knltb_rating: number | null
           kvk_number: string | null
@@ -1602,6 +1603,8 @@ export type Database = {
           stripe_account_id: string | null
           subscription_status: string | null
           trainer_rating_system: string | null
+          trial_ends_at: string | null
+          trial_started_at: string | null
           updated_at: string
           use_manual_invoicing: boolean | null
           user_id: string
@@ -1620,6 +1623,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
           kvk_number?: string | null
@@ -1639,6 +1643,8 @@ export type Database = {
           stripe_account_id?: string | null
           subscription_status?: string | null
           trainer_rating_system?: string | null
+          trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id: string
@@ -1657,6 +1663,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
           kvk_number?: string | null
@@ -1676,6 +1683,8 @@ export type Database = {
           stripe_account_id?: string | null
           subscription_status?: string | null
           trainer_rating_system?: string | null
+          trial_ends_at?: string | null
+          trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
           user_id?: string
