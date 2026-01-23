@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTranslation } from 'react-i18next';
-import { Cookie, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export function CookieConsentBanner() {
@@ -33,39 +33,26 @@ export function CookieConsentBanner() {
   return (
     <>
       {/* Banner */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-background border-t shadow-lg animate-in slide-in-from-bottom-4">
-        <div className="container mx-auto max-w-4xl">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <Cookie className="h-5 w-5 mt-0.5 text-muted-foreground flex-shrink-0" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium">{t('cookies.title')}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('cookies.description')}{' '}
-                  <Link to="/privacy" className="text-primary hover:underline">
-                    {t('cookies.privacyLink')}
-                  </Link>
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
+      <div className="fixed bottom-0 left-0 right-0 z-50 py-3 px-4 bg-background border-t shadow-lg animate-in slide-in-from-bottom-4">
+        <div className="container mx-auto max-w-5xl">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              {t('cookies.description')}{' '}
+              <Link to="/privacy" className="text-primary hover:underline">
+                {t('cookies.privacyLink')}
+              </Link>
+            </p>
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={handleCustomize}
               >
-                <Settings className="h-4 w-4 mr-1" />
                 {t('cookies.customize')}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={rejectNonEssential}
-              >
-                {t('cookies.rejectNonEssential')}
-              </Button>
-              <Button
-                size="sm"
+                size="default"
+                className="font-semibold px-6"
                 onClick={acceptAll}
               >
                 {t('cookies.acceptAll')}

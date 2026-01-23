@@ -138,7 +138,7 @@
   },
   "cookies": {
     "title": "Cookie Preferences",
-    "description": "We use cookies to improve your experience and analyze site usage.",
+    "description": "We use cookies to improve your experience.",
     "acceptAll": "Accept All",
     "rejectNonEssential": "Essential Only",
     "customize": "Customize",
