@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Zap
 } from 'lucide-react';
+import { usePlatformStats } from '@/hooks/usePlatformStats';
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -69,11 +70,19 @@ export default function Home() {
     }
   ];
 
+  const platformStats = usePlatformStats();
+
+  // Format stats with dynamic values - only show "+" suffix for counts > 10
+  const formatStat = (value: number, showPlus = true) => {
+    if (value === 0) return '—';
+    return showPlus && value >= 10 ? `${value}+` : value.toString();
+  };
+
   const stats = [
-    { value: '500+', labelKey: 'home.stats.trainers' },
-    { value: '10,000+', labelKey: 'home.stats.lessons' },
-    { value: '4.9', labelKey: 'home.stats.rating' },
-    { value: '50+', labelKey: 'home.stats.cities' }
+    { value: platformStats.loading ? '...' : formatStat(platformStats.trainers), labelKey: 'home.stats.trainers' },
+    { value: platformStats.loading ? '...' : formatStat(platformStats.lessons), labelKey: 'home.stats.lessons' },
+    { value: platformStats.loading ? '...' : platformStats.avgRating.toString(), labelKey: 'home.stats.rating' },
+    { value: platformStats.loading ? '...' : formatStat(platformStats.cities), labelKey: 'home.stats.cities' }
   ];
 
   const testimonials = [

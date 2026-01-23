@@ -130,5 +130,10 @@
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
     "whereToTrain": "Waar wil je trainen?"
+  },
+  "notFound": {
+    "title": "Pagina Niet Gevonden",
+    "description": "De pagina die je zoekt bestaat niet of is verplaatst.",
+    "goHome": "Naar Home"
   }
 }

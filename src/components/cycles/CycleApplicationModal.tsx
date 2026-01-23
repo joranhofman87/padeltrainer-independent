@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { supabase } from '@/integrations/supabase/client';
@@ -184,8 +185,14 @@ export default function CycleApplicationModal({
         
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           {checkingStatus ? (
-            <div className="py-8 text-center text-muted-foreground">
-              Loading...
+            <div className="py-8 space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-2/3" />
+              <div className="flex gap-4 pt-4">
+                <Skeleton className="h-10 w-24" />
+                <Skeleton className="h-10 w-24" />
+              </div>
             </div>
           ) : (
             <CycleApplicationForm

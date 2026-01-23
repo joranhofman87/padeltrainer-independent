@@ -516,5 +516,7 @@
     "reject": "Reject",
     "noRequests": "No pending requests",
     "noRequestsDescription": "Booking requests from players will appear here"
-  }
+  },
+  "noTrainersYet": "No trainers available in this area yet. Check back soon!",
+  "clearFilters": "Clear Filters"
 }
