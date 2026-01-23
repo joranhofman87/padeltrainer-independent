@@ -16,8 +16,10 @@ export type Database = {
     Tables: {
       admin_impersonation_logs: {
         Row: {
+          action: string | null
           admin_user_id: string
           created_at: string
+          details: Json | null
           ended_at: string | null
           expires_at: string
           id: string
@@ -26,8 +28,10 @@ export type Database = {
           user_agent: string | null
         }
         Insert: {
+          action?: string | null
           admin_user_id: string
           created_at?: string
+          details?: Json | null
           ended_at?: string | null
           expires_at: string
           id?: string
@@ -36,8 +40,10 @@ export type Database = {
           user_agent?: string | null
         }
         Update: {
+          action?: string | null
           admin_user_id?: string
           created_at?: string
+          details?: Json | null
           ended_at?: string | null
           expires_at?: string
           id?: string
@@ -1213,6 +1219,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rate_limits: {
+        Row: {
+          created_at: string | null
+          endpoint: string
+          id: string
+          identifier: string
+          request_count: number | null
+          window_start: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          identifier: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          identifier?: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Relationships: []
       }
       rating_systems: {
         Row: {

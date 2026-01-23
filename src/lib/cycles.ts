@@ -294,6 +294,18 @@ export async function getIntakeRequest(requestId: string): Promise<IntakeRequest
 }
 
 export async function submitIntakeRequest(input: IntakeRequestInput): Promise<IntakeRequest> {
+  // Rate limiting: Check for recent submissions from same email (max 3 per hour)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from('intake_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('email', input.email)
+    .gte('created_at', oneHourAgo);
+
+  if (count && count >= 3) {
+    throw new Error('Too many applications submitted. Please try again later.');
+  }
+
   const insertData = {
     cycle_id: input.cycle_id,
     player_id: input.player_id,
