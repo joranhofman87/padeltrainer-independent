@@ -166,6 +166,7 @@
     "generateAll": "Generate All Proposals",
     "approveAll": "Approve All",
     "generating": "Generating proposals...",
+    "generated": "{{count}} proposals generated",
     "card": {
       "player": "Player",
       "slot": "Proposed Slot",
@@ -192,6 +193,28 @@
       "message": "This will add the player to the slot and send them a confirmation email.",
       "confirm": "Confirm & Notify",
       "cancel": "Cancel"
+    },
+    "weights": {
+      "title": "Scoring Settings",
+      "description": "Adjust how players are matched to slots",
+      "timeMatch": "Time Preference",
+      "timeMatchHelp": "How much weight to give to matching player's preferred days/times",
+      "preferredTrainer": "Trainer Preference",
+      "preferredTrainerHelp": "How much weight to give when player's preferred trainer is available",
+      "levelCompatible": "Level Compatibility",
+      "levelCompatibleHelp": "How much weight to give to rating/skill level matching",
+      "priorityBonus": "Registration Order",
+      "priorityBonusHelp": "Bonus for players who registered earlier",
+      "capacityAvailable": "Slot Capacity",
+      "capacityAvailableHelp": "Consider available spots in the slot",
+      "total": "Total Weight",
+      "saveAsDefault": "Save as default for this cycle",
+      "generate": "Generate Proposals",
+      "presets": {
+        "balanced": "Balanced",
+        "timeFocused": "Time-focused",
+        "levelFocused": "Level-focused"
+      }
     }
   },
   

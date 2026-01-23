@@ -166,6 +166,7 @@
     "generateAll": "Alle Voorstellen Genereren",
     "approveAll": "Alles Goedkeuren",
     "generating": "Voorstellen genereren...",
+    "generated": "{{count}} voorstellen gegenereerd",
     "card": {
       "player": "Speler",
       "slot": "Voorgesteld Moment",
@@ -192,6 +193,28 @@
       "message": "Dit voegt de speler toe aan het moment en stuurt een bevestigingsmail.",
       "confirm": "Bevestigen & Versturen",
       "cancel": "Annuleren"
+    },
+    "weights": {
+      "title": "Score Instellingen",
+      "description": "Pas aan hoe spelers worden gematcht aan slots",
+      "timeMatch": "Tijdvoorkeur",
+      "timeMatchHelp": "Hoeveel gewicht aan het matchen van voorkeursdagen/-tijden",
+      "preferredTrainer": "Trainer Voorkeur",
+      "preferredTrainerHelp": "Hoeveel gewicht wanneer de voorkeurstrainer beschikbaar is",
+      "levelCompatible": "Niveau Compatibiliteit",
+      "levelCompatibleHelp": "Hoeveel gewicht aan rating/vaardigheidsniveau matching",
+      "priorityBonus": "Registratievolgorde",
+      "priorityBonusHelp": "Bonus voor spelers die eerder hebben geregistreerd",
+      "capacityAvailable": "Slot Capaciteit",
+      "capacityAvailableHelp": "Houd rekening met beschikbare plekken in het slot",
+      "total": "Totaal Gewicht",
+      "saveAsDefault": "Opslaan als standaard voor deze cyclus",
+      "generate": "Voorstellen Genereren",
+      "presets": {
+        "balanced": "Gebalanceerd",
+        "timeFocused": "Tijd-gericht",
+        "levelFocused": "Niveau-gericht"
+      }
     }
   },
   

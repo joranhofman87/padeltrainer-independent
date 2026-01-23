@@ -17,12 +17,29 @@ export interface Cycle {
   updated_at: string;
 }
 
+export interface ScoringWeights {
+  time_match: number;
+  preferred_trainer: number;
+  level_compatible: number;
+  priority_bonus: number;
+  capacity_available: number;
+}
+
+export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
+  time_match: 40,
+  preferred_trainer: 20,
+  level_compatible: 20,
+  priority_bonus: 10,
+  capacity_available: 10,
+};
+
 export interface CycleSettings {
   lesson_types?: ('private' | 'duo' | 'group' | 'kids')[];
   show_preferred_trainer?: boolean;
   default_duration_minutes?: number;
   max_group_size?: number;
   applicable_trainer_ids?: string[];
+  scoring_weights?: ScoringWeights;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
@@ -489,4 +506,34 @@ export async function getIntakeRequestCounts(cycleId: string): Promise<Record<st
   });
 
   return counts;
+}
+
+// Generate proposals using the edge function with configurable weights
+export async function generateProposals(
+  cycleId: string,
+  weights?: ScoringWeights
+): Promise<{ generated: number; skipped: number; errors?: string[] }> {
+  const { data, error } = await supabase.functions.invoke('generate-proposals', {
+    body: { cycleId, weights }
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+// Save scoring weights as default for a cycle
+export async function saveCycleScoringWeights(
+  cycleId: string,
+  weights: ScoringWeights
+): Promise<Cycle> {
+  // First get current settings
+  const cycle = await getCycle(cycleId);
+  if (!cycle) throw new Error('Cycle not found');
+
+  const updatedSettings: CycleSettings = {
+    ...cycle.settings,
+    scoring_weights: weights,
+  };
+
+  return updateCycle(cycleId, { settings: updatedSettings });
 }
