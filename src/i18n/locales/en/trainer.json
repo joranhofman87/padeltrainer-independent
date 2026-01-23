@@ -25,6 +25,13 @@
     "welcome": "Welcome back, Coach {{name}}! 💪",
     "subtitle": "Manage your lessons, view bookings, and grow your padel training business",
     "createLesson": "Create Lesson",
+    "trialBanner": {
+      "daysLeft": "{{days}} days left in your free trial",
+      "lastDay": "Last day of your free trial",
+      "expired": "Your trial has ended",
+      "upgrade": "Upgrade Now",
+      "subscribe": "Subscribe to continue"
+    },
     "stats": {
       "upcomingLessons": "Upcoming Lessons",
       "totalStudents": "Total Students",
@@ -349,7 +356,18 @@
     "calendarSync": "Calendar Sync",
     "calendarSyncDescription": "Connect Google Calendar for automatic sync",
     "notifications": "Notifications",
-    "notificationsDescription": "Manage email notification preferences"
+    "notificationsDescription": "Manage email notification preferences",
+    "profileVisibility": "Profile Visibility",
+    "profileVisibilityDescription": "Control whether players can find you in search results",
+    "visibilityOn": "Your profile is now visible to players",
+    "visibilityOff": "Your profile is now hidden",
+    "visibilityRequiresSubscription": "You need an active subscription or trial to be visible",
+    "visibleTrialMessage": "Your profile is visible. {{days}} days left in your trial.",
+    "visibleSubscribedMessage": "Your profile is live and visible to players.",
+    "hiddenMessage": "Your profile is hidden. Toggle to go live.",
+    "trialExpiredMessage": "Your trial has ended. Subscribe to be visible to players.",
+    "subscribe": "Subscribe",
+    "dangerZone": "Danger Zone"
   },
   "analytics": {
     "title": "Analytics",

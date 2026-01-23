@@ -23,14 +23,14 @@ async function getTierFromDB(supabaseClient: any, productId: string): Promise<st
       .maybeSingle();
 
     if (error || !data) {
-      logStep("Could not find tier in DB, defaulting to starter", { productId, error });
-      return 'starter';
+      logStep("Could not find tier in DB, defaulting to trial", { productId, error });
+      return 'trial';
     }
 
     return data.tier;
   } catch (error) {
     logStep("Error fetching tier from DB", { error });
-    return 'starter';
+    return 'trial';
   }
 }
 
@@ -63,16 +63,35 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
+    // Fetch trainer profile to get trial info and visibility
+    const { data: trainerProfile, error: tpError } = await supabaseClient
+      .from('trainer_profiles')
+      .select('id, trial_started_at, trial_ends_at, is_public, subscription_status')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (tpError) {
+      logStep("Error fetching trainer profile", { error: tpError });
+    }
+
+    const trialEndsAt = trainerProfile?.trial_ends_at || null;
+    const isPublic = trainerProfile?.is_public || false;
+    const now = new Date();
+    const isInTrial = trialEndsAt ? new Date(trialEndsAt) > now : false;
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
 
     if (customers.data.length === 0) {
-      logStep("No customer found, returning starter tier");
+      logStep("No customer found, returning trial tier");
       return new Response(JSON.stringify({ 
         subscribed: false,
-        tier: 'starter',
+        tier: 'trial',
         product_id: null,
         subscription_end: null,
+        trial_ends_at: trialEndsAt,
+        is_trial: isInTrial,
+        is_public: isPublic,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -90,7 +109,7 @@ serve(async (req) => {
 
     const hasActiveSub = subscriptions.data.length > 0;
     let productId: string | null = null;
-    let tier = 'starter';
+    let tier = 'trial';
     let subscriptionEnd: string | null = null;
 
     if (hasActiveSub) {
@@ -110,6 +129,9 @@ serve(async (req) => {
       tier,
       product_id: productId,
       subscription_end: subscriptionEnd,
+      trial_ends_at: trialEndsAt,
+      is_trial: isInTrial && !hasActiveSub,
+      is_public: isPublic,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

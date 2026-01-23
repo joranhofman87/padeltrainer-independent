@@ -25,6 +25,13 @@
     "welcome": "Welkom terug, Coach {{name}}! 💪",
     "subtitle": "Beheer je lessen, bekijk boekingen en laat je padeltraining-bedrijf groeien",
     "createLesson": "Les Aanmaken",
+    "trialBanner": {
+      "daysLeft": "Nog {{days}} dagen in je gratis proefperiode",
+      "lastDay": "Laatste dag van je gratis proefperiode",
+      "expired": "Je proefperiode is afgelopen",
+      "upgrade": "Nu Upgraden",
+      "subscribe": "Abonneer om door te gaan"
+    },
     "stats": {
       "upcomingLessons": "Aankomende Lessen",
       "totalStudents": "Totaal Studenten",
@@ -349,7 +356,18 @@
     "calendarSync": "Agenda Synchronisatie",
     "calendarSyncDescription": "Koppel Google Agenda voor automatische sync",
     "notifications": "Meldingen",
-    "notificationsDescription": "Beheer je e-mailmeldingsvoorkeuren"
+    "notificationsDescription": "Beheer je e-mailmeldingsvoorkeuren",
+    "profileVisibility": "Profiel Zichtbaarheid",
+    "profileVisibilityDescription": "Bepaal of spelers je kunnen vinden in zoekresultaten",
+    "visibilityOn": "Je profiel is nu zichtbaar voor spelers",
+    "visibilityOff": "Je profiel is nu verborgen",
+    "visibilityRequiresSubscription": "Je hebt een actief abonnement of proefperiode nodig om zichtbaar te zijn",
+    "visibleTrialMessage": "Je profiel is zichtbaar. Nog {{days}} dagen in je proefperiode.",
+    "visibleSubscribedMessage": "Je profiel is live en zichtbaar voor spelers.",
+    "hiddenMessage": "Je profiel is verborgen. Zet aan om live te gaan.",
+    "trialExpiredMessage": "Je proefperiode is afgelopen. Neem een abonnement om zichtbaar te zijn.",
+    "subscribe": "Abonneren",
+    "dangerZone": "Gevarenzone"
   },
   "analytics": {
     "title": "Analytics",
