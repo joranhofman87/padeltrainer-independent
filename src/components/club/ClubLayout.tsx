@@ -202,7 +202,7 @@ export default function ClubLayout() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(`/${i18n.language}/locations/${activeClub.location.slug}`, '_blank')}
+                    onClick={() => window.open(`${window.location.origin}/${i18n.language}/locations/${activeClub.location.slug}`, '_blank')}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     {t('dashboard.viewPublicProfile')}
