@@ -24,6 +24,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import { logger } from '@/lib/logger';
 
 export default function TrainerSubscription() {
   const navigate = useNavigate();
@@ -116,6 +118,12 @@ export default function TrainerSubscription() {
     setProcessingPlan(plan.id);
 
     try {
+      logger.info('Starting checkout for subscription', { 
+        component: 'TrainerSubscription', 
+        planId: plan.id, 
+        billingCycle 
+      });
+
       const { data, error } = await supabase.functions.invoke('create-trainer-checkout', {
         body: { priceId },
         headers: {
@@ -133,7 +141,10 @@ export default function TrainerSubscription() {
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
+      logger.error('Subscription checkout failed', err as Error, { 
+        component: 'TrainerSubscription', 
+        planId: plan.id 
+      });
       toast({
         title: 'Error',
         description: 'Failed to start checkout. Please try again.',
@@ -161,7 +172,9 @@ export default function TrainerSubscription() {
         throw new Error('No portal URL returned');
       }
     } catch (err) {
-      console.error('Portal error:', err);
+      logger.error('Billing portal access failed', err as Error, { 
+        component: 'TrainerSubscription' 
+      });
       toast({
         title: 'Error',
         description: 'Failed to open billing portal. Please try again.',

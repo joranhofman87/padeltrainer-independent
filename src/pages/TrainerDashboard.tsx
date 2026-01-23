@@ -15,6 +15,8 @@ import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
 import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import { logger } from '@/lib/logger';
 
 interface DashboardStats {
   totalStudents: number;
