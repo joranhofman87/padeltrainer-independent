@@ -131,12 +131,6 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     {t('actions.viewRequests')}
                   </DropdownMenuItem>
                   
-                  {cycle.status === 'open' && (
-                    <DropdownMenuItem onClick={copyRegistrationLink}>
-                      <Link2 className="mr-2 h-4 w-4" />
-                      {t('actions.shareLink')}
-                    </DropdownMenuItem>
-                  )}
                   
                   <DropdownMenuSeparator />
                   
