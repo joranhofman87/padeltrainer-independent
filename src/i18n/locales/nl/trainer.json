@@ -516,5 +516,7 @@
     "reject": "Afwijzen",
     "noRequests": "Geen openstaande verzoeken",
     "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier"
-  }
+  },
+  "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. Kom binnenkort terug!",
+  "clearFilters": "Filters wissen"
 }

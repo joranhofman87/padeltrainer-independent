@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,6 +42,7 @@ interface TrainerWithProfile {
 type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
 
 export default function Trainers() {
+  const { t } = useTranslation('trainer');
   const [searchParams, setSearchParams] = useSearchParams();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -475,11 +477,11 @@ export default function Trainers() {
               <p className="text-muted-foreground mb-4">No trainers found</p>
               {searchQuery || activeFilterCount > 0 ? (
                 <Button variant="outline" onClick={() => { setSearchQuery(''); setFilters(DEFAULT_FILTERS); }}>
-                  Clear Filters
+                  {t('clearFilters')}
                 </Button>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Be the first trainer to join!
+                  {t('noTrainersYet')}
                 </p>
               )}
             </CardContent>
