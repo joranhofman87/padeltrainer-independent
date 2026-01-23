@@ -190,7 +190,7 @@ export function RequestClubDialog({ open, onOpenChange }: RequestClubDialogProps
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              {t('common.cancel', 'Cancel')}
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
