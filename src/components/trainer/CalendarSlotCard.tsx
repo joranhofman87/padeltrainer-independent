@@ -73,6 +73,7 @@ interface CalendarSlotCardProps {
   compact?: boolean;
   cyclusSessions?: number;
   durationHours?: number; // For visual spanning in week grid
+  startOffset?: number; // 0 or 0.5 for :30 start times
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
   onEditSlot?: (slot: SlotWithBookings) => void;
@@ -98,7 +99,7 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
   };
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, startOffset = 0, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -122,7 +123,11 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
   }[status];
 
   // Calculate height for multi-hour slots (80px per hour minus some padding)
-  const spanHeight = durationHours > 1 ? `${durationHours * 80 - 8}px` : undefined;
+  // And top offset for :30 start times
+  const cellHeight = 80;
+  const needsPositioning = durationHours !== 1 || startOffset > 0;
+  const spanHeight = needsPositioning ? `${durationHours * cellHeight - 8}px` : undefined;
+  const topOffset = startOffset > 0 ? `${startOffset * cellHeight}px` : undefined;
 
   const cardContent = (
     <div
@@ -130,9 +135,12 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
         "rounded-md border p-2 cursor-pointer transition-colors text-xs",
         statusColors[status],
         compact && "p-1",
-        durationHours > 1 && "absolute left-1 right-1 z-10"
+        needsPositioning && "absolute left-1 right-1 z-10"
       )}
-      style={spanHeight ? { height: spanHeight } : undefined}
+      style={{ 
+        height: spanHeight,
+        top: topOffset 
+      }}
     >
       <div className={cn("font-medium flex items-center gap-1", statusTextColors[status])}>
         {startTime} - {endTime}
