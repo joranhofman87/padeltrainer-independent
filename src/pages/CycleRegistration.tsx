@@ -1,0 +1,342 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { Calendar, Clock, AlertCircle, LogIn, Building2, User } from 'lucide-react';
+import MarketingLayout from '@/components/marketing/MarketingLayout';
+import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
+import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getActiveLocations, type Location } from '@/lib/locations';
+
+interface OwnerInfo {
+  type: 'trainer' | 'club';
+  name: string;
+  avatar_url?: string;
+}
+
+export default function CycleRegistration() {
+  const { cycleId } = useParams<{ cycleId: string }>();
+  const { t } = useTranslation('cycles');
+  const { user, profile, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+
+  const [cycle, setCycle] = useState<Cycle | null>(null);
+  const [owner, setOwner] = useState<OwnerInfo | null>(null);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
+  const [hasApplied, setHasApplied] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!cycleId) return;
+
+      setIsLoading(true);
+      try {
+        // Fetch cycle
+        const cycleData = await getCycle(cycleId);
+        if (!cycleData) {
+          setCycle(null);
+          return;
+        }
+        setCycle(cycleData);
+
+        // Fetch owner info
+        if (cycleData.owner_type === 'trainer') {
+          const { data: trainerData } = await supabase
+            .from('trainer_profiles')
+            .select('id, user_id')
+            .eq('id', cycleData.owner_id)
+            .single();
+
+          if (trainerData) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', trainerData.user_id)
+              .single();
+
+            setOwner({
+              type: 'trainer',
+              name: profileData?.full_name || 'Trainer',
+              avatar_url: profileData?.avatar_url || undefined
+            });
+            setTrainers([{ id: trainerData.id, name: profileData?.full_name || 'Trainer' }]);
+          }
+        } else {
+          const { data: clubData } = await supabase
+            .from('clubs' as any)
+            .select('id, name, logo_url')
+            .eq('id', cycleData.owner_id)
+            .single();
+
+          if (clubData) {
+            const club = clubData as any;
+            setOwner({
+              type: 'club',
+              name: club.name,
+              avatar_url: club.logo_url || undefined
+            });
+
+            // Fetch club trainers
+            const { data: clubTrainers } = await supabase
+              .from('club_trainers' as any)
+              .select('trainer_id')
+              .eq('club_id', club.id);
+
+            if (clubTrainers && clubTrainers.length > 0) {
+              const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_id);
+              
+              const { data: trainerProfiles } = await supabase
+                .from('trainer_profiles')
+                .select('id, user_id')
+                .in('id', trainerIds);
+
+              if (trainerProfiles) {
+                const userIds = trainerProfiles.map(tp => tp.user_id);
+                const { data: profiles } = await supabase
+                  .from('profiles')
+                  .select('id, full_name')
+                  .in('id', userIds);
+
+                if (profiles) {
+                  const trainersList = trainerProfiles.map(tp => {
+                    const profile = profiles.find(p => p.id === tp.user_id);
+                    return {
+                      id: tp.id,
+                      name: profile?.full_name || 'Trainer'
+                    };
+                  });
+                  setTrainers(trainersList);
+                }
+              }
+            }
+          }
+        }
+
+        // Fetch locations
+        const locationsData = await getActiveLocations();
+        setLocations(locationsData);
+
+        // Check if user has already applied
+        if (user) {
+          const { data: playerProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .single();
+
+          if (playerProfile) {
+            const applied = await hasPlayerApplied(cycleId, playerProfile.id);
+            setHasApplied(applied);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching cycle data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [cycleId, user]);
+
+  const handleLoginRedirect = () => {
+    const currentPath = window.location.pathname;
+    navigate(`/auth?redirect=${encodeURIComponent(currentPath)}`);
+  };
+
+  const handleSuccess = () => {
+    setIsSuccess(true);
+  };
+
+  const isEnrollmentClosed = cycle && cycle.status !== 'open';
+  const isDeadlinePassed = cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
+  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied && user;
+
+  if (isLoading || authLoading) {
+    return (
+      <MarketingLayout>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-2xl mx-auto space-y-6">
+            <Skeleton className="h-12 w-3/4" />
+            <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-[600px]" />
+          </div>
+        </div>
+      </MarketingLayout>
+    );
+  }
+
+  if (!cycle) {
+    return (
+      <MarketingLayout>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-md mx-auto text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h1 className="text-2xl font-bold mb-2">{t('registration.notFound')}</h1>
+            <p className="text-muted-foreground mb-6">
+              This registration cycle could not be found or is no longer available.
+            </p>
+            <Button onClick={() => navigate('/')}>
+              Go to homepage
+            </Button>
+          </div>
+        </div>
+      </MarketingLayout>
+    );
+  }
+
+  if (isSuccess) {
+    return (
+      <MarketingLayout>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-md mx-auto text-center">
+            <div className="mx-auto h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
+              <Calendar className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">{t('application.success.title')}</h1>
+            <p className="text-muted-foreground mb-6">
+              {t('application.success.message')}
+            </p>
+            <Card className="text-left mb-6">
+              <CardHeader>
+                <CardTitle className="text-base">{t('application.success.whatNext')}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">1</div>
+                  <p className="text-sm text-muted-foreground">{t('application.success.step1')}</p>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">2</div>
+                  <p className="text-sm text-muted-foreground">{t('application.success.step2')}</p>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">3</div>
+                  <p className="text-sm text-muted-foreground">{t('application.success.step3')}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Button onClick={() => navigate('/player')}>
+              {t('application.success.backToProfile')}
+            </Button>
+          </div>
+        </div>
+      </MarketingLayout>
+    );
+  }
+
+  return (
+    <MarketingLayout>
+      <div className="container mx-auto px-4 py-12">
+        <div className="max-w-2xl mx-auto">
+          {/* Cycle Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              {owner && (
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={owner.avatar_url} />
+                  <AvatarFallback>
+                    {owner.type === 'club' ? <Building2 className="h-5 w-5" /> : <User className="h-5 w-5" />}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  {owner?.type === 'club' ? 'Club' : 'Trainer'}
+                </p>
+                <p className="font-medium">{owner?.name}</p>
+              </div>
+            </div>
+
+            <h1 className="text-3xl font-bold mb-2">{cycle.name}</h1>
+            
+            <div className="flex flex-wrap gap-3 mb-4">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>
+                  {format(new Date(cycle.start_date), 'MMM d')} - {format(new Date(cycle.end_date), 'MMM d, yyyy')}
+                </span>
+              </div>
+              {cycle.enrollment_deadline && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    Deadline: {format(new Date(cycle.enrollment_deadline), 'MMM d, yyyy')}
+                  </span>
+                </div>
+              )}
+              <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
+                {t(`status.${cycle.status}`)}
+              </Badge>
+            </div>
+
+            {cycle.description && (
+              <p className="text-muted-foreground">{cycle.description}</p>
+            )}
+          </div>
+
+          {/* Status Alerts */}
+          {!user && (
+            <Alert className="mb-6">
+              <LogIn className="h-4 w-4" />
+              <AlertTitle>{t('application.loginRequired')}</AlertTitle>
+              <AlertDescription className="mt-2">
+                <Button size="sm" onClick={handleLoginRedirect}>
+                  Log in to apply
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {hasApplied && (
+            <Alert className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{t('application.alreadyApplied')}</AlertTitle>
+              <AlertDescription>
+                You have already submitted an application for this cycle.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {isEnrollmentClosed && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{t('application.enrollmentClosed')}</AlertTitle>
+            </Alert>
+          )}
+
+          {isDeadlinePassed && !isEnrollmentClosed && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{t('application.deadlinePassed')}</AlertTitle>
+            </Alert>
+          )}
+
+          {/* Application Form */}
+          {canApply && profile && (
+            <CycleApplicationForm
+              cycle={cycle}
+              playerId={user.id}
+              playerName={profile.full_name || ''}
+              playerEmail={user.email || ''}
+              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(t => ({ id: t.id, name: t.name })) : undefined}
+              locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              onSuccess={handleSuccess}
+            />
+          )}
+        </div>
+      </div>
+    </MarketingLayout>
+  );
+}
