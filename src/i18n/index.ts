@@ -8,6 +8,7 @@ import enAuth from './locales/en/auth.json';
 import enPlayer from './locales/en/player.json';
 import enTrainer from './locales/en/trainer.json';
 import enClub from './locales/en/club.json';
+import enCycles from './locales/en/cycles.json';
 
 import nlCommon from './locales/nl/common.json';
 import nlMarketing from './locales/nl/marketing.json';
@@ -15,6 +16,7 @@ import nlAuth from './locales/nl/auth.json';
 import nlPlayer from './locales/nl/player.json';
 import nlTrainer from './locales/nl/trainer.json';
 import nlClub from './locales/nl/club.json';
+import nlCycles from './locales/nl/cycles.json';
 
 const resources = {
   en: {
@@ -24,6 +26,7 @@ const resources = {
     player: enPlayer,
     trainer: enTrainer,
     club: enClub,
+    cycles: enCycles,
   },
   nl: {
     common: nlCommon,
@@ -32,6 +35,7 @@ const resources = {
     player: nlPlayer,
     trainer: nlTrainer,
     club: nlClub,
+    cycles: nlCycles,
   },
 };
 
@@ -42,7 +46,7 @@ i18n
     resources,
     fallbackLng: 'nl', // Default to Dutch for Netherlands-focused service
     defaultNS: 'common',
-    ns: ['common', 'marketing', 'auth', 'player', 'trainer', 'club'],
+    ns: ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles'],
     detection: {
       // For marketing pages, URL takes precedence; for app pages, localStorage
       order: ['path', 'localStorage', 'navigator'],
