@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,49 +18,31 @@ import {
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
+import { useClubContext } from '@/components/club/ClubLayout';
 
 export default function ClubIntakeRequests() {
   const { t } = useTranslation('cycles');
-  const { user, loading } = useAuth();
+  const { activeClub } = useClubContext();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [requests, setRequests] = useState<IntakeRequest[]>([]);
   const [filteredRequests, setFilteredRequests] = useState<IntakeRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [clubId, setClubId] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string>(searchParams.get('cycle') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequest | null>(null);
   const [showWeightsDialog, setShowWeightsDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
-    const fetchClubId = async () => {
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('club_managers' as any)
-        .select('club_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (data) {
-        setClubId((data as any).club_id);
-      }
-    };
-
-    if (user) fetchClubId();
-  }, [user]);
-
   const fetchData = async () => {
-    if (!clubId) return;
+    if (!activeClub) return;
 
     setIsLoading(true);
     try {
       const [cyclesData, requestsData] = await Promise.all([
-        getCycles('club', clubId),
-        getIntakeRequestsByOwner('club', clubId)
+        getCycles('club', activeClub.id),
+        getIntakeRequestsByOwner('club', activeClub.id)
       ]);
       setCycles(cyclesData);
       setRequests(requestsData);
@@ -75,8 +55,8 @@ export default function ClubIntakeRequests() {
   };
 
   useEffect(() => {
-    if (clubId) fetchData();
-  }, [clubId]);
+    if (activeClub) fetchData();
+  }, [activeClub]);
 
   useEffect(() => {
     let filtered = requests;
@@ -132,7 +112,7 @@ export default function ClubIntakeRequests() {
   const newCount = requests.filter(r => r.status === 'new').length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
 
-  if (loading || isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-48" />

@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,42 +7,24 @@ import { Plus, CalendarDays } from 'lucide-react';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import CycleForm from '@/components/cycles/CycleForm';
+import { useClubContext } from '@/components/club/ClubLayout';
 
 export default function ClubCycles() {
   const { t } = useTranslation('cycles');
-  const { user, loading } = useAuth();
+  const { activeClub } = useClubContext();
   const { toast } = useToast();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [clubId, setClubId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
 
-  useEffect(() => {
-    const fetchClubId = async () => {
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('club_managers' as any)
-        .select('club_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (data) {
-        setClubId((data as any).club_id);
-      }
-    };
-
-    if (user) fetchClubId();
-  }, [user]);
-
   const fetchCycles = async () => {
-    if (!clubId) return;
+    if (!activeClub) return;
 
     setIsLoading(true);
     try {
-      const data = await getCycles('club', clubId);
+      const data = await getCycles('club', activeClub.id);
       setCycles(data);
     } catch (error: any) {
       console.error('Error fetching cycles:', error);
@@ -59,8 +39,8 @@ export default function ClubCycles() {
   };
 
   useEffect(() => {
-    if (clubId) fetchCycles();
-  }, [clubId]);
+    if (activeClub) fetchCycles();
+  }, [activeClub]);
 
   const handleCycleCreated = () => {
     setShowCreateDialog(false);
@@ -68,7 +48,7 @@ export default function ClubCycles() {
     fetchCycles();
   };
 
-  if (loading || isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-48" />
@@ -126,7 +106,7 @@ export default function ClubCycles() {
       )}
 
       {/* Create/Edit Dialog */}
-      {clubId && (
+      {activeClub && (
         <CycleForm
           open={showCreateDialog || !!editingCycle}
           onOpenChange={(open) => {
@@ -137,7 +117,7 @@ export default function ClubCycles() {
           }}
           cycle={editingCycle || undefined}
           ownerType="club"
-          ownerId={clubId}
+          ownerId={activeClub.id}
           onSuccess={handleCycleCreated}
         />
       )}
