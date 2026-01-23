@@ -2,6 +2,12 @@
   "title": "Trainingscycli",
   "cycle": "Cyclus",
   "cycles": "Cycli",
+  "cyclesCount": "cycli",
+  "registration": {
+    "openCycles": "Open voor Inschrijving",
+    "deadline": "Deadline",
+    "notFound": "Inschrijving Niet Gevonden"
+  },
   "createCycle": "Cyclus Aanmaken",
   "editCycle": "Cyclus Bewerken",
   "deleteCycle": "Cyclus Verwijderen",
