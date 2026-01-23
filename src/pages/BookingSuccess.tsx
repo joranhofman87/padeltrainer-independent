@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import { logger } from '@/lib/logger';
 
 export default function BookingSuccess() {
   const [searchParams] = useSearchParams();
@@ -34,6 +36,12 @@ export default function BookingSuccess() {
 
   const verifyPayment = async () => {
     try {
+      logger.info('Starting payment verification', { 
+        component: 'BookingSuccess', 
+        bookingId, 
+        sessionId 
+      });
+
       // First, get the trainer's connected account ID from the booking
       const { data: bookingData } = await supabase
         .from('bookings')
@@ -68,15 +76,27 @@ export default function BookingSuccess() {
 
       if (data.paid) {
         setVerified(true);
+        logger.info('Payment verified successfully', { 
+          component: 'BookingSuccess', 
+          bookingId 
+        });
         toast({
           title: 'Payment Successful',
           description: 'Your booking has been confirmed!',
         });
       } else {
         setError('Payment was not completed. Please try again.');
+        logger.warn('Payment not completed', { 
+          component: 'BookingSuccess', 
+          bookingId 
+        });
       }
     } catch (err: any) {
-      console.error('Verification error:', err);
+      logger.error('Payment verification failed', err, { 
+        component: 'BookingSuccess', 
+        bookingId, 
+        sessionId 
+      });
       setError(err.message || 'Failed to verify payment');
     } finally {
       setVerifying(false);

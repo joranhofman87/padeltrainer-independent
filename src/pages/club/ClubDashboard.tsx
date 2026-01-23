@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubPlayers, getClubTrainers } from '@/lib/club';
+import { logger } from '@/lib/logger';
 
 export default function ClubDashboard() {
   const { t } = useTranslation('club');
@@ -35,7 +36,10 @@ export default function ClubDashboard() {
           players: playersData.length,
         });
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        logger.error('Error fetching club stats', error as Error, { 
+          component: 'ClubDashboard', 
+          clubId: activeClub?.id 
+        });
       }
     }
 
