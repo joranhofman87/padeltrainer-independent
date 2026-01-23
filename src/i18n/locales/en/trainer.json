@@ -518,5 +518,10 @@
     "noRequestsDescription": "Booking requests from players will appear here"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
-  "clearFilters": "Clear Filters"
+  "clearFilters": "Clear Filters",
+  "showingResults": "Showing {{start}}-{{end}} of {{total}} trainers",
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next"
+  }
 }
