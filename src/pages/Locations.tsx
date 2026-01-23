@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home } from 'lucide-react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Command,
   CommandEmpty,
@@ -92,6 +93,21 @@ export default function Locations() {
   }, [locations, searchQuery, selectedCity, selectedCountry, trainersAvailable, indoorCourtsOnly, trainerCounts]);
 
   const totalTrainers = Object.values(trainerCounts).reduce((a, b) => a + b, 0);
+
+  const hasActiveFilters = 
+    searchQuery !== '' || 
+    selectedCity !== 'all' || 
+    selectedCountry !== 'all' || 
+    trainersAvailable || 
+    indoorCourtsOnly;
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setSelectedCity('all');
+    setSelectedCountry('all');
+    setTrainersAvailable(false);
+    setIndoorCourtsOnly(false);
+  };
 
   // Structured data for location list
   const structuredData = {
@@ -308,6 +324,88 @@ export default function Locations() {
                   </Label>
                 </div>
               </div>
+
+              {/* Active filter badges */}
+              {hasActiveFilters && (
+                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
+                  <span className="text-sm text-muted-foreground">{t('filters')}:</span>
+                  
+                  {searchQuery && (
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1">
+                      <Search className="h-3 w-3" />
+                      <span className="max-w-[150px] truncate">"{searchQuery}"</span>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                        onClick={() => setSearchQuery('')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  
+                  {selectedCountry !== 'all' && (
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1">
+                      <span>{selectedCountry}</span>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                        onClick={() => {
+                          setSelectedCountry('all');
+                          setSelectedCity('all');
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  
+                  {selectedCity !== 'all' && (
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1">
+                      <MapPin className="h-3 w-3" />
+                      <span>{selectedCity}</span>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                        onClick={() => setSelectedCity('all')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  
+                  {trainersAvailable && (
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1">
+                      <span>{t('locations.trainersAvailableFilter')}</span>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                        onClick={() => setTrainersAvailable(false)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  
+                  {indoorCourtsOnly && (
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1">
+                      <Home className="h-3 w-3" />
+                      <span>{t('locations.indoorCourtsFilter')}</span>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                        onClick={() => setIndoorCourtsOnly(false)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground h-auto py-1 px-2"
+                    onClick={clearAllFilters}
+                  >
+                    {t('clearAll')}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
