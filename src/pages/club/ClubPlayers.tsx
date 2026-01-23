@@ -44,7 +44,6 @@ import {
   deleteClubPlayer,
   type ClubPlayer,
 } from '@/lib/club';
-import { ClubNavigation } from '@/components/club/ClubNavigation';
 
 export default function ClubPlayers() {
   const { t } = useTranslation('club');
@@ -205,19 +204,6 @@ export default function ClubPlayers() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold">{t('players.title')}</h1>
-            <Button onClick={openAddDialog}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('players.addPlayer')}
-            </Button>
-          </div>
-        </div>
-        <ClubNavigation />
-      </div>
 
       <div className="container mx-auto px-4 py-8">
         {players.length === 0 ? (
@@ -234,11 +220,17 @@ export default function ClubPlayers() {
           </Card>
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle>{t('players.title')}</CardTitle>
-              <CardDescription>
-                {players.length} {players.length === 1 ? 'player' : 'players'}
-              </CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>{t('players.title')}</CardTitle>
+                <CardDescription>
+                  {players.length} {players.length === 1 ? 'player' : 'players'}
+                </CardDescription>
+              </div>
+              <Button onClick={openAddDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t('players.addPlayer')}
+              </Button>
             </CardHeader>
             <CardContent>
               <Table>
