@@ -13,6 +13,7 @@ import {
   Square,
   Archive,
   FileText,
+  Link2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -86,6 +87,13 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
     }
   };
 
+  const copyRegistrationLink = () => {
+    const lang = document.documentElement.lang || 'en';
+    const url = `${window.location.origin}/${lang}/register/${cycle.id}`;
+    navigator.clipboard.writeText(url);
+    toast.success(t('actions.linkCopied'));
+  };
+
   return (
     <Card className="hover:border-primary/30 transition-colors">
       <CardHeader className="pb-3">
@@ -122,6 +130,13 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     <FileText className="mr-2 h-4 w-4" />
                     {t('actions.viewRequests')}
                   </DropdownMenuItem>
+                  
+                  {cycle.status === 'open' && (
+                    <DropdownMenuItem onClick={copyRegistrationLink}>
+                      <Link2 className="mr-2 h-4 w-4" />
+                      {t('actions.shareLink')}
+                    </DropdownMenuItem>
+                  )}
                   
                   <DropdownMenuSeparator />
                   

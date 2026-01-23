@@ -32,7 +32,7 @@ export default function ClubCycles() {
         .single();
 
       if (data) {
-        setClubId(data.club_id);
+        setClubId((data as any).club_id);
       }
     };
 

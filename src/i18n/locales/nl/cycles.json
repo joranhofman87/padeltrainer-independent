@@ -38,7 +38,9 @@
     "closeEnrollment": "Inschrijving Sluiten",
     "generateProposals": "Voorstellen Genereren",
     "viewRequests": "Aanmeldingen Bekijken",
-    "archive": "Archiveren"
+    "archive": "Archiveren",
+    "shareLink": "Registratielink Delen",
+    "linkCopied": "Registratielink gekopieerd!"
   },
   
   "stats": {

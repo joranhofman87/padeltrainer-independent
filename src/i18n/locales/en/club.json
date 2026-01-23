@@ -265,7 +265,9 @@
     "profile": "Profile",
     "subscription": "Subscription",
     "settings": "Settings",
-    "lessons": "Lessons"
+    "lessons": "Lessons",
+    "cycles": "Registration Cycles",
+    "intakeRequests": "Intake Requests"
   },
   "subscription": {
     "title": "Club Subscription",

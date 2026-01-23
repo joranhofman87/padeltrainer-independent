@@ -91,7 +91,7 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
   };
 
   return (
-    <Card className={proposal.status === 'approved' ? 'border-green-500/30' : ''}>
+    <Card className={proposal.status === 'confirmed' ? 'border-green-500/30' : ''}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">

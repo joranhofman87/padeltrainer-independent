@@ -38,7 +38,9 @@
     "closeEnrollment": "Close Enrollment",
     "generateProposals": "Generate Proposals",
     "viewRequests": "View Requests",
-    "archive": "Archive"
+    "archive": "Archive",
+    "shareLink": "Share Registration Link",
+    "linkCopied": "Registration link copied!"
   },
   
   "stats": {

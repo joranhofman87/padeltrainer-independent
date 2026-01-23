@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2 } from 'lucide-react';
+import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2, CalendarDays } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { supabase } from '@/integrations/supabase/client';
@@ -430,7 +430,7 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Quick Actions - 4 cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
             onClick={() => navigate('/lessons')}
@@ -503,6 +503,25 @@ export default function TrainerDashboard() {
             <CardContent>
               <CardDescription>
                 {t('dashboard.quickActions.myProfile.description', 'Edit your profile, add locations and update your details')}
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+            onClick={() => navigate('/trainer/cycles')}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <CalendarDays className="h-5 w-5 text-purple-600" />
+                </div>
+                <CardTitle className="text-lg">{t('dashboard.quickActions.cycles.title', 'Registration Cycles')}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                {t('dashboard.quickActions.cycles.description', 'Create signup forms for your training programs')}
               </CardDescription>
             </CardContent>
           </Card>
