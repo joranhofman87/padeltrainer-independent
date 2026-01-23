@@ -222,13 +222,21 @@ export async function getClubTrainers(clubProfileId: string) {
   return data || [];
 }
 
-// Get club players
-export async function getClubPlayers(clubProfileId: string): Promise<ClubPlayer[]> {
+// Get club players with optional pagination
+export async function getClubPlayers(
+  clubProfileId: string,
+  options: { page?: number; pageSize?: number } = {}
+): Promise<ClubPlayer[]> {
+  const { page = 0, pageSize = 100 } = options;
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
   const { data, error } = await supabase
     .from('club_players')
     .select('*')
     .eq('club_profile_id', clubProfileId)
-    .order('full_name');
+    .order('full_name')
+    .range(from, to);
 
   if (error) {
     console.error('Error fetching club players:', error);
@@ -638,13 +646,17 @@ export async function inviteClubTrainer(
   return { success: true, error: null, invitation: result.data };
 }
 
-// Get all invitations for a club
-export async function getClubTrainerInvitations(clubProfileId: string) {
+// Get all invitations for a club with optional limit
+export async function getClubTrainerInvitations(
+  clubProfileId: string,
+  limit: number = 100
+) {
   const { data, error } = await supabase
     .from('club_trainer_invitations')
     .select('*')
     .eq('club_profile_id', clubProfileId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(limit);
 
   if (error) {
     console.error('Error fetching invitations:', error);

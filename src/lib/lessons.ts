@@ -154,19 +154,39 @@ export async function createBooking(playerId: string, slotId: string, lessonId: 
     .single();
 }
 
-export async function getPlayerBookings(playerId: string) {
+export interface PaginationOptions {
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getPlayerBookings(
+  playerId: string, 
+  options: PaginationOptions = {}
+) {
+  const { page = 0, pageSize = 50 } = options;
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
   return supabase
     .from('bookings')
     .select(`
       *,
       availability_slots(*, trainer_profiles(*, profiles(*))),
       lessons(*)
-    `)
+    `, { count: 'exact' })
     .eq('player_id', playerId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(from, to);
 }
 
-export async function getTrainerBookings(trainerId: string) {
+export async function getTrainerBookings(
+  trainerId: string,
+  options: PaginationOptions = {}
+) {
+  const { page = 0, pageSize = 50 } = options;
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
   return supabase
     .from('bookings')
     .select(`
@@ -174,9 +194,10 @@ export async function getTrainerBookings(trainerId: string) {
       availability_slots!inner(*),
       lessons(*),
       profiles:player_id(*)
-    `)
+    `, { count: 'exact' })
     .eq('availability_slots.trainer_id', trainerId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(from, to);
 }
 
 export async function updateBookingStatus(bookingId: string, status: Booking['status']) {
