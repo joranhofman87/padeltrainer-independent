@@ -10,11 +10,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Phone, User, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { validatePhone } from '@/lib/validation';
 
 export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
   const [isLoading, setIsLoading] = useState(false);
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [knltbNumber, setKnltbNumber] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -160,11 +162,23 @@ export default function Onboarding() {
                 type="tel"
                 placeholder="+31 6 12345678"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setPhoneError(null);
+                }}
+                onBlur={() => {
+                  const error = validatePhone(phone);
+                  setPhoneError(error ? t(`auth:${error}`) : null);
+                }}
+                className={phoneError ? 'border-destructive' : ''}
               />
-              <p className="text-xs text-muted-foreground">
-                {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
-              </p>
+              {phoneError ? (
+                <p className="text-xs text-destructive">{phoneError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
+                </p>
+              )}
             </div>
 
             {/* Benefits reminder */}

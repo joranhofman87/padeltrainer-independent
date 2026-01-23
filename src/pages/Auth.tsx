@@ -21,19 +21,34 @@ export default function Auth() {
 
   useEffect(() => {
     if (!loading && user) {
+      // Check for redirect URL from pre-login context (e.g., cycle application)
+      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      
       if (role) {
-        // Priority: admin > trainer > club > player
-        if (role === 'admin') {
-          navigate('/admin');
-        } else if (role === 'trainer') {
-          navigate('/trainer');
-        } else if (role === 'club') {
-          navigate('/club');
+        // Existing user with role - honor redirect if present, otherwise go to dashboard
+        if (redirectUrl) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          navigate(redirectUrl);
         } else {
-          navigate('/player');
+          // Priority: admin > trainer > club > player
+          if (role === 'admin') {
+            navigate('/admin');
+          } else if (role === 'trainer') {
+            navigate('/trainer');
+          } else if (role === 'club') {
+            navigate('/club');
+          } else {
+            navigate('/player');
+          }
         }
       } else {
-        // User without role - check for pending role from signup
+        // New user without role - must complete onboarding first
+        // Clear any redirect URL (they'll need to re-trigger after onboarding)
+        if (redirectUrl) {
+          sessionStorage.removeItem('redirectAfterLogin');
+        }
+        
+        // Check for pending role from signup
         const pendingRole = sessionStorage.getItem('pendingRole');
         if (pendingRole) {
           navigate(`/onboarding/${pendingRole}`);

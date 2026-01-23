@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Users, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
+import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -211,6 +212,7 @@ export default function PlayerSignup() {
                 required
                 minLength={6}
               />
+              <PasswordStrengthIndicator password={password} />
               {errors.password && (
                 <p className="text-sm text-destructive">{errors.password}</p>
               )}
