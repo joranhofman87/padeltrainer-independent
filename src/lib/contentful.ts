@@ -1,11 +1,21 @@
-import { createClient, EntryFieldTypes, Entry, Asset } from 'contentful';
+import { createClient, EntryFieldTypes, Entry, Asset, ContentfulClientApi } from 'contentful';
 import { BLOCKS, type Document } from '@contentful/rich-text-types';
 
 // Contentful client configuration
-const client = createClient({
-  space: import.meta.env.VITE_CONTENTFUL_SPACE_ID || 'svknnky6rx22',
-  accessToken: import.meta.env.VITE_CONTENTFUL_ACCESS_TOKEN || 't8UH6GF7-In5Hz5NFCcdPvFrtICqXEaPa0yZnc6Q4ZE',
-});
+const spaceId = import.meta.env.VITE_CONTENTFUL_SPACE_ID;
+const accessToken = import.meta.env.VITE_CONTENTFUL_ACCESS_TOKEN;
+
+// Create client only if credentials are configured
+let client: ContentfulClientApi<undefined> | null = null;
+
+if (spaceId && accessToken) {
+  client = createClient({
+    space: spaceId,
+    accessToken: accessToken,
+  });
+} else {
+  console.warn('Contentful credentials not configured. Blog features will be disabled.');
+}
 
 // Content type skeleton for Contentful SDK v10+
 export interface BlogPostSkeleton {
@@ -89,6 +99,11 @@ function getContentfulLocale(locale: string): string {
 
 // Fetch all blog posts, sorted by published date (newest first)
 export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
+  if (!client) {
+    console.warn('Contentful client not initialized');
+    return [];
+  }
+  
   try {
     const response = await client.getEntries<BlogPostSkeleton>({
       content_type: 'blogPost',
@@ -105,6 +120,11 @@ export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
 
 // Fetch a single blog post by slug
 export async function getBlogPostBySlug(slug: string, locale: string = 'en'): Promise<BlogPost | null> {
+  if (!client) {
+    console.warn('Contentful client not initialized');
+    return null;
+  }
+  
   try {
     const response = await client.getEntries<BlogPostSkeleton>({
       content_type: 'blogPost',

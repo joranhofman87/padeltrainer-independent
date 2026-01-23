@@ -570,6 +570,95 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
   }
 };
 
+// Simple rate limiting using in-memory store (resets on cold start)
+// For production, consider using Deno KV or Redis
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_MAX = 5; // Max 5 requests
+const RATE_LIMIT_WINDOW = 60 * 1000; // Per minute
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const record = rateLimitStore.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return { allowed: true, remaining: RATE_LIMIT_MAX - 1 };
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, remaining: 0 };
+  }
+  
+  record.count++;
+  return { allowed: true, remaining: RATE_LIMIT_MAX - record.count };
+}
+
+// Server-side validation for partner inquiry
+function validatePartnerInquiry(data: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  // Validate name
+  if (!data.name || typeof data.name !== 'string') {
+    errors.push('Name is required');
+  } else if (data.name.trim().length < 2) {
+    errors.push('Name must be at least 2 characters');
+  } else if (data.name.length > 100) {
+    errors.push('Name must be less than 100 characters');
+  }
+  
+  // Validate company name
+  if (!data.companyName || typeof data.companyName !== 'string') {
+    errors.push('Company name is required');
+  } else if (data.companyName.trim().length < 2) {
+    errors.push('Company name must be at least 2 characters');
+  } else if (data.companyName.length > 100) {
+    errors.push('Company name must be less than 100 characters');
+  }
+  
+  // Validate email
+  if (!data.email || typeof data.email !== 'string') {
+    errors.push('Email is required');
+  } else if (data.email.length > 255) {
+    errors.push('Email must be less than 255 characters');
+  } else {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email)) {
+      errors.push('Invalid email address');
+    }
+  }
+  
+  // Validate phone
+  if (!data.phone || typeof data.phone !== 'string') {
+    errors.push('Phone is required');
+  } else if (data.phone.length < 6) {
+    errors.push('Phone must be at least 6 characters');
+  } else if (data.phone.length > 20) {
+    errors.push('Phone must be less than 20 characters');
+  }
+  
+  // Validate message
+  if (!data.message || typeof data.message !== 'string') {
+    errors.push('Message is required');
+  } else if (data.message.trim().length < 10) {
+    errors.push('Message must be at least 10 characters');
+  } else if (data.message.length > 2000) {
+    errors.push('Message must be less than 2000 characters');
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+// Basic HTML sanitization for email content
+function sanitizeForHtml(str: string): string {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -586,7 +675,57 @@ const handler = async (req: Request): Promise<Response> => {
     // Allow partner_inquiry without auth (public contact form)
     const isPartnerInquiry = type === "partner_inquiry";
     
-    if (!isPartnerInquiry) {
+    if (isPartnerInquiry) {
+      // Get client IP for rate limiting
+      const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0]?.trim() || 
+                       req.headers.get("cf-connecting-ip") || 
+                       "unknown";
+      
+      // Check rate limit
+      const rateLimit = checkRateLimit(clientIp);
+      if (!rateLimit.allowed) {
+        console.log(`Rate limit exceeded for IP: ${clientIp}`);
+        return new Response(
+          JSON.stringify({ error: "Too many requests. Please try again later." }),
+          { 
+            status: 429, 
+            headers: { 
+              "Content-Type": "application/json", 
+              "Retry-After": "60",
+              ...corsHeaders 
+            } 
+          }
+        );
+      }
+      
+      // Validate partner inquiry data server-side
+      const validation = validatePartnerInquiry(data);
+      if (!validation.valid) {
+        console.log("Partner inquiry validation failed:", validation.errors);
+        return new Response(
+          JSON.stringify({ error: "Validation failed", details: validation.errors }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      
+      // For partner_inquiry, only allow sending to the designated email
+      if (to !== "info@padeltrainer.ai") {
+        console.error("Partner inquiry attempted to send to unauthorized address:", to);
+        return new Response(
+          JSON.stringify({ error: "Invalid recipient" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      
+      // Sanitize user input before using in HTML email
+      data.name = sanitizeForHtml(data.name || '');
+      data.companyName = sanitizeForHtml(data.companyName || '');
+      data.email = sanitizeForHtml(data.email || '');
+      data.phone = sanitizeForHtml(data.phone || '');
+      data.message = sanitizeForHtml(data.message || '');
+      
+      console.log("Partner inquiry email (public form submission) - validated and rate limited");
+    } else {
       if (!authHeader) {
         console.error("No authorization header provided");
         return new Response(
@@ -617,8 +756,6 @@ const handler = async (req: Request): Promise<Response> => {
       } else {
         console.log("Email request from service role (internal call)");
       }
-    } else {
-      console.log("Partner inquiry email (public form submission)");
     }
 
     if (!to || !type) {
