@@ -70,11 +70,18 @@ export function TrainerCalendarGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
-  // Calculate slot duration in hours for visual spanning
+  // Calculate slot duration in hours for visual spanning (including fractional hours)
   const getSlotDurationHours = (slot: SlotWithBookings) => {
     const startTime = new Date(slot.start_time).getTime();
     const endTime = new Date(slot.end_time).getTime();
-    return Math.max(1, Math.ceil((endTime - startTime) / (60 * 60 * 1000)));
+    const hours = (endTime - startTime) / (60 * 60 * 1000);
+    return Math.max(1, hours); // Keep fractional value (1.5, 2.5, etc.)
+  };
+
+  // Calculate the vertical offset for slots starting at :30
+  const getSlotStartOffset = (slot: SlotWithBookings) => {
+    const startMinutes = new Date(slot.start_time).getMinutes();
+    return startMinutes >= 30 ? 0.5 : 0; // 0.5 = 50% of cell height
   };
 
   // Track which cells are occupied by spanning slots to prevent clicks
@@ -85,10 +92,15 @@ export function TrainerCalendarGrid({
       const slotDate = new Date(slot.start_time);
       const dayKey = format(slotDate, "yyyy-MM-dd");
       const startHour = slotDate.getHours();
+      const startOffset = getSlotStartOffset(slot);
       const durationHours = getSlotDurationHours(slot);
       
-      // Mark all hours except the first as occupied (the first shows the slot card)
-      for (let h = 1; h < durationHours; h++) {
+      // Calculate total hours spanned including offset
+      // E.g., 14:30-16:00 = 1.5h duration + 0.5 offset = occupies 14:00 (partial), 15:00 (full)
+      const totalSpan = Math.ceil(durationHours + startOffset);
+      
+      // Mark hours after the first as occupied (the first shows the slot card)
+      for (let h = 1; h < totalSpan; h++) {
         const occupiedHour = startHour + h;
         if (occupiedHour <= 23) {
           occupied.add(`${dayKey}-${occupiedHour}`);
@@ -232,6 +244,7 @@ export function TrainerCalendarGrid({
                             key={slot.id} 
                             slot={slot} 
                             durationHours={getSlotDurationHours(slot)}
+                            startOffset={getSlotStartOffset(slot)}
                             onBookForPlayer={onBookForPlayer}
                             onDuplicateCyclus={onDuplicateCyclus}
                             onDeleteSlot={onDeleteSlot}
