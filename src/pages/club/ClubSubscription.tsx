@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ClubNavigation } from "@/components/club/ClubNavigation";
-import { 
+import {
   checkClubSubscription, 
   createClubCheckout, 
   openClubBillingPortal,
@@ -178,14 +177,6 @@ export default function ClubSubscription() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">{t("subscription.title")}</h1>
-            <p className="text-muted-foreground">{activeClub.location?.name}</p>
-          </div>
-        </div>
-
-        <ClubNavigation />
 
         {/* Trial Banner */}
         {isTrialing && (
