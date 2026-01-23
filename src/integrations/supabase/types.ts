@@ -535,6 +535,51 @@ export type Database = {
           },
         ]
       }
+      cycles: {
+        Row: {
+          created_at: string
+          description: string | null
+          end_date: string
+          enrollment_deadline: string | null
+          id: string
+          name: string
+          owner_id: string
+          owner_type: string
+          settings: Json | null
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          end_date: string
+          enrollment_deadline?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          owner_type: string
+          settings?: Json | null
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          end_date?: string
+          enrollment_deadline?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          owner_type?: string
+          settings?: Json | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       guest_players: {
         Row: {
           created_at: string
@@ -593,6 +638,108 @@ export type Database = {
           {
             foreignKeyName: "guest_players_trainer_id_fkey"
             columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intake_requests: {
+        Row: {
+          consent_given: boolean
+          created_at: string
+          cycle_id: string
+          email: string
+          full_name: string
+          id: string
+          lesson_type: string
+          location_id: string | null
+          notes: string | null
+          phone: string | null
+          player_id: string
+          preferred_days: string[]
+          preferred_duration_minutes: number | null
+          preferred_time_windows: Json
+          preferred_trainer_id: string | null
+          rating: number | null
+          rating_system: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          consent_given?: boolean
+          created_at?: string
+          cycle_id: string
+          email: string
+          full_name: string
+          id?: string
+          lesson_type: string
+          location_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          player_id: string
+          preferred_days: string[]
+          preferred_duration_minutes?: number | null
+          preferred_time_windows: Json
+          preferred_trainer_id?: string | null
+          rating?: number | null
+          rating_system?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          consent_given?: boolean
+          created_at?: string
+          cycle_id?: string
+          email?: string
+          full_name?: string
+          id?: string
+          lesson_type?: string
+          location_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          player_id?: string
+          preferred_days?: string[]
+          preferred_duration_minutes?: number | null
+          preferred_time_windows?: Json
+          preferred_trainer_id?: string | null
+          rating?: number | null
+          rating_system?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_requests_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_preferred_trainer_id_fkey"
+            columns: ["preferred_trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
             referencedColumns: ["id"]
@@ -1008,6 +1155,64 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      proposed_assignments: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          id: string
+          intake_request_id: string
+          rationale: Json | null
+          slot_id: string
+          status: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          intake_request_id: string
+          rationale?: Json | null
+          slot_id: string
+          status?: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          intake_request_id?: string
+          rationale?: Json | null
+          slot_id?: string
+          status?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposed_assignments_intake_request_id_fkey"
+            columns: ["intake_request_id"]
+            isOneToOne: false
+            referencedRelation: "intake_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposed_assignments_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposed_assignments_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rating_systems: {
         Row: {
