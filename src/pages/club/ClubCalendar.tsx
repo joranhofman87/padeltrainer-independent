@@ -29,7 +29,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
-import { ClubNavigation } from "@/components/club/ClubNavigation";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
 import { ClubAddSlotDialog, ClubBulkCreateSheet } from "@/components/club/ClubAddSlotDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -308,16 +307,6 @@ export default function ClubCalendar() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold">{clubName} - {t("dashboard.calendar")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("calendar.description", "View all trainer schedules")}
-          </p>
-        </div>
-        <ClubNavigation />
-      </div>
 
       <div className="container mx-auto px-4 py-8">
         <Card className="overflow-hidden">
