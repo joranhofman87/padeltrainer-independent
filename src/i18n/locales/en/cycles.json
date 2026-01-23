@@ -2,6 +2,12 @@
   "title": "Training Cycles",
   "cycle": "Cycle",
   "cycles": "Cycles",
+  "cyclesCount": "cycles",
+  "registration": {
+    "openCycles": "Open for Registration",
+    "deadline": "Deadline",
+    "notFound": "Registration Not Found"
+  },
   "createCycle": "Create Cycle",
   "editCycle": "Edit Cycle",
   "deleteCycle": "Delete Cycle",

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, ExternalLink, ArrowLeft, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings } from 'lucide-react';
+import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings } from 'lucide-react';
+import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
@@ -375,7 +376,16 @@ export default function LocationDetail() {
           </div>
 
           <Separator />
-        
+
+          {/* Open Cycles for Registration */}
+          {clubProfile && (
+            <ClubOpenCycles 
+              clubProfileId={clubProfile.id} 
+              clubName={location.name} 
+            />
+          )}
+
+          <Separator />
           {/* Claim Dialog */}
           {location && user && (
             <ClaimClubDialog
