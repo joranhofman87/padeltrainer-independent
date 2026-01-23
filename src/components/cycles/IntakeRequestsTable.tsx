@@ -1,0 +1,150 @@
+import { useTranslation } from 'react-i18next';
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { FileText, Users } from 'lucide-react';
+import { type IntakeRequest } from '@/lib/cycles';
+
+interface IntakeRequestsTableProps {
+  requests: IntakeRequest[];
+  onRowClick: (request: IntakeRequest) => void;
+  emptyMessage?: string;
+  emptyDescription?: string;
+}
+
+export default function IntakeRequestsTable({
+  requests,
+  onRowClick,
+  emptyMessage = 'No requests',
+  emptyDescription = 'Applications will appear here when players sign up'
+}: IntakeRequestsTableProps) {
+  const { t } = useTranslation('cycles');
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'new': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+      case 'proposed': return 'bg-purple-500/10 text-purple-600 border-purple-500/20';
+      case 'confirmed': return 'bg-green-500/10 text-green-600 border-green-500/20';
+      case 'waitlist': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
+      case 'rejected': return 'bg-red-500/10 text-red-600 border-red-500/20';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const formatAvailability = (request: IntakeRequest) => {
+    const days = request.preferred_days?.slice(0, 3).map(d => 
+      d.charAt(0).toUpperCase() + d.slice(1, 3)
+    ).join(', ');
+    return days || '—';
+  };
+
+  const getLessonTypeBadge = (lessonType: string) => {
+    const colors: Record<string, string> = {
+      private: 'bg-primary/10 text-primary',
+      duo: 'bg-orange-500/10 text-orange-600',
+      group: 'bg-cyan-500/10 text-cyan-600',
+      kids: 'bg-pink-500/10 text-pink-600'
+    };
+    return colors[lessonType] || 'bg-muted text-muted-foreground';
+  };
+
+  if (requests.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-16">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+              <FileText className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="font-semibold mb-1">{emptyMessage}</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              {emptyDescription}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('intakeRequests.table.player')}</TableHead>
+              <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>
+              <TableHead>{t('intakeRequests.table.rating')}</TableHead>
+              <TableHead className="hidden md:table-cell">{t('intakeRequests.table.availability')}</TableHead>
+              <TableHead className="hidden lg:table-cell">{t('intakeRequests.table.preferredTrainer')}</TableHead>
+              <TableHead>{t('intakeRequests.table.status')}</TableHead>
+              <TableHead className="hidden sm:table-cell">{t('intakeRequests.table.applied')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {requests.map((request) => (
+              <TableRow 
+                key={request.id} 
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => onRowClick(request)}
+              >
+                <TableCell>
+                  <div>
+                    <div className="font-medium">{request.full_name}</div>
+                    <div className="text-sm text-muted-foreground">{request.email}</div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={getLessonTypeBadge(request.lesson_type)}>
+                    {t(`application.form.lessonTypes.${request.lesson_type}`)}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {request.rating ? (
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium">{request.rating}</span>
+                      <span className="text-xs text-muted-foreground uppercase">
+                        {request.rating_system}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <span className="text-sm">{formatAvailability(request)}</span>
+                </TableCell>
+                <TableCell className="hidden lg:table-cell">
+                  {request.preferred_trainer_id ? (
+                    <div className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm">Specified</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={getStatusColor(request.status)}>
+                    {t(`intakeRequests.filters.${request.status}`)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                  {format(new Date(request.created_at), 'MMM d')}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
