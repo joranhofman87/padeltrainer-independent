@@ -148,7 +148,7 @@ export default function ManageLessons() {
         max_participants: formData.max_participants,
         min_skill_rating: formData.min_skill_rating ? parseFloat(formData.min_skill_rating) : null,
         max_skill_rating: formData.max_skill_rating ? parseFloat(formData.max_skill_rating) : null,
-        location: null, // Deprecated - location now on slots
+        location: null,
         is_active: formData.is_active,
         is_recurring: false,
         recurrence_type: null,
@@ -220,7 +220,7 @@ export default function ManageLessons() {
         max_participants: lesson.max_participants,
         min_skill_rating: lesson.min_skill_rating,
         max_skill_rating: lesson.max_skill_rating,
-        location: null, // Deprecated - location now on slots
+        location: null,
         is_active: true,
         is_recurring: false,
         recurrence_type: null,
