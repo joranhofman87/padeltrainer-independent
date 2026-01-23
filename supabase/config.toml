@@ -61,3 +61,6 @@ verify_jwt = false
 
 [functions.update-user]
 verify_jwt = false
+
+[functions.request-account-deletion]
+verify_jwt = false

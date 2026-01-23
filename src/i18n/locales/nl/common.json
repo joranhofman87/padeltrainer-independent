@@ -135,5 +135,36 @@
     "title": "Pagina Niet Gevonden",
     "description": "De pagina die je zoekt bestaat niet of is verplaatst.",
     "goHome": "Naar Home"
+  },
+  "cookies": {
+    "title": "Cookie Voorkeuren",
+    "description": "We gebruiken cookies om je ervaring te verbeteren en sitegebruik te analyseren.",
+    "acceptAll": "Alles Accepteren",
+    "rejectNonEssential": "Alleen Essentieel",
+    "customize": "Aanpassen",
+    "necessary": "Essentieel",
+    "necessaryDesc": "Nodig voor het functioneren van de site",
+    "analytics": "Analytics",
+    "analyticsDesc": "Helpen ons begrijpen hoe bezoekers onze site gebruiken",
+    "preferences": "Voorkeuren",
+    "preferencesDesc": "Onthouden je instellingen en voorkeuren",
+    "save": "Voorkeuren Opslaan",
+    "privacyLink": "Lees meer in ons Privacybeleid"
+  },
+  "deleteAccount": {
+    "title": "Account Verwijderen",
+    "description": "Verwijder je account en alle gegevens permanent",
+    "warning": "Deze actie kan niet ongedaan worden gemaakt. Al je gegevens worden permanent verwijderd:",
+    "warningProfile": "Je profiel en persoonlijke informatie",
+    "warningBookings": "Je boekingsgeschiedenis",
+    "warningData": "Alle bijbehorende gegevens en voorkeuren",
+    "confirmText": "Typ DELETE om te bevestigen",
+    "confirmTextError": "Typ DELETE om te bevestigen",
+    "confirmButton": "Verwijder Mijn Account",
+    "deleting": "Account verwijderen...",
+    "success": "Account Verwijderd",
+    "successDescription": "Je account is permanent verwijderd.",
+    "error": "Fout",
+    "errorDescription": "Account verwijderen mislukt. Probeer het opnieuw."
   }
 }

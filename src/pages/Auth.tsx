@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 
 export default function Auth() {
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,6 +19,17 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
+
+  // Handle email confirmation redirect
+  useEffect(() => {
+    const type = searchParams.get('type');
+    if (type === 'signup' || type === 'email_change') {
+      toast({
+        title: t('verification.confirmed'),
+        description: t('verification.confirmedDescription'),
+      });
+    }
+  }, [searchParams, toast, t]);
 
   useEffect(() => {
     if (!loading && user) {

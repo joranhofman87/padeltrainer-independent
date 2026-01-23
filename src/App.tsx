@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "next-themes";
 import { LanguageRouter, RootRedirect } from "@/components/LanguageRouter";
+import { CookieConsentProvider } from "@/contexts/CookieConsentContext";
+import { CookieConsentBanner } from "@/components/CookieConsentBanner";
 import "@/i18n";
 
 // Marketing pages
@@ -81,12 +83,13 @@ const queryClient = new QueryClient();
 const App = () => (
   <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-          <Routes>
+      <CookieConsentProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AuthProvider>
+            <Routes>
             {/* Root redirect - detects browser language */}
             <Route path="/" element={<RootRedirect />} />
             
@@ -161,9 +164,11 @@ const App = () => (
             </Route>
             <Route path="*" element={<NotFound />} />
             </Routes>
-          </AuthProvider>
-        </BrowserRouter>
-      </TooltipProvider>
+            <CookieConsentBanner />
+            </AuthProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </CookieConsentProvider>
     </QueryClientProvider>
   </ThemeProvider>
 );

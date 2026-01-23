@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Users, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
+import { VerificationPending } from '@/components/auth/VerificationPending';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -24,6 +25,7 @@ export default function PlayerSignup() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [showVerification, setShowVerification] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
@@ -66,7 +68,7 @@ export default function PlayerSignup() {
     
     setIsLoading(true);
 
-    const { error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName);
 
     if (error) {
       toast({
@@ -74,14 +76,18 @@ export default function PlayerSignup() {
         description: error.message,
         variant: 'destructive',
       });
-    } else {
-      // Store role preference in sessionStorage for onboarding
+    } else if (data?.session) {
+      // Session is immediately available (auto-confirm enabled for dev)
       sessionStorage.setItem('pendingRole', 'player');
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
       });
       navigate('/onboarding/player');
+    } else {
+      // No immediate session - email verification required
+      sessionStorage.setItem('pendingRole', 'player');
+      setShowVerification(true);
     }
 
     setIsLoading(false);
@@ -109,6 +115,15 @@ export default function PlayerSignup() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
+    );
+  }
+
+  if (showVerification) {
+    return (
+      <VerificationPending 
+        email={email} 
+        onBack={() => setShowVerification(false)} 
+      />
     );
   }
 
