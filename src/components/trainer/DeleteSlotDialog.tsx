@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { Trash2, AlertTriangle, Loader2, Bell, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { sendBookingCancellation } from "@/lib/email";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -101,10 +102,34 @@ export function DeleteSlotDialog({
         const slotIds = cyclusSlots?.map((s) => s.id) || [];
 
         if (slotIds.length > 0) {
-          // Cancel all bookings for these slots
+          // Get slot details for email notifications
+          const { data: slotsWithDetails } = await supabase
+            .from("availability_slots")
+            .select(`
+              id,
+              start_time,
+              end_time,
+              cyclus_name,
+              lessons(title),
+              trainer:trainer_profiles(
+                id,
+                user_id,
+                profiles:user_id(full_name, email)
+              )
+            `)
+            .in("id", slotIds);
+
+          // Cancel all bookings for these slots and get player info for notifications
           const { data: bookingsToCancel } = await supabase
             .from("bookings")
-            .select("id, guest_player_id, player_id")
+            .select(`
+              id, 
+              slot_id,
+              guest_player_id, 
+              player_id,
+              guest_players(full_name, email),
+              profiles:player_id(full_name, email, user_id)
+            `)
             .in("slot_id", slotIds)
             .in("status", ["pending", "confirmed"]);
 
@@ -114,7 +139,33 @@ export function DeleteSlotDialog({
               .update({ status: "cancelled" })
               .in("id", bookingsToCancel.map((b) => b.id));
 
-            // TODO: Send notification emails if notifyPlayers is true
+            // Send notification emails if notifyPlayers is true
+            if (notifyPlayers) {
+              for (const booking of bookingsToCancel) {
+                const slotDetails = slotsWithDetails?.find(s => s.id === booking.slot_id);
+                const trainerProfile = slotDetails?.trainer as any;
+                const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
+                const lessonTitle = slotDetails?.cyclus_name || (slotDetails?.lessons as any)?.title || "Training session";
+                const lessonDate = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "MMMM d, yyyy") : "";
+                const lessonTime = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "HH:mm") : "";
+
+                // Get player info from either guest_players or profiles
+                const playerInfo = booking.guest_player_id 
+                  ? (booking.guest_players as any)
+                  : (booking.profiles as any);
+
+                if (playerInfo?.email) {
+                  sendBookingCancellation(
+                    playerInfo.email,
+                    playerInfo.full_name || "Player",
+                    trainerName,
+                    lessonTitle,
+                    lessonDate,
+                    lessonTime
+                  ).catch(err => console.error("Failed to send cancellation email:", err));
+                }
+              }
+            }
           }
 
           // Delete all slots
@@ -132,8 +183,72 @@ export function DeleteSlotDialog({
         }
       } else {
         // Delete single slot
-        if (hasBookings) {
-          // Cancel bookings first
+        if (hasBookings && notifyPlayers) {
+          // Get slot details for email notifications
+          const { data: slotWithDetails } = await supabase
+            .from("availability_slots")
+            .select(`
+              id,
+              start_time,
+              end_time,
+              cyclus_name,
+              lessons(title),
+              trainer:trainer_profiles(
+                id,
+                user_id,
+                profiles:user_id(full_name, email)
+              )
+            `)
+            .eq("id", slot.id)
+            .single();
+
+          // Get bookings with player info
+          const { data: bookingsToCancel } = await supabase
+            .from("bookings")
+            .select(`
+              id,
+              guest_player_id,
+              player_id,
+              guest_players(full_name, email),
+              profiles:player_id(full_name, email, user_id)
+            `)
+            .eq("slot_id", slot.id)
+            .in("status", ["pending", "confirmed"]);
+
+          if (bookingsToCancel && bookingsToCancel.length > 0) {
+            // Cancel bookings
+            await supabase
+              .from("bookings")
+              .update({ status: "cancelled" })
+              .eq("slot_id", slot.id)
+              .in("status", ["pending", "confirmed"]);
+
+            // Send notifications
+            const trainerProfile = slotWithDetails?.trainer as any;
+            const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
+            const lessonTitle = slotWithDetails?.cyclus_name || (slotWithDetails?.lessons as any)?.title || "Training session";
+            const lessonDate = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "MMMM d, yyyy") : "";
+            const lessonTime = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "HH:mm") : "";
+
+            for (const booking of bookingsToCancel) {
+              const playerInfo = booking.guest_player_id 
+                ? (booking.guest_players as any)
+                : (booking.profiles as any);
+
+              if (playerInfo?.email) {
+                sendBookingCancellation(
+                  playerInfo.email,
+                  playerInfo.full_name || "Player",
+                  trainerName,
+                  lessonTitle,
+                  lessonDate,
+                  lessonTime
+                ).catch(err => console.error("Failed to send cancellation email:", err));
+              }
+            }
+          }
+        } else if (hasBookings) {
+          // Cancel bookings without notification
           await supabase
             .from("bookings")
             .update({ status: "cancelled" })
