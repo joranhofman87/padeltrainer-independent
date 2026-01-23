@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -304,7 +304,7 @@ export default function TrainersCity() {
                   <LocalizedLink to="/trainers">View All Trainers</LocalizedLink>
                 </Button>
                 <Button asChild>
-                  <LocalizedLink to="/signup/trainer">Become a Trainer</LocalizedLink>
+                  <Link to="/signup/trainer">Become a Trainer</Link>
                 </Button>
               </div>
             </CardContent>

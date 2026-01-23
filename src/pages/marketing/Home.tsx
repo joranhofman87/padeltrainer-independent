@@ -379,10 +379,10 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <LocalizedLink to="/signup/player">
+                <Link to="/signup/player">
                   {t('home.cta.button')}
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </LocalizedLink>
+                </Link>
               </Button>
               <Button size="lg" variant="secondary" className="text-lg px-8 h-14" asChild>
                 <LocalizedLink to="/trainers">{t('home.cta.browseTrainers')}</LocalizedLink>
