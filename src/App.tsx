@@ -52,7 +52,10 @@ import TrainerAnalytics from "./pages/TrainerAnalytics";
 import TrainerCalendar from "./pages/TrainerCalendar";
 import TrainerPlayers from "./pages/TrainerPlayers";
 import TrainerCyclus from "./pages/TrainerCyclus";
+import TrainerCycles from "./pages/TrainerCycles";
+import TrainerIntakeRequests from "./pages/TrainerIntakeRequests";
 import OpenSlots from "./pages/OpenSlots";
+import CycleRegistration from "./pages/CycleRegistration";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
 import FollowingList from "./pages/FollowingList";
@@ -72,6 +75,8 @@ import ClubTrainers from "./pages/club/ClubTrainers";
 import ClubProfile from "./pages/club/ClubProfile";
 import ClubCalendar from "./pages/club/ClubCalendar";
 import ClubLessons from "./pages/club/ClubLessons";
+import ClubCycles from "./pages/club/ClubCycles";
+import ClubIntakeRequests from "./pages/club/ClubIntakeRequests";
 import ClubSettings from "./pages/club/ClubSettings";
 import ClubSubscription from "./pages/club/ClubSubscription";
 import ClubTrainerInvitation from "./pages/club/ClubTrainerInvitation";
@@ -109,6 +114,7 @@ const App = () => (
               <Route path="locations" element={<Locations />} />
               <Route path="locations/:slug" element={<LocationDetail />} />
               <Route path="book/:trainerId" element={<BookLesson />} />
+              <Route path="register/:cycleId" element={<CycleRegistration />} />
             </Route>
             
             {/* App routes - language agnostic (uses localStorage preference) */}
@@ -139,6 +145,8 @@ const App = () => (
             <Route path="/trainer/calendar" element={<TrainerCalendar />} />
             <Route path="/trainer/players" element={<TrainerPlayers />} />
             <Route path="/trainer/cyclus" element={<TrainerCyclus />} />
+            <Route path="/trainer/cycles" element={<TrainerCycles />} />
+            <Route path="/trainer/intake-requests" element={<TrainerIntakeRequests />} />
             <Route path="/trainer/open-slots" element={<OpenSlots />} />
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
@@ -158,6 +166,8 @@ const App = () => (
               <Route path="trainers" element={<ClubTrainers />} />
               <Route path="calendar" element={<ClubCalendar />} />
               <Route path="lessons" element={<ClubLessons />} />
+              <Route path="cycles" element={<ClubCycles />} />
+              <Route path="intake-requests" element={<ClubIntakeRequests />} />
               <Route path="settings" element={<ClubSettings />} />
               <Route path="subscription" element={<ClubSubscription />} />
               <Route path="invitation/:token" element={<ClubTrainerInvitation />} />

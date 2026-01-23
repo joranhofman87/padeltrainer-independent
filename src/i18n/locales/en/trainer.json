@@ -73,6 +73,10 @@
       "myProfile": {
         "title": "My Profile",
         "description": "Edit your profile, add locations and update your details"
+      },
+      "cycles": {
+        "title": "Registration Cycles",
+        "description": "Create signup forms for your training programs"
       }
     },
     "setup": {

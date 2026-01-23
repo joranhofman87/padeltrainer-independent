@@ -265,7 +265,9 @@
     "profile": "Profiel",
     "subscription": "Abonnement",
     "settings": "Instellingen",
-    "lessons": "Lessen"
+    "lessons": "Lessen",
+    "cycles": "Inschrijfcycli",
+    "intakeRequests": "Aanmeldingen"
   },
   "lessons": {
     "title": "Lessen",

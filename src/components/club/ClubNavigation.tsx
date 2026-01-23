@@ -8,7 +8,9 @@ import {
   Building2, 
   Settings,
   CreditCard,
-  BookOpen
+  BookOpen,
+  CalendarDays,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,8 @@ const navItems = [
   { key: "players", path: "/club/players", icon: UserCircle },
   { key: "calendar", path: "/club/calendar", icon: Calendar },
   { key: "lessons", path: "/club/lessons", icon: BookOpen },
+  { key: "cycles", path: "/club/cycles", icon: CalendarDays },
+  { key: "intakeRequests", path: "/club/intake-requests", icon: FileText },
   { key: "profile", path: "/club/profile", icon: Building2 },
   { key: "subscription", path: "/club/subscription", icon: CreditCard },
   { key: "settings", path: "/club/settings", icon: Settings },

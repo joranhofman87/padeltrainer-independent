@@ -73,6 +73,10 @@
       "myProfile": {
         "title": "Mijn Profiel",
         "description": "Bewerk je profiel, voeg locaties toe en werk je gegevens bij"
+      },
+      "cycles": {
+        "title": "Inschrijfcycli",
+        "description": "Maak inschrijfformulieren voor je trainingsprogramma's"
       }
     },
     "setup": {
