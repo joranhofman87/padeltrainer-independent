@@ -325,6 +325,8 @@
     "cancel": "Annuleren",
     "goHome": "Naar Home",
     "signIn": "Inloggen",
-    "signUp": "Registreer als Trainer"
+    "signUp": "Registreer als Trainer",
+    "saving": "Opslaan...",
+    "save": "Wijzigingen opslaan"
   }
 }
