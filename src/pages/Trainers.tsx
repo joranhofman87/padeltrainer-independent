@@ -13,11 +13,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight } from 'lucide-react';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
-import { getTrainerAverageRating } from '@/lib/reviews';
+import { getBatchTrainerRatings } from '@/lib/reviews';
 import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
 import { Location } from '@/lib/locations';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination';
+
+const TRAINERS_PER_PAGE = 48;
 
 interface TrainerWithProfile {
   id: string;
@@ -74,6 +85,20 @@ export default function Trainers() {
     minTrainerRating: Number(searchParams.get('minTrainerRating')) || 0,
   }), [searchParams]);
 
+  // Parse current page from URL
+  const currentPage = Number(searchParams.get('page')) || 1;
+
+  // Update URL when page changes
+  const setCurrentPage = (page: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (page > 1) {
+      newParams.set('page', String(page));
+    } else {
+      newParams.delete('page');
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+
   // Update URL when search changes
   const setSearchQuery = (query: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -82,6 +107,8 @@ export default function Trainers() {
     } else {
       newParams.delete('search');
     }
+    // Reset to page 1 when search changes
+    newParams.delete('page');
     setSearchParams(newParams, { replace: true });
   };
 
@@ -166,6 +193,8 @@ export default function Trainers() {
       newParams.delete('minTrainerRating');
     }
     
+    // Reset to page 1 when filters change
+    newParams.delete('page');
     setSearchParams(newParams, { replace: true });
   };
 
@@ -250,18 +279,18 @@ export default function Trainers() {
       a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
     ));
 
-    // Fetch ratings for all trainers
-    const trainersWithRatings = await Promise.all(
-      trainerProfiles.map(async (trainer) => {
-        const { average, count } = await getTrainerAverageRating(trainer.id);
-        return {
-          ...trainer,
-          profile: profiles.find(p => p.user_id === trainer.user_id) || null,
-          averageRating: average || 0,
-          reviewCount: count,
-        };
-      })
-    );
+    // Batch fetch ratings for all trainers (single query instead of N+1)
+    const ratingsMap = await getBatchTrainerRatings(trainerIds);
+
+    const trainersWithRatings = trainerProfiles.map(trainer => {
+      const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
+      return {
+        ...trainer,
+        profile: profiles.find(p => p.user_id === trainer.user_id) || null,
+        averageRating: ratings.average,
+        reviewCount: ratings.count,
+      };
+    });
 
     setTrainers(trainersWithRatings);
 
@@ -371,6 +400,21 @@ export default function Trainers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainers, searchQuery, filters, sortBy, trainerLocationMap]);
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredAndSortedTrainers.length / TRAINERS_PER_PAGE);
+  
+  const paginatedTrainers = useMemo(() => {
+    const startIndex = (currentPage - 1) * TRAINERS_PER_PAGE;
+    return filteredAndSortedTrainers.slice(startIndex, startIndex + TRAINERS_PER_PAGE);
+  }, [filteredAndSortedTrainers, currentPage]);
+
+  // Reset to page 1 when filters change and current page is out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [filteredAndSortedTrainers.length, totalPages, currentPage]);
+
   const getInitials = (name: string | null) => {
     if (!name) return 'T';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -462,7 +506,14 @@ export default function Trainers() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found
+            {totalPages > 1 
+              ? t('showingResults', {
+                  start: ((currentPage - 1) * TRAINERS_PER_PAGE) + 1,
+                  end: Math.min(currentPage * TRAINERS_PER_PAGE, filteredAndSortedTrainers.length),
+                  total: filteredAndSortedTrainers.length
+                })
+              : `${filteredAndSortedTrainers.length} trainer${filteredAndSortedTrainers.length !== 1 ? 's' : ''} found`
+            }
           </p>
         </div>
 
@@ -487,8 +538,9 @@ export default function Trainers() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredAndSortedTrainers.map((trainer) => (
+          <>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {paginatedTrainers.map((trainer) => (
               <Card 
                 key={trainer.id} 
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
@@ -579,6 +631,86 @@ export default function Trainers() {
               </Card>
             ))}
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <Pagination className="mt-8">
+              <PaginationContent>
+                {currentPage > 1 && (
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      className="cursor-pointer"
+                    />
+                  </PaginationItem>
+                )}
+                
+                {/* First page */}
+                <PaginationItem>
+                  <PaginationLink
+                    onClick={() => setCurrentPage(1)}
+                    isActive={currentPage === 1}
+                    className="cursor-pointer"
+                  >
+                    1
+                  </PaginationLink>
+                </PaginationItem>
+                
+                {/* Ellipsis before current */}
+                {currentPage > 3 && (
+                  <PaginationItem>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                )}
+                
+                {/* Pages around current */}
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => page !== 1 && page !== totalPages && Math.abs(page - currentPage) <= 1)
+                  .map(page => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))
+                }
+                
+                {/* Ellipsis after current */}
+                {currentPage < totalPages - 2 && (
+                  <PaginationItem>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                )}
+                
+                {/* Last page */}
+                {totalPages > 1 && (
+                  <PaginationItem>
+                    <PaginationLink
+                      onClick={() => setCurrentPage(totalPages)}
+                      isActive={currentPage === totalPages}
+                      className="cursor-pointer"
+                    >
+                      {totalPages}
+                    </PaginationLink>
+                  </PaginationItem>
+                )}
+                
+                {currentPage < totalPages && (
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      className="cursor-pointer"
+                    />
+                  </PaginationItem>
+                )}
+              </PaginationContent>
+            </Pagination>
+          )}
+          </>
         )}
       </main>
     </div>

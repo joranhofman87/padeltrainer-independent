@@ -518,5 +518,10 @@
     "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. Kom binnenkort terug!",
-  "clearFilters": "Filters wissen"
+  "clearFilters": "Filters wissen",
+  "showingResults": "{{start}}-{{end}} van {{total}} trainers",
+  "pagination": {
+    "previous": "Vorige",
+    "next": "Volgende"
+  }
 }

@@ -85,6 +85,39 @@ export async function getTrainerAverageRating(trainerId: string) {
   return { average: Math.round(average * 10) / 10, count: data.length, error: null };
 }
 
+export async function getBatchTrainerRatings(trainerIds: string[]) {
+  if (trainerIds.length === 0) return new Map<string, { average: number; count: number }>();
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('trainer_id, rating')
+    .in('trainer_id', trainerIds);
+
+  if (error || !data) return new Map<string, { average: number; count: number }>();
+
+  // Aggregate ratings per trainer
+  const ratingsMap = new Map<string, { sum: number; count: number }>();
+
+  data.forEach(review => {
+    const existing = ratingsMap.get(review.trainer_id) || { sum: 0, count: 0 };
+    ratingsMap.set(review.trainer_id, {
+      sum: existing.sum + review.rating,
+      count: existing.count + 1,
+    });
+  });
+
+  // Convert to final format
+  const result = new Map<string, { average: number; count: number }>();
+  ratingsMap.forEach((value, trainerId) => {
+    result.set(trainerId, {
+      average: Math.round((value.sum / value.count) * 10) / 10,
+      count: value.count,
+    });
+  });
+
+  return result;
+}
+
 export async function getPlayerReview(bookingId: string) {
   return supabase
     .from('reviews')
