@@ -260,7 +260,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Log the deletion (using admin_impersonation_logs pattern for consistency)
+    // Log the admin action
+    await supabaseAdmin.from("admin_impersonation_logs").insert({
+      admin_user_id: adminUser.id,
+      target_user_id: target_user_id,
+      action: 'delete_user',
+      details: { 
+        deleted_email: targetProfile?.email,
+        deleted_name: targetProfile?.full_name
+      },
+      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+      user_agent: req.headers.get("user-agent"),
+      expires_at: new Date().toISOString(), // Not applicable for delete, just set to now
+    });
+
     console.log(`User deleted: ${target_user_id} (${targetProfile?.email}) by admin ${adminUser.id}`);
 
     return new Response(

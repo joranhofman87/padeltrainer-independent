@@ -78,6 +78,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Prevent resetting admin passwords
+    const { data: targetAdminRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", target_user_id)
+      .eq("role", "admin")
+      .single();
+
+    if (targetAdminRole) {
+      return new Response(
+        JSON.stringify({ error: "Cannot reset admin passwords via this endpoint" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get the target user to verify they exist
     const { data: targetUser, error: userError } = await supabaseAdmin.auth.admin.getUserById(target_user_id);
 
@@ -101,6 +116,16 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Log the admin action
+    await supabaseAdmin.from("admin_impersonation_logs").insert({
+      admin_user_id: adminUser.id,
+      target_user_id: target_user_id,
+      action: 'password_reset',
+      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+      user_agent: req.headers.get("user-agent"),
+      expires_at: new Date().toISOString(), // Not applicable for reset, just set to now
+    });
 
     return new Response(
       JSON.stringify({ 

@@ -63,6 +63,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Prevent modifying admin users
+    const { data: targetAdminRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", target_user_id)
+      .eq("role", "admin")
+      .single();
+
+    if (targetAdminRole) {
+      return new Response(
+        JSON.stringify({ error: "Cannot modify admin users" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Update email in auth if provided
     if (email) {
       const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
@@ -98,6 +113,17 @@ Deno.serve(async (req) => {
         );
       }
     }
+
+    // Log the admin action
+    await supabaseAdmin.from("admin_impersonation_logs").insert({
+      admin_user_id: adminUser.id,
+      target_user_id: target_user_id,
+      action: 'update_user',
+      details: { email_changed: !!email, name_changed: full_name !== undefined },
+      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+      user_agent: req.headers.get("user-agent"),
+      expires_at: new Date().toISOString(), // Not applicable for update, just set to now
+    });
 
     console.log(`User updated: ${target_user_id} by admin ${adminUser.id}`);
 

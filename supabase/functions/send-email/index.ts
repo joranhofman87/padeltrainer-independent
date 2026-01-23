@@ -570,27 +570,73 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
   }
 };
 
-// Simple rate limiting using in-memory store (resets on cold start)
-// For production, consider using Deno KV or Redis
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_MAX = 5; // Max 5 requests
-const RATE_LIMIT_WINDOW = 60 * 1000; // Per minute
+// Rate limiting configuration per endpoint
+const RATE_LIMITS: Record<string, { max: number; windowMinutes: number }> = {
+  partner_inquiry: { max: 3, windowMinutes: 60 },
+  location_request: { max: 5, windowMinutes: 60 },
+};
 
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
-  const now = Date.now();
-  const record = rateLimitStore.get(ip);
-  
-  if (!record || now > record.resetTime) {
-    rateLimitStore.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return { allowed: true, remaining: RATE_LIMIT_MAX - 1 };
+// Database-backed rate limiting for persistence across cold starts
+async function checkRateLimitDb(
+  supabaseClient: any,
+  identifier: string,
+  endpoint: string
+): Promise<{ allowed: boolean; remaining: number }> {
+  const config = RATE_LIMITS[endpoint] || { max: 5, windowMinutes: 60 };
+  const windowStart = new Date(Date.now() - config.windowMinutes * 60 * 1000);
+
+  try {
+    // Check existing record
+    const { data: existing } = await supabaseClient
+      .from('rate_limits')
+      .select('*')
+      .eq('identifier', identifier)
+      .eq('endpoint', endpoint)
+      .single();
+
+    if (existing) {
+      const recordWindowStart = new Date(existing.window_start);
+      
+      // Check if within current window
+      if (recordWindowStart > windowStart) {
+        if (existing.request_count >= config.max) {
+          return { allowed: false, remaining: 0 };
+        }
+        
+        // Increment counter
+        await supabaseClient
+          .from('rate_limits')
+          .update({ request_count: existing.request_count + 1 })
+          .eq('id', existing.id);
+        
+        return { allowed: true, remaining: config.max - existing.request_count - 1 };
+      }
+      
+      // Window expired - reset
+      await supabaseClient
+        .from('rate_limits')
+        .update({ request_count: 1, window_start: new Date().toISOString() })
+        .eq('id', existing.id);
+      
+      return { allowed: true, remaining: config.max - 1 };
+    }
+
+    // Create new record
+    await supabaseClient
+      .from('rate_limits')
+      .insert({
+        identifier,
+        endpoint,
+        request_count: 1,
+        window_start: new Date().toISOString(),
+      });
+
+    return { allowed: true, remaining: config.max - 1 };
+  } catch (error) {
+    console.error('Rate limit check error:', error);
+    // Fail open - allow request if rate limiting fails
+    return { allowed: true, remaining: 1 };
   }
-  
-  if (record.count >= RATE_LIMIT_MAX) {
-    return { allowed: false, remaining: 0 };
-  }
-  
-  record.count++;
-  return { allowed: true, remaining: RATE_LIMIT_MAX - record.count };
 }
 
 // Server-side validation for partner inquiry
@@ -672,26 +718,29 @@ const handler = async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
     const { type, to, data }: EmailRequest = await req.json();
     
-    // Allow partner_inquiry without auth (public contact form)
-    const isPartnerInquiry = type === "partner_inquiry";
+    // Allow partner_inquiry and location_request without auth (public forms)
+    const isPublicForm = type === "partner_inquiry" || type === "location_request";
     
-    if (isPartnerInquiry) {
+    // Create supabase client for rate limiting (service role needed for rate_limits table)
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    
+    if (isPublicForm) {
       // Get client IP for rate limiting
       const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0]?.trim() || 
                        req.headers.get("cf-connecting-ip") || 
                        "unknown";
       
-      // Check rate limit
-      const rateLimit = checkRateLimit(clientIp);
+      // Check rate limit using database for persistence
+      const rateLimit = await checkRateLimitDb(supabaseAdmin, clientIp, type);
       if (!rateLimit.allowed) {
-        console.log(`Rate limit exceeded for IP: ${clientIp}`);
+        console.log(`Rate limit exceeded for IP: ${clientIp}, endpoint: ${type}`);
         return new Response(
           JSON.stringify({ error: "Too many requests. Please try again later." }),
           { 
             status: 429, 
             headers: { 
               "Content-Type": "application/json", 
-              "Retry-After": "60",
+              "Retry-After": "3600",
               ...corsHeaders 
             } 
           }
@@ -734,15 +783,13 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Create client to verify user token
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
       const token = authHeader.replace("Bearer ", "");
       
       // Allow service role key to bypass user auth check (for internal calls)
       const isServiceRole = token === supabaseServiceKey;
       
       if (!isServiceRole) {
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
         
         if (authError || !user) {
           console.error("Authentication failed:", authError?.message);
