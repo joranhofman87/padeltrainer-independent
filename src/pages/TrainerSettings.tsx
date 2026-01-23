@@ -3,8 +3,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 
 export default function TrainerSettings() {
   const { user, role, loading } = useAuth();
@@ -109,6 +110,12 @@ export default function TrainerSettings() {
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        {/* Danger Zone */}
+        <div className="max-w-4xl mt-8 pt-6 border-t border-destructive/20">
+          <h3 className="text-lg font-semibold text-destructive mb-4">{t('settings.dangerZone', 'Danger Zone')}</h3>
+          <DeleteAccountDialog />
         </div>
       </main>
     </div>
