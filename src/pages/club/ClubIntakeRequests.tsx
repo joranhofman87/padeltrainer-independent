@@ -114,7 +114,7 @@ export default function ClubIntakeRequests() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="container mx-auto px-4 py-8 space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-[400px] w-full" />
       </div>
@@ -122,7 +122,7 @@ export default function ClubIntakeRequests() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4">
         <div>
