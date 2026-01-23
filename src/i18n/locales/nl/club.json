@@ -13,7 +13,8 @@
     "pendingVerificationDescription": "Een beheerder zal je aanvraag beoordelen en je clubeigendom verifiëren. Je krijgt volledige toegang zodra dit is geverifieerd.",
     "noClubs": "Je hebt nog geen club geclaimd. Bezoek een locatiepagina om je club te claimen.",
     "claimClub": "Claim een Club",
-    "browseLocations": "Bekijk Locaties"
+    "browseLocations": "Bekijk Locaties",
+    "viewPublicProfile": "Bekijk Publiek Profiel"
   },
   "stats": {
     "trainers": "Clubtrainers",

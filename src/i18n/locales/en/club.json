@@ -13,7 +13,8 @@
     "pendingVerificationDescription": "An admin will review your claim and verify your club ownership. You'll have full access once verified.",
     "noClubs": "You haven't claimed any clubs yet. Visit a location page to claim your club.",
     "claimClub": "Claim a Club",
-    "browseLocations": "Browse Locations"
+    "browseLocations": "Browse Locations",
+    "viewPublicProfile": "View Public Profile"
   },
   "stats": {
     "trainers": "Club Trainers",

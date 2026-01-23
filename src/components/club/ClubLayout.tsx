@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Building2, MapPin, Settings, LogOut } from 'lucide-react';
+import { Building2, MapPin, Settings, LogOut, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -39,7 +39,7 @@ export function useClubContext() {
 const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
 
 export default function ClubLayout() {
-  const { t } = useTranslation('club');
+  const { t, i18n } = useTranslation('club');
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -196,6 +196,18 @@ export default function ClubLayout() {
                     </div>
                   </div>
                 </div>
+                
+                {/* View Public Profile */}
+                {activeClub?.location.slug && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`/${i18n.language}/locations/${activeClub.location.slug}`, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    {t('dashboard.viewPublicProfile')}
+                  </Button>
+                )}
               </div>
               
               {/* Navigation */}
