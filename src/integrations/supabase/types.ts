@@ -508,6 +508,63 @@ export type Database = {
           },
         ]
       }
+      club_tournaments: {
+        Row: {
+          club_profile_id: string
+          created_at: string
+          description: string | null
+          end_date: string | null
+          id: string
+          image_url: string | null
+          is_published: boolean
+          name: string
+          registration_url: string | null
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          club_profile_id: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          image_url?: string | null
+          is_published?: boolean
+          name: string
+          registration_url?: string | null
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          club_profile_id?: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          image_url?: string | null
+          is_published?: boolean
+          name?: string
+          registration_url?: string | null
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_tournaments_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_tournaments_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_trainer_invitations: {
         Row: {
           club_profile_id: string

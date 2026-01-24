@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings } from 'lucide-react';
 import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
+import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
@@ -386,6 +387,11 @@ export default function LocationDetail() {
               clubProfileId={clubProfile.id} 
               clubName={location.name} 
             />
+          )}
+
+          {/* Upcoming Tournaments */}
+          {clubProfile && (
+            <UpcomingTournaments clubProfileId={clubProfile.id} />
           )}
 
           <Separator />

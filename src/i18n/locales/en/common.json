@@ -125,7 +125,9 @@
     "courtType": "Court Type",
     "indoor": "Indoor",
     "outdoor": "Outdoor",
-    "anyCourtType": "Any"
+    "anyCourtType": "Any",
+    "upcomingTournaments": "Upcoming Tournaments",
+    "register": "Register"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
