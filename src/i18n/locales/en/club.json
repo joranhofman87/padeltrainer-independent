@@ -75,7 +75,12 @@
     "editProfile": "Edit",
     "manageBookings": "Manage Bookings",
     "pendingInvitations": "Pending Invitations",
-    "sentOn": "Sent"
+    "sentOn": "Sent",
+    "showOnClubPage": "Show on club page",
+    "visibilityPublic": "Visible",
+    "visibilityHidden": "Hidden",
+    "visibilityHint": "Toggle to show this trainer on your public club page",
+    "incompleteProfile": "Profile incomplete - name required"
   },
   "editTrainer": {
     "title": "Edit Trainer Profile",

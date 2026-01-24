@@ -75,7 +75,12 @@
     "editProfile": "Bewerken",
     "manageBookings": "Beheer Boekingen",
     "pendingInvitations": "Openstaande Uitnodigingen",
-    "sentOn": "Verzonden"
+    "sentOn": "Verzonden",
+    "showOnClubPage": "Toon op clubpagina",
+    "visibilityPublic": "Zichtbaar",
+    "visibilityHidden": "Verborgen",
+    "visibilityHint": "Schakel in om deze trainer te tonen op je publieke clubpagina",
+    "incompleteProfile": "Profiel incompleet - naam vereist"
   },
   "editTrainer": {
     "title": "Trainersprofiel Bewerken",

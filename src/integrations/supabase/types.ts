@@ -1647,6 +1647,7 @@ export type Database = {
           is_primary: boolean
           location_id: string
           relationship_type: string
+          show_on_club_page: boolean
           trainer_id: string
         }
         Insert: {
@@ -1655,6 +1656,7 @@ export type Database = {
           is_primary?: boolean
           location_id: string
           relationship_type?: string
+          show_on_club_page?: boolean
           trainer_id: string
         }
         Update: {
@@ -1663,6 +1665,7 @@ export type Database = {
           is_primary?: boolean
           location_id?: string
           relationship_type?: string
+          show_on_club_page?: boolean
           trainer_id?: string
         }
         Relationships: [
