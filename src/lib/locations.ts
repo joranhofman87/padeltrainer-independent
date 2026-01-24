@@ -374,10 +374,25 @@ export async function getClaimedLocationIds(): Promise<Set<string>> {
   return new Set(data?.map(cp => cp.location_id) || []);
 }
 
-// Get club profile by location ID
-export async function getClubProfileByLocationId(locationId: string) {
+// Public-safe club profile interface (excludes contact details)
+export interface ClubProfilePublic {
+  id: string;
+  location_id: string;
+  description: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
+  is_verified: boolean;
+  claimed_at: string;
+  created_at: string;
+  updated_at: string;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+}
+
+// Get club profile by location ID (public-safe version, excludes contact details)
+export async function getClubProfileByLocationId(locationId: string): Promise<ClubProfilePublic | null> {
   const { data, error } = await supabase
-    .from('club_profiles')
+    .from('club_profiles_public')
     .select('*')
     .eq('location_id', locationId)
     .single();
@@ -388,5 +403,5 @@ export async function getClubProfileByLocationId(locationId: string) {
     return null;
   }
 
-  return data;
+  return data as ClubProfilePublic;
 }
