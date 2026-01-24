@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Save, Building2, Camera, Loader2 } from 'lucide-react';
+import { Save, Building2, Camera, Loader2, ImageIcon, Lock, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,75 +10,63 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
-import { getUserClubProfiles, updateClubProfile, type ClubProfile } from '@/lib/club';
+import { useClubContext } from '@/components/club/ClubLayout';
+import { updateClubProfile } from '@/lib/club';
 import { supabase } from '@/integrations/supabase/client';
-import type { Location } from '@/lib/locations';
-
-interface ClubWithLocation extends ClubProfile {
-  role: string;
-  location: Location;
-}
 
 export default function ClubProfile() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { activeClub, refreshClubs } = useClubContext();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const [club, setClub] = useState<ClubWithLocation | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const [formData, setFormData] = useState({
     description: '',
     contact_email: '',
     phone: '',
   });
+  const [courtData, setCourtData] = useState({
+    indoor_courts: 0,
+    outdoor_courts: 0,
+  });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+
+  // Check if club has a paid plan (not starter)
+  const isPaidPlan = (activeClub as any)?.subscription_status === 'active' && 
+                     (activeClub as any)?.subscription_tier !== 'starter';
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
+    if (activeClub) {
+      setFormData({
+        description: activeClub.description || '',
+        contact_email: activeClub.contact_email || '',
+        phone: activeClub.phone || '',
+      });
+      setLogoUrl(activeClub.logo_url);
+      setBannerUrl((activeClub as any).banner_url);
+      
+      // Set court data from location
+      setCourtData({
+        indoor_courts: activeClub.location.indoor_courts || 0,
+        outdoor_courts: activeClub.location.outdoor_courts || 0,
+      });
     }
-  }, [user, authLoading, navigate]);
+  }, [activeClub]);
 
-  useEffect(() => {
-    async function fetchClub() {
-      if (!user) return;
-
-      try {
-        const userClubs = await getUserClubProfiles(user.id);
-        if (userClubs.length > 0) {
-          const firstClub = userClubs[0];
-          setClub(firstClub);
-          setFormData({
-            description: firstClub.description || '',
-            contact_email: firstClub.contact_email || '',
-            phone: firstClub.phone || '',
-          });
-          setLogoUrl(firstClub.logo_url);
-        }
-      } catch (error) {
-        console.error('Error fetching club:', error);
-        toast({
-          title: t('common:error'),
-          description: 'Failed to load club profile',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchClub();
-  }, [user, t, toast]);
-
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !club) return;
+  const handleImageUpload = async (
+    file: File,
+    type: 'logo' | 'banner',
+    setUploading: (v: boolean) => void,
+    setUrl: (url: string) => void
+  ) => {
+    if (!activeClub) return;
 
     if (!file.type.startsWith('image/')) {
       toast({
@@ -98,11 +86,11 @@ export default function ClubProfile() {
       return;
     }
 
-    setUploadingLogo(true);
+    setUploading(true);
 
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `clubs/${club.id}/logo.${fileExt}`;
+      const filePath = `clubs/${activeClub.id}/${type}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -116,39 +104,69 @@ export default function ClubProfile() {
 
       const urlWithTimestamp = `${publicUrl}?t=${Date.now()}`;
 
-      await updateClubProfile(club.id, { logo_url: urlWithTimestamp });
-      setLogoUrl(urlWithTimestamp);
+      const updateField = type === 'logo' ? { logo_url: urlWithTimestamp } : { banner_url: urlWithTimestamp };
+      await updateClubProfile(activeClub.id, updateField);
+      setUrl(urlWithTimestamp);
 
       toast({
         title: t('common:success'),
-        description: t('profile.logoUpdated'),
+        description: t(`profile.${type}Updated`),
       });
     } catch (error: any) {
-      console.error('Logo upload error:', error);
+      console.error(`${type} upload error:`, error);
       toast({
         title: t('common:error'),
-        description: error.message || 'Failed to upload logo',
+        description: error.message || `Failed to upload ${type}`,
         variant: 'destructive',
       });
     } finally {
-      setUploadingLogo(false);
+      setUploading(false);
+    }
+  };
+
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImageUpload(file, 'logo', setUploadingLogo, setLogoUrl);
+    }
+  };
+
+  const handleBannerUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImageUpload(file, 'banner', setUploadingBanner, setBannerUrl);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!club) return;
+    if (!activeClub) return;
 
     setSaving(true);
 
     try {
-      await updateClubProfile(club.id, formData);
+      // Update club profile
+      await updateClubProfile(activeClub.id, formData);
+
+      // Update location court counts
+      const { error: locationError } = await supabase
+        .from('locations')
+        .update({
+          indoor_courts: courtData.indoor_courts,
+          outdoor_courts: courtData.outdoor_courts,
+        })
+        .eq('id', activeClub.location_id);
+
+      if (locationError) {
+        console.error('Error updating courts:', locationError);
+      }
 
       toast({
         title: t('common:success'),
         description: t('profile.profileUpdated'),
       });
 
+      refreshClubs();
       navigate('/club');
     } catch (error: any) {
       toast({
@@ -161,189 +179,264 @@ export default function ClubProfile() {
     }
   };
 
-  if (authLoading || loading) {
+  if (!activeClub) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-            <Skeleton className="h-10 w-10" />
-            <Skeleton className="h-6 w-48" />
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-48" />
           <Skeleton className="h-64 w-full" />
-        </main>
-      </div>
-    );
-  }
-
-  if (!club) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">{t('profile.noClub')}</h1>
-          <p className="text-muted-foreground mb-6">{t('profile.noClubDescription')}</p>
-          <Button onClick={() => navigate('/locations')}>
-            {t('profile.browseLocations')}
-          </Button>
         </div>
       </div>
     );
   }
 
-  const initials = club.location.name
+  const initials = activeClub.location.name
     .split(' ')
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Action Header */}
-      <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <span className="font-bold text-xl">{t('profile.title')}</span>
-          <Button onClick={handleSubmit} disabled={saving}>
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? t('common:saving') : t('common:save')}
-          </Button>
-        </div>
+    <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">{t('profile.title')}</h1>
+        <Button onClick={handleSubmit} disabled={saving}>
+          <Save className="h-4 w-4 mr-2" />
+          {saving ? t('common:saving') : t('common:save')}
+        </Button>
       </div>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Logo Section */}
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="relative group">
-                  <Avatar className="h-20 w-20">
-                    <AvatarImage src={logoUrl || undefined} />
-                    <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingLogo}
-                    className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                  >
-                    {uploadingLogo ? (
-                      <Loader2 className="h-6 w-6 text-white animate-spin" />
-                    ) : (
-                      <Camera className="h-6 w-6 text-white" />
-                    )}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                  />
-                </div>
-                <div>
-                  <h3 className="font-semibold">{club.location.name}</h3>
-                  <p className="text-sm text-muted-foreground">{club.location.city}</p>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs text-primary hover:underline mt-1"
-                    disabled={uploadingLogo}
-                  >
-                    {uploadingLogo ? t('profile.uploading') : t('profile.changeLogo')}
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Club Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                {t('profile.clubDetails')}
-              </CardTitle>
-              <CardDescription>{t('profile.clubDetailsDescription')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="description">{t('profile.description')}</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder={t('profile.descriptionPlaceholder')}
-                  rows={4}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Logo Section */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="relative group">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={logoUrl || undefined} />
+                  <AvatarFallback className="text-2xl bg-primary/10 text-primary">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  {uploadingLogo ? (
+                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                  ) : (
+                    <Camera className="h-6 w-6 text-white" />
+                  )}
+                </button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
                 />
               </div>
+              <div>
+                <h3 className="font-semibold">{activeClub.location.name}</h3>
+                <p className="text-sm text-muted-foreground">{activeClub.location.city}</p>
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="text-xs text-primary hover:underline mt-1"
+                  disabled={uploadingLogo}
+                >
+                  {uploadingLogo ? t('profile.uploading') : t('profile.changeLogo')}
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="contact_email">{t('profile.contactEmail')}</Label>
-                  <Input
-                    id="contact_email"
-                    type="email"
-                    value={formData.contact_email}
-                    onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
-                    placeholder={t('profile.contactEmailPlaceholder')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">{t('profile.phone')}</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder={t('profile.phonePlaceholder')}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Location Info (Read-only) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('profile.locationInfo')}</CardTitle>
-              <CardDescription>{t('profile.locationInfoDescription')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">{t('profile.clubName')}</span>
-                <span className="font-medium">{club.location.name}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">{t('profile.city')}</span>
-                <span className="font-medium">{club.location.city}</span>
-              </div>
-              {club.location.street_address && (
-                <div className="flex justify-between py-2 border-b">
-                  <span className="text-muted-foreground">{t('profile.address')}</span>
-                  <span className="font-medium">{club.location.street_address}</span>
-                </div>
-              )}
-              {club.location.website_url && (
-                <div className="flex justify-between py-2">
-                  <span className="text-muted-foreground">{t('profile.website')}</span>
-                  <a
-                    href={club.location.website_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
+        {/* Banner Section */}
+        <Card className={!isPaidPlan ? 'border-dashed' : ''}>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ImageIcon className="h-5 w-5" />
+              {t('profile.banner')}
+              {!isPaidPlan && <Lock className="h-4 w-4 text-muted-foreground" />}
+            </CardTitle>
+            <CardDescription>{t('profile.bannerDescription')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isPaidPlan ? (
+              <div className="space-y-4">
+                {bannerUrl && (
+                  <div className="relative w-full h-32 rounded-lg overflow-hidden">
+                    <img
+                      src={bannerUrl}
+                      alt="Club banner"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bannerInputRef.current?.click()}
+                    disabled={uploadingBanner}
                   >
-                    {club.location.website_url}
-                  </a>
+                    {uploadingBanner ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4 mr-2" />
+                    )}
+                    {bannerUrl ? t('profile.changeBanner') : t('profile.uploadBanner')}
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </form>
-      </main>
-    </div>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerUpload}
+                  className="hidden"
+                />
+              </div>
+            ) : (
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <Lock className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="font-medium text-sm">{t('profile.bannerPremium')}</p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {t('profile.bannerPremiumDescription')}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => navigate('/club/subscription')}
+                >
+                  {t('profile.upgradeNow')}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Court Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LayoutGrid className="h-5 w-5" />
+              {t('profile.courtInfo')}
+            </CardTitle>
+            <CardDescription>{t('profile.courtInfoDescription')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="indoor_courts">{t('profile.indoorCourts')}</Label>
+                <Input
+                  id="indoor_courts"
+                  type="number"
+                  min="0"
+                  value={courtData.indoor_courts}
+                  onChange={(e) => setCourtData({ ...courtData, indoor_courts: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="outdoor_courts">{t('profile.outdoorCourts')}</Label>
+                <Input
+                  id="outdoor_courts"
+                  type="number"
+                  min="0"
+                  value={courtData.outdoor_courts}
+                  onChange={(e) => setCourtData({ ...courtData, outdoor_courts: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Club Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              {t('profile.clubDetails')}
+            </CardTitle>
+            <CardDescription>{t('profile.clubDetailsDescription')}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="description">{t('profile.aboutClub')}</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder={t('profile.descriptionPlaceholder')}
+                rows={4}
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact_email">{t('profile.contactEmail')}</Label>
+                <Input
+                  id="contact_email"
+                  type="email"
+                  value={formData.contact_email}
+                  onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
+                  placeholder={t('profile.contactEmailPlaceholder')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">{t('profile.phone')}</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder={t('profile.phonePlaceholder')}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Location Info (Read-only) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('profile.locationInfo')}</CardTitle>
+            <CardDescription>{t('profile.locationInfoDescription')}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">{t('profile.clubName')}</span>
+              <span className="font-medium">{activeClub.location.name}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b">
+              <span className="text-muted-foreground">{t('profile.city')}</span>
+              <span className="font-medium">{activeClub.location.city}</span>
+            </div>
+            {activeClub.location.street_address && (
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">{t('profile.address')}</span>
+                <span className="font-medium">{activeClub.location.street_address}</span>
+              </div>
+            )}
+            {activeClub.location.website_url && (
+              <div className="flex justify-between py-2">
+                <span className="text-muted-foreground">{t('profile.website')}</span>
+                <a
+                  href={activeClub.location.website_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  {activeClub.location.website_url}
+                </a>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </form>
+    </main>
   );
 }

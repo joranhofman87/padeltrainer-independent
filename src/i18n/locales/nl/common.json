@@ -125,7 +125,9 @@
     "courtType": "Baantype",
     "indoor": "Overdekt",
     "outdoor": "Buiten",
-    "anyCourtType": "Alle"
+    "anyCourtType": "Alle",
+    "upcomingTournaments": "Aankomende Toernooien",
+    "register": "Inschrijven"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
