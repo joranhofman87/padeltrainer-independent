@@ -7,7 +7,6 @@ import { useFollowTrainer } from '@/hooks/useFollowTrainer';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
@@ -20,16 +19,25 @@ import {
   ArrowLeft, MapPin, Star, Clock, Award, Mail, 
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
-  Instagram, Youtube, Linkedin, Target, Sparkles
+  Target, Sparkles, Linkedin
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
-import { StarRating } from '@/components/reviews/StarRating';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
+import {
+  ProfileLayout,
+  ProfileContentGrid,
+  ProfileMainColumn,
+  ProfileSidebarColumn,
+  ProfileHeroCard,
+  ProfileQuickStatsCard,
+  ProfileContactCard,
+  ProfileSocialCard,
+} from '@/components/profiles';
 
 interface TrainerData {
   id: string;
@@ -89,7 +97,7 @@ interface TrainerLocationData {
 
 export default function TrainerProfile() {
   const { trainerId } = useParams<{ trainerId: string }>();
-  const { t } = useTranslation('trainer');
+  const { t } = useTranslation(['trainer', 'common']);
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [lessons, setLessons] = useState<LessonData[]>([]);
@@ -140,14 +148,12 @@ export default function TrainerProfile() {
     }
   }, [trainerId]);
 
-  // Record anonymous profile view
   useEffect(() => {
     if (trainer?.id) {
       recordProfileView(trainer.id);
     }
   }, [trainer?.id]);
 
-  // Fetch preferred rating system name
   useEffect(() => {
     if (trainer?.preferred_rating_system) {
       getRatingSystemByCode(trainer.preferred_rating_system).then(system => {
@@ -178,7 +184,6 @@ export default function TrainerProfile() {
       return;
     }
 
-    // Check if this trainer is linked to a verified club (allows viewing even if is_public is false)
     const { data: clubLink } = await supabase
       .from('trainer_locations')
       .select(`
@@ -196,7 +201,6 @@ export default function TrainerProfile() {
       (link: any) => link.show_on_club_page && link.location?.club_profiles?.is_verified
     );
 
-    // If trainer is not public AND not linked to a verified club, don't show profile
     if (!trainerResult.data.is_public && !hasVerifiedClubLink) {
       console.log('Trainer is not public and not linked to verified club');
       setLoading(false);
@@ -205,7 +209,6 @@ export default function TrainerProfile() {
     
     setTrainer(trainerResult.data);
     
-    // Fetch additional data in parallel
     const [ratingRes, lessonsResult, locationsResult] = await Promise.all([
       getTrainerAverageRating(trainerResult.data.id),
       supabase
@@ -233,7 +236,6 @@ export default function TrainerProfile() {
     }
     
     if (locationsResult.data) {
-      // Fetch club profiles for these locations
       const locationIds = locationsResult.data
         .map(l => (l.location as any)?.id)
         .filter(Boolean);
@@ -269,28 +271,29 @@ export default function TrainerProfile() {
     setLoading(false);
   };
 
-  const getInitials = (name: string | null) => {
-    if (!name) return 'T';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
-  };
-
-  const getSocialUrl = (platform: string, value: string | null) => {
-    if (!value) return null;
-    if (value.startsWith('http')) return value;
-    const cleanHandle = value.replace('@', '');
-    switch (platform) {
-      case 'instagram': return `https://instagram.com/${cleanHandle}`;
-      case 'tiktok': return `https://tiktok.com/@${cleanHandle}`;
-      case 'youtube': return value.startsWith('http') ? value : `https://youtube.com/@${cleanHandle}`;
-      case 'linkedin': return value;
-      default: return null;
-    }
-  };
-
-  const hasSocialLinks = trainer?.social_instagram || trainer?.social_tiktok || 
-                          trainer?.social_youtube || trainer?.social_linkedin;
-
   const videoInfo = trainer?.video_url ? parseVideoUrl(trainer.video_url) : null;
+
+  // Build social links
+  const socialLinks = [];
+  if (trainer?.social_instagram) socialLinks.push({ platform: 'instagram' as const, handle: trainer.social_instagram });
+  if (trainer?.social_tiktok) socialLinks.push({ platform: 'tiktok' as const, handle: trainer.social_tiktok });
+  if (trainer?.social_youtube) socialLinks.push({ platform: 'youtube' as const, handle: trainer.social_youtube });
+  if (trainer?.social_linkedin) socialLinks.push({ platform: 'linkedin' as const, handle: trainer.social_linkedin });
+
+  // Build quick stats
+  const quickStats = [
+    { icon: <Users className="h-4 w-4" />, label: t('common:students', 'Students'), value: '0' },
+    { icon: <Calendar className="h-4 w-4" />, label: t('common:lessonsGiven', 'Lessons Given'), value: '0' },
+    { icon: <Star className="h-4 w-4" />, label: t('common:rating', 'Rating'), value: averageRating !== null ? `${averageRating} ★` : '—' },
+  ];
+
+  if (trainer?.preferred_min_rating !== null && trainer?.preferred_max_rating !== null) {
+    quickStats.push({
+      icon: <Target className="h-4 w-4" />,
+      label: t('trainer:profile.preferredLevels', 'Preferred Levels'),
+      value: `${trainer.preferred_min_rating}-${trainer.preferred_max_rating}`,
+    });
+  }
 
   if (loading) {
     return (
@@ -302,21 +305,17 @@ export default function TrainerProfile() {
 
   if (!trainer || !profile) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-4">
-            <Button variant="ghost" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-12 text-center">
-          <h1 className="text-2xl font-bold mb-2">Trainer Not Found</h1>
-          <p className="text-muted-foreground mb-4">This trainer profile doesn't exist or has been removed.</p>
-          <Button onClick={() => navigate(localizePath('/trainers'))}>Browse Trainers</Button>
-        </main>
-      </div>
+      <ProfileLayout
+        headerAction={
+          <Button onClick={() => navigate(localizePath('/trainers'))}>{t('common:browseTrainers', 'Browse Trainers')}</Button>
+        }
+      >
+        <div className="text-center py-12">
+          <h1 className="text-2xl font-bold mb-2">{t('common:trainerNotFound', 'Trainer Not Found')}</h1>
+          <p className="text-muted-foreground mb-4">{t('common:trainerNotFoundDescription', "This trainer profile doesn't exist or has been removed.")}</p>
+          <Button onClick={() => navigate(localizePath('/trainers'))}>{t('common:browseTrainers', 'Browse Trainers')}</Button>
+        </div>
+      </ProfileLayout>
     );
   }
 
@@ -343,7 +342,7 @@ export default function TrainerProfile() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
+    <>
       <SEO
         title={profile.full_name || 'Padel Trainer'}
         description={profile.bio || `Book padel lessons with ${profile.full_name || 'this trainer'} in ${profile.location || 'the Netherlands'}. ${trainer.experience_years ? `${trainer.experience_years} years of experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`}
@@ -351,222 +350,105 @@ export default function TrainerProfile() {
         image={profile.avatar_url || undefined}
         structuredData={structuredData}
       />
-      
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button variant="ghost" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          {!user && (
-            <Button onClick={() => navigate(localizePath('/auth'))}>Sign In to Book</Button>
+
+      <ProfileLayout
+        headerAction={
+          !user ? (
+            <Button onClick={() => navigate(localizePath('/auth'))}>{t('common:signInToBook', 'Sign In to Book')}</Button>
+          ) : null
+        }
+      >
+        {/* Hero Card */}
+        <ProfileHeroCard
+          name={profile.full_name || 'Trainer'}
+          avatarUrl={profile.avatar_url}
+          location={profile.location}
+          isVerified={trainer.is_verified}
+          hourlyRate={trainer.hourly_rate}
+          experienceYears={trainer.experience_years}
+          averageRating={averageRating}
+          reviewCount={reviewCount}
+          socialLinks={socialLinks}
+          quote={trainer.favourite_quote}
+          videoUrl={trainer.video_url}
+          onVideoPlay={() => setShowVideo(true)}
+          badgeSlot={
+            trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
+              <Badge variant="outline" className="w-fit">
+                <Target className="h-3 w-3 mr-1" />
+                {t('trainer:profile.bestFor', 'Best for')}: {trainer.preferred_min_rating} - {trainer.preferred_max_rating} {preferredRatingSystemName}
+              </Badge>
+            )
+          }
+        >
+          {/* Action Buttons */}
+          {user && role === 'player' && (
+            <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerId}`))}>
+              <Calendar className="h-4 w-4 mr-2" />
+              {t('common:bookLesson', 'Book Lesson')}
+            </Button>
           )}
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
-        {/* Hero Section */}
-        <Card className="mb-8 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="relative bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 md:p-10">
-              <div className="flex flex-col lg:flex-row gap-8">
-                {/* Avatar with video play button */}
-                <div className="relative mx-auto lg:mx-0">
-                  <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl">
-                    <AvatarImage src={profile.avatar_url || undefined} />
-                    <AvatarFallback className="text-4xl bg-primary text-primary-foreground">
-                      {getInitials(profile.full_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  {videoInfo && (
-                    <button 
-                      onClick={() => setShowVideo(true)}
-                      className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full opacity-0 hover:opacity-100 transition-opacity"
-                    >
-                      <div className="bg-white/90 rounded-full p-3">
-                        <Play className="h-6 w-6 text-primary fill-primary" />
-                      </div>
-                    </button>
-                  )}
-                </div>
-                
-                {/* Main Info */}
-                <div className="flex-1 text-center lg:text-left">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-3">
-                    <h1 className="text-3xl md:text-4xl font-bold">{profile.full_name || 'Trainer'}</h1>
-                    {trainer.is_verified && (
-                      <Badge className="w-fit mx-auto lg:mx-0 bg-green-500 hover:bg-green-600">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Verified
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  {/* Location & Quick Stats */}
-                  <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-4">
-                    {profile.location && (
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <MapPin className="h-4 w-4" />
-                        {profile.location}
-                      </span>
-                    )}
-                    {trainer.hourly_rate && (
-                      <span className="flex items-center gap-1">
-                        <span className="font-bold text-xl text-primary">€{trainer.hourly_rate}</span>
-                        <span className="text-muted-foreground">/hour</span>
-                      </span>
-                    )}
-                    {trainer.experience_years && (
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {trainer.experience_years} years
-                      </span>
-                    )}
-                    {averageRating !== null && (
-                      <span className="flex items-center gap-1">
-                        <StarRating rating={averageRating} size="sm" />
-                        <span className="text-muted-foreground">({reviewCount})</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Social Links */}
-                  {hasSocialLinks && (
-                    <div className="flex gap-3 justify-center lg:justify-start mb-4">
-                      {trainer.social_instagram && (
-                        <a 
-                          href={getSocialUrl('instagram', trainer.social_instagram) || '#'}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                        >
-                          <Instagram className="h-5 w-5" />
-                        </a>
-                      )}
-                      {trainer.social_tiktok && (
-                        <a 
-                          href={getSocialUrl('tiktok', trainer.social_tiktok) || '#'}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                        >
-                          <span className="text-lg font-bold">♪</span>
-                        </a>
-                      )}
-                      {trainer.social_youtube && (
-                        <a 
-                          href={getSocialUrl('youtube', trainer.social_youtube) || '#'}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                        >
-                          <Youtube className="h-5 w-5" />
-                        </a>
-                      )}
-                      {trainer.social_linkedin && (
-                        <a 
-                          href={getSocialUrl('linkedin', trainer.social_linkedin) || '#'}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                        >
-                          <Linkedin className="h-5 w-5" />
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Favourite Quote */}
-                  {trainer.favourite_quote && (
-                    <blockquote className="relative pl-4 border-l-2 border-primary/50 italic text-muted-foreground mb-4">
-                      <Quote className="absolute -left-3 -top-2 h-5 w-5 text-primary/30" />
-                      "{trainer.favourite_quote}"
-                    </blockquote>
-                  )}
-
-                  {/* Preferred Player Levels Badge */}
-                  {trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
-                    <Badge variant="outline" className="mb-2">
-                      <Target className="h-3 w-3 mr-1" />
-                      {t('profile.bestFor', 'Best for')}: {trainer.preferred_min_rating} - {trainer.preferred_max_rating} {preferredRatingSystemName}
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col gap-2 w-full lg:w-auto lg:min-w-[180px]">
-                  {user && role === 'player' && (
-                    <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerId}`))}>
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Book Lesson
-                    </Button>
-                  )}
-                  {canFollow && (
-                    <Button
-                      variant={isFollowing ? 'secondary' : 'outline'}
-                      size="lg"
-                      className="w-full"
-                      onClick={toggleFollow}
-                      disabled={followLoading}
-                    >
-                      {isFollowing ? (
-                        <>
-                          <UserCheck className="h-4 w-4 mr-2" />
-                          Following
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Follow
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  <Button variant="outline" size="lg" className="w-full">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Contact
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="lg" className="w-full">
-                        {copied ? (
-                          <>
-                            <Check className="h-4 w-4 mr-2" />
-                            {t('profile.copied')}
-                          </>
-                        ) : (
-                          <>
-                            <Share2 className="h-4 w-4 mr-2" />
-                            {t('profile.shareProfile')}
-                          </>
-                        )}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem onClick={handleCopyLink}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        {t('profile.copyLink')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareWhatsApp}>
-                        <MessageCircle className="h-4 w-4 mr-2" />
-                        WhatsApp
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareTwitter}>
-                        <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
-                        Twitter / X
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareLinkedIn}>
-                        <Linkedin className="h-4 w-4 mr-2" />
-                        LinkedIn
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          {canFollow && (
+            <Button
+              variant={isFollowing ? 'secondary' : 'outline'}
+              size="lg"
+              className="w-full"
+              onClick={toggleFollow}
+              disabled={followLoading}
+            >
+              {isFollowing ? (
+                <>
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  {t('common:following', 'Following')}
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {t('common:follow', 'Follow')}
+                </>
+              )}
+            </Button>
+          )}
+          <Button variant="outline" size="lg" className="w-full">
+            <Mail className="h-4 w-4 mr-2" />
+            {t('common:contact', 'Contact')}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="lg" className="w-full">
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    {t('trainer:profile.copied')}
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="h-4 w-4 mr-2" />
+                    {t('trainer:profile.shareProfile')}
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleCopyLink}>
+                <Copy className="h-4 w-4 mr-2" />
+                {t('trainer:profile.copyLink')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleShareWhatsApp}>
+                <MessageCircle className="h-4 w-4 mr-2" />
+                WhatsApp
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleShareTwitter}>
+                <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
+                Twitter / X
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleShareLinkedIn}>
+                <Linkedin className="h-4 w-4 mr-2" />
+                LinkedIn
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ProfileHeroCard>
 
         {/* Video Modal */}
         {showVideo && videoInfo && (
@@ -579,7 +461,7 @@ export default function TrainerProfile() {
                 onClick={() => setShowVideo(false)}
                 className="absolute -top-10 right-0 text-white hover:text-gray-300"
               >
-                ✕ Close
+                ✕ {t('common:close', 'Close')}
               </button>
               <iframe
                 src={`${videoInfo.embedUrl}?autoplay=1`}
@@ -591,16 +473,17 @@ export default function TrainerProfile() {
           </div>
         )}
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        {/* Content Grid */}
+        <ProfileContentGrid>
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <ProfileMainColumn>
             {/* Coaching Style Card */}
             {trainer.coaching_method && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-primary" />
-                    {t('profile.coachingMethod', 'My Coaching Style')}
+                    {t('trainer:profile.coachingMethod', 'My Coaching Style')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -615,7 +498,7 @@ export default function TrainerProfile() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Play className="h-5 w-5 text-primary" />
-                    {t('profile.watchIntro', 'Meet Your Coach')}
+                    {t('trainer:profile.watchIntro', 'Meet Your Coach')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -635,7 +518,7 @@ export default function TrainerProfile() {
             {profile.bio && (
               <Card>
                 <CardHeader>
-                  <CardTitle>About</CardTitle>
+                  <CardTitle>{t('common:about', 'About')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground whitespace-pre-line">{profile.bio}</p>
@@ -649,7 +532,7 @@ export default function TrainerProfile() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Star className="h-5 w-5 text-yellow-500" />
-                    Specializations
+                    {t('common:specializations', 'Specializations')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -670,7 +553,7 @@ export default function TrainerProfile() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Award className="h-5 w-5 text-blue-500" />
-                    Certifications
+                    {t('common:certifications', 'Certifications')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -692,7 +575,7 @@ export default function TrainerProfile() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-primary" />
-                    Training Locations
+                    {t('common:trainingLocations', 'Training Locations')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -705,15 +588,15 @@ export default function TrainerProfile() {
                         </div>
                         <div className="flex items-center gap-2">
                           {loc.is_primary && (
-                            <Badge variant="secondary" className="text-xs">Primary</Badge>
+                            <Badge variant="secondary" className="text-xs">{t('common:primary', 'Primary')}</Badge>
                           )}
                           {loc.club && (
                             <Button 
                               variant="outline" 
                               size="sm"
-                              onClick={() => navigate(`/locations/${loc.location.slug}`)}
+                              onClick={() => navigate(localizePath(`/locations/${loc.location.slug}`))}
                             >
-                              View Club
+                              {t('common:viewClub', 'View Club')}
                             </Button>
                           )}
                         </div>
@@ -729,18 +612,18 @@ export default function TrainerProfile() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-primary" />
-                  Available Lessons
+                  {t('common:availableLessons', 'Available Lessons')}
                 </CardTitle>
                 <CardDescription>
-                  Lesson types offered by this trainer
+                  {t('common:lessonTypesOffered', 'Lesson types offered by this trainer')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {lessons.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No lessons available yet</p>
-                    <p className="text-sm">Check back soon for available training sessions</p>
+                    <p>{t('common:noLessonsAvailable', 'No lessons available yet')}</p>
+                    <p className="text-sm">{t('common:checkBackSoon', 'Check back soon for available training sessions')}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -780,10 +663,10 @@ export default function TrainerProfile() {
                 {user && role === 'player' && lessons.length > 0 && (
                   <Button 
                     className="w-full mt-4" 
-                    onClick={() => navigate(`/book/${trainerId}`)}
+                    onClick={() => navigate(localizePath(`/book/${trainerId}`))}
                   >
                     <Calendar className="h-4 w-4 mr-2" />
-                    Book a Lesson
+                    {t('common:bookALesson', 'Book a Lesson')}
                   </Button>
                 )}
               </CardContent>
@@ -791,118 +674,42 @@ export default function TrainerProfile() {
 
             {/* Reviews Section */}
             {trainer && <TrainerReviews trainerId={trainer.id} />}
-          </div>
+          </ProfileMainColumn>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Quick Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Quick Stats</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Students
-                  </span>
-                  <span className="font-semibold">0</span>
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Lessons Given
-                  </span>
-                  <span className="font-semibold">0</span>
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <Star className="h-4 w-4" />
-                    Rating
-                  </span>
-                  <span className="font-semibold">
-                    {averageRating !== null ? `${averageRating} ★` : '—'}
-                  </span>
-                </div>
-                {trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null && (
-                  <>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground flex items-center gap-2">
-                        <Target className="h-4 w-4" />
-                        Preferred Levels
-                      </span>
-                      <span className="font-semibold text-sm">
-                        {trainer.preferred_min_rating}-{trainer.preferred_max_rating}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+          <ProfileSidebarColumn>
+            <ProfileQuickStatsCard
+              title={t('common:quickStats', 'Quick Stats')}
+              stats={quickStats}
+            />
 
-            {/* Contact Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Contact Info</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Contact details are shared after booking a lesson.
-                </p>
-                {user && role === 'player' && (
+            <ProfileContactCard
+              title={t('common:contactInfo', 'Contact Info')}
+              description={t('common:contactSharedAfterBooking', 'Contact details are shared after booking a lesson.')}
+              action={
+                user && role === 'player' ? (
                   <Button 
                     variant="outline" 
                     size="sm" 
                     className="w-full"
-                    onClick={() => navigate(`/book/${trainerId}`)}
+                    onClick={() => navigate(localizePath(`/book/${trainerId}`))}
                   >
                     <Calendar className="h-4 w-4 mr-2" />
-                    Book to Connect
+                    {t('common:bookToConnect', 'Book to Connect')}
                   </Button>
-                )}
-              </CardContent>
-            </Card>
+                ) : null
+              }
+            />
 
-            {/* Social Links Card (Desktop) */}
-            {hasSocialLinks && (
-              <Card className="hidden lg:block">
-                <CardHeader>
-                  <CardTitle className="text-base">Follow Me</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-3">
-                    {trainer.social_instagram && (
-                      <a 
-                        href={getSocialUrl('instagram', trainer.social_instagram) || '#'}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors flex-1 flex flex-col items-center gap-1"
-                      >
-                        <Instagram className="h-5 w-5" />
-                        <span className="text-xs">Instagram</span>
-                      </a>
-                    )}
-                    {trainer.social_youtube && (
-                      <a 
-                        href={getSocialUrl('youtube', trainer.social_youtube) || '#'}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors flex-1 flex flex-col items-center gap-1"
-                      >
-                        <Youtube className="h-5 w-5" />
-                        <span className="text-xs">YouTube</span>
-                      </a>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+            {socialLinks.length > 0 && (
+              <ProfileSocialCard
+                title={t('common:followMe', 'Follow Me')}
+                socialLinks={socialLinks}
+              />
             )}
-          </div>
-        </div>
-      </main>
-    </div>
+          </ProfileSidebarColumn>
+        </ProfileContentGrid>
+      </ProfileLayout>
+    </>
   );
 }
