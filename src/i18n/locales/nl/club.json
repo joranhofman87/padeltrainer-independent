@@ -199,6 +199,7 @@
     "profileUpdated": "Profiel succesvol bijgewerkt",
     "banner": "Banner Afbeelding",
     "bannerDescription": "Wordt getoond bovenaan je publieke profielpagina",
+    "bannerSizeHint": "Aanbevolen: 1200×400px (3:1 ratio), max 10MB",
     "uploadBanner": "Banner Uploaden",
     "changeBanner": "Banner wijzigen",
     "bannerUpdated": "Banner succesvol bijgewerkt",
@@ -208,7 +209,15 @@
     "courtInfo": "Banen Informatie",
     "courtInfoDescription": "Aantal banen op je locatie",
     "indoorCourts": "Binnen Banen",
-    "outdoorCourts": "Buiten Banen"
+    "outdoorCourts": "Buiten Banen",
+    "selectImageFile": "Selecteer een afbeeldingsbestand",
+    "imageTooLarge": "Selecteer een afbeelding kleiner dan {{maxSize}}",
+    "bannerTooSmall": "Banner moet minimaal {{minWidth}}px breed zijn",
+    "bannerTooLarge": "Banner moet maximaal {{maxWidth}}px breed zijn",
+    "bannerWrongRatio": "Banner moet een brede verhouding hebben (3:1 tot 5:1)",
+    "logoTooSmall": "Logo moet minimaal {{minSize}}×{{minSize}}px zijn",
+    "logoTooLarge": "Logo moet maximaal {{maxSize}}×{{maxSize}}px zijn",
+    "invalidImage": "Kon deze afbeelding niet verwerken"
   },
   "managers": {
     "title": "Clubbeheerders",
