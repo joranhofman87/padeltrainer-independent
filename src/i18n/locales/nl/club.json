@@ -20,7 +20,10 @@
     "trainers": "Clubtrainers",
     "players": "Spelers",
     "upcomingSessions": "Komende Sessies",
-    "thisWeek": "Deze Week"
+    "thisWeek": "Deze Week",
+    "profileViews": "Profielweergaven",
+    "last7Days": "Afgelopen 7 Dagen",
+    "last30Days": "Afgelopen 30 Dagen"
   },
   "claim": {
     "button": "Claim deze Club",
@@ -217,7 +220,19 @@
     "bannerWrongRatio": "Banner moet een brede verhouding hebben (3:1 tot 5:1)",
     "logoTooSmall": "Logo moet minimaal {{minSize}}×{{minSize}}px zijn",
     "logoTooLarge": "Logo moet maximaal {{maxSize}}×{{maxSize}}px zijn",
-    "invalidImage": "Kon deze afbeelding niet verwerken"
+    "invalidImage": "Kon deze afbeelding niet verwerken",
+    "socialMedia": "Social Media",
+    "socialMediaDescription": "Voeg links toe naar de sociale media profielen van je club",
+    "instagram": "Instagram",
+    "instagramPlaceholder": "jouwgebruikersnaam of volledige URL",
+    "facebook": "Facebook",
+    "facebookPlaceholder": "jouwgebruikersnaam of volledige URL",
+    "tiktok": "TikTok",
+    "tiktokPlaceholder": "@jouwgebruikersnaam of volledige URL",
+    "youtube": "YouTube",
+    "youtubePlaceholder": "@jouwkanaal of volledige URL",
+    "linkedin": "LinkedIn",
+    "linkedinPlaceholder": "company/jouwbedrijf of volledige URL"
   },
   "managers": {
     "title": "Clubbeheerders",

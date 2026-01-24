@@ -23,6 +23,7 @@ import { LocationCard } from '@/components/locations/LocationCard';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type Location } from '@/lib/locations';
+import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,7 @@ export default function Locations() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
+  const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [cities, setCities] = useState<string[]>([]);
   const [countries, setCountries] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,22 @@ export default function Locations() {
         setCities(citiesData);
         setCountries(countriesData);
         setClaimedIds(claimedData);
+        
+        // Fetch club logos for claimed locations
+        const { data: clubProfiles } = await supabase
+          .from('club_profiles_public')
+          .select('location_id, logo_url')
+          .not('logo_url', 'is', null);
+        
+        if (clubProfiles) {
+          const logosMap: Record<string, string> = {};
+          clubProfiles.forEach(cp => {
+            if (cp.location_id && cp.logo_url) {
+              logosMap[cp.location_id] = cp.logo_url;
+            }
+          });
+          setClubLogos(logosMap);
+        }
       } catch (error) {
         console.error('Error fetching locations:', error);
       } finally {
@@ -449,6 +467,7 @@ export default function Locations() {
                     location={location}
                     trainerCount={trainerCounts[location.id] || 0}
                     isClaimed={claimedIds.has(location.id)}
+                    logoUrl={clubLogos[location.id]}
                   />
                 ))}
               </div>
