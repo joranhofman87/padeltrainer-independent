@@ -65,6 +65,7 @@ import AdminCertifications from "./pages/admin/AdminCertifications";
 import AdminRatingSystems from "./pages/admin/AdminRatingSystems";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminClubs from "./pages/admin/AdminClubs";
+import AdminTrainers from "./pages/admin/AdminTrainers";
 import AdminPricing from "./pages/admin/AdminPricing";
 import Locations from "./pages/Locations";
 import LocationDetail from "./pages/LocationDetail";
@@ -155,6 +156,7 @@ const App = () => (
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/clubs" element={<AdminClubs />} />
+            <Route path="/admin/trainers" element={<AdminTrainers />} />
             <Route path="/admin/locations" element={<AdminLocations />} />
             <Route path="/admin/certifications" element={<AdminCertifications />} />
             <Route path="/admin/club-claims" element={<AdminClubClaims />} />

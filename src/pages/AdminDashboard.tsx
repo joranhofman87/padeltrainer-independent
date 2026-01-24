@@ -20,6 +20,7 @@ import {
   MapPin,
   Award,
   Users,
+  GraduationCap,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
@@ -120,7 +121,7 @@ export default function AdminDashboard() {
         {stats ? (
           <div className="space-y-8">
             {/* Admin Actions */}
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div
                 className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => navigate("/admin/users")}
@@ -133,6 +134,38 @@ export default function AdminDashboard() {
                     <h3 className="font-semibold">User Management</h3>
                     <p className="text-sm text-muted-foreground">
                       Manage users, roles, and access
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/trainers")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <GraduationCap className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Trainer Management</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage trainer subscriptions
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/clubs")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Building2 className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Club Management</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage club subscriptions
                     </p>
                   </div>
                 </div>

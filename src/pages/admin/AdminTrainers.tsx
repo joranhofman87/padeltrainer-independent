@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin, useAdminClubs, useInvalidateAdminData } from "@/hooks/useAdminData";
+import { useIsAdmin, useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -31,39 +32,24 @@ import {
   Search,
   ArrowLeft,
   ShieldAlert,
-  Building2,
-  CheckCircle2,
-  XCircle,
   MoreHorizontal,
   CreditCard,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { format } from "date-fns";
-import { ClubSubscriptionEditDialog } from "@/components/admin/ClubSubscriptionEditDialog";
-
-interface ClubProfile {
-  id: string;
-  is_verified: boolean;
-  subscription_status: string | null;
-  subscription_tier: string | null;
-  trial_ends_at: string | null;
-  created_at: string;
-  location: {
-    name: string;
-    city: string;
-  } | null;
-}
-
-export default function AdminClubs() {
+import { TrainerSubscriptionEditDialog } from "@/components/admin/TrainerSubscriptionEditDialog";
+export default function AdminTrainers() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const { invalidateClubs } = useInvalidateAdminData();
+  const { invalidateTrainers } = useInvalidateAdminData();
 
   const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
-  const { data: clubs = [], isLoading: clubsLoading } = useAdminClubs();
+  const { data: trainers = [], isLoading: trainersLoading } = useAdminTrainers();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [editingClub, setEditingClub] = useState<ClubProfile | null>(null);
+  const [editingTrainer, setEditingTrainer] = useState<TrainerProfileAdmin | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -71,26 +57,26 @@ export default function AdminClubs() {
     }
   }, [authLoading, user, navigate]);
 
-  const getSubscriptionStatus = (club: ClubProfile) => {
-    if (club.subscription_status === "active") return "active";
-    if (club.subscription_status === "trial") {
-      if (!club.trial_ends_at) return "trial";
-      return new Date(club.trial_ends_at) > new Date() ? "trial" : "expired";
+  const getSubscriptionStatus = (trainer: TrainerProfileAdmin) => {
+    if (trainer.subscription_status === "active") return "active";
+    if (trainer.subscription_status === "trial") {
+      if (!trainer.trial_ends_at) return "trial";
+      return new Date(trainer.trial_ends_at) > new Date() ? "trial" : "expired";
     }
-    return club.subscription_status || "inactive";
+    return trainer.subscription_status || "inactive";
   };
 
-  const filteredClubs = clubs.filter((c) => {
+  const filteredTrainers = trainers.filter((t) => {
     const matchesSearch =
       !searchQuery ||
-      c.location?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.location?.city?.toLowerCase().includes(searchQuery.toLowerCase());
+      t.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.profile?.email?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const status = getSubscriptionStatus(c);
+    const status = getSubscriptionStatus(t);
     const matchesStatus =
       statusFilter === "all" ||
-      (statusFilter === "verified" && c.is_verified) ||
-      (statusFilter === "unverified" && !c.is_verified) ||
+      (statusFilter === "public" && t.is_public) ||
+      (statusFilter === "private" && !t.is_public) ||
       status === statusFilter;
 
     return matchesSearch && matchesStatus;
@@ -109,7 +95,7 @@ export default function AdminClubs() {
     }
   };
 
-  const loading = authLoading || isAdminLoading || (isAdmin && clubsLoading);
+  const loading = authLoading || isAdminLoading || (isAdmin && trainersLoading);
 
   if (loading) {
     return (
@@ -138,9 +124,9 @@ export default function AdminClubs() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Club Management</h1>
+            <h1 className="text-2xl font-bold">Trainer Management</h1>
             <p className="text-sm text-muted-foreground">
-              View and manage clubs in the system
+              View and manage trainer subscriptions
             </p>
           </div>
         </div>
@@ -151,7 +137,7 @@ export default function AdminClubs() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by club or city name..."
+              placeholder="Search by name or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -162,9 +148,9 @@ export default function AdminClubs() {
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All clubs</SelectItem>
-              <SelectItem value="verified">Verified</SelectItem>
-              <SelectItem value="unverified">Unverified</SelectItem>
+              <SelectItem value="all">All trainers</SelectItem>
+              <SelectItem value="public">Public</SelectItem>
+              <SelectItem value="private">Private</SelectItem>
               <SelectItem value="active">Subscribed</SelectItem>
               <SelectItem value="trial">Trial</SelectItem>
               <SelectItem value="expired">Expired</SelectItem>
@@ -176,60 +162,64 @@ export default function AdminClubs() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Club</TableHead>
-                <TableHead>Verified</TableHead>
+                <TableHead>Trainer</TableHead>
+                <TableHead>Visibility</TableHead>
                 <TableHead>Subscription</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>Joined</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredClubs.length === 0 ? (
+              {filteredTrainers.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No clubs found
+                    No trainers found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredClubs.map((club) => {
-                  const status = getSubscriptionStatus(club);
+                filteredTrainers.map((trainer) => {
+                  const status = getSubscriptionStatus(trainer);
                   return (
-                    <TableRow key={club.id}>
+                    <TableRow key={trainer.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                            <Building2 className="h-4 w-4 text-muted-foreground" />
-                          </div>
+                          <Avatar className="h-9 w-9">
+                            <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                            <AvatarFallback>
+                              {trainer.profile?.full_name?.[0]?.toUpperCase() || "T"}
+                            </AvatarFallback>
+                          </Avatar>
                           <div>
                             <div className="font-medium">
-                              {club.location?.name || "Unknown"}
+                              {trainer.profile?.full_name || "Unknown"}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {club.location?.city || "Unknown city"}
+                              {trainer.profile?.email || "No email"}
                             </div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {club.is_verified ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        {trainer.is_public ? (
+                          <div className="flex items-center gap-1 text-green-600">
+                            <Eye className="h-4 w-4" />
+                            <span className="text-sm">Public</span>
+                          </div>
                         ) : (
-                          <XCircle className="h-5 w-5 text-muted-foreground" />
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <EyeOff className="h-4 w-4" />
+                            <span className="text-sm">Private</span>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
-                        {club.subscription_tier && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            ({club.subscription_tier})
-                          </span>
-                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(new Date(club.created_at), "MMM d, yyyy")}
+                        {format(new Date(trainer.created_at), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -239,7 +229,7 @@ export default function AdminClubs() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditingClub(club)}>
+                            <DropdownMenuItem onClick={() => setEditingTrainer(trainer)}>
                               <CreditCard className="mr-2 h-4 w-4" />
                               Edit Subscription
                             </DropdownMenuItem>
@@ -255,22 +245,22 @@ export default function AdminClubs() {
         </div>
 
         <div className="mt-4 text-sm text-muted-foreground">
-          Showing {filteredClubs.length} of {clubs.length} clubs
+          Showing {filteredTrainers.length} of {trainers.length} trainers
         </div>
       </main>
 
-      {editingClub && (
-        <ClubSubscriptionEditDialog
-          open={!!editingClub}
-          onOpenChange={(open) => !open && setEditingClub(null)}
-          clubId={editingClub.id}
-          clubName={editingClub.location?.name || "Unknown"}
+      {editingTrainer && (
+        <TrainerSubscriptionEditDialog
+          open={!!editingTrainer}
+          onOpenChange={(open) => !open && setEditingTrainer(null)}
+          trainerId={editingTrainer.id}
+          trainerName={editingTrainer.profile?.full_name || "Unknown"}
           currentData={{
-            subscription_status: editingClub.subscription_status,
-            subscription_tier: editingClub.subscription_tier,
-            trial_ends_at: editingClub.trial_ends_at,
+            subscription_status: editingTrainer.subscription_status,
+            trial_ends_at: editingTrainer.trial_ends_at,
+            is_public: editingTrainer.is_public,
           }}
-          onSuccess={() => invalidateClubs()}
+          onSuccess={() => invalidateTrainers()}
         />
       )}
     </div>
