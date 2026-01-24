@@ -282,12 +282,14 @@ async function processLocation(
 
     // Step 5: Update database (if not dry run)
     if (!dryRun) {
-      // Update locations table with court counts
+      // Update locations table with court counts, description, and logo
       const { error: locError } = await supabase
         .from("locations")
         .update({
           indoor_courts: courts.indoor_courts,
           outdoor_courts: courts.outdoor_courts,
+          description: description,
+          logo_url: storedLogoUrl,
         })
         .eq("id", location.id);
 
@@ -295,7 +297,7 @@ async function processLocation(
         console.error("Error updating location:", locError);
       }
 
-      // Check if club_profile exists for this location
+      // Also update club_profile if it exists (claimed clubs can have override)
       const { data: existingProfile } = await supabase
         .from("club_profiles")
         .select("id")
@@ -303,11 +305,11 @@ async function processLocation(
         .single();
 
       if (existingProfile) {
-        // Update existing club_profile
+        // Update existing club_profile (only if it doesn't already have values)
         const { error: profileError } = await supabase
           .from("club_profiles")
           .update({
-            description,
+            description: description,
             logo_url: storedLogoUrl,
           })
           .eq("location_id", location.id);
@@ -316,7 +318,6 @@ async function processLocation(
           console.error("Error updating club_profile:", profileError);
         }
       }
-      // Note: We don't create new club_profiles as that requires user_id
     }
 
     return result;

@@ -204,6 +204,8 @@ export default function AdminLocations() {
         number_of_courts: formData.number_of_courts ?? null,
         indoor_courts: formData.indoor_courts ?? 0,
         outdoor_courts: formData.outdoor_courts ?? 0,
+        description: null,
+        logo_url: null,
       };
 
       if (editingLocation) {
