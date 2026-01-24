@@ -309,6 +309,13 @@ export type Database = {
             referencedRelation: "club_profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "club_managers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       club_players: {
@@ -357,6 +364,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: false
             referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
           {
@@ -485,6 +499,13 @@ export type Database = {
             referencedRelation: "club_profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       club_trainer_invitations: {
@@ -530,6 +551,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: false
             referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_trainer_invitations_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
             referencedColumns: ["id"]
           },
           {
@@ -1833,6 +1861,56 @@ export type Database = {
       }
     }
     Views: {
+      club_profiles_public: {
+        Row: {
+          banner_url: string | null
+          claimed_at: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_verified: boolean | null
+          location_id: string | null
+          logo_url: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          claimed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_verified?: boolean | null
+          location_id?: string | null
+          logo_url?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          claimed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_verified?: boolean | null
+          location_id?: string | null
+          logo_url?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_profiles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles_public: {
         Row: {
           avatar_url: string | null
