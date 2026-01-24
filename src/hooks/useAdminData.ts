@@ -92,6 +92,72 @@ export function useAdminUsers() {
   });
 }
 
+interface TrainerProfileRow {
+  id: string;
+  user_id: string;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
+  trial_started_at: string | null;
+  is_public: boolean;
+  created_at: string;
+  profile: {
+    full_name: string | null;
+    email: string | null;
+    avatar_url: string | null;
+  }[];
+}
+
+export interface TrainerProfileAdmin {
+  id: string;
+  user_id: string;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
+  trial_started_at: string | null;
+  is_public: boolean;
+  created_at: string;
+  profile: {
+    full_name: string | null;
+    email: string | null;
+    avatar_url: string | null;
+  } | null;
+}
+
+export function useAdminTrainers() {
+  const { data: isAdmin } = useIsAdmin();
+
+  return useQuery({
+    queryKey: ["admin", "trainers"],
+    queryFn: async (): Promise<TrainerProfileAdmin[]> => {
+      const { data, error } = await supabase
+        .from("trainer_profiles")
+        .select(
+          `
+          id,
+          user_id,
+          subscription_status,
+          trial_ends_at,
+          trial_started_at,
+          is_public,
+          created_at,
+          profile:profiles!trainer_profiles_user_id_fkey(full_name, email, avatar_url)
+        `
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform profile array to single object
+      return (data as TrainerProfileRow[] || []).map((t) => ({
+        ...t,
+        profile: t.profile?.[0] || null,
+      }));
+    },
+    enabled: isAdmin === true,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
+  });
+}
+
 interface ClubProfile {
   id: string;
   is_verified: boolean;
@@ -145,6 +211,8 @@ export function useInvalidateAdminData() {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
     invalidateClubs: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "clubs"] }),
+    invalidateTrainers: () =>
+      queryClient.invalidateQueries({ queryKey: ["admin", "trainers"] }),
     invalidatePendingClaims: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "pendingClaims"] }),
     invalidateAll: () =>
