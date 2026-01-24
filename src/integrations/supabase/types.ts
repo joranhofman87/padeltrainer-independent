@@ -389,6 +389,42 @@ export type Database = {
           },
         ]
       }
+      club_profile_views: {
+        Row: {
+          club_profile_id: string
+          id: string
+          session_id: string | null
+          viewed_at: string
+        }
+        Insert: {
+          club_profile_id: string
+          id?: string
+          session_id?: string | null
+          viewed_at?: string
+        }
+        Update: {
+          club_profile_id?: string
+          id?: string
+          session_id?: string | null
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_profile_views_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_profile_views_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_profiles: {
         Row: {
           banner_url: string | null
@@ -402,6 +438,11 @@ export type Database = {
           location_id: string
           logo_url: string | null
           phone: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
           stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
@@ -422,6 +463,11 @@ export type Database = {
           location_id: string
           logo_url?: string | null
           phone?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -442,6 +488,11 @@ export type Database = {
           location_id?: string
           logo_url?: string | null
           phone?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
@@ -1934,6 +1985,11 @@ export type Database = {
           is_verified: boolean | null
           location_id: string | null
           logo_url: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
           subscription_status: string | null
           subscription_tier: string | null
           updated_at: string | null
@@ -1947,6 +2003,11 @@ export type Database = {
           is_verified?: boolean | null
           location_id?: string | null
           logo_url?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
           updated_at?: string | null
@@ -1960,6 +2021,11 @@ export type Database = {
           is_verified?: boolean | null
           location_id?: string | null
           logo_url?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
           updated_at?: string | null
