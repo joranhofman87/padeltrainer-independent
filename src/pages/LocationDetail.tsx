@@ -52,16 +52,19 @@ interface TrainerWithProfile {
   avgRating?: number;
 }
 
+// Public-safe club profile (excludes contact details like email/phone)
 interface ClubProfile {
   id: string;
   location_id: string;
   description: string | null;
   banner_url: string | null;
-  contact_email: string | null;
-  phone: string | null;
   logo_url: string | null;
   is_verified: boolean;
   claimed_at: string;
+  created_at?: string;
+  updated_at?: string;
+  subscription_status?: string | null;
+  subscription_tier?: string | null;
 }
 
 export default function LocationDetail() {
