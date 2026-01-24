@@ -386,9 +386,9 @@ Deno.serve(async (req) => {
       const result = await processLocation(supabase, location as Location, dryRun);
       results.push(result);
 
-      // Add delay between requests to avoid rate limits
+      // Add delay between requests to avoid rate limits (reduced for faster processing)
       if (locations.indexOf(location) < locations.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
 
