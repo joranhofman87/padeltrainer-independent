@@ -1,7 +1,8 @@
-import { MapPin, ExternalLink, Users, CheckCircle, Home, Sun } from 'lucide-react';
+import { MapPin, ExternalLink, Users, CheckCircle, Home, Sun, Building2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Location } from '@/lib/locations';
@@ -10,10 +11,11 @@ interface LocationCardProps {
   location: Location;
   trainerCount?: number;
   isClaimed?: boolean;
+  logoUrl?: string | null;
   onClick?: () => void;
 }
 
-export function LocationCard({ location, trainerCount = 0, isClaimed = false, onClick }: LocationCardProps) {
+export function LocationCard({ location, trainerCount = 0, isClaimed = false, logoUrl, onClick }: LocationCardProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
 
@@ -25,6 +27,16 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, on
     }
   };
 
+  // Get initials for avatar fallback
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <Card 
       className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
@@ -32,9 +44,18 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, on
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <CardTitle className="text-lg line-clamp-1">{location.name}</CardTitle>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             {isClaimed && (
+              <Avatar className="h-10 w-10 shrink-0">
+                <AvatarImage src={logoUrl || undefined} alt={location.name} />
+                <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                  {logoUrl ? <Building2 className="h-5 w-5" /> : getInitials(location.name)}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            <div className="flex items-center gap-2 min-w-0">
+              <CardTitle className="text-lg line-clamp-1">{location.name}</CardTitle>
+              {isClaimed && (
               <CheckCircle className="h-4 w-4 text-primary shrink-0" aria-label={t('locations.verified')} />
             )}
           </div>
@@ -53,8 +74,9 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, on
             >
               <ExternalLink className="h-4 w-4" />
             </Button>
-          )}
-        </div>
+              )}
+            </div>
+          </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-start gap-2 text-sm text-muted-foreground">

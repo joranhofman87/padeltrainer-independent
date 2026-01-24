@@ -20,7 +20,10 @@
     "trainers": "Club Trainers",
     "players": "Players",
     "upcomingSessions": "Upcoming Sessions",
-    "thisWeek": "This Week"
+    "thisWeek": "This Week",
+    "profileViews": "Profile Views",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days"
   },
   "claim": {
     "button": "Claim this Club",
@@ -217,7 +220,19 @@
     "bannerWrongRatio": "Banner should have a wide aspect ratio (3:1 to 5:1)",
     "logoTooSmall": "Logo must be at least {{minSize}}×{{minSize}}px",
     "logoTooLarge": "Logo must be at most {{maxSize}}×{{maxSize}}px",
-    "invalidImage": "Could not process this image"
+    "invalidImage": "Could not process this image",
+    "socialMedia": "Social Media",
+    "socialMediaDescription": "Add links to your club's social media profiles",
+    "instagram": "Instagram",
+    "instagramPlaceholder": "yourusername or full URL",
+    "facebook": "Facebook",
+    "facebookPlaceholder": "yourusername or full URL",
+    "tiktok": "TikTok",
+    "tiktokPlaceholder": "@yourusername or full URL",
+    "youtube": "YouTube",
+    "youtubePlaceholder": "@yourchannel or full URL",
+    "linkedin": "LinkedIn",
+    "linkedinPlaceholder": "company/yourcompany or full URL"
   },
   "managers": {
     "title": "Club Managers",

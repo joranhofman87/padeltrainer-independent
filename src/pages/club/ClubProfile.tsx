@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Save, Building2, Camera, Loader2, ImageIcon, Lock, LayoutGrid } from 'lucide-react';
+import { Save, Building2, Camera, Loader2, ImageIcon, Lock, LayoutGrid, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,11 @@ export default function ClubProfile() {
     description: '',
     contact_email: '',
     phone: '',
+    social_instagram: '',
+    social_facebook: '',
+    social_tiktok: '',
+    social_youtube: '',
+    social_linkedin: '',
   });
   const [courtData, setCourtData] = useState({
     indoor_courts: 0,
@@ -44,10 +49,16 @@ export default function ClubProfile() {
 
   useEffect(() => {
     if (activeClub) {
+      const clubData = activeClub as any;
       setFormData({
         description: activeClub.description || '',
         contact_email: activeClub.contact_email || '',
         phone: activeClub.phone || '',
+        social_instagram: clubData.social_instagram || '',
+        social_facebook: clubData.social_facebook || '',
+        social_tiktok: clubData.social_tiktok || '',
+        social_youtube: clubData.social_youtube || '',
+        social_linkedin: clubData.social_linkedin || '',
       });
       setLogoUrl(activeClub.logo_url);
       setBannerUrl((activeClub as any).banner_url);
@@ -460,6 +471,66 @@ export default function ClubProfile() {
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder={t('profile.phonePlaceholder')}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Social Media */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5" />
+              {t('profile.socialMedia')}
+            </CardTitle>
+            <CardDescription>{t('profile.socialMediaDescription')}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="social_instagram">{t('profile.instagram')}</Label>
+                <Input
+                  id="social_instagram"
+                  value={formData.social_instagram}
+                  onChange={(e) => setFormData({ ...formData, social_instagram: e.target.value })}
+                  placeholder={t('profile.instagramPlaceholder')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="social_facebook">{t('profile.facebook')}</Label>
+                <Input
+                  id="social_facebook"
+                  value={formData.social_facebook}
+                  onChange={(e) => setFormData({ ...formData, social_facebook: e.target.value })}
+                  placeholder={t('profile.facebookPlaceholder')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="social_tiktok">{t('profile.tiktok')}</Label>
+                <Input
+                  id="social_tiktok"
+                  value={formData.social_tiktok}
+                  onChange={(e) => setFormData({ ...formData, social_tiktok: e.target.value })}
+                  placeholder={t('profile.tiktokPlaceholder')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="social_youtube">{t('profile.youtube')}</Label>
+                <Input
+                  id="social_youtube"
+                  value={formData.social_youtube}
+                  onChange={(e) => setFormData({ ...formData, social_youtube: e.target.value })}
+                  placeholder={t('profile.youtubePlaceholder')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="social_linkedin">{t('profile.linkedin')}</Label>
+                <Input
+                  id="social_linkedin"
+                  value={formData.social_linkedin}
+                  onChange={(e) => setFormData({ ...formData, social_linkedin: e.target.value })}
+                  placeholder={t('profile.linkedinPlaceholder')}
                 />
               </div>
             </div>

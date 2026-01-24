@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings } from 'lucide-react';
+import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Instagram, Facebook, Youtube, Linkedin } from 'lucide-react';
 import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { LocalizedLink } from '@/components/LocalizedLink';
@@ -23,6 +23,7 @@ import { SEO } from '@/components/SEO';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getLocationBySlug, getTrainersAtLocation, getClubProfileByLocationId, type Location } from '@/lib/locations';
 import { isLocationClaimed, isUserClubManager } from '@/lib/club';
+import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
@@ -66,6 +67,11 @@ interface ClubProfile {
   updated_at?: string;
   subscription_status?: string | null;
   subscription_tier?: string | null;
+  social_instagram?: string | null;
+  social_facebook?: string | null;
+  social_tiktok?: string | null;
+  social_youtube?: string | null;
+  social_linkedin?: string | null;
 }
 
 export default function LocationDetail() {
@@ -152,7 +158,14 @@ export default function LocationDetail() {
     }
 
     fetchData();
-  }, [slug, navigate, user]);
+  }, [slug, navigate, user, localizePath]);
+
+  // Record profile view when club profile is loaded
+  useEffect(() => {
+    if (clubProfile?.id) {
+      recordClubProfileView(clubProfile.id);
+    }
+  }, [clubProfile?.id]);
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'T';
@@ -290,6 +303,81 @@ export default function LocationDetail() {
                   <MapPin className="h-4 w-4 mr-2" />
                   {t('locations.getDirections')}
                 </Button>
+                
+                {/* Social Media Icons */}
+                {clubProfile?.social_instagram && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const handle = clubProfile.social_instagram!;
+                      const url = handle.startsWith('http') ? handle : `https://instagram.com/${handle.replace('@', '')}`;
+                      window.open(url, '_blank');
+                    }}
+                    aria-label="Instagram"
+                  >
+                    <Instagram className="h-5 w-5" />
+                  </Button>
+                )}
+                {clubProfile?.social_facebook && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const handle = clubProfile.social_facebook!;
+                      const url = handle.startsWith('http') ? handle : `https://facebook.com/${handle}`;
+                      window.open(url, '_blank');
+                    }}
+                    aria-label="Facebook"
+                  >
+                    <Facebook className="h-5 w-5" />
+                  </Button>
+                )}
+                {clubProfile?.social_tiktok && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const handle = clubProfile.social_tiktok!;
+                      const url = handle.startsWith('http') ? handle : `https://tiktok.com/${handle.startsWith('@') ? handle : '@' + handle}`;
+                      window.open(url, '_blank');
+                    }}
+                    aria-label="TikTok"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+                    </svg>
+                  </Button>
+                )}
+                {clubProfile?.social_youtube && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const handle = clubProfile.social_youtube!;
+                      const url = handle.startsWith('http') ? handle : `https://youtube.com/${handle.startsWith('@') ? handle : '@' + handle}`;
+                      window.open(url, '_blank');
+                    }}
+                    aria-label="YouTube"
+                  >
+                    <Youtube className="h-5 w-5" />
+                  </Button>
+                )}
+                {clubProfile?.social_linkedin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const handle = clubProfile.social_linkedin!;
+                      const url = handle.startsWith('http') ? handle : `https://linkedin.com/${handle}`;
+                      window.open(url, '_blank');
+                    }}
+                    aria-label="LinkedIn"
+                  >
+                    <Linkedin className="h-5 w-5" />
+                  </Button>
+                )}
+                
                 {!isClaimed && (
                   <Button
                     variant="default"
