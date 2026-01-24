@@ -63,6 +63,13 @@ export function ClubSubscriptionEditDialog({
     currentData.trial_ends_at ? new Date(currentData.trial_ends_at) : undefined
   );
 
+  const handleStatusChange = (newStatus: string) => {
+    setStatus(newStatus);
+    if (newStatus === "active") {
+      setTrialEndsAt(undefined);
+    }
+  };
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -71,7 +78,7 @@ export function ClubSubscriptionEditDialog({
         .update({
           subscription_status: status,
           subscription_tier: tier,
-          trial_ends_at: trialEndsAt?.toISOString() || null,
+          trial_ends_at: status === "active" ? null : (trialEndsAt?.toISOString() || null),
         })
         .eq("id", clubId);
 
@@ -109,7 +116,7 @@ export function ClubSubscriptionEditDialog({
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label htmlFor="status">Subscription Status</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={handleStatusChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
@@ -139,31 +146,33 @@ export function ClubSubscriptionEditDialog({
             </Select>
           </div>
 
-          <div className="grid gap-2">
-            <Label>Trial Ends At</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "justify-start text-left font-normal",
-                    !trialEndsAt && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {trialEndsAt ? format(trialEndsAt, "PPP") : "Select date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={trialEndsAt}
-                  onSelect={setTrialEndsAt}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
+          {status !== "active" && (
+            <div className="grid gap-2">
+              <Label>Trial Ends At</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "justify-start text-left font-normal",
+                      !trialEndsAt && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {trialEndsAt ? format(trialEndsAt, "PPP") : "Select date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={trialEndsAt}
+                    onSelect={setTrialEndsAt}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
