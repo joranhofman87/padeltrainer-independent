@@ -65,6 +65,9 @@
     "alreadyApplied": "Je hebt je al aangemeld",
     "enrollmentClosed": "Inschrijving is gesloten",
     "deadlinePassed": "De inschrijfdeadline is verstreken",
+    "apply": "Aanmelden",
+    "signUpAndApply": "Aanmelden & inschrijven",
+    "loginToApply": "Log in om aan te melden",
     
     "form": {
       "personalInfo": "Persoonlijke Informatie",

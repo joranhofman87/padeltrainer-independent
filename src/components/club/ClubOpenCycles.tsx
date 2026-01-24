@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, ChevronDown, ChevronUp, LogIn } from 'lucide-react';
+import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -194,9 +194,9 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
                         </CollapsibleTrigger>
                       )}
                       {!user && !deadlinePassed && (
-                        <Button variant="outline" size="sm" onClick={handleLoginRedirect}>
-                          <LogIn className="h-4 w-4 mr-1" />
-                          {t('application.loginToApply', 'Login to apply')}
+                        <Button variant="default" size="sm" onClick={handleLoginRedirect}>
+                          <UserPlus className="h-4 w-4 mr-1" />
+                          {t('application.signUpAndApply')}
                         </Button>
                       )}
                     </div>

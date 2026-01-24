@@ -65,6 +65,9 @@
     "alreadyApplied": "You have already applied",
     "enrollmentClosed": "Enrollment is closed",
     "deadlinePassed": "The enrollment deadline has passed",
+    "apply": "Apply",
+    "signUpAndApply": "Sign up & apply",
+    "loginToApply": "Login to apply",
     
     "form": {
       "personalInfo": "Personal Information",
