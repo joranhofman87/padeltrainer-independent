@@ -599,9 +599,9 @@ export default function LocationDetail() {
                           variant="default"
                           size="sm"
                           className="flex-1"
-                          onClick={() => navigate(`/book/${trainer.trainer_id}`)}
+                          onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
                         >
-                          {t('locations.bookLesson')}
+                          {t('locations.viewProfile')}
                         </Button>
                         <FollowButton trainerProfileId={trainer.trainer_id} size="sm" />
                       </div>
