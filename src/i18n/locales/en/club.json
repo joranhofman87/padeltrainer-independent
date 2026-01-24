@@ -199,6 +199,7 @@
     "profileUpdated": "Profile updated successfully",
     "banner": "Banner Image",
     "bannerDescription": "Displayed at the top of your public profile page",
+    "bannerSizeHint": "Recommended: 1200×400px (3:1 ratio), max 10MB",
     "uploadBanner": "Upload Banner",
     "changeBanner": "Change banner",
     "bannerUpdated": "Banner updated successfully",
@@ -208,7 +209,15 @@
     "courtInfo": "Court Information",
     "courtInfoDescription": "Number of courts at your location",
     "indoorCourts": "Indoor Courts",
-    "outdoorCourts": "Outdoor Courts"
+    "outdoorCourts": "Outdoor Courts",
+    "selectImageFile": "Please select an image file",
+    "imageTooLarge": "Please select an image smaller than {{maxSize}}",
+    "bannerTooSmall": "Banner must be at least {{minWidth}}px wide",
+    "bannerTooLarge": "Banner must be at most {{maxWidth}}px wide",
+    "bannerWrongRatio": "Banner should have a wide aspect ratio (3:1 to 5:1)",
+    "logoTooSmall": "Logo must be at least {{minSize}}×{{minSize}}px",
+    "logoTooLarge": "Logo must be at most {{maxSize}}×{{maxSize}}px",
+    "invalidImage": "Could not process this image"
   },
   "managers": {
     "title": "Club Managers",

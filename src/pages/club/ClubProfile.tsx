@@ -60,6 +60,57 @@ export default function ClubProfile() {
     }
   }, [activeClub]);
 
+  const validateImageDimensions = (
+    file: File,
+    type: 'logo' | 'banner'
+  ): Promise<{ valid: boolean; message?: string }> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(img.src);
+        
+        if (type === 'banner') {
+          const aspectRatio = img.width / img.height;
+          const minWidth = 800;
+          const maxWidth = 2400;
+          const minAspectRatio = 2.5; // At least 2.5:1 (wide)
+          const maxAspectRatio = 5; // At most 5:1 (not too wide)
+          
+          if (img.width < minWidth) {
+            resolve({ valid: false, message: t('profile.bannerTooSmall', { minWidth }) });
+            return;
+          }
+          if (img.width > maxWidth) {
+            resolve({ valid: false, message: t('profile.bannerTooLarge', { maxWidth }) });
+            return;
+          }
+          if (aspectRatio < minAspectRatio || aspectRatio > maxAspectRatio) {
+            resolve({ valid: false, message: t('profile.bannerWrongRatio') });
+            return;
+          }
+        } else if (type === 'logo') {
+          const minSize = 100;
+          const maxSize = 1000;
+          
+          if (img.width < minSize || img.height < minSize) {
+            resolve({ valid: false, message: t('profile.logoTooSmall', { minSize }) });
+            return;
+          }
+          if (img.width > maxSize || img.height > maxSize) {
+            resolve({ valid: false, message: t('profile.logoTooLarge', { maxSize }) });
+            return;
+          }
+        }
+        
+        resolve({ valid: true });
+      };
+      img.onerror = () => {
+        resolve({ valid: false, message: t('profile.invalidImage') });
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleImageUpload = async (
     file: File,
     type: 'logo' | 'banner',
@@ -71,16 +122,28 @@ export default function ClubProfile() {
     if (!file.type.startsWith('image/')) {
       toast({
         title: t('common:error'),
-        description: 'Please select an image file',
+        description: t('profile.selectImageFile'),
         variant: 'destructive',
       });
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    const maxSize = type === 'banner' ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxSize) {
       toast({
         title: t('common:error'),
-        description: 'Please select an image smaller than 5MB',
+        description: t('profile.imageTooLarge', { maxSize: type === 'banner' ? '10MB' : '5MB' }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate dimensions
+    const validation = await validateImageDimensions(file, type);
+    if (!validation.valid) {
+      toast({
+        title: t('common:error'),
+        description: validation.message,
         variant: 'destructive',
       });
       return;
@@ -263,7 +326,10 @@ export default function ClubProfile() {
               {t('profile.banner')}
               {!isPaidPlan && <Lock className="h-4 w-4 text-muted-foreground" />}
             </CardTitle>
-            <CardDescription>{t('profile.bannerDescription')}</CardDescription>
+            <CardDescription>
+              {t('profile.bannerDescription')}
+              <span className="block text-xs mt-1">{t('profile.bannerSizeHint')}</span>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isPaidPlan ? (
