@@ -177,6 +177,31 @@ export default function TrainerProfile() {
       setLoading(false);
       return;
     }
+
+    // Check if this trainer is linked to a verified club (allows viewing even if is_public is false)
+    const { data: clubLink } = await supabase
+      .from('trainer_locations')
+      .select(`
+        id,
+        show_on_club_page,
+        location:locations!inner(
+          id,
+          club_profiles:club_profiles!inner(id, is_verified)
+        )
+      `)
+      .eq('trainer_id', trainerResult.data.id)
+      .eq('relationship_type', 'club_trainer');
+    
+    const hasVerifiedClubLink = clubLink?.some(
+      (link: any) => link.show_on_club_page && link.location?.club_profiles?.is_verified
+    );
+
+    // If trainer is not public AND not linked to a verified club, don't show profile
+    if (!trainerResult.data.is_public && !hasVerifiedClubLink) {
+      console.log('Trainer is not public and not linked to verified club');
+      setLoading(false);
+      return;
+    }
     
     setTrainer(trainerResult.data);
     

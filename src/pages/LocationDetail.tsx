@@ -141,13 +141,16 @@ export default function LocationDetail() {
           ratingsByTrainer[review.trainer_id].push(review.rating);
         });
 
-        const trainersWithProfiles = trainersData.map(trainer => ({
-          ...trainer,
-          profile: profiles?.find(p => p.user_id === trainer.trainer_profiles.user_id),
-          avgRating: ratingsByTrainer[trainer.trainer_id]
-            ? ratingsByTrainer[trainer.trainer_id].reduce((a, b) => a + b, 0) / ratingsByTrainer[trainer.trainer_id].length
-            : undefined,
-        }));
+        const trainersWithProfiles = trainersData
+          .map(trainer => ({
+            ...trainer,
+            profile: profiles?.find(p => p.user_id === trainer.trainer_profiles.user_id),
+            avgRating: ratingsByTrainer[trainer.trainer_id]
+              ? ratingsByTrainer[trainer.trainer_id].reduce((a, b) => a + b, 0) / ratingsByTrainer[trainer.trainer_id].length
+              : undefined,
+          }))
+          // Filter out trainers without a name - prevents blank cards on club page
+          .filter(trainer => trainer.profile?.full_name);
 
         setTrainers(trainersWithProfiles);
       } catch (error) {
