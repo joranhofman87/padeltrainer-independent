@@ -1029,9 +1029,11 @@ export type Database = {
           city: string
           country: string
           created_at: string
+          description: string | null
           id: string
           indoor_courts: number | null
           is_active: boolean
+          logo_url: string | null
           name: string
           number_of_courts: number | null
           outdoor_courts: number | null
@@ -1045,9 +1047,11 @@ export type Database = {
           city: string
           country?: string
           created_at?: string
+          description?: string | null
           id?: string
           indoor_courts?: number | null
           is_active?: boolean
+          logo_url?: string | null
           name: string
           number_of_courts?: number | null
           outdoor_courts?: number | null
@@ -1061,9 +1065,11 @@ export type Database = {
           city?: string
           country?: string
           created_at?: string
+          description?: string | null
           id?: string
           indoor_courts?: number | null
           is_active?: boolean
+          logo_url?: string | null
           name?: string
           number_of_courts?: number | null
           outdoor_courts?: number | null

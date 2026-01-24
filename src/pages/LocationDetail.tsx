@@ -159,6 +159,10 @@ export default function LocationDetail() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  // Use club profile data if available, otherwise fall back to location data
+  const displayDescription = clubProfile?.description || location?.description;
+  const displayLogo = clubProfile?.logo_url || location?.logo_url;
+
   // Generate structured data for SEO
   const getStructuredData = () => {
     if (!location) return null;
@@ -176,7 +180,8 @@ export default function LocationDetail() {
       "url": location.website_url,
       "sport": "Padel",
       ...(location.number_of_courts && { "numberOfRooms": location.number_of_courts }),
-      ...(clubProfile?.description && { "description": clubProfile.description })
+      ...(displayDescription && { "description": displayDescription }),
+      ...(displayLogo && { "image": displayLogo })
     };
   };
 
@@ -194,8 +199,8 @@ export default function LocationDetail() {
     return null;
   }
 
-  const seoDescription = clubProfile?.description 
-    ? clubProfile.description.slice(0, 155) 
+  const seoDescription = displayDescription 
+    ? displayDescription.slice(0, 155) 
     : `Book padel lessons at ${location.name} in ${location.city}. ${trainers.length} certified trainers available.`;
 
   return (
@@ -205,7 +210,7 @@ export default function LocationDetail() {
         description={seoDescription}
         url={`/locations/${location.slug}`}
         type="place"
-        image={clubProfile?.banner_url || undefined}
+        image={displayLogo || undefined}
         structuredData={getStructuredData() || undefined}
       />
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
@@ -370,8 +375,8 @@ export default function LocationDetail() {
                 <CardTitle className="text-lg">{t('locations.aboutClub')}</CardTitle>
               </CardHeader>
               <CardContent>
-                {clubProfile?.description ? (
-                  <p className="text-muted-foreground whitespace-pre-wrap">{clubProfile.description}</p>
+                {displayDescription ? (
+                  <p className="text-muted-foreground whitespace-pre-wrap">{displayDescription}</p>
                 ) : (
                   <p className="text-muted-foreground italic">{t('locations.noDescription')}</p>
                 )}

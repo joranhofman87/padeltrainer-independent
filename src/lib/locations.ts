@@ -13,6 +13,8 @@ export interface Location {
   number_of_courts: number | null;
   indoor_courts: number | null;
   outdoor_courts: number | null;
+  description: string | null;
+  logo_url: string | null;
   created_at: string;
   updated_at: string;
 }
