@@ -201,6 +201,7 @@ export async function getClubTrainers(clubProfileId: string) {
       is_primary,
       relationship_type,
       trainer_id,
+      show_on_club_page,
       trainer_profiles!inner (
         id,
         user_id,
@@ -220,6 +221,24 @@ export async function getClubTrainers(clubProfileId: string) {
   }
 
   return data || [];
+}
+
+// Update trainer visibility on club page
+export async function updateTrainerVisibility(
+  trainerLocationId: string,
+  showOnClubPage: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('trainer_locations')
+    .update({ show_on_club_page: showOnClubPage })
+    .eq('id', trainerLocationId);
+
+  if (error) {
+    console.error('Error updating trainer visibility:', error);
+    return false;
+  }
+
+  return true;
 }
 
 // Get club players with optional pagination

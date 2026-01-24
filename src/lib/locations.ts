@@ -89,7 +89,7 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
   return data;
 }
 
-// Fetch trainers at a location
+// Fetch trainers at a location (for public display - only shows trainers marked as visible)
 export async function getTrainersAtLocation(locationId: string) {
   const { data, error } = await supabase
     .from('trainer_locations')
@@ -97,6 +97,7 @@ export async function getTrainersAtLocation(locationId: string) {
       id,
       is_primary,
       trainer_id,
+      show_on_club_page,
       trainer_profiles!inner (
         id,
         user_id,
@@ -108,13 +109,16 @@ export async function getTrainersAtLocation(locationId: string) {
         knltb_rating
       )
     `)
-    .eq('location_id', locationId);
+    .eq('location_id', locationId)
+    .eq('show_on_club_page', true);
 
   if (error) {
     console.error('Error fetching trainers at location:', error);
     throw error;
   }
 
+  // Filter out trainers who will have no name (we need to check profiles_public)
+  // The actual name filtering happens when we join with profiles_public in LocationDetail
   return data || [];
 }
 
