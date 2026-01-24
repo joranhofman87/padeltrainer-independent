@@ -64,3 +64,6 @@ verify_jwt = false
 
 [functions.request-account-deletion]
 verify_jwt = false
+
+[functions.enrich-clubs]
+verify_jwt = false
