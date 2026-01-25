@@ -91,7 +91,7 @@ export function ClubAddSlotDialog({
 
   useEffect(() => {
     if (open) {
-      setSelectedTrainerId(defaultTrainerId || (trainers.length > 0 ? trainers[0].id : ""));
+      setSelectedTrainerId(defaultTrainerId || "");
       setSlotDate(defaultDate || new Date());
       setSlotTime(defaultTime || "09:00");
       setSlotLessonId(null);
@@ -331,6 +331,7 @@ export function ClubBulkCreateSheet({
   const getInitialStartTime = () => defaultTime || "09:00";
 
   const generateCyclusName = (trainerId: string, startDate: Date, startTime: string, lessonId: string | null) => {
+    if (!trainerId) return "";
     const trainer = trainers.find((t) => t.id === trainerId);
     const lesson = lessons.find((l) => l.id === lessonId);
     const dayName = format(startDate, "EEEE");
@@ -344,7 +345,7 @@ export function ClubBulkCreateSheet({
     if (open && defaultDate && bulkSlots.length === 0) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
-      const trainerId = defaultTrainerId || (trainers.length > 0 ? trainers[0].id : "");
+      const trainerId = defaultTrainerId || "";
       setBulkSlots([
         {
           trainerId,
@@ -362,7 +363,7 @@ export function ClubBulkCreateSheet({
   const addBulkSlotConfig = () => {
     const newStartDate = getInitialStartDate();
     const newStartTime = getInitialStartTime();
-    const trainerId = defaultTrainerId || (trainers.length > 0 ? trainers[0].id : "");
+    const trainerId = defaultTrainerId || "";
     setBulkSlots([
       ...bulkSlots,
       {
