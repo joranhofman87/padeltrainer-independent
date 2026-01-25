@@ -46,6 +46,7 @@ interface CycleApplicationFormProps {
   playerId: string;
   playerName: string;
   playerEmail: string;
+  playerPhone?: string;
   playerRating?: number;
   playerRatingSystem?: string;
   trainers?: TrainerOption[];
@@ -63,6 +64,7 @@ export default function CycleApplicationForm({
   playerId,
   playerName,
   playerEmail,
+  playerPhone,
   playerRating,
   playerRatingSystem = 'knltb',
   trainers = [],
@@ -124,7 +126,7 @@ export default function CycleApplicationForm({
     defaultValues: {
       full_name: playerName || '',
       email: playerEmail || '',
-      phone: '',
+      phone: playerPhone || '',
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_type: (cycle.settings.lesson_types?.[0] as typeof LESSON_TYPES[number]) || 'private',
@@ -172,6 +174,22 @@ export default function CycleApplicationForm({
         notes: values.notes,
         consent_given: values.consent,
       });
+
+      // Update player profile if rating/phone changed
+      const profileUpdates: Record<string, any> = {};
+      if (values.rating && values.rating !== playerRating) {
+        profileUpdates.skill_rating = values.rating;
+        profileUpdates.rating_system = values.rating_system;
+      }
+      if (values.phone && values.phone !== playerPhone) {
+        profileUpdates.phone = values.phone;
+      }
+      if (Object.keys(profileUpdates).length > 0) {
+        await supabase
+          .from('profiles')
+          .update(profileUpdates)
+          .eq('id', playerId);
+      }
 
       setIsSuccess(true);
       toast.success(t('application.success.title'));

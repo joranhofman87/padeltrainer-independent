@@ -330,6 +330,9 @@ export default function CycleRegistration() {
               playerId={profile.id}
               playerName={profile.full_name || ''}
               playerEmail={user.email || ''}
+              playerPhone={profile.phone || ''}
+              playerRating={profile.skill_rating ?? undefined}
+              playerRatingSystem={profile.rating_system || 'knltb'}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(t => ({ id: t.id, name: t.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
               onSuccess={handleSuccess}
