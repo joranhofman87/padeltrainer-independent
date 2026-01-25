@@ -23,13 +23,7 @@ export default function TrainerCycles() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-    } else if (!loading && role !== 'trainer') {
-      navigate('/');
-    }
-  }, [user, role, loading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -80,22 +74,19 @@ export default function TrainerCycles() {
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          <Skeleton className="h-8 w-48 mb-6" />
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-          </div>
+      <div className="container mx-auto px-4 py-6">
+        <Skeleton className="h-8 w-48 mb-6" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -142,7 +133,6 @@ export default function TrainerCycles() {
             ))}
           </div>
         )}
-      </div>
 
       {/* Create/Edit Dialog */}
       {trainerId && (

@@ -20,15 +20,7 @@ export default function TrainerSettings() {
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
 
-  useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (role !== 'trainer') {
-        navigate('/player');
-      }
-    }
-  }, [user, role, loading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   // Sync isPublic with subscription data
   useEffect(() => {
@@ -158,9 +150,9 @@ export default function TrainerSettings() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+    <>
+      {/* Sub-page Header */}
+      <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
             <ArrowLeft className="h-5 w-5" />
@@ -170,7 +162,7 @@ export default function TrainerSettings() {
             <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
@@ -245,6 +237,6 @@ export default function TrainerSettings() {
           <DeleteAccountDialog />
         </div>
       </main>
-    </div>
+    </>
   );
 }

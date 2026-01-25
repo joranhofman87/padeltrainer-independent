@@ -38,13 +38,7 @@ export default function TrainerIntakeRequests() {
   const [showWeightsDialog, setShowWeightsDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-    } else if (!loading && role !== 'trainer') {
-      navigate('/');
-    }
-  }, [user, role, loading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -143,18 +137,15 @@ export default function TrainerIntakeRequests() {
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          <Skeleton className="h-8 w-48 mb-6" />
-          <Skeleton className="h-[400px] w-full" />
-        </div>
+      <div className="container mx-auto px-4 py-6">
+        <Skeleton className="h-8 w-48 mb-6" />
+        <Skeleton className="h-[400px] w-full" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
@@ -231,7 +222,6 @@ export default function TrainerIntakeRequests() {
           emptyMessage={t('intakeRequests.noRequests')}
           emptyDescription={t('intakeRequests.noRequestsDescription')}
         />
-      </div>
 
       {/* Detail Sheet */}
       <IntakeRequestDetailSheet

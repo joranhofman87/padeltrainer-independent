@@ -48,15 +48,7 @@ export default function OpenSlots() {
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
-  useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (role !== 'trainer') {
-        navigate('/');
-      }
-    }
-  }, [user, role, authLoading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     if (user && role === 'trainer') {
@@ -210,16 +202,16 @@ export default function OpenSlots() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex items-center justify-center py-16">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+    <>
+      {/* Sub-page Header */}
+      <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -235,7 +227,7 @@ export default function OpenSlots() {
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
@@ -411,6 +403,6 @@ export default function OpenSlots() {
           onBookingCreated={handleBookingCreated}
         />
       )}
-    </div>
+    </>
   );
 }

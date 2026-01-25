@@ -22,16 +22,11 @@ export default function TrainerBookingSettings() {
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (role !== 'trainer') {
-        navigate('/player');
-      } else {
-        fetchSettings();
-      }
+    if (!loading && user && role === 'trainer') {
+      fetchSettings();
     }
-  }, [user, role, loading, navigate]);
+  }, [user, role, loading]);
+  // Auth is now handled by TrainerLayout
 
   const fetchSettings = async () => {
     const { data } = await supabase
@@ -74,16 +69,16 @@ export default function TrainerBookingSettings() {
 
   if (loading || loadingSettings) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex items-center justify-center py-16">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+    <>
+      {/* Sub-page Header */}
+      <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/trainer/settings')}>
             <ArrowLeft className="h-5 w-5" />
@@ -93,7 +88,7 @@ export default function TrainerBookingSettings() {
             <p className="text-sm text-muted-foreground">{t('bookingSettings.subtitle')}</p>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 max-w-2xl">
@@ -175,6 +170,6 @@ export default function TrainerBookingSettings() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </>
   );
 }

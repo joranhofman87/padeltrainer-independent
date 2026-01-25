@@ -85,11 +85,7 @@ export default function TrainerCalendar() {
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [user, authLoading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     if (user) {
@@ -450,9 +446,9 @@ export default function TrainerCalendar() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+    <>
+      {/* Sub-page Header */}
+      <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
@@ -498,7 +494,7 @@ export default function TrainerCalendar() {
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Controls */}
@@ -702,6 +698,6 @@ export default function TrainerCalendar() {
         trainerId={trainerId || ""}
         onBookingUpdated={handleSlotsCreated}
       />
-    </div>
+    </>
   );
 }
