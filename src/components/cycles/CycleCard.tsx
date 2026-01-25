@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { 
   Calendar, 
@@ -38,7 +38,14 @@ interface CycleCardProps {
 export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true }: CycleCardProps) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
+  const location = useLocation();
   const [counts, setCounts] = useState<Record<string, number>>({});
+
+  const getBasePath = () => {
+    if (location.pathname.startsWith('/club')) return '/club';
+    if (location.pathname.startsWith('/trainer')) return '/trainer';
+    return '';
+  };
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
@@ -126,7 +133,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     {t('editCycle')}
                   </DropdownMenuItem>
                   
-                  <DropdownMenuItem onClick={() => navigate(`intake-requests?cycle=${cycle.id}`)}>
+                  <DropdownMenuItem onClick={() => navigate(`${getBasePath()}/intake-requests?cycle=${cycle.id}`)}>
                     <FileText className="mr-2 h-4 w-4" />
                     {t('actions.viewRequests')}
                   </DropdownMenuItem>
