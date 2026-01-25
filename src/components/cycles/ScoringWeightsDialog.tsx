@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Info, Zap, Clock, Users, TrendingUp, LayoutGrid } from "lucide-react";
+import { Loader2, Info, Zap, Clock, Users, TrendingUp, LayoutGrid, CalendarDays } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -27,37 +27,42 @@ export interface ScoringWeights {
   level_compatible: number;
   priority_bonus: number;
   capacity_available: number;
+  sessions_per_week: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
-  time_match: 40,
+  time_match: 35,
   preferred_trainer: 20,
-  level_compatible: 20,
+  level_compatible: 15,
   priority_bonus: 10,
   capacity_available: 10,
+  sessions_per_week: 10,
 };
 
 const PRESETS: Record<string, ScoringWeights> = {
   balanced: {
-    time_match: 40,
+    time_match: 35,
     preferred_trainer: 20,
-    level_compatible: 20,
+    level_compatible: 15,
     priority_bonus: 10,
     capacity_available: 10,
+    sessions_per_week: 10,
   },
   timeFocused: {
-    time_match: 60,
+    time_match: 50,
     preferred_trainer: 10,
     level_compatible: 15,
     priority_bonus: 10,
-    capacity_available: 5,
+    capacity_available: 10,
+    sessions_per_week: 5,
   },
   levelFocused: {
     time_match: 25,
     preferred_trainer: 15,
-    level_compatible: 40,
-    priority_bonus: 10,
+    level_compatible: 35,
+    priority_bonus: 5,
     capacity_available: 10,
+    sessions_per_week: 10,
   },
 };
 
@@ -219,6 +224,13 @@ export function ScoringWeightsDialog({
               value={weights.capacity_available}
               onChange={(v) => updateWeight("capacity_available", v)}
               icon={<LayoutGrid className="h-4 w-4 text-muted-foreground" />}
+            />
+            <WeightSlider
+              label={t("proposals.weights.sessionsPerWeek")}
+              helpText={t("proposals.weights.sessionsPerWeekHelp")}
+              value={weights.sessions_per_week}
+              onChange={(v) => updateWeight("sessions_per_week", v)}
+              icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
             />
           </div>
 

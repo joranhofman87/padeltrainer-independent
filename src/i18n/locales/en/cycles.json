@@ -214,7 +214,8 @@
       "preferred_trainer": "Preferred trainer matched",
       "level_compatible": "Level compatible",
       "priority_bonus": "Early registration bonus",
-      "capacity_available": "Slot has capacity"
+      "capacity_available": "Slot has capacity",
+      "sessions_per_week": "Training frequency considered"
     },
     "actions": {
       "approve": "Approve",
@@ -245,6 +246,8 @@
       "total": "Total Weight",
       "saveAsDefault": "Save as default for this cycle",
       "generate": "Generate Proposals",
+      "sessionsPerWeek": "Trainings Per Week",
+      "sessionsPerWeekHelp": "Prioritize players wanting fewer sessions to help more unique individuals",
       "presets": {
         "balanced": "Balanced",
         "timeFocused": "Time-focused",
