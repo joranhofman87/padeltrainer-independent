@@ -399,7 +399,7 @@ export default function AddIntakeRequestDialog({
                 name="rating"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('application.form.rating')}</FormLabel>
+                    <FormLabel>{t('application.form.ratingLabel')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -510,7 +510,7 @@ export default function AddIntakeRequestDialog({
 
             {/* Availability */}
             <div className="space-y-4">
-              <h3 className="font-medium">{t('application.form.availability')}</h3>
+              <h3 className="font-medium">{t('application.form.availabilityLabel')}</h3>
               <p className="text-sm text-muted-foreground">
                 {t('application.form.availabilityHelp')}
               </p>

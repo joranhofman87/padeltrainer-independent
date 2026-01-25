@@ -75,6 +75,7 @@
       "email": "E-mail",
       "phone": "Telefoon (optioneel)",
       "rating": "Je Rating/Niveau",
+      "ratingLabel": "Rating/Niveau",
       "ratingSystem": "Ratingsysteem",
       
       "preferences": "Trainingsvoorkeuren",
@@ -91,6 +92,7 @@
       "location": "Voorkeurslocatie",
       
       "availability": "Je Beschikbaarheid",
+      "availabilityLabel": "Beschikbaarheid",
       "availabilityHelp": "Selecteer de dagen en tijden waarop je beschikbaar bent voor training",
       "preferredDays": "Voorkeursdagen",
       "days": {
