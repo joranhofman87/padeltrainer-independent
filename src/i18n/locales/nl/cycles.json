@@ -91,6 +91,7 @@
       "location": "Voorkeurslocatie",
       
       "availability": "Je Beschikbaarheid",
+      "availabilityHelp": "Selecteer de dagen en tijden waarop je beschikbaar bent voor training",
       "preferredDays": "Voorkeursdagen",
       "days": {
         "monday": "Maandag",
@@ -101,6 +102,11 @@
         "saturday": "Zaterdag",
         "sunday": "Zondag"
       },
+      "startTime": "Van",
+      "endTime": "Tot",
+      "addTimeBlock": "Nog een tijd toevoegen",
+      "noAvailability": "Selecteer minimaal één dag met beschikbare tijden",
+      "invalidTimeRange": "Eindtijd moet na starttijd zijn",
       "timeWindows": "Voorkeurstijden",
       "timePresets": {
         "morning": "Ochtenden (8:00-12:00)",
