@@ -474,7 +474,7 @@ export async function updateProposedAssignmentStatus(
     .single();
 
   if (error) throw error;
-  return data as ProposedAssignment;
+  return toProposedAssignment(data);
 }
 
 export async function updateProposedAssignment(
@@ -489,7 +489,7 @@ export async function updateProposedAssignment(
     .single();
 
   if (error) throw error;
-  return data as ProposedAssignment;
+  return toProposedAssignment(data);
 }
 
 export async function deleteProposedAssignment(assignmentId: string): Promise<void> {
