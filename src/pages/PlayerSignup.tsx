@@ -78,7 +78,7 @@ export default function PlayerSignup() {
       });
     } else if (data?.session) {
       // Session is immediately available (auto-confirm enabled for dev)
-      sessionStorage.setItem('pendingRole', 'player');
+      localStorage.setItem('pendingRole', 'player');
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
@@ -86,7 +86,7 @@ export default function PlayerSignup() {
       navigate('/onboarding/player');
     } else {
       // No immediate session - email verification required
-      sessionStorage.setItem('pendingRole', 'player');
+      localStorage.setItem('pendingRole', 'player');
       setShowVerification(true);
     }
 
@@ -96,7 +96,7 @@ export default function PlayerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
-    sessionStorage.setItem('pendingRole', 'player');
+    localStorage.setItem('pendingRole', 'player');
     
     const { error } = await signInWithGoogle();
 
