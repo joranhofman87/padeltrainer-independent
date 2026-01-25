@@ -79,13 +79,7 @@ export default function TrainerCyclus() {
   const [deletingCyclus, setDeletingCyclus] = useState<CyclusInfo | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/auth");
-    } else if (!loading && role !== "trainer") {
-      navigate("/");
-    }
-  }, [user, role, loading, navigate]);
+  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -307,22 +301,19 @@ export default function TrainerCyclus() {
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          <Skeleton className="h-8 w-48 mb-6" />
-          <div className="space-y-4">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </div>
+      <div className="container mx-auto px-4 py-6">
+        <Skeleton className="h-8 w-48 mb-6" />
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -492,7 +483,6 @@ export default function TrainerCyclus() {
             ))}
           </div>
         )}
-      </div>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingCyclus} onOpenChange={(open) => !open && setDeletingCyclus(null)}>

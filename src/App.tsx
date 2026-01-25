@@ -55,6 +55,7 @@ import TrainerCyclus from "./pages/TrainerCyclus";
 import TrainerCycles from "./pages/TrainerCycles";
 import TrainerIntakeRequests from "./pages/TrainerIntakeRequests";
 import OpenSlots from "./pages/OpenSlots";
+import TrainerLayout from "./components/trainer/TrainerLayout";
 import CycleRegistration from "./pages/CycleRegistration";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
@@ -130,9 +131,20 @@ const App = () => (
             <Route path="/onboarding/:role" element={<Onboarding />} />
             <Route path="/select-role" element={<SelectRole />} />
             <Route path="/player" element={<PlayerDashboard />} />
-            <Route path="/trainer" element={<TrainerDashboard />} />
-            <Route path="/trainer/settings" element={<TrainerSettings />} />
-            <Route path="/trainer/settings/bookings" element={<TrainerBookingSettings />} />
+            
+            {/* Trainer routes - wrapped in TrainerLayout for persistent header */}
+            <Route path="/trainer" element={<TrainerLayout />}>
+              <Route index element={<TrainerDashboard />} />
+              <Route path="settings" element={<TrainerSettings />} />
+              <Route path="settings/bookings" element={<TrainerBookingSettings />} />
+              <Route path="calendar" element={<TrainerCalendar />} />
+              <Route path="players" element={<TrainerPlayers />} />
+              <Route path="cyclus" element={<TrainerCyclus />} />
+              <Route path="cycles" element={<TrainerCycles />} />
+              <Route path="intake-requests" element={<TrainerIntakeRequests />} />
+              <Route path="open-slots" element={<OpenSlots />} />
+            </Route>
+
             <Route path="/profile/edit" element={<EditProfile />} />
             <Route path="/lessons" element={<ManageLessons />} />
             <Route path="/availability" element={<TrainerCalendar />} />
@@ -144,12 +156,6 @@ const App = () => (
             <Route path="/earnings" element={<TrainerEarnings />} />
             <Route path="/subscription" element={<TrainerSubscription />} />
             <Route path="/analytics" element={<TrainerAnalytics />} />
-            <Route path="/trainer/calendar" element={<TrainerCalendar />} />
-            <Route path="/trainer/players" element={<TrainerPlayers />} />
-            <Route path="/trainer/cyclus" element={<TrainerCyclus />} />
-            <Route path="/trainer/cycles" element={<TrainerCycles />} />
-            <Route path="/trainer/intake-requests" element={<TrainerIntakeRequests />} />
-            <Route path="/trainer/open-slots" element={<OpenSlots />} />
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
             <Route path="/player/following" element={<FollowingList />} />
