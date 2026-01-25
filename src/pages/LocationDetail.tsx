@@ -164,7 +164,8 @@ export default function LocationDetail() {
     }
 
     fetchData();
-  }, [slug, navigate, user, localizePath]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, user?.id]);
 
   useEffect(() => {
     if (clubProfile?.id) {
