@@ -10,8 +10,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { FileText, Users } from 'lucide-react';
+import { 
+  FileText, 
+  Users, 
+  AlertCircle, 
+  Calendar,
+  CheckCircle2
+} from 'lucide-react';
 import { type IntakeRequest } from '@/lib/cycles';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface IntakeRequestsTableProps {
   requests: IntakeRequest[];
@@ -56,6 +68,48 @@ export default function IntakeRequestsTable({
     return colors[lessonType] || 'bg-muted text-muted-foreground';
   };
 
+  const renderProposalIndicator = (request: IntakeRequest) => {
+    // Show checkmark for confirmed
+    if (request.status === 'confirmed') {
+      return (
+        <div className="flex items-center gap-1 text-green-600">
+          <CheckCircle2 className="h-4 w-4" />
+        </div>
+      );
+    }
+
+    // Show proposed badge for proposed status
+    if (request.status === 'proposed') {
+      return (
+        <div className="flex items-center gap-1 text-purple-600">
+          <Calendar className="h-4 w-4" />
+          <span className="text-xs">{t('intakeRequests.filters.proposed')}</span>
+        </div>
+      );
+    }
+
+    // Show skip reason for new requests that were skipped
+    if (request.status === 'new' && request.skip_reason) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 text-yellow-600 cursor-help">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-xs">{t(`skipReasons.${request.skip_reason}.short`)}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">{t(`skipReasons.${request.skip_reason}.description`)}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return <span className="text-muted-foreground text-xs">—</span>;
+  };
+
   if (requests.length === 0) {
     return (
       <Card>
@@ -86,6 +140,7 @@ export default function IntakeRequestsTable({
               <TableHead className="hidden md:table-cell">{t('intakeRequests.table.availability')}</TableHead>
               <TableHead className="hidden lg:table-cell">{t('intakeRequests.table.preferredTrainer')}</TableHead>
               <TableHead>{t('intakeRequests.table.status')}</TableHead>
+              <TableHead>{t('proposals.title')}</TableHead>
               <TableHead className="hidden sm:table-cell">{t('intakeRequests.table.applied')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -136,6 +191,9 @@ export default function IntakeRequestsTable({
                   <Badge variant="outline" className={getStatusColor(request.status)}>
                     {t(`intakeRequests.filters.${request.status}`)}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  {renderProposalIndicator(request)}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                   {format(new Date(request.created_at), 'MMM d')}
