@@ -47,9 +47,15 @@ interface AvailabilitySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  lesson_type: string;
-  max_participants: number;
+  lesson_id: string | null;
+  is_marked_full: boolean;
   location_id: string | null;
+  cyclus_id: string | null;
+  lessons?: {
+    id: string;
+    title: string;
+    max_participants: number;
+  } | null;
 }
 
 interface RequestBody {
@@ -329,10 +335,10 @@ Deno.serve(async (req) => {
     // Fetch availability slots within cycle date range
     let slotsQuery = supabase
       .from("availability_slots")
-      .select("*")
+      .select("*, lessons(id, title, max_participants)")
       .gte("start_time", cycle.start_date)
       .lte("start_time", cycle.end_date)
-      .eq("is_booked", false);
+      .eq("is_marked_full", false);
 
     if (trainerIds.length > 0) {
       slotsQuery = slotsQuery.in("trainer_id", trainerIds);
@@ -390,10 +396,9 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Filter slots by lesson type match
-      const lessonTypeSlots = slots.filter(
-        (s) => s.lesson_type === request.lesson_type
-      );
+      // Filter slots - all available slots can be considered
+      // Lesson type matching is flexible since slots may be generic
+      const lessonTypeSlots = slots;
 
       if (lessonTypeSlots.length === 0) {
         skipped++;
@@ -469,9 +474,10 @@ Deno.serve(async (req) => {
 
         // Capacity
         const currentBookings = bookingCounts[slot.id] || 0;
+        const maxParticipants = slot.lessons?.max_participants || 4;
         const capacityResult = calculateCapacityScore(
           currentBookings,
-          slot.max_participants || 1,
+          maxParticipants,
           normalizedWeights.capacity_available
         );
         rationale.push({
