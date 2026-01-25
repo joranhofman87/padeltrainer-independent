@@ -223,9 +223,13 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
                       user && profile && (
                         <CycleApplicationForm
                           cycle={cycle}
-                          playerId={user.id}
+                          playerId={profile.id}
+                          playerUserId={user.id}
                           playerName={profile.full_name || ''}
                           playerEmail={user.email || ''}
+                          playerPhone={profile.phone || ''}
+                          playerRating={profile.skill_rating ?? undefined}
+                          playerRatingSystem={profile.rating_system || 'knltb'}
                           trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
                           onSuccess={() => handleSuccess(cycle.id)}
                           onCancel={() => setExpandedCycleId(null)}

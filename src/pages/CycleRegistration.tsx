@@ -325,9 +325,10 @@ export default function CycleRegistration() {
 
           {/* Application Form */}
           {canApply && profile && (
-            <CycleApplicationForm
+          <CycleApplicationForm
               cycle={cycle}
               playerId={profile.id}
+              playerUserId={user.id}
               playerName={profile.full_name || ''}
               playerEmail={user.email || ''}
               playerPhone={profile.phone || ''}

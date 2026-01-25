@@ -198,10 +198,12 @@ export default function CycleApplicationModal({
             <CycleApplicationForm
               cycle={cycle}
               playerId={profile!.id}
+              playerUserId={user!.id}
               playerName={profile!.full_name || ''}
               playerEmail={profile!.email || ''}
-              playerRating={profile!.skill_rating || undefined}
-              playerRatingSystem={profile!.rating_system}
+              playerPhone={profile!.phone || ''}
+              playerRating={profile!.skill_rating ?? undefined}
+              playerRatingSystem={profile!.rating_system || 'knltb'}
               trainers={trainers}
               locations={locations}
               onSuccess={() => onOpenChange(false)}
