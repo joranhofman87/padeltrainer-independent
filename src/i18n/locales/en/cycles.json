@@ -75,6 +75,7 @@
       "email": "Email",
       "phone": "Phone (optional)",
       "rating": "Your Rating/Level",
+      "ratingLabel": "Rating/Level",
       "ratingSystem": "Rating System",
       
       "preferences": "Training Preferences",
@@ -91,6 +92,7 @@
       "location": "Preferred Location",
       
       "availability": "Your Availability",
+      "availabilityLabel": "Availability",
       "availabilityHelp": "Select the days and times you're available for training",
       "preferredDays": "Preferred Days",
       "days": {
