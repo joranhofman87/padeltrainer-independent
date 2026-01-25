@@ -97,7 +97,7 @@ export default function AddIntakeRequestDialog({
       rating: undefined,
       lesson_type: 'group',
       preferred_duration_minutes: 60,
-      preferred_trainer_id: '',
+      preferred_trainer_id: 'none',
       notes: '',
     },
   });
@@ -242,7 +242,7 @@ export default function AddIntakeRequestDialog({
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
-        preferred_trainer_id: data.preferred_trainer_id || undefined,
+        preferred_trainer_id: data.preferred_trainer_id === 'none' ? undefined : data.preferred_trainer_id,
         notes: data.notes || undefined,
         consent_given: true,
       });
@@ -473,14 +473,14 @@ export default function AddIntakeRequestDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('application.form.preferredTrainer')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ''}>
+                  <Select onValueChange={field.onChange} value={field.value || 'none'}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder={t('application.form.noPreference')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">{t('application.form.noPreference')}</SelectItem>
+                      <SelectItem value="none">{t('application.form.noPreference')}</SelectItem>
                       {trainers.map((trainer) => (
                         <SelectItem key={trainer.id} value={trainer.id}>
                           {trainer.name}
