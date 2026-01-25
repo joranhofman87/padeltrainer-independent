@@ -62,6 +62,7 @@ export interface IntakeRequest {
   preferred_duration_minutes: number;
   sessions_per_week: number;
   preferred_trainer_id: string | null;
+  preferred_trainer_ids?: string[];
   location_id: string | null;
   notes: string | null;
   consent_given: boolean;
@@ -71,12 +72,10 @@ export interface IntakeRequest {
   updated_at: string;
 }
 
-export interface TimeWindow {
-  day?: string;
-  preset?: 'morning' | 'afternoon' | 'evening' | 'weekend';
-  start?: string;
-  end?: string;
-  [key: string]: unknown; // Allow for Json compatibility
+export interface RationaleItem {
+  type: string;
+  score: number;
+  detail: string;
 }
 
 export interface ProposedAssignment {
@@ -84,9 +83,9 @@ export interface ProposedAssignment {
   intake_request_id: string;
   slot_id: string;
   trainer_id: string;
+  status: 'proposed' | 'approved' | 'rejected' | 'confirmed';
   confidence_score: number | null;
   rationale: RationaleItem[] | null;
-  status: 'proposed' | 'confirmed' | 'rejected' | 'manual_override';
   created_at: string;
   updated_at: string;
 }
@@ -101,15 +100,15 @@ export interface EnrichedProposedAssignment extends ProposedAssignment {
   };
   trainer?: {
     id: string;
-    profile?: { full_name: string | null; avatar_url: string | null }[];
+    profile?: { full_name: string; avatar_url: string | null } | null;
   };
 }
 
-export interface RationaleItem {
-  type: string;
-  score: number;
-  detail: string;
-  [key: string]: unknown; // Allow for Json compatibility
+export interface TimeWindow {
+  day?: string;
+  preset?: 'morning' | 'afternoon' | 'evening' | 'weekend';
+  start?: string;
+  end?: string;
 }
 
 export interface IntakeRequestInput {
@@ -120,15 +119,16 @@ export interface IntakeRequestInput {
   phone?: string;
   rating?: number;
   rating_system?: string;
-  lesson_type: 'private' | 'duo' | 'group' | 'kids';
+  lesson_type: string;
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes?: number;
   sessions_per_week?: number;
   preferred_trainer_id?: string;
+  preferred_trainer_ids?: string[];
   location_id?: string;
   notes?: string;
-  consent_given: boolean;
+  consent_given?: boolean;
 }
 
 export interface CycleInput {
@@ -409,7 +409,7 @@ export async function getProposedAssignments(cycleId: string): Promise<ProposedA
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return (data || []) as ProposedAssignment[];
+  return (data || []).map(toProposedAssignment);
 }
 
 export async function getProposedAssignmentForRequest(
@@ -433,7 +433,7 @@ export async function getProposedAssignmentForRequest(
     .maybeSingle();
 
   if (error) throw error;
-  return data as EnrichedProposedAssignment | null;
+  return data ? toProposedAssignment(data) as EnrichedProposedAssignment : null;
 }
 
 export async function createProposedAssignment(

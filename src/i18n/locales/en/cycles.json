@@ -91,6 +91,8 @@
       "sessionsPerWeekHelp": "How many times per week would you like to train?",
       "timesPerWeek": "per week",
       "preferredTrainer": "Preferred Trainer (optional)",
+      "preferredTrainers": "Preferred Trainers (optional)",
+      "preferredTrainersHelp": "Select trainers you'd prefer to train with",
       "noPreference": "No preference",
       "location": "Preferred Location",
       
