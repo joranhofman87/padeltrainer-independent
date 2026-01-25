@@ -12,6 +12,7 @@ interface ScoringWeights {
   level_compatible: number;
   priority_bonus: number;
   capacity_available: number;
+  sessions_per_week: number;
 }
 
 interface TimeWindow {
@@ -39,6 +40,7 @@ interface IntakeRequest {
   preferred_time_windows: TimeWindow[];
   preferred_trainer_id: string | null;
   location_id: string | null;
+  sessions_per_week: number;
   created_at: string;
 }
 
@@ -64,11 +66,12 @@ interface RequestBody {
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
-  time_match: 40,
+  time_match: 35,
   preferred_trainer: 20,
-  level_compatible: 20,
+  level_compatible: 15,
   priority_bonus: 10,
   capacity_available: 10,
+  sessions_per_week: 10,
 };
 
 // Time window presets in hours (24h format) - for backward compatibility
@@ -261,6 +264,19 @@ function calculateCapacityScore(
   };
 }
 
+function calculateSessionsScore(
+  sessionsPerWeek: number,
+  maxScore: number
+): { score: number; detail: string } {
+  // Players wanting fewer sessions get higher scores
+  // 1 session = 100%, 7 sessions = ~14%
+  const score = Math.round(maxScore * (1 / sessionsPerWeek));
+  return {
+    score,
+    detail: `${sessionsPerWeek}× per week`,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -292,6 +308,7 @@ Deno.serve(async (req) => {
           level_compatible: (weights.level_compatible / totalWeight) * 100,
           priority_bonus: (weights.priority_bonus / totalWeight) * 100,
           capacity_available: (weights.capacity_available / totalWeight) * 100,
+          sessions_per_week: ((weights.sessions_per_week || 0) / totalWeight) * 100,
         }
       : DEFAULT_WEIGHTS;
 
@@ -499,6 +516,17 @@ Deno.serve(async (req) => {
           type: "capacity_available",
           score: capacityResult.score,
           detail: capacityResult.detail,
+        });
+
+        // Sessions per week scoring - players wanting fewer sessions get higher scores
+        const sessionsResult = calculateSessionsScore(
+          request.sessions_per_week || 1,
+          normalizedWeights.sessions_per_week
+        );
+        rationale.push({
+          type: "sessions_per_week",
+          score: sessionsResult.score,
+          detail: sessionsResult.detail,
         });
 
         const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);

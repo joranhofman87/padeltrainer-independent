@@ -23,14 +23,16 @@ export interface ScoringWeights {
   level_compatible: number;
   priority_bonus: number;
   capacity_available: number;
+  sessions_per_week: number;
 }
 
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
-  time_match: 40,
+  time_match: 35,
   preferred_trainer: 20,
-  level_compatible: 20,
+  level_compatible: 15,
   priority_bonus: 10,
   capacity_available: 10,
+  sessions_per_week: 10,
 };
 
 export interface CycleSettings {

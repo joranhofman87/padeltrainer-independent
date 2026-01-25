@@ -214,7 +214,8 @@
       "preferred_trainer": "Voorkeurstrainer gematcht",
       "level_compatible": "Niveau compatibel",
       "priority_bonus": "Vroege inschrijfbonus",
-      "capacity_available": "Slot heeft capaciteit"
+      "capacity_available": "Slot heeft capaciteit",
+      "sessions_per_week": "Trainingsfrequentie meegenomen"
     },
     "actions": {
       "approve": "Goedkeuren",
@@ -245,6 +246,8 @@
       "total": "Totaal Gewicht",
       "saveAsDefault": "Opslaan als standaard voor deze cyclus",
       "generate": "Voorstellen Genereren",
+      "sessionsPerWeek": "Trainingen Per Week",
+      "sessionsPerWeekHelp": "Prioriteer spelers die minder sessies willen om meer unieke personen te helpen",
       "presets": {
         "balanced": "Gebalanceerd",
         "timeFocused": "Tijd-gericht",
