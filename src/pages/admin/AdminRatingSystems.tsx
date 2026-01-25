@@ -62,7 +62,7 @@ export default function AdminRatingSystems() {
   const { user, role, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { t } = useTranslation("common");
+  const { t } = useTranslation("admin");
 
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,8 +117,8 @@ export default function AdminRatingSystems() {
     } catch (error: any) {
       console.error("Error fetching rating systems:", error);
       toast({
-        title: "Error",
-        description: "Failed to load rating systems",
+        title: t("common:toasts.errorTitle"),
+        description: t("ratingSystems.failedToLoad"),
         variant: "destructive",
       });
     } finally {
@@ -153,8 +153,8 @@ export default function AdminRatingSystems() {
   const handleSave = async () => {
     if (!formData.code || !formData.name) {
       toast({
-        title: "Validation Error",
-        description: "Code and name are required",
+        title: t("ratingSystems.validationError"),
+        description: t("ratingSystems.codeNameRequired"),
         variant: "destructive",
       });
       return;
@@ -185,8 +185,8 @@ export default function AdminRatingSystems() {
         if (error) throw error;
 
         toast({
-          title: "Rating System Updated",
-          description: `${formData.name} has been updated.`,
+          title: t("ratingSystems.updated"),
+          description: t("ratingSystems.updatedDesc", { name: formData.name }),
         });
       } else {
         const { error } = await supabase.from("rating_systems").insert(payload);
@@ -194,8 +194,8 @@ export default function AdminRatingSystems() {
         if (error) throw error;
 
         toast({
-          title: "Rating System Created",
-          description: `${formData.name} has been added.`,
+          title: t("ratingSystems.created"),
+          description: t("ratingSystems.createdDesc", { name: formData.name }),
         });
       }
 
@@ -205,8 +205,8 @@ export default function AdminRatingSystems() {
     } catch (error: any) {
       console.error("Error saving rating system:", error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to save rating system",
+        title: t("common:toasts.errorTitle"),
+        description: error.message || t("common:toasts.errorDescription"),
         variant: "destructive",
       });
     } finally {
@@ -227,13 +227,16 @@ export default function AdminRatingSystems() {
       fetchRatingSystems();
 
       toast({
-        title: system.is_active ? "Rating System Disabled" : "Rating System Enabled",
-        description: `${system.name} is now ${system.is_active ? "inactive" : "active"}.`,
+        title: system.is_active ? t("ratingSystems.disabled") : t("ratingSystems.enabled"),
+        description: t("ratingSystems.statusChanged", { 
+          name: system.name, 
+          status: system.is_active ? t("pricing.inactive").toLowerCase() : t("pricing.active").toLowerCase() 
+        }),
       });
     } catch (error: any) {
       console.error("Error toggling rating system:", error);
       toast({
-        title: "Error",
+        title: t("common:toasts.errorTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -262,13 +265,13 @@ export default function AdminRatingSystems() {
       fetchRatingSystems();
 
       toast({
-        title: "Rating System Deleted",
-        description: `${systemToDelete.name} has been removed.`,
+        title: t("ratingSystems.deleted"),
+        description: t("ratingSystems.deletedDesc", { name: systemToDelete.name }),
       });
     } catch (error: any) {
       console.error("Error deleting rating system:", error);
       toast({
-        title: "Error",
+        title: t("common:toasts.errorTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -296,11 +299,11 @@ export default function AdminRatingSystems() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>You don't have permission to access this page.</CardDescription>
+            <CardTitle>{t("accessDenied")}</CardTitle>
+            <CardDescription>{t("noPermission")}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate(-1)}>Go Back</Button>
+            <Button onClick={() => navigate(-1)}>{t("goBack")}</Button>
           </CardContent>
         </Card>
       </div>
@@ -316,11 +319,11 @@ export default function AdminRatingSystems() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="font-bold text-xl">Rating Systems</span>
+            <span className="font-bold text-xl">{t("ratingSystems.title")}</span>
           </div>
           <Button onClick={openAddDialog}>
             <Plus className="h-4 w-4 mr-2" />
-            Add System
+            {t("ratingSystems.addSystem")}
           </Button>
         </div>
       </header>
@@ -331,7 +334,7 @@ export default function AdminRatingSystems() {
             <Card key={country}>
               <CardHeader>
                 <CardTitle>{COUNTRY_NAMES[country] || country}</CardTitle>
-                <CardDescription>{systems.length} rating system(s)</CardDescription>
+                <CardDescription>{t("ratingSystems.systemCount", { count: systems.length })}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {systems.map((system) => (
@@ -352,12 +355,12 @@ export default function AdminRatingSystems() {
                         )}
                         {system.lower_is_better && (
                           <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20">
-                            Lower is better
+                            {t("ratingSystems.lowerIsBetter")}
                           </Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Range: {system.min_rating} - {system.max_rating} (step: {system.step})
+                        {t("ratingSystems.range")}: {system.min_rating} - {system.max_rating} ({t("ratingSystems.step")}: {system.step})
                         {system.member_id_label && ` • ${system.member_id_label}`}
                       </p>
                     </div>
@@ -386,10 +389,10 @@ export default function AdminRatingSystems() {
           {ratingSystems.length === 0 && (
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
-                <p>No rating systems configured yet.</p>
+                <p>{t("ratingSystems.noSystems")}</p>
                 <Button className="mt-4" onClick={openAddDialog}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add First Rating System
+                  {t("ratingSystems.addFirst")}
                 </Button>
               </CardContent>
             </Card>
@@ -402,10 +405,10 @@ export default function AdminRatingSystems() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editingSystem ? "Edit Rating System" : "Add Rating System"}
+              {editingSystem ? t("ratingSystems.editTitle") : t("ratingSystems.addTitle")}
             </DialogTitle>
             <DialogDescription>
-              Configure the rating system properties.
+              {t("ratingSystems.configureProps")}
             </DialogDescription>
           </DialogHeader>
 

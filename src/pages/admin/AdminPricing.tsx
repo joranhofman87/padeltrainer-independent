@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useAdminData";
 import { useAllPricingPlans, useUpdatePricingPlan, useDeletePricingPlan, SubscriptionPlan } from "@/hooks/usePricingPlans";
@@ -25,6 +26,7 @@ import {
 
 export default function AdminPricing() {
   const navigate = useNavigate();
+  const { t } = useTranslation("admin");
   const { user, loading: authLoading } = useAuth();
   const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
   const { data: plans, isLoading: plansLoading } = useAllPricingPlans();
@@ -54,11 +56,11 @@ export default function AdminPricing() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Shield className="h-16 w-16 text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <h2 className="text-xl font-semibold mb-2">{t("accessDenied")}</h2>
             <p className="text-muted-foreground text-center mb-4">
-              You don't have permission to access this page.
+              {t("noPermission")}
             </p>
-            <Button onClick={() => navigate("/")}>Go Home</Button>
+            <Button onClick={() => navigate("/")}>{t("goHome")}</Button>
           </CardContent>
         </Card>
       </div>
@@ -69,13 +71,16 @@ export default function AdminPricing() {
     try {
       await updatePlan.mutateAsync({ id: plan.id, is_active: !plan.is_active });
       toast({
-        title: "Plan updated",
-        description: `${plan.name} is now ${!plan.is_active ? "active" : "inactive"}.`,
+        title: t("pricing.planUpdated"),
+        description: t("pricing.planNowStatus", { 
+          name: plan.name, 
+          status: !plan.is_active ? t("pricing.active").toLowerCase() : t("pricing.inactive").toLowerCase() 
+        }),
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to update plan status.",
+        title: t("common:toasts.errorTitle"),
+        description: t("common:toasts.errorDescription"),
         variant: "destructive",
       });
     }
@@ -86,14 +91,14 @@ export default function AdminPricing() {
     try {
       await deletePlan.mutateAsync(deletingPlan.id);
       toast({
-        title: "Plan deleted",
-        description: `${deletingPlan.name} has been deleted.`,
+        title: t("pricing.planDeleted"),
+        description: t("pricing.planDeletedDesc", { name: deletingPlan.name }),
       });
       setDeletingPlan(null);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to delete plan.",
+        title: t("common:toasts.errorTitle"),
+        description: t("common:toasts.errorDescription"),
         variant: "destructive",
       });
     }
@@ -111,26 +116,26 @@ export default function AdminPricing() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-2xl font-bold">Pricing Management</h1>
+            <h1 className="text-2xl font-bold">{t("pricing.title")}</h1>
           </div>
         </div>
 
         {/* Trainer Plans */}
         <Card>
           <CardHeader>
-            <CardTitle>Trainer Plans</CardTitle>
+            <CardTitle>{t("pricing.trainerPlans")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Monthly</TableHead>
-                  <TableHead>Yearly</TableHead>
-                  <TableHead>Platform Fee</TableHead>
-                  <TableHead>Max Lessons</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("pricing.monthly")}</TableHead>
+                  <TableHead>{t("pricing.yearly")}</TableHead>
+                  <TableHead>{t("pricing.platformFee")}</TableHead>
+                  <TableHead>{t("pricing.maxLessons")}</TableHead>
+                  <TableHead>{t("pricing.active")}</TableHead>
+                  <TableHead className="text-right">{t("pricing.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -186,18 +191,18 @@ export default function AdminPricing() {
         {/* Club Plans */}
         <Card>
           <CardHeader>
-            <CardTitle>Club Plans</CardTitle>
+            <CardTitle>{t("pricing.clubPlans")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Monthly</TableHead>
-                  <TableHead>Yearly</TableHead>
-                  <TableHead>Platform Fee</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("pricing.monthly")}</TableHead>
+                  <TableHead>{t("pricing.yearly")}</TableHead>
+                  <TableHead>{t("pricing.platformFee")}</TableHead>
+                  <TableHead>{t("pricing.active")}</TableHead>
+                  <TableHead className="text-right">{t("pricing.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -257,11 +262,9 @@ export default function AdminPricing() {
                 <Shield className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold mb-1">Important: Stripe Price IDs</h3>
+                <h3 className="font-semibold mb-1">{t("pricing.stripeNoteTitle")}</h3>
                 <p className="text-sm text-muted-foreground">
-                  When changing prices, you need to create new Price objects in Stripe Dashboard first,
-                  then update the Stripe Price IDs here. Existing subscribers will keep their current
-                  price until they change their subscription.
+                  {t("pricing.stripeNote")}
                 </p>
               </div>
             </div>
@@ -282,13 +285,13 @@ export default function AdminPricing() {
       <AlertDialog open={!!deletingPlan} onOpenChange={(open) => !open && setDeletingPlan(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+            <AlertDialogTitle>{t("pricing.deletePlan")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the "{deletingPlan?.name}" plan? This action cannot be undone.
+              {t("pricing.deleteConfirm", { name: deletingPlan?.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("pricing.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -296,7 +299,7 @@ export default function AdminPricing() {
               {deletePlan.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                "Delete"
+                t("pricing.delete")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

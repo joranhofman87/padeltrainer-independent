@@ -545,5 +545,20 @@
   "pagination": {
     "previous": "Vorige",
     "next": "Volgende"
+  },
+  "invoices": {
+    "settings": "Factuur Instellingen",
+    "settingsDescription": "Bedrijfsgegevens voor je facturen",
+    "complete": "Compleet",
+    "korNote": "Niet verplicht bij KOR-regeling",
+    "domesticNote": "Optioneel voor binnenlandse betalingen",
+    "days7": "7 dagen",
+    "days14": "14 dagen",
+    "days30": "30 dagen",
+    "saving": "Opslaan...",
+    "saveSettings": "Instellingen opslaan",
+    "saveError": "Kon instellingen niet opslaan",
+    "saved": "Opgeslagen",
+    "savedDescription": "Je factuur instellingen zijn bijgewerkt"
   }
 }
