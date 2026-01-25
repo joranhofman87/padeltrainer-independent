@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { logger } from '@/lib/logger';
 export default function BookingSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
@@ -163,7 +165,7 @@ export default function BookingSuccess() {
               <Calendar className="h-4 w-4 mr-2" />
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
+            <Button variant="outline" className="w-full" onClick={() => navigate(localizePath('/trainers'))}>
               Book Another Lesson
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>

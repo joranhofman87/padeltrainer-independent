@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -44,6 +45,7 @@ interface BookingWithDetails {
 export default function PlayerBookings() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
 
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
@@ -189,7 +191,7 @@ export default function PlayerBookings() {
                 <p className="text-muted-foreground mb-6">
                   Find a trainer and book your first lesson!
                 </p>
-                <Button onClick={() => navigate('/trainers')}>
+                <Button onClick={() => navigate(localizePath('/trainers'))}>
                   Browse Trainers
                 </Button>
               </Card>

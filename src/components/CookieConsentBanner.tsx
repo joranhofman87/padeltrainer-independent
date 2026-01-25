@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTranslation } from 'react-i18next';
 import { Settings } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 
 export function CookieConsentBanner() {
   const { hasResponded, acceptAll, rejectNonEssential, savePreferences } = useCookieConsent();
@@ -38,9 +38,9 @@ export function CookieConsentBanner() {
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
               {t('cookies.description')}{' '}
-              <Link to="/privacy" className="text-primary hover:underline">
+              <LocalizedLink to="/privacy" className="text-primary hover:underline">
                 {t('cookies.privacyLink')}
-              </Link>
+              </LocalizedLink>
             </p>
             <div className="flex items-center gap-2 flex-shrink-0">
               <Button
