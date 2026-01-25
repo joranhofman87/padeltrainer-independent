@@ -173,6 +173,10 @@ export default function TrainerCalendar() {
           cyclus_id,
           cyclus_name,
           is_marked_full,
+          location_id,
+          locations:location_id (
+            name
+          ),
           lessons:lesson_id (
             title,
             max_participants,
@@ -248,6 +252,7 @@ export default function TrainerCalendar() {
       const transformedSlots: SlotWithBookings[] = (availabilitySlots || []).map(
         (slot) => {
           const lesson = slot.lessons as { title: string; max_participants: number; price: number } | null;
+          const location = slot.locations as { name: string } | null;
           const counts = bookingCounts[slot.id] || { confirmed: 0, pending: 0, players: [] };
 
           return {
@@ -265,6 +270,7 @@ export default function TrainerCalendar() {
             cyclus_name: slot.cyclus_name || null,
             booked_players: counts.players,
             is_marked_full: slot.is_marked_full || false,
+            location_name: location?.name || null,
           };
         }
       );
