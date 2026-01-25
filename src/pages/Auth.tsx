@@ -20,10 +20,20 @@ export default function Auth() {
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
 
-  // Handle email confirmation redirect
+  // Handle email confirmation redirect and errors
   useEffect(() => {
     const type = searchParams.get('type');
-    if (type === 'signup' || type === 'email_change') {
+    const error = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+    
+    if (error) {
+      // Handle verification errors (e.g., expired/reused link)
+      toast({
+        title: t('verification.error', 'Verification Error'),
+        description: errorDescription || t('verification.linkExpired', 'This verification link has expired or was already used.'),
+        variant: 'destructive',
+      });
+    } else if (type === 'signup' || type === 'email_change') {
       toast({
         title: t('verification.confirmed'),
         description: t('verification.confirmedDescription'),
@@ -60,9 +70,10 @@ export default function Auth() {
           sessionStorage.removeItem('redirectAfterLogin');
         }
         
-        // Check for pending role from signup
-        const pendingRole = sessionStorage.getItem('pendingRole');
+        // Check for pending role from signup (use localStorage for cross-tab persistence)
+        const pendingRole = localStorage.getItem('pendingRole');
         if (pendingRole) {
+          localStorage.removeItem('pendingRole'); // Clean up after use
           navigate(`/onboarding/${pendingRole}`);
         } else {
           // Fallback to select-role for edge cases

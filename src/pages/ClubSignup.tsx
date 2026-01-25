@@ -79,7 +79,7 @@ export default function ClubSignup() {
       });
     } else if (data?.session) {
       // Session is immediately available - safe to navigate
-      sessionStorage.setItem('pendingRole', 'club');
+      localStorage.setItem('pendingRole', 'club');
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
@@ -87,7 +87,7 @@ export default function ClubSignup() {
       navigate('/onboarding/club');
     } else {
       // No immediate session - email verification required
-      sessionStorage.setItem('pendingRole', 'club');
+      localStorage.setItem('pendingRole', 'club');
       setShowVerification(true);
     }
 
@@ -97,7 +97,7 @@ export default function ClubSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
-    sessionStorage.setItem('pendingRole', 'club');
+    localStorage.setItem('pendingRole', 'club');
     
     const { error } = await signInWithGoogle();
 
