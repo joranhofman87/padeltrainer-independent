@@ -44,6 +44,7 @@ interface LocationOption {
 interface CycleApplicationFormProps {
   cycle: Cycle;
   playerId: string;
+  playerUserId: string;
   playerName: string;
   playerEmail: string;
   playerPhone?: string;
@@ -62,6 +63,7 @@ const DURATIONS = [30, 45, 60, 90, 120] as const;
 export default function CycleApplicationForm({
   cycle,
   playerId,
+  playerUserId,
   playerName,
   playerEmail,
   playerPhone,
@@ -188,7 +190,7 @@ export default function CycleApplicationForm({
         await supabase
           .from('profiles')
           .update(profileUpdates)
-          .eq('id', playerId);
+          .eq('user_id', playerUserId);
       }
 
       setIsSuccess(true);
