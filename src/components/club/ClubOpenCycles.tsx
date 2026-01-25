@@ -100,9 +100,9 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
     fetchData();
   }, [clubProfileId, user]);
 
-  const handleLoginRedirect = () => {
+  const handleSignupRedirect = () => {
     const currentPath = window.location.pathname;
-    navigate(`/auth?redirect=${encodeURIComponent(currentPath)}`);
+    navigate(`/signup/player?redirect=${encodeURIComponent(currentPath)}`);
   };
 
   const handleSuccess = (cycleId: string) => {
@@ -194,7 +194,7 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
                         </CollapsibleTrigger>
                       )}
                       {!user && !deadlinePassed && (
-                        <Button variant="default" size="sm" onClick={handleLoginRedirect}>
+                        <Button variant="default" size="sm" onClick={handleSignupRedirect}>
                           <UserPlus className="h-4 w-4 mr-1" />
                           {t('application.signUpAndApply')}
                         </Button>
