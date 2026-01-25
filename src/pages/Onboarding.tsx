@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { setUserRole, updateProfile, UserRole } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,23 +12,56 @@ import { useTranslation } from 'react-i18next';
 import { Phone, User, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { validatePhone } from '@/lib/validation';
+import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES, validateRating } from '@/lib/ratingSystems';
 
 export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
   const [isLoading, setIsLoading] = useState(false);
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [knltbNumber, setKnltbNumber] = useState('');
+  
+  // Rating system state
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
+  const [ratingSystem, setRatingSystem] = useState('knltb');
+  const [skillRating, setSkillRating] = useState('');
+  const [ratingMemberId, setRatingMemberId] = useState('');
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading, refreshAuth } = useAuth();
   const { t } = useTranslation('auth');
 
-  // Determine the role from URL or sessionStorage
-  const storedPendingRole = sessionStorage.getItem('pendingRole');
+  // Determine the role from URL or localStorage
+  const storedPendingRole = sessionStorage.getItem('pendingRole') || localStorage.getItem('pendingRole');
   const pendingRole = (urlRole === 'player' || urlRole === 'trainer') 
     ? urlRole 
     : (storedPendingRole as UserRole | null);
+
+  // Fetch rating systems on mount
+  useEffect(() => {
+    async function fetchRatingSystems() {
+      setLoadingRatingSystems(true);
+      try {
+        const systems = await getRatingSystems();
+        setRatingSystems(systems);
+      } finally {
+        setLoadingRatingSystems(false);
+      }
+    }
+    fetchRatingSystems();
+  }, []);
+
+  // Get current system config
+  const currentRatingSystem = ratingSystems.find(s => s.code === ratingSystem);
+
+  // Group systems by country
+  const groupedSystems = ratingSystems.reduce((acc, system) => {
+    if (!acc[system.country]) acc[system.country] = [];
+    acc[system.country].push(system);
+    return acc;
+  }, {} as Record<string, RatingSystemConfig[]>);
 
   useEffect(() => {
     if (!loading) {
@@ -47,24 +81,63 @@ export default function Onboarding() {
     }
   }, [user, role, loading, navigate, pendingRole, storedPendingRole]);
 
+  const validateSkillRating = (): boolean => {
+    if (!skillRating || !currentRatingSystem) return true;
+    
+    const numVal = parseFloat(skillRating);
+    if (isNaN(numVal)) {
+      setRatingError(t('onboarding.ratingInvalid', 'Please enter a valid number'));
+      return false;
+    }
+    
+    if (!validateRating(numVal, currentRatingSystem)) {
+      setRatingError(
+        t('onboarding.ratingOutOfRange', 'Rating must be between {{min}} and {{max}}', {
+          min: currentRatingSystem.min_rating,
+          max: currentRatingSystem.max_rating
+        })
+      );
+      return false;
+    }
+    
+    return true;
+  };
 
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!user || !pendingRole) return;
+    
+    // Validate rating before proceeding
+    if (pendingRole === 'player' && !validateSkillRating()) {
+      return;
+    }
 
     setIsLoading(true);
     try {
-      // Update profile with phone and optionally member ID
-      const profileUpdates: { phone?: string; rating_member_id?: string; rating_system?: string } = {};
+      // Update profile with phone and optionally rating data
+      const profileUpdates: { 
+        phone?: string; 
+        rating_member_id?: string; 
+        rating_system?: string;
+        skill_rating?: number;
+      } = {};
       
       if (phone.trim()) {
         profileUpdates.phone = phone.trim();
       }
       
-      if (pendingRole === 'player' && knltbNumber.trim()) {
-        profileUpdates.rating_member_id = knltbNumber.trim();
-        profileUpdates.rating_system = 'knltb';
+      if (pendingRole === 'player') {
+        profileUpdates.rating_system = ratingSystem;
+        if (ratingMemberId.trim()) {
+          profileUpdates.rating_member_id = ratingMemberId.trim();
+        }
+        if (skillRating) {
+          const numRating = parseFloat(skillRating);
+          if (!isNaN(numRating) && currentRatingSystem && validateRating(numRating, currentRatingSystem)) {
+            profileUpdates.skill_rating = numRating;
+          }
+        }
       }
       
       // Get the profile ID first
@@ -81,9 +154,9 @@ export default function Onboarding() {
       // Set the user role
       await setUserRole(user.id, pendingRole);
       
-      
-      // Clear session storage
+      // Clear storage
       sessionStorage.removeItem('pendingRole');
+      localStorage.removeItem('pendingRole');
       
       await refreshAuth();
       
@@ -92,7 +165,15 @@ export default function Onboarding() {
         description: t('onboarding.successDescription', 'Your account is ready.'),
       });
       
-      navigate(pendingRole === 'trainer' ? '/trainer' : '/player');
+      // Check for redirect URL from signup flow
+      const redirectUrl = localStorage.getItem('redirectAfterOnboarding');
+      if (redirectUrl) {
+        localStorage.removeItem('redirectAfterOnboarding');
+        navigate(redirectUrl);
+      } else {
+        // Default: go to dashboard
+        navigate(pendingRole === 'trainer' ? '/trainer' : '/player');
+      }
     } catch (error: any) {
       toast({
         title: t('onboarding.error', 'Error'),
@@ -129,24 +210,89 @@ export default function Onboarding() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleComplete} className="space-y-6">
-            {/* KNLTB Number - Only for players, shown first */}
+            {/* Rating System Section - Only for players */}
             {isPlayer && (
-              <div className="space-y-2">
-                <Label htmlFor="knltb" className="flex items-center gap-2">
-                  {t('onboarding.knltbLabel', 'KNLTB Number')}
-                  {t('onboarding.knltbLabel', 'KNLTB Number')}
-                  <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
-                </Label>
-                <Input
-                  id="knltb"
-                  type="text"
-                  placeholder="12345678"
-                  value={knltbNumber}
-                  onChange={(e) => setKnltbNumber(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t('onboarding.knltbDescription', 'Your official KNLTB registration number for player identification.')}
-                </p>
+              <div className="space-y-4">
+                {/* Rating System Selector */}
+                <div className="space-y-2">
+                  <Label>{t('onboarding.ratingSystemLabel', 'Rating System')}</Label>
+                  <Select
+                    value={ratingSystem}
+                    onValueChange={(value) => {
+                      setRatingSystem(value);
+                      setSkillRating(''); // Clear rating when system changes
+                      setRatingError(null);
+                    }}
+                    disabled={loadingRatingSystems}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('onboarding.selectRatingSystem', 'Select rating system')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(groupedSystems).map(([country, systems]) => (
+                        <div key={country}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                            {COUNTRY_NAMES[country] || country}
+                          </div>
+                          {systems.map((system) => (
+                            <SelectItem key={system.code} value={system.code}>
+                              {system.name} ({system.min_rating} - {system.max_rating})
+                            </SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Dynamic Member ID (only for systems that have it) */}
+                {currentRatingSystem?.member_id_label && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      {currentRatingSystem.member_id_label}
+                      <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder={currentRatingSystem.member_id_placeholder || ''}
+                      value={ratingMemberId}
+                      onChange={(e) => setRatingMemberId(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {/* Skill Rating with Validation */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    {t('onboarding.ratingLabel', 'Your Rating')}
+                    <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    step={currentRatingSystem?.step || 0.1}
+                    min={currentRatingSystem?.min_rating}
+                    max={currentRatingSystem?.max_rating}
+                    placeholder={currentRatingSystem 
+                      ? `${currentRatingSystem.min_rating} - ${currentRatingSystem.max_rating}` 
+                      : ''}
+                    value={skillRating}
+                    onChange={(e) => {
+                      setSkillRating(e.target.value);
+                      setRatingError(null);
+                    }}
+                    onBlur={validateSkillRating}
+                    className={ratingError ? 'border-destructive' : ''}
+                    disabled={!currentRatingSystem}
+                  />
+                  {ratingError ? (
+                    <p className="text-xs text-destructive">{ratingError}</p>
+                  ) : currentRatingSystem && (
+                    <p className="text-xs text-muted-foreground">
+                      {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
+                      {currentRatingSystem.lower_is_better && ` (${t('onboarding.lowerIsBetter', 'lower is better')})`}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
