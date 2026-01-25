@@ -239,6 +239,24 @@
       }
     }
   },
+
+  "skipReasons": {
+    "no_matching_slots": {
+      "short": "Geen match",
+      "title": "Geen passende tijden",
+      "description": "Geen van de beschikbare slots komt overeen met de voorkeursdagen en -tijden van deze speler."
+    },
+    "all_slots_full": {
+      "short": "Vol",
+      "title": "Alle slots vol",
+      "description": "Slots die overeenkomen met de voorkeuren van deze speler zijn al vol."
+    },
+    "no_available_trainers": {
+      "short": "Geen trainers",
+      "title": "Geen trainers beschikbaar",
+      "description": "Geen trainers hebben beschikbaarheid tijdens de voorkeurstijden van deze speler."
+    }
+  },
   
   "emails": {
     "applicationReceived": "Aanmelding Ontvangen",

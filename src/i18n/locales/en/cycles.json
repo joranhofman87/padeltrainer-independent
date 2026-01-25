@@ -239,6 +239,24 @@
       }
     }
   },
+
+  "skipReasons": {
+    "no_matching_slots": {
+      "short": "No match",
+      "title": "No matching times",
+      "description": "None of the available slots match this player's preferred days and times."
+    },
+    "all_slots_full": {
+      "short": "Full",
+      "title": "All slots full",
+      "description": "Slots matching this player's preferences are already at capacity."
+    },
+    "no_available_trainers": {
+      "short": "No trainers",
+      "title": "No trainers available",
+      "description": "No trainers have availability during this player's preferred times."
+    }
+  },
   
   "emails": {
     "applicationReceived": "Application Received",

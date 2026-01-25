@@ -386,6 +386,13 @@ Deno.serve(async (req) => {
     let skipped = 0;
     const errors: string[] = [];
 
+    // Clear old skip reasons before regenerating
+    const requestIdsToProcess = requests.map(r => r.id);
+    await supabase
+      .from("intake_requests")
+      .update({ skip_reason: null })
+      .in("id", requestIdsToProcess);
+
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
@@ -402,6 +409,10 @@ Deno.serve(async (req) => {
 
       if (lessonTypeSlots.length === 0) {
         skipped++;
+        await supabase
+          .from("intake_requests")
+          .update({ skip_reason: "no_available_trainers" })
+          .eq("id", request.id);
         errors.push(`No slots matching lesson type for request ${request.id}`);
         continue;
       }
@@ -416,6 +427,10 @@ Deno.serve(async (req) => {
 
       if (matchingSlots.length === 0) {
         skipped++;
+        await supabase
+          .from("intake_requests")
+          .update({ skip_reason: "no_matching_slots" })
+          .eq("id", request.id);
         errors.push(`No slots match player availability for request ${request.id}`);
         continue;
       }
@@ -501,6 +516,14 @@ Deno.serve(async (req) => {
 
       if (!bestMatch || bestMatch.score === 0) {
         skipped++;
+        // Check if it's because all slots are full
+        const allFull = scoredSlots.every(s => 
+          s.rationale.find(r => r.type === 'capacity_available')?.score === 0
+        );
+        await supabase
+          .from("intake_requests")
+          .update({ skip_reason: allFull ? "all_slots_full" : "no_matching_slots" })
+          .eq("id", request.id);
         continue;
       }
 

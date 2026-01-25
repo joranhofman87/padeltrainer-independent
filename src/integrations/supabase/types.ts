@@ -805,6 +805,7 @@ export type Database = {
           preferred_trainer_id: string | null
           rating: number | null
           rating_system: string | null
+          skip_reason: string | null
           status: string
           updated_at: string
         }
@@ -826,6 +827,7 @@ export type Database = {
           preferred_trainer_id?: string | null
           rating?: number | null
           rating_system?: string | null
+          skip_reason?: string | null
           status?: string
           updated_at?: string
         }
@@ -847,6 +849,7 @@ export type Database = {
           preferred_trainer_id?: string | null
           rating?: number | null
           rating_system?: string | null
+          skip_reason?: string | null
           status?: string
           updated_at?: string
         }

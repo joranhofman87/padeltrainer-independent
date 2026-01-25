@@ -61,6 +61,7 @@ export interface IntakeRequest {
   notes: string | null;
   consent_given: boolean;
   status: 'new' | 'proposed' | 'confirmed' | 'rejected' | 'waitlist';
+  skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +84,20 @@ export interface ProposedAssignment {
   status: 'proposed' | 'confirmed' | 'rejected' | 'manual_override';
   created_at: string;
   updated_at: string;
+}
+
+export interface EnrichedProposedAssignment extends ProposedAssignment {
+  slot?: {
+    id: string;
+    start_time: string;
+    end_time: string;
+    location_id: string | null;
+    lessons?: { id: string; title: string } | null;
+  };
+  trainer?: {
+    id: string;
+    profile?: { full_name: string | null; avatar_url: string | null }[];
+  };
 }
 
 export interface RationaleItem {
@@ -392,16 +407,26 @@ export async function getProposedAssignments(cycleId: string): Promise<ProposedA
 
 export async function getProposedAssignmentForRequest(
   requestId: string
-): Promise<ProposedAssignment | null> {
+): Promise<EnrichedProposedAssignment | null> {
   const { data, error } = await supabase
     .from('proposed_assignments')
-    .select('*')
+    .select(`
+      *,
+      slot:availability_slots(
+        id, start_time, end_time, location_id,
+        lessons(id, title)
+      ),
+      trainer:trainer_profiles(
+        id,
+        profile:profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
+      )
+    `)
     .eq('intake_request_id', requestId)
     .eq('status', 'proposed')
     .maybeSingle();
 
   if (error) throw error;
-  return data as ProposedAssignment | null;
+  return data as EnrichedProposedAssignment | null;
 }
 
 export async function createProposedAssignment(

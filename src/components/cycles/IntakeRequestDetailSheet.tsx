@@ -25,11 +25,12 @@ import {
   CheckCircle2,
   XCircle,
   Clock3,
-  Sparkles
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import { 
   type IntakeRequest, 
-  type ProposedAssignment,
+  type EnrichedProposedAssignment,
   updateIntakeRequestStatus,
   getProposedAssignmentForRequest
 } from '@/lib/cycles';
@@ -49,7 +50,7 @@ export default function IntakeRequestDetailSheet({
   onStatusChange
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
-  const [proposal, setProposal] = useState<ProposedAssignment | null>(null);
+  const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
   const [isLoadingProposal, setIsLoadingProposal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -246,6 +247,20 @@ export default function IntakeRequestDetailSheet({
                 proposal={proposal} 
                 onStatusChange={onStatusChange}
               />
+            ) : request.skip_reason ? (
+              <Card className="border-yellow-500/30 bg-yellow-500/5">
+                <CardContent className="py-4">
+                  <div className="flex items-center gap-2 text-yellow-600 mb-2">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="font-medium">
+                      {t(`skipReasons.${request.skip_reason}.title`)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {t(`skipReasons.${request.skip_reason}.description`)}
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
               <Card className="border-dashed">
                 <CardContent className="py-8 text-center">
