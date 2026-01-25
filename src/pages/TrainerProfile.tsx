@@ -587,9 +587,6 @@ export default function TrainerProfile() {
                           <p className="text-sm text-muted-foreground">{loc.location.city}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {loc.is_primary && (
-                            <Badge variant="secondary" className="text-xs">{t('common:primary', 'Primary')}</Badge>
-                          )}
                           {loc.club && (
                             <Button 
                               variant="outline" 

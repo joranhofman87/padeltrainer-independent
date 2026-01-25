@@ -272,29 +272,16 @@ export async function getTrainerCountry(userId: string): Promise<string> {
   
   if (!trainer) return 'NL';
   
-  // Get primary location's country
+  // Get first location's country
   const { data: locationData } = await supabase
-    .from('trainer_locations')
-    .select('locations(country)')
-    .eq('trainer_id', trainer.id)
-    .eq('is_primary', true)
-    .single();
-  
-  if (locationData?.locations) {
-    const loc = locationData.locations as unknown as { country: string };
-    return loc.country || 'NL';
-  }
-  
-  // Fallback: get any location
-  const { data: anyLocation } = await supabase
     .from('trainer_locations')
     .select('locations(country)')
     .eq('trainer_id', trainer.id)
     .limit(1)
     .single();
   
-  if (anyLocation?.locations) {
-    const loc = anyLocation.locations as unknown as { country: string };
+  if (locationData?.locations) {
+    const loc = locationData.locations as unknown as { country: string };
     return loc.country || 'NL';
   }
   

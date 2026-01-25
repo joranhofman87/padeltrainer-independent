@@ -73,14 +73,9 @@ export function SlotLocationPicker({
             .filter(Boolean) as Location[];
           setLocations(locs);
           
-          // Auto-select primary location if no value set
-          if (!value && locs.length > 0) {
-            const primary = trainerLocations.find((tl: any) => tl.is_primary);
-            if (primary?.locations?.id) {
-              onChange(primary.locations.id);
-            } else if (locs.length === 1) {
-              onChange(locs[0].id);
-            }
+          // Auto-select first location if no value set and only one exists
+          if (!value && locs.length === 1) {
+            onChange(locs[0].id);
           }
         }
       } catch (e) {

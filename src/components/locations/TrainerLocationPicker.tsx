@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Check, ChevronsUpDown, MapPin, Star, X, Building2, User } from 'lucide-react';
+import { Check, ChevronsUpDown, MapPin, X, Building2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -127,36 +127,23 @@ export function TrainerLocationPicker({
     if (existingIndex >= 0) {
       // Remove location
       const newLocations = selectedLocations.filter(s => s.locationId !== locationId);
-      // If we removed the primary, set the first one as primary
-      if (selectedLocations[existingIndex].isPrimary && newLocations.length > 0) {
-        newLocations[0].isPrimary = true;
-      }
       onChange(newLocations);
     } else {
       // Add location
       if (maxSelections && selectedLocations.length >= maxSelections) {
         return;
       }
-      const isFirst = selectedLocations.length === 0;
       onChange([
         ...selectedLocations,
         {
           locationId,
-          isPrimary: isFirst,
+          isPrimary: false,
           relationshipType: 'independent',
         },
       ]);
     }
   };
 
-  const setPrimary = (locationId: string) => {
-    onChange(
-      selectedLocations.map(s => ({
-        ...s,
-        isPrimary: s.locationId === locationId,
-      }))
-    );
-  };
 
   const setRelationshipType = (locationId: string, type: TrainerRelationshipType) => {
     onChange(
@@ -168,10 +155,6 @@ export function TrainerLocationPicker({
 
   const removeLocation = (locationId: string) => {
     const newLocations = selectedLocations.filter(s => s.locationId !== locationId);
-    const removedWasPrimary = selectedLocations.find(s => s.locationId === locationId)?.isPrimary;
-    if (removedWasPrimary && newLocations.length > 0) {
-      newLocations[0].isPrimary = true;
-    }
     onChange(newLocations);
   };
 
@@ -258,9 +241,6 @@ export function TrainerLocationPicker({
                             </span>
                           )}
                         </div>
-                        {selection?.isPrimary && (
-                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                        )}
                       </CommandItem>
                     );
                   })}
@@ -294,16 +274,10 @@ export function TrainerLocationPicker({
             {selectedLocationDetails.map(({ locationId, isPrimary, relationshipType, location }) => (
               <div
                 key={locationId}
-                className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg border',
-                  isPrimary && 'border-primary bg-primary/5'
-                )}
+                className="flex items-center gap-3 p-3 rounded-lg border"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    {isPrimary && (
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />
-                    )}
                     <span className="font-medium truncate">{location?.name}</span>
                     <span className="text-xs text-muted-foreground">({location?.city})</span>
                   </div>
@@ -347,19 +321,6 @@ export function TrainerLocationPicker({
                     </Tooltip>
                   </div>
                 </TooltipProvider>
-
-                {/* Primary button */}
-                {!isPrimary && selectedLocationDetails.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2"
-                    onClick={() => setPrimary(locationId)}
-                  >
-                    <Star className="h-4 w-4 mr-1" />
-                    {t('locations.setPrimary', 'Set primary')}
-                  </Button>
-                )}
 
                 {/* Remove button */}
                 <Button
