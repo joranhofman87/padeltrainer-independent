@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +28,7 @@ export default function PlayerSignup() {
   const [showVerification, setShowVerification] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
 
@@ -79,6 +80,11 @@ export default function PlayerSignup() {
     } else if (data?.session) {
       // Session is immediately available (auto-confirm enabled for dev)
       localStorage.setItem('pendingRole', 'player');
+      // Store redirect URL if present
+      const redirectUrl = searchParams.get('redirect');
+      if (redirectUrl) {
+        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+      }
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
@@ -87,6 +93,11 @@ export default function PlayerSignup() {
     } else {
       // No immediate session - email verification required
       localStorage.setItem('pendingRole', 'player');
+      // Store redirect URL if present
+      const redirectUrl = searchParams.get('redirect');
+      if (redirectUrl) {
+        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+      }
       setShowVerification(true);
     }
 
@@ -97,6 +108,11 @@ export default function PlayerSignup() {
     setIsLoading(true);
     // Store role preference before OAuth redirect
     localStorage.setItem('pendingRole', 'player');
+    // Store redirect URL if present
+    const redirectUrl = searchParams.get('redirect');
+    if (redirectUrl) {
+      localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+    }
     
     const { error } = await signInWithGoogle();
 
