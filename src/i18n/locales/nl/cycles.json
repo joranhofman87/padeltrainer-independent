@@ -87,6 +87,9 @@
         "kids": "Kindertraining"
       },
       "preferredDuration": "Gewenste Duur",
+      "sessionsPerWeek": "Trainingen per week",
+      "sessionsPerWeekHelp": "Hoe vaak per week wil je trainen?",
+      "timesPerWeek": "per week",
       "preferredTrainer": "Voorkeurstrainer (optioneel)",
       "noPreference": "Geen voorkeur",
       "location": "Voorkeurslocatie",
