@@ -193,6 +193,14 @@ export default function IntakeRequestDetailSheet({
                   <span className="text-sm font-medium">{request.preferred_duration_minutes} min</span>
                 </div>
               )}
+              {request.sessions_per_week && request.sessions_per_week > 1 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{t('application.form.sessionsPerWeek')}</span>
+                  <Badge variant="secondary">
+                    {request.sessions_per_week}× {t('application.form.timesPerWeek')}
+                  </Badge>
+                </div>
+              )}
               {request.location_id && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Location</span>

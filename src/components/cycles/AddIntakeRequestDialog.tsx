@@ -50,6 +50,7 @@ const formSchema = z.object({
   rating: z.coerce.number().optional(),
   lesson_type: z.enum(['private', 'duo', 'group', 'kids']),
   preferred_duration_minutes: z.coerce.number().default(60),
+  sessions_per_week: z.coerce.number().min(1).max(7).default(1),
   preferred_trainer_id: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -97,6 +98,7 @@ export default function AddIntakeRequestDialog({
       rating: undefined,
       lesson_type: 'group',
       preferred_duration_minutes: 60,
+      sessions_per_week: 1,
       preferred_trainer_id: 'none',
       notes: '',
     },
@@ -255,6 +257,7 @@ export default function AddIntakeRequestDialog({
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
+        sessions_per_week: data.sessions_per_week,
         preferred_trainer_id: data.preferred_trainer_id === 'none' ? undefined : data.preferred_trainer_id,
         notes: data.notes || undefined,
         consent_given: true,
@@ -454,27 +457,55 @@ export default function AddIntakeRequestDialog({
                 />
 
                 <FormField
-                  control={form.control}
-                  name="preferred_duration_minutes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('application.form.preferredDuration')}</FormLabel>
-                      <Select
-                        onValueChange={(v) => field.onChange(parseInt(v))}
-                        value={String(field.value)}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="30">30 min</SelectItem>
-                          <SelectItem value="45">45 min</SelectItem>
-                          <SelectItem value="60">60 min</SelectItem>
-                          <SelectItem value="90">90 min</SelectItem>
-                        </SelectContent>
+              control={form.control}
+              name="preferred_duration_minutes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.preferredDuration')}</FormLabel>
+                  <Select
+                    onValueChange={(v) => field.onChange(parseInt(v))}
+                    value={String(field.value)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="30">30 min</SelectItem>
+                      <SelectItem value="45">45 min</SelectItem>
+                      <SelectItem value="60">60 min</SelectItem>
+                      <SelectItem value="90">90 min</SelectItem>
+                    </SelectContent>
                 </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="sessions_per_week"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.sessionsPerWeek')}</FormLabel>
+                  <Select
+                    onValueChange={(v) => field.onChange(parseInt(v))}
+                    value={String(field.value)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n}× {t('application.form.timesPerWeek')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

@@ -805,6 +805,7 @@ export type Database = {
           preferred_trainer_id: string | null
           rating: number | null
           rating_system: string | null
+          sessions_per_week: number | null
           skip_reason: string | null
           status: string
           updated_at: string
@@ -827,6 +828,7 @@ export type Database = {
           preferred_trainer_id?: string | null
           rating?: number | null
           rating_system?: string | null
+          sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
           updated_at?: string
@@ -849,6 +851,7 @@ export type Database = {
           preferred_trainer_id?: string | null
           rating?: number | null
           rating_system?: string | null
+          sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
           updated_at?: string

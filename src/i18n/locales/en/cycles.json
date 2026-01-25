@@ -87,6 +87,9 @@
         "kids": "Kids Training"
       },
       "preferredDuration": "Preferred Duration",
+      "sessionsPerWeek": "Sessions per week",
+      "sessionsPerWeekHelp": "How many times per week would you like to train?",
+      "timesPerWeek": "per week",
       "preferredTrainer": "Preferred Trainer (optional)",
       "noPreference": "No preference",
       "location": "Preferred Location",

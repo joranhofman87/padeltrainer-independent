@@ -112,6 +112,7 @@ export default function CycleApplicationForm({
     rating_system: z.string(),
     lesson_type: z.enum(LESSON_TYPES),
     preferred_duration_minutes: z.coerce.number(),
+    sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
     location_id: z.string().optional(),
@@ -133,6 +134,7 @@ export default function CycleApplicationForm({
       rating_system: playerRatingSystem,
       lesson_type: (cycle.settings.lesson_types?.[0] as typeof LESSON_TYPES[number]) || 'private',
       preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
+      sessions_per_week: 1,
       availability: {},
       preferred_trainer_id: '',
       location_id: '',
@@ -171,6 +173,7 @@ export default function CycleApplicationForm({
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: values.preferred_duration_minutes,
+        sessions_per_week: values.sessions_per_week,
         preferred_trainer_id: values.preferred_trainer_id || undefined,
         location_id: values.location_id || undefined,
         notes: values.notes,
@@ -377,6 +380,31 @@ export default function CycleApplicationForm({
                       {DURATIONS.map(d => (
                         <SelectItem key={d} value={String(d)}>
                           {d} min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="sessions_per_week"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.sessionsPerWeek')}</FormLabel>
+                  <Select onValueChange={field.onChange} value={String(field.value)}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n}× {t('application.form.timesPerWeek')}
                         </SelectItem>
                       ))}
                     </SelectContent>

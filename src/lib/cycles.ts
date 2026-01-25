@@ -56,6 +56,7 @@ export interface IntakeRequest {
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes: number;
+  sessions_per_week: number;
   preferred_trainer_id: string | null;
   location_id: string | null;
   notes: string | null;
@@ -119,6 +120,7 @@ export interface IntakeRequestInput {
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes?: number;
+  sessions_per_week?: number;
   preferred_trainer_id?: string;
   location_id?: string;
   notes?: string;
@@ -350,6 +352,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     preferred_days: input.preferred_days,
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
+    sessions_per_week: input.sessions_per_week || 1,
     preferred_trainer_id: input.preferred_trainer_id || null,
     location_id: input.location_id || null,
     notes: input.notes || null,
@@ -598,6 +601,7 @@ export async function createManualIntakeRequest(
     preferred_days: input.preferred_days,
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
+    sessions_per_week: input.sessions_per_week || 1,
     preferred_trainer_id: input.preferred_trainer_id || null,
     location_id: input.location_id || null,
     notes: input.notes || null,
