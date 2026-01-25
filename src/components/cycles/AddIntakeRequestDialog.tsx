@@ -131,11 +131,34 @@ export default function AddIntakeRequestDialog({
 
     setIsSubmitting(true);
     try {
-      // Derive preferred_days from time windows
+      // Step 1: Create or find the player account
+      const { data: playerData, error: playerError } = await supabase.functions.invoke(
+        'create-manual-player',
+        {
+          body: {
+            email: data.email,
+            fullName: data.full_name,
+            phone: data.phone,
+            ratingSystem: data.rating_system,
+            rating: data.rating,
+          },
+        }
+      );
+
+      if (playerError) {
+        throw new Error(playerError.message || 'Failed to create player account');
+      }
+
+      if (playerData?.error) {
+        throw new Error(playerData.error);
+      }
+
+      // Step 2: Create the intake request with the real player_id
       const preferredDays = [...new Set(timeWindows.map((tw) => tw.day!))];
 
       await createManualIntakeRequest({
         cycle_id: data.cycle_id,
+        player_id: playerData.profileId,
         full_name: data.full_name,
         email: data.email,
         phone: data.phone || undefined,
@@ -146,10 +169,16 @@ export default function AddIntakeRequestDialog({
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
         notes: data.notes || undefined,
-        consent_given: true, // Club confirms consent on behalf of player
+        consent_given: true,
       });
 
-      toast.success(t('intakeRequests.addManualSuccess'));
+      // Show success message
+      if (playerData.isNewUser) {
+        toast.success(t('intakeRequests.addManualSuccessNewAccount'));
+      } else {
+        toast.success(t('intakeRequests.addManualSuccess'));
+      }
+      
       form.reset();
       setDayAvailability({});
       onSuccess();

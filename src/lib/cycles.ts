@@ -540,14 +540,11 @@ export async function saveCycleScoringWeights(
 
 // Create a manual intake request (for club managers to add registrations)
 export async function createManualIntakeRequest(
-  input: Omit<IntakeRequestInput, 'player_id'> & { player_id?: string }
+  input: IntakeRequestInput & { player_id: string }
 ): Promise<IntakeRequest> {
-  // Generate a placeholder player_id if not provided (for manual entries not linked to a user)
-  const playerId = input.player_id || crypto.randomUUID();
-
   const insertData = {
     cycle_id: input.cycle_id,
-    player_id: playerId,
+    player_id: input.player_id,
     full_name: input.full_name,
     email: input.email,
     phone: input.phone || null,
@@ -560,7 +557,7 @@ export async function createManualIntakeRequest(
     preferred_trainer_id: input.preferred_trainer_id || null,
     location_id: input.location_id || null,
     notes: input.notes || null,
-    consent_given: true, // Club confirms consent on behalf of player
+    consent_given: true,
     status: 'new' as const,
   };
 

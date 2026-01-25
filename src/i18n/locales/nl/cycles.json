@@ -145,6 +145,7 @@
     "addManualTitle": "Handmatige registratie",
     "addManualDescription": "Registreer een speler die zich telefonisch, per e-mail of persoonlijk heeft aangemeld",
     "addManualSuccess": "Registratie succesvol toegevoegd",
+    "addManualSuccessNewAccount": "Registratie toegevoegd. Er is een spelersaccount aangemaakt.",
     "filters": {
       "all": "Alle",
       "new": "Nieuw",

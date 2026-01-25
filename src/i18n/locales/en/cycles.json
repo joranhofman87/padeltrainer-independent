@@ -145,6 +145,7 @@
     "addManualTitle": "Manual Registration",
     "addManualDescription": "Register a player who signed up via phone, email, or in-person",
     "addManualSuccess": "Registration added successfully",
+    "addManualSuccessNewAccount": "Registration added. A player account has been created.",
     "filters": {
       "all": "All",
       "new": "New",
