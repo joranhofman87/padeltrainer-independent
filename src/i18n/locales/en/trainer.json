@@ -545,5 +545,20 @@
   "pagination": {
     "previous": "Previous",
     "next": "Next"
+  },
+  "invoices": {
+    "settings": "Invoice Settings",
+    "settingsDescription": "Business details for your invoices",
+    "complete": "Complete",
+    "korNote": "Not required for KOR regulation",
+    "domesticNote": "Optional for domestic payments",
+    "days7": "7 days",
+    "days14": "14 days",
+    "days30": "30 days",
+    "saving": "Saving...",
+    "saveSettings": "Save settings",
+    "saveError": "Could not save settings",
+    "saved": "Saved",
+    "savedDescription": "Your invoice settings have been updated"
   }
 }

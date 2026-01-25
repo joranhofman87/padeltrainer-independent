@@ -73,14 +73,14 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
 
     if (error) {
       toast({
-        title: 'Fout',
-        description: 'Kon instellingen niet opslaan',
+        title: t('common:toasts.errorTitle'),
+        description: t('invoices.saveError'),
         variant: 'destructive',
       });
     } else {
       toast({
-        title: 'Opgeslagen',
-        description: 'Je factuur instellingen zijn bijgewerkt',
+        title: t('invoices.saved'),
+        description: t('invoices.savedDescription'),
       });
       onSave?.();
     }
@@ -104,7 +104,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           {isComplete && (
             <div className="flex items-center gap-1 text-green-600 text-sm">
               <CheckCircle2 className="h-4 w-4" />
-              Compleet
+              {t('invoices.complete')}
             </div>
           )}
         </div>
@@ -160,7 +160,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
               placeholder="NL123456789B01"
             />
             <p className="text-xs text-muted-foreground">
-              Niet verplicht bij KOR-regeling
+              {t('invoices.korNote')}
             </p>
           </div>
           <div className="space-y-2">
@@ -175,9 +175,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">7 dagen</SelectItem>
-                <SelectItem value="14">14 dagen</SelectItem>
-                <SelectItem value="30">30 dagen</SelectItem>
+                <SelectItem value="7">{t('invoices.days7')}</SelectItem>
+                <SelectItem value="14">{t('invoices.days14')}</SelectItem>
+                <SelectItem value="30">{t('invoices.days30')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -202,7 +202,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
               placeholder="ABNANL2A"
             />
             <p className="text-xs text-muted-foreground">
-              Optioneel voor binnenlandse betalingen
+              {t('invoices.domesticNote')}
             </p>
           </div>
         </div>
@@ -213,7 +213,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
           ) : (
             <Save className="h-4 w-4 mr-2" />
           )}
-          {saving ? 'Opslaan...' : 'Instellingen opslaan'}
+          {saving ? t('invoices.saving') : t('invoices.saveSettings')}
         </Button>
       </CardContent>
     </Card>
