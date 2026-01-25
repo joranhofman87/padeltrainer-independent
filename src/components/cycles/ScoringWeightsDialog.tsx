@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -10,9 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Info, Zap, Clock, Users, TrendingUp, LayoutGrid, CalendarDays } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, Info, Zap, Clock, Users, TrendingUp, LayoutGrid, CalendarDays, Gauge } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { getRatingSystems, type RatingSystemConfig } from "@/lib/ratingSystems";
 
 export interface ScoringWeights {
   time_match: number;
@@ -66,11 +76,17 @@ const PRESETS: Record<string, ScoringWeights> = {
   },
 };
 
+interface RatingSpreadSettings {
+  maxSpread: number | null;
+  ratingSystem: string;
+}
+
 interface ScoringWeightsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultWeights?: ScoringWeights;
-  onGenerate: (weights: ScoringWeights, saveAsDefault: boolean) => Promise<void>;
+  defaultRatingSpread?: RatingSpreadSettings;
+  onGenerate: (weights: ScoringWeights, saveAsDefault: boolean, ratingSpread?: RatingSpreadSettings) => Promise<void>;
   isGenerating?: boolean;
 }
 
@@ -116,10 +132,20 @@ function WeightSlider({ label, helpText, value, onChange, icon }: WeightSliderPr
   );
 }
 
+// Default spread suggestions per rating system
+const SUGGESTED_SPREADS: Record<string, number> = {
+  knltb: 0.5,
+  playtomic: 0.5,
+  fep: 0.5,
+  tennis_vlaanderen: 75,
+  lta: 0.25,
+};
+
 export function ScoringWeightsDialog({
   open,
   onOpenChange,
   defaultWeights,
+  defaultRatingSpread,
   onGenerate,
   isGenerating = false,
 }: ScoringWeightsDialogProps) {
@@ -129,6 +155,18 @@ export function ScoringWeightsDialog({
   );
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  
+  // Rating spread settings
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [ratingSpread, setRatingSpread] = useState<RatingSpreadSettings>(
+    defaultRatingSpread || { maxSpread: null, ratingSystem: 'knltb' }
+  );
+
+  useEffect(() => {
+    getRatingSystems().then(setRatingSystems);
+  }, []);
+
+  const selectedSystem = ratingSystems.find(s => s.code === ratingSpread.ratingSystem);
 
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
 
@@ -143,7 +181,7 @@ export function ScoringWeightsDialog({
   };
 
   const handleGenerate = async () => {
-    await onGenerate(weights, saveAsDefault);
+    await onGenerate(weights, saveAsDefault, ratingSpread.maxSpread ? ratingSpread : undefined);
   };
 
   return (
@@ -245,6 +283,72 @@ export function ScoringWeightsDialog({
             >
               {totalWeight}
             </span>
+          </div>
+
+          <Separator />
+
+          {/* Rating Spread Settings */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">{t("proposals.weights.ratingSettings")}</Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[250px]">
+                    <p className="text-xs">{t("proposals.weights.maxRatingSpreadHelp")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">{t("proposals.weights.ratingSystem")}</Label>
+                <Select
+                  value={ratingSpread.ratingSystem}
+                  onValueChange={(value) => setRatingSpread(prev => ({
+                    ...prev,
+                    ratingSystem: value,
+                    maxSpread: SUGGESTED_SPREADS[value] || null
+                  }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ratingSystems.map(sys => (
+                      <SelectItem key={sys.code} value={sys.code}>
+                        {sys.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">{t("proposals.weights.maxRatingSpread")}</Label>
+                <Input
+                  type="number"
+                  step={selectedSystem?.step || 0.1}
+                  min={0}
+                  value={ratingSpread.maxSpread ?? ''}
+                  onChange={(e) => setRatingSpread(prev => ({
+                    ...prev,
+                    maxSpread: e.target.value ? parseFloat(e.target.value) : null
+                  }))}
+                  placeholder={t("proposals.weights.spreadPlaceholder")}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {ratingSpread.maxSpread
+                ? `Players with ratings more than ${ratingSpread.maxSpread} apart won't be grouped together`
+                : 'Leave empty to skip rating spread check'}
+            </p>
           </div>
 
           {/* Save as default checkbox */}

@@ -213,6 +213,8 @@
       "time_match": "Time preference matched",
       "preferred_trainer": "Preferred trainer matched",
       "level_compatible": "Level compatible",
+      "level_in_trainer_range": "Within trainer's preferred range",
+      "level_group_spread": "Rating spread within limits",
       "priority_bonus": "Early registration bonus",
       "capacity_available": "Slot has capacity",
       "sessions_per_week": "Training frequency considered"
@@ -252,7 +254,12 @@
         "balanced": "Balanced",
         "timeFocused": "Time-focused",
         "levelFocused": "Level-focused"
-      }
+      },
+      "ratingSettings": "Rating Compatibility",
+      "maxRatingSpread": "Max Rating Difference",
+      "maxRatingSpreadHelp": "Maximum rating difference allowed between players in the same group",
+      "ratingSystem": "Rating System",
+      "spreadPlaceholder": "e.g., 0.5 for KNLTB"
     }
   },
 
@@ -271,6 +278,16 @@
       "short": "No trainers",
       "title": "No trainers available",
       "description": "No trainers have availability during this player's preferred times."
+    },
+    "rating_outside_trainer_range": {
+      "short": "Rating mismatch",
+      "title": "Rating outside trainer preferences",
+      "description": "This player's rating is outside the preferred range of all available trainers."
+    },
+    "rating_spread_exceeded": {
+      "short": "Level gap",
+      "title": "Rating spread too large",
+      "description": "The rating difference with other players in available slots exceeds the maximum allowed."
     }
   },
   

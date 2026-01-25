@@ -42,6 +42,8 @@ export interface CycleSettings {
   max_group_size?: number;
   applicable_trainer_ids?: string[];
   scoring_weights?: ScoringWeights;
+  max_rating_spread?: number;
+  rating_spread_system?: string;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
@@ -64,7 +66,7 @@ export interface IntakeRequest {
   notes: string | null;
   consent_given: boolean;
   status: 'new' | 'proposed' | 'confirmed' | 'rejected' | 'waitlist';
-  skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | null;
+  skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | 'rating_outside_trainer_range' | 'rating_spread_exceeded' | null;
   created_at: string;
   updated_at: string;
 }

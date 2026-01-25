@@ -213,6 +213,8 @@
       "time_match": "Tijdvoorkeur gematcht",
       "preferred_trainer": "Voorkeurstrainer gematcht",
       "level_compatible": "Niveau compatibel",
+      "level_in_trainer_range": "Binnen voorkeursbereik trainer",
+      "level_group_spread": "Niveauverschil binnen limiet",
       "priority_bonus": "Vroege inschrijfbonus",
       "capacity_available": "Slot heeft capaciteit",
       "sessions_per_week": "Trainingsfrequentie meegenomen"
@@ -252,7 +254,12 @@
         "balanced": "Gebalanceerd",
         "timeFocused": "Tijd-gericht",
         "levelFocused": "Niveau-gericht"
-      }
+      },
+      "ratingSettings": "Niveau Compatibiliteit",
+      "maxRatingSpread": "Max. Niveauverschil",
+      "maxRatingSpreadHelp": "Maximaal toegestaan niveauverschil tussen spelers in dezelfde groep",
+      "ratingSystem": "Ratingsysteem",
+      "spreadPlaceholder": "bijv. 0.5 voor KNLTB"
     }
   },
 
@@ -271,6 +278,16 @@
       "short": "Geen trainers",
       "title": "Geen trainers beschikbaar",
       "description": "Geen trainers hebben beschikbaarheid tijdens de voorkeurstijden van deze speler."
+    },
+    "rating_outside_trainer_range": {
+      "short": "Niveau mismatch",
+      "title": "Niveau buiten trainervoorkeur",
+      "description": "Het niveau van deze speler valt buiten het voorkeursbereik van alle beschikbare trainers."
+    },
+    "rating_spread_exceeded": {
+      "short": "Niveauverschil",
+      "title": "Niveauverschil te groot",
+      "description": "Het verschil met andere spelers in beschikbare slots overschrijdt het toegestane maximum."
     }
   },
   

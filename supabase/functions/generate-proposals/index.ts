@@ -15,6 +15,18 @@ interface ScoringWeights {
   sessions_per_week: number;
 }
 
+interface RatingSpreadSettings {
+  maxSpread: number | null;
+  ratingSystem: string;
+}
+
+interface TrainerProfile {
+  id: string;
+  preferred_min_rating: number | null;
+  preferred_max_rating: number | null;
+  preferred_rating_system: string | null;
+}
+
 interface TimeWindow {
   day?: string;
   preset?: "morning" | "afternoon" | "evening" | "weekend";
@@ -63,6 +75,7 @@ interface AvailabilitySlot {
 interface RequestBody {
   cycleId: string;
   weights?: ScoringWeights;
+  ratingSpread?: RatingSpreadSettings;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -214,6 +227,82 @@ function calculateTrainerScore(
 }
 
 function calculateLevelScore(
+  slot: AvailabilitySlot,
+  request: IntakeRequest,
+  trainerProfile: TrainerProfile | null,
+  existingPlayersInSlot: IntakeRequest[],
+  maxRatingSpread: number | null,
+  ratingSpreadSystem: string | null,
+  maxScore: number
+): { score: number; detail: string; breakdown: { trainerRange: number; groupSpread: number } } {
+  let trainerRangeScore = maxScore * 0.5; // Half for trainer range
+  let groupSpreadScore = maxScore * 0.5; // Half for group spread
+  const details: string[] = [];
+
+  // If player has no rating, give partial score
+  if (!request.rating) {
+    return { 
+      score: maxScore * 0.5, 
+      detail: "No rating provided",
+      breakdown: { trainerRange: trainerRangeScore * 0.5, groupSpread: groupSpreadScore * 0.5 }
+    };
+  }
+
+  // Check 1: Trainer preference match
+  if (trainerProfile?.preferred_min_rating !== null && 
+      trainerProfile?.preferred_max_rating !== null &&
+      trainerProfile?.preferred_rating_system === request.rating_system) {
+    const inRange = request.rating >= trainerProfile.preferred_min_rating && 
+                   request.rating <= trainerProfile.preferred_max_rating;
+    if (inRange) {
+      details.push(`Rating ${request.rating} in trainer range (${trainerProfile.preferred_min_rating}-${trainerProfile.preferred_max_rating})`);
+    } else {
+      // Player rating outside trainer's preferred range - significant penalty
+      trainerRangeScore = 0;
+      details.push(`Rating ${request.rating} outside trainer range (${trainerProfile.preferred_min_rating}-${trainerProfile.preferred_max_rating})`);
+    }
+  } else {
+    // Trainer has no preference or different rating system
+    details.push("Trainer has no rating preference");
+  }
+
+  // Check 2: Group compatibility (max spread) - only for group lessons
+  if (maxRatingSpread !== null && 
+      ratingSpreadSystem === request.rating_system &&
+      request.lesson_type !== 'private' &&
+      existingPlayersInSlot.length > 0) {
+    
+    // Get ratings from players in the same rating system
+    const otherRatings = existingPlayersInSlot
+      .filter(p => p.rating !== null && p.rating_system === request.rating_system)
+      .map(p => p.rating as number);
+
+    if (otherRatings.length > 0) {
+      const allRatings = [...otherRatings, request.rating];
+      const minRating = Math.min(...allRatings);
+      const maxRating = Math.max(...allRatings);
+      const spread = Math.abs(maxRating - minRating);
+
+      if (spread <= maxRatingSpread) {
+        details.push(`Group spread ${spread.toFixed(2)} within limit ${maxRatingSpread}`);
+      } else {
+        // Spread exceeded - give zero score for group compatibility
+        groupSpreadScore = 0;
+        details.push(`Group spread ${spread.toFixed(2)} exceeds limit ${maxRatingSpread}`);
+      }
+    }
+  }
+
+  const totalScore = Math.round(trainerRangeScore + groupSpreadScore);
+  return { 
+    score: totalScore, 
+    detail: details.join(", ") || `Rating ${request.rating} compatible`,
+    breakdown: { trainerRange: trainerRangeScore, groupSpread: groupSpreadScore }
+  };
+}
+
+// Legacy function for backward compatibility
+function calculateLevelScoreLegacy(
   _slot: AvailabilitySlot,
   request: IntakeRequest,
   maxScore: number
@@ -287,7 +376,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { cycleId, weights: inputWeights }: RequestBody = await req.json();
+    const { cycleId, weights: inputWeights, ratingSpread }: RequestBody = await req.json();
 
     if (!cycleId) {
       return new Response(
@@ -298,6 +387,8 @@ Deno.serve(async (req) => {
 
     // Use provided weights or defaults
     const weights = inputWeights || DEFAULT_WEIGHTS;
+    const maxRatingSpread = ratingSpread?.maxSpread ?? null;
+    const ratingSpreadSystem = ratingSpread?.ratingSystem ?? null;
 
     // Normalize weights to percentages
     const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -371,6 +462,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch trainer profiles for rating preference checks
+    const slotTrainerIds = [...new Set(slots.map(s => s.trainer_id))];
+    const { data: trainerProfiles } = await supabase
+      .from("trainer_profiles")
+      .select("id, preferred_min_rating, preferred_max_rating, preferred_rating_system")
+      .in("id", slotTrainerIds);
+
+    // Create a map for quick lookup
+    const trainerProfileMap: Record<string, TrainerProfile> = {};
+    (trainerProfiles || []).forEach((tp) => {
+      trainerProfileMap[tp.id] = tp as TrainerProfile;
+    });
+
     // Fetch existing bookings to check capacity
     const slotIds = slots.map((s) => s.id);
     const { data: existingBookings, error: bookingsError } = await supabase
@@ -402,6 +506,9 @@ Deno.serve(async (req) => {
     let generated = 0;
     let skipped = 0;
     const errors: string[] = [];
+
+    // Track which requests have been assigned to which slots (for group spread calculation)
+    const slotAssignments: Record<string, IntakeRequest[]> = {};
 
     // Clear old skip reasons before regenerating
     const requestIdsToProcess = requests.map(r => r.id);
@@ -452,9 +559,37 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Check if player's rating is compatible with any trainer's preferences
+      // This is a pre-filter to detect rating_outside_trainer_range early
+      if (request.rating && maxRatingSpread !== null) {
+        const hasCompatibleTrainer = matchingSlots.some((slot) => {
+          const trainerProfile = trainerProfileMap[slot.trainer_id];
+          if (!trainerProfile?.preferred_min_rating || !trainerProfile?.preferred_max_rating) {
+            return true; // Trainer has no preference, compatible
+          }
+          if (trainerProfile.preferred_rating_system !== request.rating_system) {
+            return true; // Different rating systems, compatible
+          }
+          return request.rating! >= trainerProfile.preferred_min_rating &&
+                 request.rating! <= trainerProfile.preferred_max_rating;
+        });
+
+        if (!hasCompatibleTrainer) {
+          skipped++;
+          await supabase
+            .from("intake_requests")
+            .update({ skip_reason: "rating_outside_trainer_range" })
+            .eq("id", request.id);
+          errors.push(`Player rating outside all trainers' preferred range for request ${request.id}`);
+          continue;
+        }
+      }
+
       // Score each slot
       const scoredSlots = matchingSlots.map((slot) => {
         const rationale: RationaleItem[] = [];
+        const trainerProfile = trainerProfileMap[slot.trainer_id] || null;
+        const existingPlayersInSlot = slotAssignments[slot.id] || [];
 
         // Time match
         const timeResult = calculateTimeScore(
@@ -480,10 +615,14 @@ Deno.serve(async (req) => {
           detail: trainerResult.detail,
         });
 
-        // Level compatibility
+        // Level compatibility - enhanced with trainer range and group spread checks
         const levelResult = calculateLevelScore(
           slot,
           request,
+          trainerProfile,
+          existingPlayersInSlot,
+          maxRatingSpread,
+          ratingSpreadSystem,
           normalizedWeights.level_compatible
         );
         rationale.push({
@@ -544,13 +683,21 @@ Deno.serve(async (req) => {
 
       if (!bestMatch || bestMatch.score === 0) {
         skipped++;
-        // Check if it's because all slots are full
+        // Check specific skip reasons
         const allFull = scoredSlots.every(s => 
           s.rationale.find(r => r.type === 'capacity_available')?.score === 0
         );
+        const ratingSpreadIssue = scoredSlots.every(s => 
+          s.rationale.find(r => r.type === 'level_compatible')?.score === 0
+        );
+        
+        let skipReason = "no_matching_slots";
+        if (allFull) skipReason = "all_slots_full";
+        else if (ratingSpreadIssue) skipReason = "rating_spread_exceeded";
+        
         await supabase
           .from("intake_requests")
-          .update({ skip_reason: allFull ? "all_slots_full" : "no_matching_slots" })
+          .update({ skip_reason: skipReason })
           .eq("id", request.id);
         continue;
       }
@@ -571,6 +718,12 @@ Deno.serve(async (req) => {
         errors.push(`Failed to create proposal for ${request.id}: ${insertError.message}`);
         skipped++;
       } else {
+        // Track this assignment for group spread calculations
+        if (!slotAssignments[bestMatch.slot.id]) {
+          slotAssignments[bestMatch.slot.id] = [];
+        }
+        slotAssignments[bestMatch.slot.id].push(request);
+
         // Update intake request status
         await supabase
           .from("intake_requests")
