@@ -7,8 +7,9 @@ import { Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import {
   Form,
   FormControl,
@@ -54,7 +55,6 @@ interface CycleApplicationFormProps {
 }
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-const TIME_PRESETS = ['morning', 'afternoon', 'evening', 'weekend'] as const;
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
 const DURATIONS = [30, 45, 60, 90, 120] as const;
 
@@ -88,6 +88,18 @@ export default function CycleApplicationForm({
     loadRatingSystems();
   }, []);
 
+  const timeBlockSchema = z.object({
+    start: z.string(),
+    end: z.string(),
+  });
+
+  const availabilitySchema = z.record(
+    z.string(),
+    z.array(timeBlockSchema)
+  ).refine(val => Object.keys(val).length > 0, {
+    message: t('application.form.noAvailability'),
+  });
+
   const formSchema = z.object({
     full_name: z.string().min(2),
     email: z.string().email(),
@@ -96,8 +108,7 @@ export default function CycleApplicationForm({
     rating_system: z.string(),
     lesson_type: z.enum(LESSON_TYPES),
     preferred_duration_minutes: z.coerce.number(),
-    preferred_days: z.array(z.string()).min(1, t('application.form.preferredDays') + ' is required'),
-    time_presets: z.array(z.string()).min(1),
+    availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
     location_id: z.string().optional(),
     notes: z.string().optional(),
@@ -118,8 +129,7 @@ export default function CycleApplicationForm({
       rating_system: playerRatingSystem,
       lesson_type: (cycle.settings.lesson_types?.[0] as typeof LESSON_TYPES[number]) || 'private',
       preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
-      preferred_days: [],
-      time_presets: [],
+      availability: {},
       preferred_trainer_id: '',
       location_id: '',
       notes: '',
@@ -130,10 +140,20 @@ export default function CycleApplicationForm({
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      // Convert time presets to time windows
-      const timeWindows: TimeWindow[] = values.time_presets.map(preset => ({
-        preset: preset as TimeWindow['preset'],
-      }));
+      // Convert availability to TimeWindow[] format
+      const timeWindows: TimeWindow[] = [];
+      const preferredDays: string[] = [];
+      
+      Object.entries(values.availability).forEach(([day, blocks]) => {
+        preferredDays.push(day);
+        blocks.forEach(block => {
+          timeWindows.push({
+            day,
+            start: block.start,
+            end: block.end,
+          });
+        });
+      });
 
       await submitIntakeRequest({
         cycle_id: cycle.id,
@@ -144,7 +164,7 @@ export default function CycleApplicationForm({
         rating: values.rating,
         rating_system: values.rating_system,
         lesson_type: values.lesson_type,
-        preferred_days: values.preferred_days,
+        preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: values.preferred_duration_minutes,
         preferred_trainer_id: values.preferred_trainer_id || undefined,
@@ -409,64 +429,21 @@ export default function CycleApplicationForm({
           <CardHeader>
             <CardTitle className="text-lg">{t('application.form.availability')}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <FormField
               control={form.control}
-              name="preferred_days"
+              name="availability"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('application.form.preferredDays')}</FormLabel>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {DAYS.map(day => (
-                      <div key={day} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`day-${day}`}
-                          checked={field.value.includes(day)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              field.onChange([...field.value, day]);
-                            } else {
-                              field.onChange(field.value.filter(d => d !== day));
-                            }
-                          }}
-                        />
-                        <Label htmlFor={`day-${day}`} className="text-sm font-normal">
-                          {t(`application.form.days.${day}`)}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="time_presets"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('application.form.timeWindows')}</FormLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    {TIME_PRESETS.map(preset => (
-                      <div key={preset} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`time-${preset}`}
-                          checked={field.value.includes(preset)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              field.onChange([...field.value, preset]);
-                            } else {
-                              field.onChange(field.value.filter(p => p !== preset));
-                            }
-                          }}
-                        />
-                        <Label htmlFor={`time-${preset}`} className="text-sm font-normal">
-                          {t(`application.form.timePresets.${preset}`)}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+                  <FormDescription className="mb-4">
+                    {t('application.form.availabilityHelp')}
+                  </FormDescription>
+                  <FormControl>
+                    <DayAvailabilityPicker
+                      value={field.value as DayAvailability}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

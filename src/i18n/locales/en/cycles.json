@@ -91,6 +91,7 @@
       "location": "Preferred Location",
       
       "availability": "Your Availability",
+      "availabilityHelp": "Select the days and times you're available for training",
       "preferredDays": "Preferred Days",
       "days": {
         "monday": "Monday",
@@ -101,6 +102,11 @@
         "saturday": "Saturday",
         "sunday": "Sunday"
       },
+      "startTime": "From",
+      "endTime": "To",
+      "addTimeBlock": "Add another time",
+      "noAvailability": "Please select at least one day with available times",
+      "invalidTimeRange": "End time must be after start time",
       "timeWindows": "Preferred Times",
       "timePresets": {
         "morning": "Mornings (8:00-12:00)",
