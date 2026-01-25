@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,6 +25,7 @@ interface FollowedTrainer {
 export default function FollowingList() {
   const { user, role, loading } = useAuth();
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
 
   const [following, setFollowing] = useState<FollowedTrainer[]>([]);
@@ -215,7 +217,7 @@ export default function FollowingList() {
             <p className="text-muted-foreground mb-4">
               Follow trainers to get notified when they add new availability slots.
             </p>
-            <Button onClick={() => navigate('/trainers')}>Browse Trainers</Button>
+            <Button onClick={() => navigate(localizePath('/trainers'))}>Browse Trainers</Button>
           </Card>
         ) : (
           <div className="space-y-4">
@@ -225,7 +227,7 @@ export default function FollowingList() {
                   <div className="flex items-center gap-4">
                     <Avatar
                       className="h-14 w-14 cursor-pointer"
-                      onClick={() => navigate(`/trainer/${trainer.trainer_user_id}`)}
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
                     >
                       <AvatarImage src={trainer.avatar_url || undefined} />
                       <AvatarFallback>{getInitials(trainer.full_name)}</AvatarFallback>
@@ -233,7 +235,7 @@ export default function FollowingList() {
 
                     <div
                       className="flex-1 cursor-pointer"
-                      onClick={() => navigate(`/trainer/${trainer.trainer_user_id}`)}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
                     >
                       <h3 className="font-semibold">{trainer.full_name || 'Trainer'}</h3>
                       {trainer.location && (
@@ -281,7 +283,7 @@ export default function FollowingList() {
         )}
 
         <div className="mt-8 text-center">
-          <Button variant="outline" onClick={() => navigate('/trainers')}>
+          <Button variant="outline" onClick={() => navigate(localizePath('/trainers'))}>
             Find More Trainers
           </Button>
         </div>

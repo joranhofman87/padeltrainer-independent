@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ interface PlayerStats {
 export default function PlayerDashboard() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
   const [featuredTrainers, setFeaturedTrainers] = useState<FeaturedTrainer[]>([]);
   const [loadingTrainers, setLoadingTrainers] = useState(true);
@@ -480,7 +482,7 @@ export default function PlayerDashboard() {
                   <div
                     key={trainer.id}
                     className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => navigate(`/trainer/${trainer.trainer_user_id}`)}
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
                   >
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={trainer.avatar_url || undefined} />
@@ -498,7 +500,7 @@ export default function PlayerDashboard() {
         <div className="grid md:grid-cols-3 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/trainers')}
+            onClick={() => navigate(localizePath('/trainers'))}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
@@ -586,7 +588,7 @@ export default function PlayerDashboard() {
                   Top-rated trainers in your area
                 </CardDescription>
               </div>
-              <Button variant="ghost" onClick={() => navigate('/trainers')} className="gap-1">
+              <Button variant="ghost" onClick={() => navigate(localizePath('/trainers'))} className="gap-1">
                 View All <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -607,7 +609,7 @@ export default function PlayerDashboard() {
                   <Card 
                     key={trainer.id}
                     className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50"
-                    onClick={() => navigate(`/book/${trainer.id}`)}
+                    onClick={() => navigate(localizePath(`/book/${trainer.id}`))}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3 mb-3">
