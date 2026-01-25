@@ -281,10 +281,11 @@ export default function LocationDetail() {
         structuredData={getStructuredData() || undefined}
       />
 
-      <ProfileLayout
-        breadcrumbs={breadcrumbs}
-        bannerUrl={clubProfile?.banner_url}
-        headerAction={
+    <ProfileLayout
+      breadcrumbs={breadcrumbs}
+      bannerUrl={clubProfile?.banner_url}
+      showBackButton={false}
+      headerAction={
           !user ? (
             <Button onClick={() => navigate(localizePath('/auth'))}>{t('common:signIn')}</Button>
           ) : null
