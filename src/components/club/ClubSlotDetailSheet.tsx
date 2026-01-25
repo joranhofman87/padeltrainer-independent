@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
 
 interface SlotBooking {
   id: string;
@@ -74,6 +75,7 @@ export function ClubSlotDetailSheet({
 }: ClubSlotDetailSheetProps) {
   const { t } = useTranslation("club");
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const [bookings, setBookings] = useState<SlotBooking[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -357,7 +359,7 @@ export function ClubSlotDetailSheet({
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => navigate(`/trainer/${slot.trainer_id}`)}
+            onClick={() => navigate(localizePath(`/trainer/${slot.trainer_id}`))}
           >
             <ExternalLink className="h-4 w-4 mr-2" />
             {t("calendar.viewTrainerProfile", "View Trainer Profile")}
