@@ -50,6 +50,7 @@ const formSchema = z.object({
   rating: z.coerce.number().optional(),
   lesson_type: z.enum(['private', 'duo', 'group', 'kids']),
   preferred_duration_minutes: z.coerce.number().default(60),
+  preferred_trainer_id: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -82,6 +83,7 @@ export default function AddIntakeRequestDialog({
     max_rating: number;
     step: number;
   }>>([]);
+  const [trainers, setTrainers] = useState<Array<{ id: string; name: string }>>([]);
   const [dayAvailability, setDayAvailability] = useState<DayAvailability>({});
 
   const form = useForm<FormData>({
@@ -93,8 +95,9 @@ export default function AddIntakeRequestDialog({
       phone: '',
       rating_system: 'knltb',
       rating: undefined,
-      lesson_type: 'private',
+      lesson_type: 'group',
       preferred_duration_minutes: 60,
+      preferred_trainer_id: '',
       notes: '',
     },
   });
@@ -116,6 +119,77 @@ export default function AddIntakeRequestDialog({
     };
     fetchRatingSystems();
   }, []);
+
+  // Fetch trainers when cycle changes
+  const selectedCycleId = form.watch('cycle_id');
+  useEffect(() => {
+    const fetchTrainers = async () => {
+      const cycleToUse = selectedCycleId || cycleId;
+      if (!cycleToUse) {
+        setTrainers([]);
+        return;
+      }
+
+      // Find the cycle to get owner info
+      const cycle = cycles.find((c) => c.id === cycleToUse);
+      if (!cycle) {
+        setTrainers([]);
+        return;
+      }
+
+      if (cycle.owner_type === 'club') {
+        // Fetch trainers linked to this club
+        const { data: clubData } = await supabase
+          .from('club_profiles')
+          .select('location_id')
+          .eq('id', cycle.owner_id)
+          .single();
+
+        if (clubData?.location_id) {
+          const { data: trainerLocations } = await supabase
+            .from('trainer_locations')
+            .select(`
+              trainer_id,
+              trainer_profiles!inner (
+                id,
+                user_id,
+                profiles:user_id (full_name)
+              )
+            `)
+            .eq('location_id', clubData.location_id)
+            .in('relationship_type', ['club', 'club_trainer']);
+
+          if (trainerLocations) {
+            const trainerList = trainerLocations
+              .map((tl: any) => ({
+                id: tl.trainer_profiles.id,
+                name: tl.trainer_profiles.profiles?.full_name || 'Unknown',
+              }))
+              .filter((t: any) => t.name !== 'Unknown');
+            setTrainers(trainerList);
+          }
+        }
+      } else if (cycle.owner_type === 'trainer') {
+        // For trainer-owned cycles, use the trainer themselves
+        const { data: trainerData } = await supabase
+          .from('trainer_profiles')
+          .select('id, user_id, profiles:user_id (full_name)')
+          .eq('id', cycle.owner_id)
+          .single();
+
+        if (trainerData) {
+          setTrainers([
+            {
+              id: trainerData.id,
+              name: (trainerData as any).profiles?.full_name || 'Unknown',
+            },
+          ]);
+        }
+      }
+    };
+
+    fetchTrainers();
+  }, [selectedCycleId, cycleId, cycles]);
 
   const selectedRatingSystem = ratingSystems.find(
     (rs) => rs.code === form.watch('rating_system')
@@ -168,6 +242,7 @@ export default function AddIntakeRequestDialog({
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
+        preferred_trainer_id: data.preferred_trainer_id || undefined,
         notes: data.notes || undefined,
         consent_given: true,
       });
@@ -386,10 +461,36 @@ export default function AddIntakeRequestDialog({
                           <SelectItem value="60">60 min</SelectItem>
                           <SelectItem value="90">90 min</SelectItem>
                         </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="preferred_trainer_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.preferredTrainer')}</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('application.form.noPreference')} />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="">{t('application.form.noPreference')}</SelectItem>
+                      {trainers.map((trainer) => (
+                        <SelectItem key={trainer.id} value={trainer.id}>
+                          {trainer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
                 />
               </div>
             </div>
