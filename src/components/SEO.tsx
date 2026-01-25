@@ -29,7 +29,8 @@ export function SEO({
   
   // Get the path without language prefix for hreflang generation
   const pathWithoutLang = url?.replace(/^\/(en|nl)/, '') || '';
-  const fullUrl = url ? `${baseUrl}${url}` : `${baseUrl}/${currentLang}`;
+  // Ensure canonical URL includes the current language prefix
+  const fullUrl = url ? `${baseUrl}/${currentLang}${pathWithoutLang}` : `${baseUrl}/${currentLang}`;
   const defaultImage = `${baseUrl}/og-image.png`;
 
   // Generate alternate URLs for each language
