@@ -132,7 +132,7 @@ export default function CycleRegistration() {
           const { data: playerProfile } = await supabase
             .from('profiles')
             .select('id')
-            .eq('id', user.id)
+            .eq('user_id', user.id)
             .single();
 
           if (playerProfile) {
@@ -327,7 +327,7 @@ export default function CycleRegistration() {
           {canApply && profile && (
             <CycleApplicationForm
               cycle={cycle}
-              playerId={user.id}
+              playerId={profile.id}
               playerName={profile.full_name || ''}
               playerEmail={user.email || ''}
               trainers={cycle.settings?.show_preferred_trainer ? trainers.map(t => ({ id: t.id, name: t.name })) : undefined}
