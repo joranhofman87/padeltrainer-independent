@@ -493,6 +493,18 @@ export async function rejectClubClaim(clubProfileId: string): Promise<boolean> {
 
 // Get club trainers with their slots for calendar view
 export async function getClubTrainerSlots(clubProfileId: string, startDate: Date, endDate: Date) {
+  // First get the club's location_id to filter slots
+  const { data: clubProfile, error: clubError } = await supabase
+    .from('club_profiles')
+    .select('location_id')
+    .eq('id', clubProfileId)
+    .single();
+
+  if (clubError || !clubProfile) {
+    console.error('Error fetching club profile for calendar:', clubError);
+    return [];
+  }
+
   const trainers = await getClubTrainers(clubProfileId);
   if (trainers.length === 0) return [];
 
@@ -518,7 +530,7 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
     profileMap[p.user_id] = { full_name: p.full_name, avatar_url: p.avatar_url };
   });
 
-  // Fetch slots without the problematic inner join (no FK from availability_slots.trainer_id to trainer_profiles.id)
+  // Fetch slots - filter by both trainer IDs and the club's location
   const { data: slots, error } = await supabase
     .from('availability_slots')
     .select(`
@@ -531,6 +543,7 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
       lessons:lesson_id(title, max_participants)
     `)
     .in('trainer_id', trainerIds)
+    .eq('location_id', clubProfile.location_id)
     .gte('start_time', startDate.toISOString())
     .lte('start_time', endDate.toISOString())
     .order('start_time');
