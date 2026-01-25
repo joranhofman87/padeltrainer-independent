@@ -71,6 +71,7 @@ export default function ClubCalendar() {
   const [slots, setSlots] = useState<ClubSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [clubProfileId, setClubProfileId] = useState<string | null>(null);
+  const [clubLocationId, setClubLocationId] = useState<string | null>(null);
   const [clubName, setClubName] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<ClubSlot | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -98,6 +99,7 @@ export default function ClubCalendar() {
       const clubs = await getUserClubProfiles(user.id);
       if (clubs.length > 0) {
         setClubProfileId(clubs[0].id);
+        setClubLocationId(clubs[0].location_id);
         setClubName(clubs[0].location?.name || "Club");
         
         // Load trainers
@@ -555,6 +557,7 @@ export default function ClubCalendar() {
         defaultDate={clickedDate}
         defaultTime={clickedTime}
         defaultDuration={60}
+        clubLocationId={clubLocationId || undefined}
         onSlotsCreated={handleSlotsCreated}
       />
 
@@ -569,6 +572,7 @@ export default function ClubCalendar() {
         defaultTime={clickedTime}
         defaultDuration={60}
         defaultWeeks={8}
+        clubLocationId={clubLocationId || undefined}
         onSlotsCreated={handleSlotsCreated}
       />
     </div>
