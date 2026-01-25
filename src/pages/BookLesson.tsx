@@ -115,7 +115,7 @@ export default function BookLesson() {
     // Fetch trainer_profiles and profiles separately (no FK between them for PostgREST join)
     const [trainerResult, profileResult] = await Promise.all([
       supabase
-        .from('trainer_profiles')
+        .from('trainer_profiles_safe')
         .select(`
           id,
           user_id,
