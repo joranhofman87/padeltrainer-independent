@@ -803,6 +803,7 @@ export type Database = {
           preferred_duration_minutes: number | null
           preferred_time_windows: Json
           preferred_trainer_id: string | null
+          preferred_trainer_ids: string[] | null
           rating: number | null
           rating_system: string | null
           sessions_per_week: number | null
@@ -826,6 +827,7 @@ export type Database = {
           preferred_duration_minutes?: number | null
           preferred_time_windows: Json
           preferred_trainer_id?: string | null
+          preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
           sessions_per_week?: number | null
@@ -849,6 +851,7 @@ export type Database = {
           preferred_duration_minutes?: number | null
           preferred_time_windows?: Json
           preferred_trainer_id?: string | null
+          preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
           sessions_per_week?: number | null

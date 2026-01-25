@@ -91,6 +91,8 @@
       "sessionsPerWeekHelp": "Hoe vaak per week wil je trainen?",
       "timesPerWeek": "per week",
       "preferredTrainer": "Voorkeurstrainer (optioneel)",
+      "preferredTrainers": "Voorkeurstrainers (optioneel)",
+      "preferredTrainersHelp": "Selecteer trainers waar je graag mee wilt trainen",
       "noPreference": "Geen voorkeur",
       "location": "Voorkeurslocatie",
       

@@ -25,8 +25,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
+interface TrainerOption {
+  id: string;
+  name: string;
+}
+
 interface IntakeRequestsTableProps {
   requests: IntakeRequest[];
+  trainers?: TrainerOption[];
   onRowClick: (request: IntakeRequest) => void;
   emptyMessage?: string;
   emptyDescription?: string;
@@ -34,11 +40,33 @@ interface IntakeRequestsTableProps {
 
 export default function IntakeRequestsTable({
   requests,
+  trainers = [],
   onRowClick,
   emptyMessage = 'No requests',
   emptyDescription = 'Applications will appear here when players sign up'
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
+
+  const getTrainerNames = (request: IntakeRequest): React.ReactNode => {
+    // Support both new array and legacy single ID
+    const ids = request.preferred_trainer_ids?.length 
+      ? request.preferred_trainer_ids 
+      : request.preferred_trainer_id 
+        ? [request.preferred_trainer_id] 
+        : [];
+    
+    if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+    
+    const names = ids
+      .map(id => trainers.find(t => t.id === id)?.name)
+      .filter(Boolean) as string[];
+    
+    if (names.length === 0) return <span className="text-muted-foreground">—</span>;
+    
+    if (names.length === 1) return <span className="text-sm">{names[0]}</span>;
+    if (names.length === 2) return <span className="text-sm">{names[0]}, {names[1]}</span>;
+    return <span className="text-sm">{names[0]} <span className="text-muted-foreground">+{names.length - 1}</span></span>;
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -178,14 +206,7 @@ export default function IntakeRequestsTable({
                   <span className="text-sm">{formatAvailability(request)}</span>
                 </TableCell>
                 <TableCell className="hidden lg:table-cell">
-                  {request.preferred_trainer_id ? (
-                    <div className="flex items-center gap-1.5">
-                      <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">Specified</span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
+                  {getTrainerNames(request)}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={getStatusColor(request.status)}>
