@@ -141,6 +141,10 @@
     "title": "Intake Requests",
     "noRequests": "No intake requests yet",
     "noRequestsDescription": "Requests will appear here when players apply",
+    "addManual": "Add Registration",
+    "addManualTitle": "Manual Registration",
+    "addManualDescription": "Register a player who signed up via phone, email, or in-person",
+    "addManualSuccess": "Registration added successfully",
     "filters": {
       "all": "All",
       "new": "New",

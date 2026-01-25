@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, CheckCheck } from 'lucide-react';
+import { Sparkles, CheckCheck, Plus } from 'lucide-react';
 import { 
   getCycles, 
   getIntakeRequestsByOwner, 
@@ -18,6 +18,7 @@ import {
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
+import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import { useClubContext } from '@/components/club/ClubLayout';
 
 export default function ClubIntakeRequests() {
@@ -33,6 +34,7 @@ export default function ClubIntakeRequests() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequest | null>(null);
   const [showWeightsDialog, setShowWeightsDialog] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const fetchData = async () => {
@@ -149,6 +151,14 @@ export default function ClubIntakeRequests() {
           </div>
 
           <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => setShowAddDialog(true)}
+              disabled={selectedCycleId === 'all'}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {t('intakeRequests.addManual')}
+            </Button>
             {proposedCount > 0 && (
               <Button variant="outline">
                 <CheckCheck className="mr-2 h-4 w-4" />
@@ -210,6 +220,18 @@ export default function ClubIntakeRequests() {
         defaultWeights={getSelectedCycleWeights()}
         onGenerate={handleGenerateProposals}
         isGenerating={isGenerating}
+      />
+
+      {/* Add Manual Registration Dialog */}
+      <AddIntakeRequestDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        cycleId={selectedCycleId !== 'all' ? selectedCycleId : undefined}
+        cycles={cycles}
+        onSuccess={() => {
+          setShowAddDialog(false);
+          fetchData();
+        }}
       />
     </div>
   );

@@ -537,3 +537,39 @@ export async function saveCycleScoringWeights(
 
   return updateCycle(cycleId, { settings: updatedSettings });
 }
+
+// Create a manual intake request (for club managers to add registrations)
+export async function createManualIntakeRequest(
+  input: Omit<IntakeRequestInput, 'player_id'> & { player_id?: string }
+): Promise<IntakeRequest> {
+  // Generate a placeholder player_id if not provided (for manual entries not linked to a user)
+  const playerId = input.player_id || crypto.randomUUID();
+
+  const insertData = {
+    cycle_id: input.cycle_id,
+    player_id: playerId,
+    full_name: input.full_name,
+    email: input.email,
+    phone: input.phone || null,
+    rating: input.rating || null,
+    rating_system: input.rating_system || 'knltb',
+    lesson_type: input.lesson_type,
+    preferred_days: input.preferred_days,
+    preferred_time_windows: input.preferred_time_windows as unknown as Json,
+    preferred_duration_minutes: input.preferred_duration_minutes || 60,
+    preferred_trainer_id: input.preferred_trainer_id || null,
+    location_id: input.location_id || null,
+    notes: input.notes || null,
+    consent_given: true, // Club confirms consent on behalf of player
+    status: 'new' as const,
+  };
+
+  const { data, error } = await supabase
+    .from('intake_requests')
+    .insert(insertData)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return toIntakeRequest(data);
+}
