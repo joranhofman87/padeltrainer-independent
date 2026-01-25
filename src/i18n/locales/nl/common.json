@@ -74,6 +74,30 @@
   "pending": "In afwachting",
   "confirmed": "Bevestigd",
   "cancelled": "Geannuleerd",
+  "pagination": {
+    "previous": "Vorige",
+    "next": "Volgende",
+    "page": "Pagina",
+    "of": "van"
+  },
+  "states": {
+    "loading": "Laden...",
+    "saving": "Opslaan...",
+    "deleting": "Verwijderen..."
+  },
+  "toasts": {
+    "errorTitle": "Fout",
+    "successTitle": "Gelukt",
+    "savedSuccess": "Wijzigingen opgeslagen",
+    "deleteSuccess": "Succesvol verwijderd"
+  },
+  "roles": {
+    "player": "Speler",
+    "trainer": "Trainer",
+    "selected": "Rol geselecteerd!",
+    "selectRole": "Selecteer je rol",
+    "registeredAs": "Je bent nu geregistreerd als {{role}}."
+  },
   "locations": {
     "title": "Padel Locaties",
     "subtitle": "Vind trainers op {{count}} locaties in Nederland",

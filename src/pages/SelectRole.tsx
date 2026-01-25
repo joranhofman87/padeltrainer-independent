@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -9,6 +10,7 @@ import { useEffect } from 'react';
 import { Users, GraduationCap, Check } from 'lucide-react';
 
 export default function SelectRole() {
+  const { t } = useTranslation('common');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -47,13 +49,13 @@ export default function SelectRole() {
       await setUserRole(user.id, selectedRole);
       await refreshAuth();
       toast({
-        title: 'Role selected!',
-        description: `You're now registered as a ${selectedRole}.`,
+        title: t('roles.selected'),
+        description: t('roles.registeredAs', { role: t(`roles.${selectedRole}`) }),
       });
       navigate(selectedRole === 'trainer' ? '/trainer' : '/player');
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: t('toasts.errorTitle'),
         description: error.message || 'Failed to set role',
         variant: 'destructive',
       });

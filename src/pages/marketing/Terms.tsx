@@ -8,6 +8,8 @@ export default function Terms() {
   const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
   const formattedDate = new Date().toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' });
 
+  const s = (key: string) => t(`terms.sections.${key}`);
+
   return (
     <MarketingLayout>
       <div className="container mx-auto px-4 py-16 max-w-4xl">
@@ -22,188 +24,206 @@ export default function Terms() {
           </p>
 
           <div className="prose prose-lg max-w-none space-y-8">
+            {/* 1. Agreement to Terms */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">1. Agreement to Terms</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('agreement.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                By accessing or using PadelTrainer.ai ("Platform"), you agree to be bound by these Terms of Service ("Terms"). If you disagree with any part of these terms, you may not access the Platform. These Terms apply to all visitors, users, and others who access or use the Platform.
+                {s('agreement.content')}
               </p>
             </section>
 
+            {/* 2. Description of Service */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">2. Description of Service</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('description.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                PadelTrainer.ai is an online platform that connects padel players ("Players") with padel trainers ("Trainers"). We provide scheduling, booking, and payment processing tools to facilitate training sessions. PadelTrainer.ai acts as an intermediary and is not a party to the agreements between Players and Trainers.
+                {s('description.content')}
               </p>
             </section>
 
+            {/* 3. User Accounts */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">3. User Accounts</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('accounts.title')}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                When you create an account with us, you must provide accurate, complete, and current information. You are responsible for:
+                {s('accounts.intro')}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Maintaining the confidentiality of your account and password</li>
-                <li>Restricting access to your account</li>
-                <li>All activities that occur under your account</li>
-                <li>Notifying us immediately of any unauthorized use of your account</li>
+                <li>{s('accounts.items.confidentiality')}</li>
+                <li>{s('accounts.items.access')}</li>
+                <li>{s('accounts.items.activities')}</li>
+                <li>{s('accounts.items.notify')}</li>
               </ul>
             </section>
 
+            {/* 4. For Players */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">4. For Players</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('players.title')}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                As a Player using our Platform, you agree to:
+                {s('players.intro')}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Provide accurate information when booking lessons</li>
-                <li>Pay for booked lessons as agreed</li>
-                <li>Arrive on time for scheduled sessions</li>
-                <li>Treat Trainers with respect and professionalism</li>
-                <li>Follow the cancellation policy outlined below</li>
-                <li>Leave honest and fair reviews based on your actual experience</li>
+                <li>{s('players.items.accurate')}</li>
+                <li>{s('players.items.pay')}</li>
+                <li>{s('players.items.arrive')}</li>
+                <li>{s('players.items.respect')}</li>
+                <li>{s('players.items.cancellation')}</li>
+                <li>{s('players.items.reviews')}</li>
               </ul>
             </section>
 
+            {/* 5. For Trainers */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">5. For Trainers</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('trainers.title')}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                As a Trainer using our Platform, you agree to:
+                {s('trainers.intro')}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Provide accurate information about your qualifications and experience</li>
-                <li>Maintain appropriate certifications and insurance</li>
-                <li>Honor all confirmed bookings</li>
-                <li>Provide professional, safe, and quality training sessions</li>
-                <li>Respond to booking requests in a timely manner</li>
-                <li>Comply with all applicable laws and regulations</li>
-                <li>Pay platform fees as specified in your subscription plan</li>
+                <li>{s('trainers.items.qualifications')}</li>
+                <li>{s('trainers.items.certifications')}</li>
+                <li>{s('trainers.items.bookings')}</li>
+                <li>{s('trainers.items.quality')}</li>
+                <li>{s('trainers.items.respond')}</li>
+                <li>{s('trainers.items.comply')}</li>
+                <li>{s('trainers.items.fees')}</li>
               </ul>
             </section>
 
+            {/* 6. Payments and Fees */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">6. Payments and Fees</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('payments.title')}</h2>
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-lg font-medium mb-2">For Players:</h3>
+                  <h3 className="text-lg font-medium mb-2">{s('payments.forPlayers.title')}</h3>
                   <p className="text-muted-foreground leading-relaxed">
-                    Payment is processed through Stripe at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy.
+                    {s('payments.forPlayers.content')}
                   </p>
                 </div>
                 <div>
-                  <h3 className="text-lg font-medium mb-2">For Trainers:</h3>
+                  <h3 className="text-lg font-medium mb-2">{s('payments.forTrainers.title')}</h3>
                   <p className="text-muted-foreground leading-relaxed">
-                    PadelTrainer.ai charges a platform fee (percentage varies by subscription plan) on each completed booking. The remaining amount is transferred to your connected Stripe account. Subscription fees are billed according to your chosen plan.
+                    {s('payments.forTrainers.content')}
                   </p>
                 </div>
               </div>
             </section>
 
+            {/* 7. Cancellation Policy */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">7. Cancellation Policy</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('cancellation.title')}</h2>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li><strong>More than 24 hours before:</strong> Full refund</li>
-                <li><strong>12-24 hours before:</strong> 50% refund</li>
-                <li><strong>Less than 12 hours before:</strong> No refund</li>
-                <li><strong>Trainer cancellations:</strong> Players receive a full refund for any trainer-initiated cancellation</li>
+                <li><strong>{s('cancellation.items.24h').split(':')[0]}:</strong>{s('cancellation.items.24h').split(':').slice(1).join(':')}</li>
+                <li><strong>{s('cancellation.items.12h').split(':')[0]}:</strong>{s('cancellation.items.12h').split(':').slice(1).join(':')}</li>
+                <li><strong>{s('cancellation.items.less12h').split(':')[0]}:</strong>{s('cancellation.items.less12h').split(':').slice(1).join(':')}</li>
+                <li><strong>{s('cancellation.items.trainer').split(':')[0]}:</strong>{s('cancellation.items.trainer').split(':').slice(1).join(':')}</li>
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-4">
-                Repeated cancellations by either party may result in account restrictions or termination.
+                {s('cancellation.note')}
               </p>
             </section>
 
+            {/* 8. Intellectual Property */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">8. Intellectual Property</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('ip.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                The Platform and its original content, features, and functionality are owned by PadelTrainer.ai and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws. You may not reproduce, distribute, modify, create derivative works of, publicly display, or exploit any content from our Platform without prior written permission.
+                {s('ip.content')}
               </p>
             </section>
 
+            {/* 9. User Content */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">9. User Content</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('userContent.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                You retain ownership of any content you submit to the Platform (reviews, profile information, etc.). By submitting content, you grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, and display such content in connection with operating the Platform. You are solely responsible for the content you submit and must ensure it does not violate any third-party rights or applicable laws.
+                {s('userContent.content')}
               </p>
             </section>
 
+            {/* 10. Prohibited Activities */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">10. Prohibited Activities</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('prohibited.title')}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                You agree not to:
+                {s('prohibited.intro')}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Use the Platform for any illegal purpose</li>
-                <li>Harass, abuse, or harm other users</li>
-                <li>Provide false or misleading information</li>
-                <li>Attempt to circumvent the Platform to avoid fees</li>
-                <li>Scrape or collect user data without consent</li>
-                <li>Upload malicious code or attempt to compromise Platform security</li>
-                <li>Impersonate another person or entity</li>
-                <li>Spam or send unsolicited communications</li>
+                <li>{s('prohibited.items.illegal')}</li>
+                <li>{s('prohibited.items.harass')}</li>
+                <li>{s('prohibited.items.false')}</li>
+                <li>{s('prohibited.items.circumvent')}</li>
+                <li>{s('prohibited.items.scrape')}</li>
+                <li>{s('prohibited.items.malicious')}</li>
+                <li>{s('prohibited.items.impersonate')}</li>
+                <li>{s('prohibited.items.spam')}</li>
               </ul>
             </section>
 
+            {/* 11. Disclaimer of Warranties */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">11. Disclaimer of Warranties</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('disclaimer.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                The Platform is provided on an "AS IS" and "AS AVAILABLE" basis. We make no warranties, expressed or implied, regarding the Platform's operation or the information, content, or materials included. We do not guarantee the accuracy, reliability, or completeness of any information on the Platform. We are not responsible for the quality, safety, or legality of training sessions arranged through the Platform.
+                {s('disclaimer.content')}
               </p>
             </section>
 
+            {/* 12. Limitation of Liability */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">12. Limitation of Liability</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('liability.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                To the maximum extent permitted by law, PadelTrainer.ai shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or other intangible losses, resulting from your use or inability to use the Platform, any conduct of third parties on the Platform, or unauthorized access to your account.
+                {s('liability.content')}
               </p>
             </section>
 
+            {/* 13. Indemnification */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">13. Indemnification</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('indemnification.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                You agree to indemnify and hold harmless PadelTrainer.ai, its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from your use of the Platform, violation of these Terms, or infringement of any third-party rights.
+                {s('indemnification.content')}
               </p>
             </section>
 
+            {/* 14. Dispute Resolution */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">14. Dispute Resolution</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('disputes.title')}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">
-                In case of disputes:
+                {s('disputes.intro')}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li><strong>Between Users:</strong> We encourage Players and Trainers to resolve disputes directly. We may assist in mediation but are not obligated to do so.</li>
-                <li><strong>With PadelTrainer.ai:</strong> Any disputes with the Platform shall be resolved through binding arbitration in accordance with Dutch law, or through the courts of the Netherlands.</li>
+                <li><strong>{s('disputes.items.users').split(':')[0]}:</strong>{s('disputes.items.users').split(':').slice(1).join(':')}</li>
+                <li><strong>{s('disputes.items.platform').split(':')[0]}:</strong>{s('disputes.items.platform').split(':').slice(1).join(':')}</li>
               </ul>
             </section>
 
+            {/* 15. Termination */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">15. Termination</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('termination.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                We may terminate or suspend your account immediately, without prior notice, for any reason, including breach of these Terms. Upon termination, your right to use the Platform will immediately cease. All provisions of the Terms which should survive termination shall survive, including ownership provisions, warranty disclaimers, and limitations of liability.
+                {s('termination.content')}
               </p>
             </section>
 
+            {/* 16. Changes to Terms */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">16. Changes to Terms</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('changes.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                We reserve the right to modify or replace these Terms at any time. If changes are material, we will provide at least 30 days' notice before the new terms take effect. What constitutes a material change will be determined at our sole discretion. Continued use of the Platform after changes constitutes acceptance of the new Terms.
+                {s('changes.content')}
               </p>
             </section>
 
+            {/* 17. Governing Law */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">17. Governing Law</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('governing.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                These Terms shall be governed by and construed in accordance with the laws of the Netherlands, without regard to its conflict of law provisions. Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights.
+                {s('governing.content')}
               </p>
             </section>
 
+            {/* 18. Contact Us */}
             <section>
-              <h2 className="text-2xl font-semibold mb-4">18. Contact Us</h2>
+              <h2 className="text-2xl font-semibold mb-4">{s('contact.title')}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                If you have any questions about these Terms, please contact us at:
+                {s('contact.content')}
               </p>
               <div className="bg-accent rounded-lg p-6 mt-4">
-                <p className="text-foreground font-medium">PadelTrainer.ai</p>
-                <p className="text-muted-foreground">Email: legal@padeltrainer.ai</p>
-                <p className="text-muted-foreground">General inquiries: hello@padeltrainer.ai</p>
+                <p className="text-foreground font-medium">{s('contact.company')}</p>
+                <p className="text-muted-foreground">{s('contact.emailLegal')}</p>
+                <p className="text-muted-foreground">{s('contact.emailGeneral')}</p>
               </div>
             </section>
           </div>
