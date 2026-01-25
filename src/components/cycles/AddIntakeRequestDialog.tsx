@@ -258,7 +258,7 @@ export default function AddIntakeRequestDialog({
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
         sessions_per_week: data.sessions_per_week,
-        preferred_trainer_id: data.preferred_trainer_id === 'none' ? undefined : data.preferred_trainer_id,
+        preferred_trainer_ids: data.preferred_trainer_id === 'none' ? [] : (data.preferred_trainer_id ? [data.preferred_trainer_id] : []),
         notes: data.notes || undefined,
         consent_given: true,
       });

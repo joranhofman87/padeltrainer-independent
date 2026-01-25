@@ -230,19 +230,6 @@ export async function updateTrainerLocations(
   }
 }
 
-// Legacy function for backward compatibility (uses 'independent' as default)
-export async function updateTrainerLocationsSimple(
-  trainerId: string,
-  locationIds: string[],
-  primaryLocationId?: string
-): Promise<void> {
-  const locationData: TrainerLocationData[] = locationIds.map(locationId => ({
-    locationId,
-    isPrimary: locationId === primaryLocationId,
-    relationshipType: 'independent' as TrainerRelationshipType,
-  }));
-  return updateTrainerLocations(trainerId, locationData);
-}
 
 // Update player locations
 export async function updatePlayerLocations(

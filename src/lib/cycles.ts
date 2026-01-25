@@ -62,8 +62,7 @@ export interface IntakeRequest {
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes: number;
   sessions_per_week: number;
-  preferred_trainer_id: string | null;
-  preferred_trainer_ids?: string[];
+  preferred_trainer_ids: string[];
   location_id: string | null;
   notes: string | null;
   consent_given: boolean;
@@ -120,10 +119,9 @@ export interface EnrichedProposedAssignment extends ProposedAssignment {
 }
 
 export interface TimeWindow {
-  day?: string;
-  preset?: 'morning' | 'afternoon' | 'evening' | 'weekend';
-  start?: string;
-  end?: string;
+  day: string;
+  start: string;
+  end: string;
 }
 
 export interface IntakeRequestInput {
@@ -139,7 +137,6 @@ export interface IntakeRequestInput {
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes?: number;
   sessions_per_week?: number;
-  preferred_trainer_id?: string;
   preferred_trainer_ids?: string[];
   location_id?: string;
   notes?: string;
@@ -284,7 +281,7 @@ export async function getIntakeRequests(cycleId: string): Promise<IntakeRequest[
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return (data || []) as IntakeRequest[];
+  return (data || []).map(toIntakeRequest);
 }
 
 export async function getIntakeRequestsByOwner(
@@ -318,7 +315,7 @@ export async function getIntakeRequestsByOwner(
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []) as IntakeRequest[];
+  return (data || []).map(toIntakeRequest);
 }
 
 // Fetch intake requests with their proposal details bundled
@@ -402,7 +399,7 @@ export async function getPlayerIntakeRequests(playerId: string): Promise<IntakeR
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as IntakeRequest[];
+  return (data || []).map(toIntakeRequest);
 }
 
 export async function getIntakeRequest(requestId: string): Promise<IntakeRequest | null> {
@@ -416,7 +413,7 @@ export async function getIntakeRequest(requestId: string): Promise<IntakeRequest
     if (error.code === 'PGRST116') return null;
     throw error;
   }
-  return data as IntakeRequest;
+  return toIntakeRequest(data);
 }
 
 export async function submitIntakeRequest(input: IntakeRequestInput): Promise<IntakeRequest> {
@@ -445,7 +442,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
     sessions_per_week: input.sessions_per_week || 1,
-    preferred_trainer_id: input.preferred_trainer_id || null,
+    preferred_trainer_ids: input.preferred_trainer_ids || [],
     location_id: input.location_id || null,
     notes: input.notes || null,
     consent_given: input.consent_given,
@@ -474,7 +471,7 @@ export async function updateIntakeRequestStatus(
     .single();
 
   if (error) throw error;
-  return data as IntakeRequest;
+  return toIntakeRequest(data);
 }
 
 // Proposed Assignments CRUD
@@ -694,7 +691,7 @@ export async function createManualIntakeRequest(
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
     sessions_per_week: input.sessions_per_week || 1,
-    preferred_trainer_id: input.preferred_trainer_id || null,
+    preferred_trainer_ids: input.preferred_trainer_ids || [],
     location_id: input.location_id || null,
     notes: input.notes || null,
     consent_given: true,

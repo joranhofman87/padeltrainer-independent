@@ -802,7 +802,6 @@ export type Database = {
           preferred_days: string[]
           preferred_duration_minutes: number | null
           preferred_time_windows: Json
-          preferred_trainer_id: string | null
           preferred_trainer_ids: string[] | null
           rating: number | null
           rating_system: string | null
@@ -826,7 +825,6 @@ export type Database = {
           preferred_days: string[]
           preferred_duration_minutes?: number | null
           preferred_time_windows: Json
-          preferred_trainer_id?: string | null
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
@@ -850,7 +848,6 @@ export type Database = {
           preferred_days?: string[]
           preferred_duration_minutes?: number | null
           preferred_time_windows?: Json
-          preferred_trainer_id?: string | null
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
@@ -886,13 +883,6 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "intake_requests_preferred_trainer_id_fkey"
-            columns: ["preferred_trainer_id"]
-            isOneToOne: false
-            referencedRelation: "trainer_profiles"
             referencedColumns: ["id"]
           },
         ]
