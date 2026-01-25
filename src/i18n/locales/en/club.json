@@ -328,7 +328,11 @@
     "lessons": "Lessons",
     "cycles": "Registration Cycles",
     "intakeRequests": "Intake Requests",
-    "tournaments": "Tournaments"
+    "tournaments": "Tournaments",
+    "people": "People",
+    "schedule": "Schedule",
+    "registration": "Registration",
+    "club": "Club"
   },
   "subscription": {
     "title": "Club Subscription",

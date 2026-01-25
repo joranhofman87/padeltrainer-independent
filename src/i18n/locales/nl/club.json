@@ -328,7 +328,11 @@
     "lessons": "Lessen",
     "cycles": "Inschrijfcycli",
     "intakeRequests": "Aanmeldingen",
-    "tournaments": "Toernooien"
+    "tournaments": "Toernooien",
+    "people": "Personen",
+    "schedule": "Agenda",
+    "registration": "Inschrijving",
+    "club": "Club"
   },
   "lessons": {
     "title": "Lessen",
