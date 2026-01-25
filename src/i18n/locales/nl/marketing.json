@@ -317,11 +317,227 @@
   },
   "privacy": {
     "title": "Privacybeleid",
-    "lastUpdated": "Laatst bijgewerkt: {{date}}"
+    "lastUpdated": "Laatst bijgewerkt: {{date}}",
+    "sections": {
+      "introduction": {
+        "title": "1. Inleiding",
+        "content": "Welkom bij PadelTrainer.ai (\"wij,\" \"ons,\" of \"onze\"). Wij zetten ons in voor de bescherming van uw persoonlijke gegevens en uw recht op privacy. Dit Privacybeleid legt uit hoe wij uw informatie verzamelen, gebruiken, openbaar maken en beschermen wanneer u ons platform gebruikt."
+      },
+      "dataCollection": {
+        "title": "2. Gegevens die wij verzamelen",
+        "intro": "Wij verzamelen informatie die u rechtstreeks aan ons verstrekt, waaronder:",
+        "items": {
+          "account": "Accountgegevens: Naam, e-mailadres, telefoonnummer en profielfoto wanneer u een account aanmaakt.",
+          "profile": "Profielgegevens: Voor trainers omvat dit certificeringen, ervaring, specialisaties, KNLTB-ratings en beschikbaarheidsschema's.",
+          "booking": "Boekingsinformatie: Lesdetails, boekingsgeschiedenis en communicatie tussen spelers en trainers.",
+          "payment": "Betalingsinformatie: Wij gebruiken Stripe voor betalingsverwerking. Wij slaan geen volledige creditcardgegevens op onze servers op.",
+          "communications": "Communicatie: Wanneer u contact met ons opneemt of reageert op enquêtes, verzamelen wij de informatie die u verstrekt."
+        }
+      },
+      "usage": {
+        "title": "3. Hoe wij uw gegevens gebruiken",
+        "intro": "Wij gebruiken de verzamelde informatie voor:",
+        "items": {
+          "provide": "Het leveren, onderhouden en verbeteren van ons platform",
+          "process": "Het verwerken van boekingen en betalingen",
+          "send": "Het versturen van boekingsbevestigingen, herinneringen en updates",
+          "facilitate": "Het faciliteren van communicatie tussen spelers en trainers",
+          "support": "Het bieden van klantenondersteuning",
+          "promo": "Het versturen van promotionele communicatie (met uw toestemming)",
+          "analyze": "Het analyseren van gebruikspatronen om de gebruikerservaring te verbeteren",
+          "prevent": "Het voorkomen van fraude en het waarborgen van platformveiligheid"
+        }
+      },
+      "sharing": {
+        "title": "4. Delen van informatie",
+        "intro": "Wij kunnen uw informatie delen in de volgende situaties:",
+        "items": {
+          "users": "Met Trainers/Spelers: Om boekingen te faciliteren, delen wij relevante contact- en boekingsinformatie tussen partijen.",
+          "providers": "Dienstverleners: Wij gebruiken externe diensten voor betalingsverwerking (Stripe), e-mailbezorging (Resend) en hostinginfrastructuur.",
+          "legal": "Wettelijke vereisten: Wij kunnen informatie openbaar maken indien wettelijk vereist of om onze rechten, privacy, veiligheid of eigendom te beschermen.",
+          "business": "Bedrijfsoverdrachten: In verband met een fusie, overname of verkoop van activa."
+        }
+      },
+      "cookies": {
+        "title": "5. Cookies en tracking",
+        "intro": "Wij gebruiken cookies en vergelijkbare trackingtechnologieën om:",
+        "items": {
+          "login": "U ingelogd te houden op uw account",
+          "preferences": "Uw voorkeuren te onthouden",
+          "analyze": "Te analyseren hoe u ons platform gebruikt",
+          "improve": "Onze diensten te verbeteren"
+        },
+        "control": "U kunt cookies beheren via uw browserinstellingen, maar het uitschakelen ervan kan de functionaliteit van het platform beïnvloeden."
+      },
+      "security": {
+        "title": "6. Gegevensbeveiliging",
+        "content": "Wij implementeren passende technische en organisatorische beveiligingsmaatregelen om uw persoonlijke informatie te beschermen. Echter, geen enkele methode van overdracht via internet of elektronische opslag is 100% veilig. Wij streven ernaar commercieel aanvaardbare middelen te gebruiken om uw gegevens te beschermen, maar kunnen geen absolute veiligheid garanderen."
+      },
+      "gdpr": {
+        "title": "7. Uw rechten (AVG)",
+        "intro": "Onder de Algemene Verordening Gegevensbescherming (AVG) heeft u de volgende rechten:",
+        "items": {
+          "access": "Inzage: Vraag een kopie van uw persoonlijke gegevens op",
+          "rectification": "Rectificatie: Vraag correctie van onjuiste gegevens",
+          "erasure": "Wissen: Vraag verwijdering van uw gegevens (\"recht om vergeten te worden\")",
+          "restriction": "Beperking: Vraag beperking van gegevensverwerking",
+          "portability": "Overdraagbaarheid: Vraag overdracht van uw gegevens naar een andere dienst",
+          "objection": "Bezwaar: Maak bezwaar tegen verwerking van uw gegevens",
+          "withdraw": "Toestemming intrekken: Trek eerder gegeven toestemming in"
+        },
+        "contact": "Om deze rechten uit te oefenen, neem contact met ons op via privacy@padeltrainer.ai."
+      },
+      "retention": {
+        "title": "8. Gegevensbewaring",
+        "content": "Wij bewaren uw persoonlijke informatie zolang uw account actief is of zolang nodig is om u diensten te leveren. Wij kunnen bepaalde informatie bewaren voor legitieme bedrijfsdoeleinden of zoals wettelijk vereist, zoals voor belasting-, juridische rapportage- en auditverplichtingen."
+      },
+      "children": {
+        "title": "9. Privacy van kinderen",
+        "content": "Ons platform is niet bedoeld voor kinderen onder de 16 jaar. Wij verzamelen niet bewust persoonlijke informatie van kinderen onder de 16. Als wij ontdekken dat wij gegevens van een kind onder de 16 hebben verzameld, zullen wij stappen ondernemen om die informatie te verwijderen."
+      },
+      "changes": {
+        "title": "10. Wijzigingen in dit beleid",
+        "content": "Wij kunnen dit Privacybeleid van tijd tot tijd bijwerken. Wij zullen u op de hoogte stellen van eventuele wijzigingen door het nieuwe beleid op deze pagina te plaatsen en de datum \"Laatst bijgewerkt\" bij te werken. Wij moedigen u aan dit beleid periodiek te bekijken."
+      },
+      "contact": {
+        "title": "11. Contact opnemen",
+        "content": "Als u vragen heeft over dit Privacybeleid of onze gegevenspraktijken, neem dan contact met ons op via:",
+        "company": "PadelTrainer.ai",
+        "emailPrivacy": "E-mail: privacy@padeltrainer.ai",
+        "emailGeneral": "Algemene vragen: hello@padeltrainer.ai"
+      }
+    }
   },
   "terms": {
     "title": "Algemene Voorwaarden",
-    "lastUpdated": "Laatst bijgewerkt: {{date}}"
+    "lastUpdated": "Laatst bijgewerkt: {{date}}",
+    "sections": {
+      "agreement": {
+        "title": "1. Aanvaarding van voorwaarden",
+        "content": "Door toegang tot of gebruik van PadelTrainer.ai (\"Platform\") stemt u in met deze Algemene Voorwaarden (\"Voorwaarden\"). Als u het niet eens bent met enig deel van deze voorwaarden, mag u het Platform niet gebruiken. Deze Voorwaarden zijn van toepassing op alle bezoekers, gebruikers en anderen die toegang hebben tot of gebruik maken van het Platform."
+      },
+      "description": {
+        "title": "2. Beschrijving van de dienst",
+        "content": "PadelTrainer.ai is een online platform dat padelspelers (\"Spelers\") verbindt met padeltrainers (\"Trainers\"). Wij bieden planning-, boekings- en betalingsverwerkingstools om trainingssessies te faciliteren. PadelTrainer.ai fungeert als tussenpersoon en is geen partij bij de overeenkomsten tussen Spelers en Trainers."
+      },
+      "accounts": {
+        "title": "3. Gebruikersaccounts",
+        "intro": "Wanneer u een account bij ons aanmaakt, moet u nauwkeurige, volledige en actuele informatie verstrekken. U bent verantwoordelijk voor:",
+        "items": {
+          "confidentiality": "Het vertrouwelijk houden van uw account en wachtwoord",
+          "access": "Het beperken van toegang tot uw account",
+          "activities": "Alle activiteiten die plaatsvinden onder uw account",
+          "notify": "Ons onmiddellijk op de hoogte stellen van ongeautoriseerd gebruik van uw account"
+        }
+      },
+      "players": {
+        "title": "4. Voor spelers",
+        "intro": "Als Speler die ons Platform gebruikt, stemt u ermee in om:",
+        "items": {
+          "accurate": "Nauwkeurige informatie te verstrekken bij het boeken van lessen",
+          "pay": "Te betalen voor geboekte lessen zoals overeengekomen",
+          "arrive": "Op tijd te komen voor geplande sessies",
+          "respect": "Trainers met respect en professionaliteit te behandelen",
+          "cancellation": "Het annuleringsbeleid hieronder te volgen",
+          "reviews": "Eerlijke en faire reviews te geven op basis van uw werkelijke ervaring"
+        }
+      },
+      "trainers": {
+        "title": "5. Voor trainers",
+        "intro": "Als Trainer die ons Platform gebruikt, stemt u ermee in om:",
+        "items": {
+          "qualifications": "Nauwkeurige informatie te verstrekken over uw kwalificaties en ervaring",
+          "certifications": "Passende certificeringen en verzekeringen te handhaven",
+          "bookings": "Alle bevestigde boekingen na te komen",
+          "quality": "Professionele, veilige en kwalitatieve trainingssessies te geven",
+          "respond": "Tijdig te reageren op boekingsverzoeken",
+          "comply": "Te voldoen aan alle toepasselijke wet- en regelgeving",
+          "fees": "Platformkosten te betalen zoals gespecificeerd in uw abonnement"
+        }
+      },
+      "payments": {
+        "title": "6. Betalingen en kosten",
+        "forPlayers": {
+          "title": "Voor Spelers:",
+          "content": "Betaling wordt verwerkt via Stripe op het moment van boeken. De volledige lesprijs wordt in rekening gebracht op uw betaalmethode. Terugbetalingen worden afgehandeld volgens ons annuleringsbeleid."
+        },
+        "forTrainers": {
+          "title": "Voor Trainers:",
+          "content": "PadelTrainer.ai brengt een platformvergoeding in rekening (percentage varieert per abonnement) op elke voltooide boeking. Het resterende bedrag wordt overgemaakt naar uw gekoppelde Stripe-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
+        }
+      },
+      "cancellation": {
+        "title": "7. Annuleringsbeleid",
+        "items": {
+          "24h": "Meer dan 24 uur van tevoren: Volledige terugbetaling",
+          "12h": "12-24 uur van tevoren: 50% terugbetaling",
+          "less12h": "Minder dan 12 uur van tevoren: Geen terugbetaling",
+          "trainer": "Annuleringen door trainer: Spelers ontvangen volledige terugbetaling voor elke door de trainer geïnitieerde annulering"
+        },
+        "note": "Herhaalde annuleringen door een van beide partijen kunnen leiden tot accountbeperkingen of beëindiging."
+      },
+      "ip": {
+        "title": "8. Intellectueel eigendom",
+        "content": "Het Platform en de originele inhoud, functies en functionaliteit zijn eigendom van PadelTrainer.ai en worden beschermd door internationale auteursrechten, handelsmerken, octrooien, handelsgeheimen en andere intellectuele eigendomswetten. U mag geen inhoud van ons Platform reproduceren, distribueren, wijzigen, afgeleide werken maken, openbaar tonen of exploiteren zonder voorafgaande schriftelijke toestemming."
+      },
+      "userContent": {
+        "title": "9. Gebruikersinhoud",
+        "content": "U behoudt het eigendom van alle inhoud die u indient bij het Platform (reviews, profielinformatie, etc.). Door inhoud in te dienen, verleent u ons een wereldwijde, niet-exclusieve, royaltyvrije licentie om dergelijke inhoud te gebruiken, reproduceren, wijzigen en weer te geven in verband met de werking van het Platform. U bent als enige verantwoordelijk voor de inhoud die u indient en moet ervoor zorgen dat deze geen rechten van derden of toepasselijke wetten schendt."
+      },
+      "prohibited": {
+        "title": "10. Verboden activiteiten",
+        "intro": "U stemt ermee in om niet:",
+        "items": {
+          "illegal": "Het Platform te gebruiken voor illegale doeleinden",
+          "harass": "Andere gebruikers te intimideren, misbruiken of schaden",
+          "false": "Valse of misleidende informatie te verstrekken",
+          "circumvent": "Te proberen het Platform te omzeilen om kosten te vermijden",
+          "scrape": "Gebruikersgegevens te verzamelen zonder toestemming",
+          "malicious": "Kwaadaardige code te uploaden of te proberen de platformbeveiliging te compromitteren",
+          "impersonate": "Zich voor te doen als een andere persoon of entiteit",
+          "spam": "Spam of ongevraagde communicatie te verzenden"
+        }
+      },
+      "disclaimer": {
+        "title": "11. Disclaimer van garanties",
+        "content": "Het Platform wordt geleverd op een \"AS IS\" en \"AS AVAILABLE\" basis. Wij geven geen garanties, uitdrukkelijk of impliciet, met betrekking tot de werking van het Platform of de informatie, inhoud of materialen die erin zijn opgenomen. Wij garanderen niet de nauwkeurigheid, betrouwbaarheid of volledigheid van enige informatie op het Platform. Wij zijn niet verantwoordelijk voor de kwaliteit, veiligheid of legaliteit van trainingssessies die via het Platform worden geregeld."
+      },
+      "liability": {
+        "title": "12. Beperking van aansprakelijkheid",
+        "content": "Voor zover maximaal toegestaan door de wet, is PadelTrainer.ai niet aansprakelijk voor indirecte, incidentele, speciale, gevolgschade of punitieve schade, inclusief verlies van winst, gegevens of andere immateriële verliezen, als gevolg van uw gebruik of onvermogen om het Platform te gebruiken, enig gedrag van derden op het Platform, of ongeautoriseerde toegang tot uw account."
+      },
+      "indemnification": {
+        "title": "13. Vrijwaring",
+        "content": "U stemt ermee in PadelTrainer.ai, haar functionarissen, directeuren, werknemers en agenten te vrijwaren van alle claims, schade, verliezen, aansprakelijkheden en kosten (inclusief juridische kosten) die voortvloeien uit uw gebruik van het Platform, schending van deze Voorwaarden, of inbreuk op rechten van derden."
+      },
+      "disputes": {
+        "title": "14. Geschillenbeslechting",
+        "intro": "In geval van geschillen:",
+        "items": {
+          "users": "Tussen Gebruikers: Wij moedigen Spelers en Trainers aan geschillen rechtstreeks op te lossen. Wij kunnen helpen bij bemiddeling, maar zijn daartoe niet verplicht.",
+          "platform": "Met PadelTrainer.ai: Geschillen met het Platform worden opgelost door bindende arbitrage in overeenstemming met Nederlands recht, of via de rechtbanken van Nederland."
+        }
+      },
+      "termination": {
+        "title": "15. Beëindiging",
+        "content": "Wij kunnen uw account onmiddellijk beëindigen of opschorten, zonder voorafgaande kennisgeving, om welke reden dan ook, inclusief schending van deze Voorwaarden. Bij beëindiging eindigt uw recht om het Platform te gebruiken onmiddellijk. Alle bepalingen van de Voorwaarden die beëindiging moeten overleven, blijven van kracht, inclusief eigendomsbepalingen, garantiedisclaimers en beperkingen van aansprakelijkheid."
+      },
+      "changes": {
+        "title": "16. Wijzigingen in voorwaarden",
+        "content": "Wij behouden ons het recht voor deze Voorwaarden op elk moment te wijzigen of te vervangen. Als wijzigingen materieel zijn, zullen wij ten minste 30 dagen van tevoren kennisgeving geven voordat de nieuwe voorwaarden van kracht worden. Wat een materiële wijziging vormt, wordt naar eigen goeddunken bepaald. Voortgezet gebruik van het Platform na wijzigingen vormt aanvaarding van de nieuwe Voorwaarden."
+      },
+      "governing": {
+        "title": "17. Toepasselijk recht",
+        "content": "Deze Voorwaarden worden beheerst door en geïnterpreteerd in overeenstemming met de wetten van Nederland, zonder rekening te houden met conflicterende wettelijke bepalingen. Ons nalaten om enig recht of bepaling van deze Voorwaarden af te dwingen wordt niet beschouwd als een verklaring van afstand van die rechten."
+      },
+      "contact": {
+        "title": "18. Contact opnemen",
+        "content": "Als u vragen heeft over deze Voorwaarden, neem dan contact met ons op via:",
+        "company": "PadelTrainer.ai",
+        "emailLegal": "E-mail: legal@padeltrainer.ai",
+        "emailGeneral": "Algemene vragen: hello@padeltrainer.ai"
+      }
+    }
   },
   "partner": {
     "title": "Word Partner",

@@ -74,6 +74,30 @@
   "pending": "Pending",
   "confirmed": "Confirmed",
   "cancelled": "Cancelled",
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page",
+    "of": "of"
+  },
+  "states": {
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "deleting": "Deleting..."
+  },
+  "toasts": {
+    "errorTitle": "Error",
+    "successTitle": "Success",
+    "savedSuccess": "Changes saved successfully",
+    "deleteSuccess": "Deleted successfully"
+  },
+  "roles": {
+    "player": "Player",
+    "trainer": "Trainer",
+    "selected": "Role selected!",
+    "selectRole": "Select your role",
+    "registeredAs": "You're now registered as a {{role}}."
+  },
   "locations": {
     "title": "Padel Locations",
     "subtitle": "Find trainers at {{count}} venues across the Netherlands",

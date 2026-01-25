@@ -317,11 +317,227 @@
   },
   "privacy": {
     "title": "Privacy Policy",
-    "lastUpdated": "Last updated: {{date}}"
+    "lastUpdated": "Last updated: {{date}}",
+    "sections": {
+      "introduction": {
+        "title": "1. Introduction",
+        "content": "Welcome to PadelTrainer.ai (\"we,\" \"our,\" or \"us\"). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform."
+      },
+      "dataCollection": {
+        "title": "2. Information We Collect",
+        "intro": "We collect information that you provide directly to us, including:",
+        "items": {
+          "account": "Account Information: Name, email address, phone number, and profile photo when you create an account.",
+          "profile": "Profile Data: For trainers, this includes certifications, experience, specializations, KNLTB ratings, and availability schedules.",
+          "booking": "Booking Information: Lesson details, booking history, and communication between players and trainers.",
+          "payment": "Payment Information: We use Stripe for payment processing. We do not store your full credit card details on our servers.",
+          "communications": "Communications: When you contact us or respond to surveys, we collect the information you provide."
+        }
+      },
+      "usage": {
+        "title": "3. How We Use Your Information",
+        "intro": "We use the collected information for:",
+        "items": {
+          "provide": "Providing, maintaining, and improving our platform",
+          "process": "Processing bookings and payments",
+          "send": "Sending booking confirmations, reminders, and updates",
+          "facilitate": "Facilitating communication between players and trainers",
+          "support": "Providing customer support",
+          "promo": "Sending promotional communications (with your consent)",
+          "analyze": "Analyzing usage patterns to improve user experience",
+          "prevent": "Preventing fraud and ensuring platform security"
+        }
+      },
+      "sharing": {
+        "title": "4. Information Sharing",
+        "intro": "We may share your information in the following situations:",
+        "items": {
+          "users": "With Trainers/Players: To facilitate bookings, we share relevant contact and booking information between parties.",
+          "providers": "Service Providers: We use third-party services for payment processing (Stripe), email delivery (Resend), and hosting infrastructure.",
+          "legal": "Legal Requirements: We may disclose information if required by law or to protect our rights, privacy, safety, or property.",
+          "business": "Business Transfers: In connection with a merger, acquisition, or sale of assets."
+        }
+      },
+      "cookies": {
+        "title": "5. Cookies and Tracking",
+        "intro": "We use cookies and similar tracking technologies to:",
+        "items": {
+          "login": "Keep you logged in to your account",
+          "preferences": "Remember your preferences",
+          "analyze": "Analyze how you use our platform",
+          "improve": "Improve our services"
+        },
+        "control": "You can control cookies through your browser settings, but disabling them may affect platform functionality."
+      },
+      "security": {
+        "title": "6. Data Security",
+        "content": "We implement appropriate technical and organizational security measures to protect your personal information. However, no method of transmission over the Internet or electronic storage is 100% secure. We strive to use commercially acceptable means to protect your data but cannot guarantee absolute security."
+      },
+      "gdpr": {
+        "title": "7. Your Rights (GDPR)",
+        "intro": "Under the General Data Protection Regulation (GDPR), you have the following rights:",
+        "items": {
+          "access": "Access: Request a copy of your personal data",
+          "rectification": "Rectification: Request correction of inaccurate data",
+          "erasure": "Erasure: Request deletion of your data (\"right to be forgotten\")",
+          "restriction": "Restriction: Request limitation of data processing",
+          "portability": "Portability: Request transfer of your data to another service",
+          "objection": "Objection: Object to processing of your data",
+          "withdraw": "Withdraw Consent: Withdraw previously given consent"
+        },
+        "contact": "To exercise these rights, please contact us at privacy@padeltrainer.ai."
+      },
+      "retention": {
+        "title": "8. Data Retention",
+        "content": "We retain your personal information for as long as your account is active or as needed to provide you services. We may retain certain information for legitimate business purposes or as required by law, such as for tax, legal reporting, and auditing obligations."
+      },
+      "children": {
+        "title": "9. Children's Privacy",
+        "content": "Our platform is not intended for children under 16 years of age. We do not knowingly collect personal information from children under 16. If we become aware that we have collected data from a child under 16, we will take steps to delete that information."
+      },
+      "changes": {
+        "title": "10. Changes to This Policy",
+        "content": "We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the \"Last updated\" date. We encourage you to review this policy periodically."
+      },
+      "contact": {
+        "title": "11. Contact Us",
+        "content": "If you have any questions about this Privacy Policy or our data practices, please contact us at:",
+        "company": "PadelTrainer.ai",
+        "emailPrivacy": "Email: privacy@padeltrainer.ai",
+        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+      }
+    }
   },
   "terms": {
     "title": "Terms of Service",
-    "lastUpdated": "Last updated: {{date}}"
+    "lastUpdated": "Last updated: {{date}}",
+    "sections": {
+      "agreement": {
+        "title": "1. Agreement to Terms",
+        "content": "By accessing or using PadelTrainer.ai (\"Platform\"), you agree to be bound by these Terms of Service (\"Terms\"). If you disagree with any part of these terms, you may not access the Platform. These Terms apply to all visitors, users, and others who access or use the Platform."
+      },
+      "description": {
+        "title": "2. Description of Service",
+        "content": "PadelTrainer.ai is an online platform that connects padel players (\"Players\") with padel trainers (\"Trainers\"). We provide scheduling, booking, and payment processing tools to facilitate training sessions. PadelTrainer.ai acts as an intermediary and is not a party to the agreements between Players and Trainers."
+      },
+      "accounts": {
+        "title": "3. User Accounts",
+        "intro": "When you create an account with us, you must provide accurate, complete, and current information. You are responsible for:",
+        "items": {
+          "confidentiality": "Maintaining the confidentiality of your account and password",
+          "access": "Restricting access to your account",
+          "activities": "All activities that occur under your account",
+          "notify": "Notifying us immediately of any unauthorized use of your account"
+        }
+      },
+      "players": {
+        "title": "4. For Players",
+        "intro": "As a Player using our Platform, you agree to:",
+        "items": {
+          "accurate": "Provide accurate information when booking lessons",
+          "pay": "Pay for booked lessons as agreed",
+          "arrive": "Arrive on time for scheduled sessions",
+          "respect": "Treat Trainers with respect and professionalism",
+          "cancellation": "Follow the cancellation policy outlined below",
+          "reviews": "Leave honest and fair reviews based on your actual experience"
+        }
+      },
+      "trainers": {
+        "title": "5. For Trainers",
+        "intro": "As a Trainer using our Platform, you agree to:",
+        "items": {
+          "qualifications": "Provide accurate information about your qualifications and experience",
+          "certifications": "Maintain appropriate certifications and insurance",
+          "bookings": "Honor all confirmed bookings",
+          "quality": "Provide professional, safe, and quality training sessions",
+          "respond": "Respond to booking requests in a timely manner",
+          "comply": "Comply with all applicable laws and regulations",
+          "fees": "Pay platform fees as specified in your subscription plan"
+        }
+      },
+      "payments": {
+        "title": "6. Payments and Fees",
+        "forPlayers": {
+          "title": "For Players:",
+          "content": "Payment is processed through Stripe at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy."
+        },
+        "forTrainers": {
+          "title": "For Trainers:",
+          "content": "PadelTrainer.ai charges a platform fee (percentage varies by subscription plan) on each completed booking. The remaining amount is transferred to your connected Stripe account. Subscription fees are billed according to your chosen plan."
+        }
+      },
+      "cancellation": {
+        "title": "7. Cancellation Policy",
+        "items": {
+          "24h": "More than 24 hours before: Full refund",
+          "12h": "12-24 hours before: 50% refund",
+          "less12h": "Less than 12 hours before: No refund",
+          "trainer": "Trainer cancellations: Players receive a full refund for any trainer-initiated cancellation"
+        },
+        "note": "Repeated cancellations by either party may result in account restrictions or termination."
+      },
+      "ip": {
+        "title": "8. Intellectual Property",
+        "content": "The Platform and its original content, features, and functionality are owned by PadelTrainer.ai and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws. You may not reproduce, distribute, modify, create derivative works of, publicly display, or exploit any content from our Platform without prior written permission."
+      },
+      "userContent": {
+        "title": "9. User Content",
+        "content": "You retain ownership of any content you submit to the Platform (reviews, profile information, etc.). By submitting content, you grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, and display such content in connection with operating the Platform. You are solely responsible for the content you submit and must ensure it does not violate any third-party rights or applicable laws."
+      },
+      "prohibited": {
+        "title": "10. Prohibited Activities",
+        "intro": "You agree not to:",
+        "items": {
+          "illegal": "Use the Platform for any illegal purpose",
+          "harass": "Harass, abuse, or harm other users",
+          "false": "Provide false or misleading information",
+          "circumvent": "Attempt to circumvent the Platform to avoid fees",
+          "scrape": "Scrape or collect user data without consent",
+          "malicious": "Upload malicious code or attempt to compromise Platform security",
+          "impersonate": "Impersonate another person or entity",
+          "spam": "Spam or send unsolicited communications"
+        }
+      },
+      "disclaimer": {
+        "title": "11. Disclaimer of Warranties",
+        "content": "The Platform is provided on an \"AS IS\" and \"AS AVAILABLE\" basis. We make no warranties, expressed or implied, regarding the Platform's operation or the information, content, or materials included. We do not guarantee the accuracy, reliability, or completeness of any information on the Platform. We are not responsible for the quality, safety, or legality of training sessions arranged through the Platform."
+      },
+      "liability": {
+        "title": "12. Limitation of Liability",
+        "content": "To the maximum extent permitted by law, PadelTrainer.ai shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or other intangible losses, resulting from your use or inability to use the Platform, any conduct of third parties on the Platform, or unauthorized access to your account."
+      },
+      "indemnification": {
+        "title": "13. Indemnification",
+        "content": "You agree to indemnify and hold harmless PadelTrainer.ai, its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from your use of the Platform, violation of these Terms, or infringement of any third-party rights."
+      },
+      "disputes": {
+        "title": "14. Dispute Resolution",
+        "intro": "In case of disputes:",
+        "items": {
+          "users": "Between Users: We encourage Players and Trainers to resolve disputes directly. We may assist in mediation but are not obligated to do so.",
+          "platform": "With PadelTrainer.ai: Any disputes with the Platform shall be resolved through binding arbitration in accordance with Dutch law, or through the courts of the Netherlands."
+        }
+      },
+      "termination": {
+        "title": "15. Termination",
+        "content": "We may terminate or suspend your account immediately, without prior notice, for any reason, including breach of these Terms. Upon termination, your right to use the Platform will immediately cease. All provisions of the Terms which should survive termination shall survive, including ownership provisions, warranty disclaimers, and limitations of liability."
+      },
+      "changes": {
+        "title": "16. Changes to Terms",
+        "content": "We reserve the right to modify or replace these Terms at any time. If changes are material, we will provide at least 30 days' notice before the new terms take effect. What constitutes a material change will be determined at our sole discretion. Continued use of the Platform after changes constitutes acceptance of the new Terms."
+      },
+      "governing": {
+        "title": "17. Governing Law",
+        "content": "These Terms shall be governed by and construed in accordance with the laws of the Netherlands, without regard to its conflict of law provisions. Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights."
+      },
+      "contact": {
+        "title": "18. Contact Us",
+        "content": "If you have any questions about these Terms, please contact us at:",
+        "company": "PadelTrainer.ai",
+        "emailLegal": "Email: legal@padeltrainer.ai",
+        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+      }
+    }
   },
   "partner": {
     "title": "Become a Partner",
