@@ -100,9 +100,8 @@ serve(async (req) => {
         }
       }
       
-      // Last resort: try without connected account (legacy bookings)
       if (!session) {
-        session = await stripe.checkout.sessions.retrieve(sessionId);
+        throw new Error('Could not retrieve Stripe session');
       }
     }
     logStep("Session retrieved", { status: session.payment_status, paymentIntent: session.payment_intent });

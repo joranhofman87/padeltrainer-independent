@@ -50,12 +50,7 @@ export default function IntakeRequestsTable({
   const { t } = useTranslation('cycles');
 
   const getTrainerNames = (request: IntakeRequestWithProposal): React.ReactNode => {
-    // Support both new array and legacy single ID
-    const ids = request.preferred_trainer_ids?.length 
-      ? request.preferred_trainer_ids 
-      : request.preferred_trainer_id 
-        ? [request.preferred_trainer_id] 
-        : [];
+    const ids = request.preferred_trainer_ids || [];
     
     if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
     

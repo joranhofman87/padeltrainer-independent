@@ -174,7 +174,7 @@ export default function CycleApplicationForm({
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: values.preferred_duration_minutes,
         sessions_per_week: values.sessions_per_week,
-        preferred_trainer_id: values.preferred_trainer_id || undefined,
+        preferred_trainer_ids: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
         location_id: values.location_id || undefined,
         notes: values.notes,
         consent_given: values.consent,

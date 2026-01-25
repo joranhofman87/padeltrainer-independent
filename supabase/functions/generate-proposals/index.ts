@@ -28,10 +28,9 @@ interface TrainerProfile {
 }
 
 interface TimeWindow {
-  day?: string;
-  preset?: "morning" | "afternoon" | "evening" | "weekend";
-  start?: string;
-  end?: string;
+  day: string;
+  start: string;
+  end: string;
 }
 
 interface RationaleItem {
@@ -50,7 +49,7 @@ interface IntakeRequest {
   lesson_type: string;
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
-  preferred_trainer_id: string | null;
+  preferred_trainer_ids: string[];
   location_id: string | null;
   sessions_per_week: number;
   created_at: string;
@@ -87,12 +86,6 @@ const DEFAULT_WEIGHTS: ScoringWeights = {
   sessions_per_week: 10,
 };
 
-// Time window presets in hours (24h format) - for backward compatibility
-const TIME_PRESETS = {
-  morning: { start: 8, end: 12 },
-  afternoon: { start: 12, end: 17 },
-  evening: { start: 17, end: 21 },
-};
 
 const WEEKDAYS = [
   "sunday",
@@ -138,7 +131,7 @@ function slotToMinutes(slotStart: string): number {
 function matchesTimeWindow(slotStart: string, timeWindow: TimeWindow): boolean {
   const slotDay = getDayOfWeek(slotStart);
 
-  // New format: day + start + end (granular per-day availability)
+  // Granular format: day + start + end
   if (timeWindow.day && timeWindow.start && timeWindow.end) {
     // Day must match exactly
     if (slotDay !== timeWindow.day.toLowerCase()) {
@@ -152,23 +145,6 @@ function matchesTimeWindow(slotStart: string, timeWindow: TimeWindow): boolean {
     
     // Slot start must be within player's available window
     return slotMinutes >= windowStart && slotMinutes < windowEnd;
-  }
-
-  // Legacy format: preset (morning/afternoon/evening/weekend)
-  if (timeWindow.preset) {
-    if (timeWindow.preset === "weekend") {
-      return isWeekend(slotStart);
-    }
-    const preset = TIME_PRESETS[timeWindow.preset];
-    if (preset) {
-      const slotHour = getHour(slotStart);
-      return slotHour >= preset.start && slotHour < preset.end;
-    }
-  }
-
-  // Legacy format: just day without specific times
-  if (timeWindow.day && !timeWindow.start && !timeWindow.end) {
-    return slotDay === timeWindow.day.toLowerCase();
   }
 
   return false;
@@ -190,18 +166,9 @@ function calculateTimeScore(
     const slotMins = getMinutes(slot.start_time);
     const timeStr = `${slotHour.toString().padStart(2, '0')}:${slotMins.toString().padStart(2, '0')}`;
     
-    // If using new format with specific times
-    if (matchingWindow.start && matchingWindow.end) {
-      return {
-        score: maxScore,
-        detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} ${timeStr} within ${matchingWindow.start}-${matchingWindow.end}`,
-      };
-    }
-    
-    // Legacy format
     return {
       score: maxScore,
-      detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} at ${timeStr} matches preferences`,
+      detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} ${timeStr} within ${matchingWindow.start}-${matchingWindow.end}`,
     };
   }
 
@@ -214,16 +181,18 @@ function calculateTrainerScore(
   request: IntakeRequest,
   maxScore: number
 ): { score: number; detail: string } {
-  if (!request.preferred_trainer_id) {
+  const preferredIds = request.preferred_trainer_ids || [];
+  
+  if (preferredIds.length === 0) {
     // No preference, give partial score
     return { score: maxScore * 0.5, detail: "No trainer preference specified" };
   }
 
-  if (slot.trainer_id === request.preferred_trainer_id) {
+  if (preferredIds.includes(slot.trainer_id)) {
     return { score: maxScore, detail: "Matched with preferred trainer" };
   }
 
-  return { score: 0, detail: "Not the preferred trainer" };
+  return { score: 0, detail: "Not a preferred trainer" };
 }
 
 function calculateLevelScore(
@@ -301,22 +270,6 @@ function calculateLevelScore(
   };
 }
 
-// Legacy function for backward compatibility
-function calculateLevelScoreLegacy(
-  _slot: AvailabilitySlot,
-  request: IntakeRequest,
-  maxScore: number
-): { score: number; detail: string } {
-  // For now, we give full score as level matching requires additional slot metadata
-  // In a full implementation, we'd check if the player's rating fits the slot's level range
-  if (request.rating) {
-    return {
-      score: maxScore,
-      detail: `Player rating ${request.rating} considered`,
-    };
-  }
-  return { score: maxScore * 0.5, detail: "No rating provided" };
-}
 
 function calculatePriorityScore(
   registrationOrder: number,
