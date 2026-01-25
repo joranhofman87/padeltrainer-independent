@@ -277,7 +277,7 @@ export default function LocationDetail() {
         description={seoDescription}
         url={`/locations/${location.slug}`}
         type="place"
-        image={displayLogo || undefined}
+        image={displayLogo || clubProfile?.banner_url || 'https://padeltrainer.ai/og-locations.png'}
         structuredData={getStructuredData() || undefined}
       />
 

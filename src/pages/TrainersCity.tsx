@@ -235,6 +235,7 @@ export default function TrainersCity() {
         title={`Padel Trainers in ${displayCity} | Find & Book Lessons`}
         description={`Find ${trainers.length} certified padel trainers in ${displayCity}. Compare rates from €${trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30}/hour, read reviews, and book your first lesson today.`}
         url={`/trainers/${city}`}
+        image="https://padeltrainer.ai/og-trainers.png"
         structuredData={[structuredData, faqStructuredData]}
       />
 
