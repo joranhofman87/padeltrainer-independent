@@ -563,6 +563,25 @@ export async function saveCycleScoringWeights(
   return updateCycle(cycleId, { settings: updatedSettings });
 }
 
+// Delete an intake request and its associated proposals
+export async function deleteIntakeRequest(requestId: string): Promise<void> {
+  // First delete any associated proposed assignments
+  const { error: proposalError } = await supabase
+    .from('proposed_assignments')
+    .delete()
+    .eq('intake_request_id', requestId);
+
+  if (proposalError) throw proposalError;
+
+  // Then delete the intake request itself
+  const { error } = await supabase
+    .from('intake_requests')
+    .delete()
+    .eq('id', requestId);
+
+  if (error) throw error;
+}
+
 // Create a manual intake request (for club managers to add registrations)
 export async function createManualIntakeRequest(
   input: IntakeRequestInput & { player_id: string }

@@ -177,7 +177,15 @@
       "confirm": "Confirm",
       "reject": "Reject",
       "waitlist": "Move to Waitlist",
-      "viewProposal": "View Proposal"
+      "viewProposal": "View Proposal",
+      "delete": "Delete",
+      "deleteSuccess": "Application deleted"
+    },
+    "delete": {
+      "title": "Delete Application?",
+      "description": "This will permanently delete this application. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
     }
   },
   

@@ -177,7 +177,15 @@
       "confirm": "Bevestigen",
       "reject": "Afwijzen",
       "waitlist": "Naar Wachtlijst",
-      "viewProposal": "Voorstel Bekijken"
+      "viewProposal": "Voorstel Bekijken",
+      "delete": "Verwijderen",
+      "deleteSuccess": "Aanmelding verwijderd"
+    },
+    "delete": {
+      "title": "Aanmelding verwijderen?",
+      "description": "Dit verwijdert de aanmelding permanent. Deze actie kan niet ongedaan worden gemaakt.",
+      "cancel": "Annuleren",
+      "confirm": "Verwijderen"
     }
   },
   
