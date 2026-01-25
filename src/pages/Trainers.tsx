@@ -226,7 +226,7 @@ export default function Trainers() {
     // Only show trainers who are: is_public=true AND (subscription_status='active' OR trial_ends_at > now())
     const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
-      .from('trainer_profiles')
+      .from('trainer_profiles_safe')
       .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, trainer_rating_system, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true)
       .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);

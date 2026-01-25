@@ -167,7 +167,7 @@ export default function TrainerProfile() {
     
     const [trainerResult, profileResult] = await Promise.all([
       supabase
-        .from('trainer_profiles')
+        .from('trainer_profiles_safe')
         .select('*')
         .eq('user_id', trainerId)
         .single(),
