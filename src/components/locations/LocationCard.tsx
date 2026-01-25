@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import type { Location } from '@/lib/locations';
 
 interface LocationCardProps {
@@ -18,12 +19,13 @@ interface LocationCardProps {
 export function LocationCard({ location, trainerCount = 0, isClaimed = false, logoUrl, onClick }: LocationCardProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
+  const localizePath = useLocalizedPathFn();
 
   const handleClick = () => {
     if (onClick) {
       onClick();
     } else {
-      navigate(`/locations/${location.slug}`);
+      navigate(localizePath(`/locations/${location.slug}`));
     }
   };
 
