@@ -9,6 +9,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,13 +37,15 @@ import {
   XCircle,
   Clock3,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { 
   type IntakeRequest, 
   type EnrichedProposedAssignment,
   updateIntakeRequestStatus,
-  getProposedAssignmentForRequest
+  getProposedAssignmentForRequest,
+  deleteIntakeRequest
 } from '@/lib/cycles';
 import ProposalCard from './ProposalCard';
 
@@ -53,6 +66,7 @@ export default function IntakeRequestDetailSheet({
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
   const [isLoadingProposal, setIsLoadingProposal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchProposal = async () => {
@@ -86,6 +100,22 @@ export default function IntakeRequestDetailSheet({
       toast.error(error.message);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!request) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteIntakeRequest(request.id);
+      toast.success(t('intakeRequests.actions.deleteSuccess'));
+      onOpenChange(false);
+      onStatusChange?.();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -309,6 +339,34 @@ export default function IntakeRequestDetailSheet({
                 {t('intakeRequests.actions.reject')}
               </Button>
             )}
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  className="ml-auto"
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {t('intakeRequests.actions.delete')}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('intakeRequests.delete.title')}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('intakeRequests.delete.description')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('intakeRequests.delete.cancel')}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+                    {t('intakeRequests.delete.confirm')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </SheetContent>
