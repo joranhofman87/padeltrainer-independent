@@ -10,14 +10,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   FileText, 
   Users, 
   AlertCircle, 
   Calendar,
-  CheckCircle2
+  CheckCircle2,
+  Clock
 } from 'lucide-react';
-import { type IntakeRequest } from '@/lib/cycles';
+import { type IntakeRequestWithProposal } from '@/lib/cycles';
 import {
   Tooltip,
   TooltipContent,
@@ -31,9 +33,9 @@ interface TrainerOption {
 }
 
 interface IntakeRequestsTableProps {
-  requests: IntakeRequest[];
+  requests: IntakeRequestWithProposal[];
   trainers?: TrainerOption[];
-  onRowClick: (request: IntakeRequest) => void;
+  onRowClick: (request: IntakeRequestWithProposal) => void;
   emptyMessage?: string;
   emptyDescription?: string;
 }
@@ -47,7 +49,7 @@ export default function IntakeRequestsTable({
 }: IntakeRequestsTableProps) {
   const { t } = useTranslation('cycles');
 
-  const getTrainerNames = (request: IntakeRequest): React.ReactNode => {
+  const getTrainerNames = (request: IntakeRequestWithProposal): React.ReactNode => {
     // Support both new array and legacy single ID
     const ids = request.preferred_trainer_ids?.length 
       ? request.preferred_trainer_ids 
@@ -79,7 +81,7 @@ export default function IntakeRequestsTable({
     }
   };
 
-  const formatAvailability = (request: IntakeRequest) => {
+  const formatAvailability = (request: IntakeRequestWithProposal) => {
     const days = request.preferred_days?.slice(0, 3).map(d => 
       d.charAt(0).toUpperCase() + d.slice(1, 3)
     ).join(', ');
@@ -96,7 +98,7 @@ export default function IntakeRequestsTable({
     return colors[lessonType] || 'bg-muted text-muted-foreground';
   };
 
-  const renderProposalIndicator = (request: IntakeRequest) => {
+  const renderProposalIndicator = (request: IntakeRequestWithProposal) => {
     // Show checkmark for confirmed
     if (request.status === 'confirmed') {
       return (
@@ -106,7 +108,52 @@ export default function IntakeRequestsTable({
       );
     }
 
-    // Show proposed badge for proposed status
+    // Show proposal details for proposed status
+    if (request.status === 'proposed' && request.proposal) {
+      return (
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-purple-500" />
+            <span className="font-medium text-sm">
+              {request.proposal.slot_day.slice(0, 3)} {request.proposal.slot_time.split(' - ')[0]}
+            </span>
+            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600 border-purple-500/20">
+              {request.proposal.confidence_score}%
+            </Badge>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Avatar className="h-4 w-4">
+              <AvatarImage src={request.proposal.trainer_avatar || undefined} />
+              <AvatarFallback className="text-[8px] bg-muted">
+                {request.proposal.trainer_name[0]}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate max-w-[80px]">{request.proposal.trainer_name}</span>
+            {request.proposal.group_members.length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-muted-foreground cursor-help">
+                      +{request.proposal.group_members.length}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs font-medium mb-1">Group members:</p>
+                    <ul className="text-xs">
+                      {request.proposal.group_members.map((name, i) => (
+                        <li key={i}>{name}</li>
+                      ))}
+                    </ul>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Show just proposed badge if no details available
     if (request.status === 'proposed') {
       return (
         <div className="flex items-center gap-1 text-purple-600">
