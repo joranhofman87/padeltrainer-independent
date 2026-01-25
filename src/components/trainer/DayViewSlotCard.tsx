@@ -14,7 +14,8 @@ import {
   LockOpen,
   MoreHorizontal,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -153,6 +154,12 @@ export function DayViewSlotCard({
                 <Badge variant="outline" className="font-semibold">
                   €{slot.price}
                 </Badge>
+              )}
+              {slot.location_name && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{slot.location_name}</span>
+                </div>
               )}
               <div className={cn(
                 "px-3 py-1 rounded-full text-sm font-medium",

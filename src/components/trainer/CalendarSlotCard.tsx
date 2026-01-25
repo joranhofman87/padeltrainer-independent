@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -40,6 +40,7 @@ export interface SlotWithBookings {
   cyclus_name: string | null;
   booked_players: BookedPlayer[];
   is_marked_full: boolean;
+  location_name: string | null;
 }
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
@@ -203,6 +204,13 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
                   €{slot.price}
                 </div>
               )}
+            </div>
+          )}
+
+          {slot.location_name && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              <span>{slot.location_name}</span>
             </div>
           )}
 
