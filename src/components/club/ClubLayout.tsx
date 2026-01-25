@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Building2, MapPin, Settings, LogOut, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,7 @@ const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
 export default function ClubLayout() {
   const { t, i18n } = useTranslation('club');
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [clubs, setClubs] = useState<ClubWithLocation[]>([]);
@@ -142,7 +144,7 @@ export default function ClubLayout() {
             <Button onClick={() => navigate('/onboarding/club')}>
               {t('dashboard.claimClub', 'Claim a Club')}
             </Button>
-            <Button variant="outline" onClick={() => navigate('/locations')}>
+            <Button variant="outline" onClick={() => navigate(localizePath('/locations'))}>
               {t('dashboard.browseLocations', 'Browse Locations')}
             </Button>
           </div>

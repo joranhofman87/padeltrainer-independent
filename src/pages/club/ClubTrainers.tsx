@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Users, Calendar, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +41,7 @@ interface TrainerWithProfile {
 export default function ClubTrainers() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
+  const localizePath = useLocalizedPathFn();
   const { activeClub } = useClubContext();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,7 +236,7 @@ export default function ClubTrainers() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`/trainer/${trainer.trainer_id}`)}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_id}`))}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       {t('trainers.viewProfile', 'Profile')}

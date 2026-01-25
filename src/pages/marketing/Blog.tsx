@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -125,7 +125,7 @@ export default function Blog() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
               >
-                <Link to={`/blog/${featuredPost.slug}`}>
+                <LocalizedLink to={`/blog/${featuredPost.slug}`}>
                   <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
                     <div className="grid md:grid-cols-2">
                       <div className="aspect-video md:aspect-auto bg-muted">
@@ -160,7 +160,7 @@ export default function Blog() {
                       </CardContent>
                     </div>
                   </Card>
-                </Link>
+                </LocalizedLink>
               </motion.div>
             </div>
           </section>
@@ -179,7 +179,7 @@ export default function Blog() {
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.1 }}
                     >
-                      <Link to={`/blog/${post.slug}`}>
+                      <LocalizedLink to={`/blog/${post.slug}`}>
                         <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                           <div className="aspect-video bg-muted">
                             <img 
@@ -205,7 +205,7 @@ export default function Blog() {
                             </div>
                           </CardContent>
                         </Card>
-                      </Link>
+                      </LocalizedLink>
                     </motion.div>
                   ))}
                 </div>
