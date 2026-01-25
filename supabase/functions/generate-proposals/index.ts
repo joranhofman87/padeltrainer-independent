@@ -65,7 +65,7 @@ const DEFAULT_WEIGHTS: ScoringWeights = {
   capacity_available: 10,
 };
 
-// Time window presets in hours (24h format)
+// Time window presets in hours (24h format) - for backward compatibility
 const TIME_PRESETS = {
   morning: { start: 8, end: 12 },
   afternoon: { start: 12, end: 17 },
@@ -91,39 +91,65 @@ function getHour(dateString: string): number {
   return new Date(dateString).getHours();
 }
 
+function getMinutes(dateString: string): number {
+  return new Date(dateString).getMinutes();
+}
+
 function isWeekend(dateString: string): boolean {
   const day = getDayOfWeek(dateString);
   return day === "saturday" || day === "sunday";
 }
 
+// Convert "13:00" or "13:30" to minutes from midnight
+function timeToMinutes(time: string): number {
+  const [hours, mins] = time.split(':').map(Number);
+  return hours * 60 + (mins || 0);
+}
+
+// Get slot start time as minutes from midnight
+function slotToMinutes(slotStart: string): number {
+  const hour = getHour(slotStart);
+  const minutes = getMinutes(slotStart);
+  return hour * 60 + minutes;
+}
+
 function matchesTimeWindow(slotStart: string, timeWindow: TimeWindow): boolean {
   const slotDay = getDayOfWeek(slotStart);
-  const slotHour = getHour(slotStart);
 
-  // Check day match if specified
-  if (timeWindow.day && slotDay !== timeWindow.day.toLowerCase()) {
-    return false;
+  // New format: day + start + end (granular per-day availability)
+  if (timeWindow.day && timeWindow.start && timeWindow.end) {
+    // Day must match exactly
+    if (slotDay !== timeWindow.day.toLowerCase()) {
+      return false;
+    }
+    
+    // Check if slot start falls within the time window
+    const slotMinutes = slotToMinutes(slotStart);
+    const windowStart = timeToMinutes(timeWindow.start);
+    const windowEnd = timeToMinutes(timeWindow.end);
+    
+    // Slot start must be within player's available window
+    return slotMinutes >= windowStart && slotMinutes < windowEnd;
   }
 
-  // Check preset match
+  // Legacy format: preset (morning/afternoon/evening/weekend)
   if (timeWindow.preset) {
     if (timeWindow.preset === "weekend") {
       return isWeekend(slotStart);
     }
     const preset = TIME_PRESETS[timeWindow.preset];
     if (preset) {
+      const slotHour = getHour(slotStart);
       return slotHour >= preset.start && slotHour < preset.end;
     }
   }
 
-  // Check custom time range
-  if (timeWindow.start && timeWindow.end) {
-    const startHour = parseInt(timeWindow.start.split(":")[0], 10);
-    const endHour = parseInt(timeWindow.end.split(":")[0], 10);
-    return slotHour >= startHour && slotHour < endHour;
+  // Legacy format: just day without specific times
+  if (timeWindow.day && !timeWindow.start && !timeWindow.end) {
+    return slotDay === timeWindow.day.toLowerCase();
   }
 
-  return true;
+  return false;
 }
 
 function calculateTimeScore(
@@ -131,33 +157,34 @@ function calculateTimeScore(
   request: IntakeRequest,
   maxScore: number
 ): { score: number; detail: string } {
-  const slotDay = getDayOfWeek(slot.start_time);
-
-  // Check preferred days
-  const dayMatches = request.preferred_days.some(
-    (d) => d.toLowerCase() === slotDay
-  );
-
-  // Check time windows
-  const timeWindowMatches = request.preferred_time_windows.some((tw) =>
+  // Find the matching time window (should exist due to pre-filtering)
+  const matchingWindow = request.preferred_time_windows.find((tw) =>
     matchesTimeWindow(slot.start_time, tw)
   );
 
-  if (dayMatches && timeWindowMatches) {
+  if (matchingWindow) {
+    const slotDay = getDayOfWeek(slot.start_time);
+    const slotHour = getHour(slot.start_time);
+    const slotMins = getMinutes(slot.start_time);
+    const timeStr = `${slotHour.toString().padStart(2, '0')}:${slotMins.toString().padStart(2, '0')}`;
+    
+    // If using new format with specific times
+    if (matchingWindow.start && matchingWindow.end) {
+      return {
+        score: maxScore,
+        detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} ${timeStr} within ${matchingWindow.start}-${matchingWindow.end}`,
+      };
+    }
+    
+    // Legacy format
     return {
       score: maxScore,
-      detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} at ${getHour(slot.start_time)}:00 matches preferences`,
-    };
-  } else if (dayMatches || timeWindowMatches) {
-    return {
-      score: maxScore * 0.5,
-      detail: dayMatches
-        ? "Day matches preferences"
-        : "Time slot matches preferences",
+      detail: `${slotDay.charAt(0).toUpperCase() + slotDay.slice(1)} at ${timeStr} matches preferences`,
     };
   }
 
-  return { score: 0, detail: "No time preference match" };
+  // Should not reach here if pre-filtering is done correctly
+  return { score: 0, detail: "No availability match" };
 }
 
 function calculateTrainerScore(
@@ -364,13 +391,27 @@ Deno.serve(async (req) => {
       }
 
       // Filter slots by lesson type match
-      const matchingSlots = slots.filter(
+      const lessonTypeSlots = slots.filter(
         (s) => s.lesson_type === request.lesson_type
       );
 
+      if (lessonTypeSlots.length === 0) {
+        skipped++;
+        errors.push(`No slots matching lesson type for request ${request.id}`);
+        continue;
+      }
+
+      // STRICT AVAILABILITY FILTER: Only consider slots that match player's time windows
+      const matchingSlots = lessonTypeSlots.filter((slot) => {
+        // At least one time window must match
+        return request.preferred_time_windows.some((tw) =>
+          matchesTimeWindow(slot.start_time, tw)
+        );
+      });
+
       if (matchingSlots.length === 0) {
         skipped++;
-        errors.push(`No matching slots for request ${request.id}`);
+        errors.push(`No slots match player availability for request ${request.id}`);
         continue;
       }
 
