@@ -41,7 +41,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { 
-  type IntakeRequest, 
+  type IntakeRequestWithProposal, 
   type EnrichedProposedAssignment,
   updateIntakeRequestStatus,
   getProposedAssignmentForRequest,
@@ -50,7 +50,7 @@ import {
 import ProposalCard from './ProposalCard';
 
 interface IntakeRequestDetailSheetProps {
-  request: IntakeRequest | null;
+  request: IntakeRequestWithProposal | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onStatusChange?: () => void;
@@ -88,7 +88,7 @@ export default function IntakeRequestDetailSheet({
     }
   }, [request, open]);
 
-  const handleStatusChange = async (newStatus: IntakeRequest['status']) => {
+  const handleStatusChange = async (newStatus: IntakeRequestWithProposal['status']) => {
     if (!request) return;
 
     setIsUpdating(true);

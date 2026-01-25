@@ -11,10 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Sparkles, CheckCheck } from 'lucide-react';
 import { 
   getCycles, 
-  getIntakeRequestsByOwner, 
+  getIntakeRequestsWithProposals, 
   generateProposals,
   type Cycle, 
-  type IntakeRequest,
+  type IntakeRequestWithProposal,
   type ScoringWeights
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
@@ -28,13 +28,13 @@ export default function TrainerIntakeRequests() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [requests, setRequests] = useState<IntakeRequest[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<IntakeRequest[]>([]);
+  const [requests, setRequests] = useState<IntakeRequestWithProposal[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<IntakeRequestWithProposal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [selectedCycleId, setSelectedCycleId] = useState<string>(searchParams.get('cycle') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedRequest, setSelectedRequest] = useState<IntakeRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
   const [showWeightsDialog, setShowWeightsDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -65,7 +65,7 @@ export default function TrainerIntakeRequests() {
     try {
       const [cyclesData, requestsData] = await Promise.all([
         getCycles('trainer', trainerId),
-        getIntakeRequestsByOwner('trainer', trainerId)
+        getIntakeRequestsWithProposals('trainer', trainerId)
       ]);
       setCycles(cyclesData);
       setRequests(requestsData);

@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
+import { format } from 'date-fns';
 
 // Types
 export interface Cycle {
@@ -70,6 +71,20 @@ export interface IntakeRequest {
   skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | 'rating_outside_trainer_range' | 'rating_spread_exceeded' | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProposalDetails {
+  slot_day: string;      // e.g., "Monday"
+  slot_time: string;     // e.g., "12:00 - 13:00"
+  slot_date: string;     // e.g., "Feb 16"
+  trainer_name: string;
+  trainer_avatar?: string | null;
+  confidence_score: number;
+  group_members: string[];  // Other players in same slot
+}
+
+export interface IntakeRequestWithProposal extends IntakeRequest {
+  proposal?: ProposalDetails;
 }
 
 export interface RationaleItem {
@@ -304,6 +319,79 @@ export async function getIntakeRequestsByOwner(
   const { data, error } = await query;
   if (error) throw error;
   return (data || []) as IntakeRequest[];
+}
+
+// Fetch intake requests with their proposal details bundled
+export async function getIntakeRequestsWithProposals(
+  ownerType: 'trainer' | 'club',
+  ownerId: string
+): Promise<IntakeRequestWithProposal[]> {
+  // First get all requests
+  const requests = await getIntakeRequestsByOwner(ownerType, ownerId);
+  if (requests.length === 0) return [];
+
+  const requestIds = requests.map(r => r.id);
+
+  // Fetch all proposals for these requests with slot and trainer info
+  const { data: proposals, error } = await supabase
+    .from('proposed_assignments')
+    .select(`
+      *,
+      slot:availability_slots(id, start_time, end_time),
+      trainer:trainer_profiles(
+        id,
+        profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
+      )
+    `)
+    .in('intake_request_id', requestIds);
+
+  if (error) {
+    console.error('Error fetching proposals:', error);
+    return requests; // Return requests without proposals on error
+  }
+
+  // Group proposals by slot_id to find group members
+  const slotGroups = new Map<string, { requestId: string; name: string }[]>();
+  proposals?.forEach(p => {
+    const existing = slotGroups.get(p.slot_id) || [];
+    const reqName = requests.find(r => r.id === p.intake_request_id)?.full_name;
+    if (reqName) {
+      existing.push({ requestId: p.intake_request_id, name: reqName });
+    }
+    slotGroups.set(p.slot_id, existing);
+  });
+
+  // Merge proposals into requests
+  return requests.map(req => {
+    const proposal = proposals?.find(p => p.intake_request_id === req.id);
+    if (!proposal || !proposal.slot) return req;
+
+    const groupMembers = slotGroups.get(proposal.slot_id)
+      ?.filter(m => m.requestId !== req.id)
+      ?.map(m => m.name) || [];
+
+    // Get trainer name from the nested profile (type assertion for Supabase query result)
+    const trainerProfile = proposal.trainer?.profiles as { full_name?: string; avatar_url?: string | null } | { full_name?: string; avatar_url?: string | null }[] | null;
+    const trainerName = Array.isArray(trainerProfile) 
+      ? trainerProfile[0]?.full_name 
+      : trainerProfile?.full_name;
+    const trainerAvatar = Array.isArray(trainerProfile) 
+      ? trainerProfile[0]?.avatar_url 
+      : trainerProfile?.avatar_url;
+
+    return {
+      ...req,
+      proposal: {
+        slot_day: format(new Date(proposal.slot.start_time), 'EEEE'),
+        slot_time: `${format(new Date(proposal.slot.start_time), 'HH:mm')} - ${format(new Date(proposal.slot.end_time), 'HH:mm')}`,
+        slot_date: format(new Date(proposal.slot.start_time), 'MMM d'),
+        trainer_name: trainerName || 'Unknown',
+        trainer_avatar: trainerAvatar,
+        confidence_score: proposal.confidence_score || 0,
+        group_members: groupMembers,
+      },
+    };
+  });
 }
 
 export async function getPlayerIntakeRequests(playerId: string): Promise<IntakeRequest[]> {
