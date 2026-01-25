@@ -146,27 +146,40 @@ export default function AddIntakeRequestDialog({
           .single();
 
         if (clubData?.location_id) {
+          // First get trainer IDs from trainer_locations
           const { data: trainerLocations } = await supabase
             .from('trainer_locations')
-            .select(`
-              trainer_id,
-              trainer_profiles!inner (
-                id,
-                user_id,
-                profiles:user_id (full_name)
-              )
-            `)
+            .select('trainer_id')
             .eq('location_id', clubData.location_id)
             .in('relationship_type', ['club', 'club_trainer']);
 
-          if (trainerLocations) {
-            const trainerList = trainerLocations
-              .map((tl: any) => ({
-                id: tl.trainer_profiles.id,
-                name: tl.trainer_profiles.profiles?.full_name || 'Unknown',
-              }))
-              .filter((t: any) => t.name !== 'Unknown');
-            setTrainers(trainerList);
+          if (trainerLocations && trainerLocations.length > 0) {
+            const trainerIds = trainerLocations.map((tl) => tl.trainer_id);
+            
+            // Then fetch trainer profiles with names
+            const { data: trainerProfiles } = await supabase
+              .from('trainer_profiles')
+              .select('id, user_id')
+              .in('id', trainerIds);
+
+            if (trainerProfiles && trainerProfiles.length > 0) {
+              const userIds = trainerProfiles.map((tp) => tp.user_id);
+              
+              // Fetch profile names
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('user_id, full_name')
+                .in('user_id', userIds);
+
+              const trainerList = trainerProfiles
+                .map((tp) => ({
+                  id: tp.id,
+                  name: profiles?.find((p) => p.user_id === tp.user_id)?.full_name || 'Unknown',
+                }))
+                .filter((t) => t.name !== 'Unknown');
+              
+              setTrainers(trainerList);
+            }
           }
         }
       } else if (cycle.owner_type === 'trainer') {
