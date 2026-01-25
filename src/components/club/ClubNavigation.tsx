@@ -121,7 +121,7 @@ export function ClubNavigation() {
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="bg-popover">
+            <DropdownMenuContent align="start" sideOffset={8} className="bg-popover z-50 min-w-[160px]">
               {group.items.map((item) => {
                 const ItemIcon = item.icon;
                 return (
