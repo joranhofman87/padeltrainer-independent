@@ -957,7 +957,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
-          lesson_type: string
+          lesson_type: string[]
           location_id: string | null
           notes: string | null
           phone: string | null
@@ -980,7 +980,7 @@ export type Database = {
           email: string
           full_name: string
           id?: string
-          lesson_type: string
+          lesson_type: string[]
           location_id?: string | null
           notes?: string | null
           phone?: string | null
@@ -1003,7 +1003,7 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
-          lesson_type?: string
+          lesson_type?: string[]
           location_id?: string | null
           notes?: string | null
           phone?: string | null
