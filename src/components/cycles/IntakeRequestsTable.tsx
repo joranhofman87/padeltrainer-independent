@@ -228,9 +228,13 @@ export default function IntakeRequestsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className={getLessonTypeBadge(request.lesson_type)}>
-                    {t(`application.form.lessonTypes.${request.lesson_type}`)}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
+                      <Badge key={type} variant="outline" className={getLessonTypeBadge(type)}>
+                        {t(`application.form.lessonTypes.${type}`)}
+                      </Badge>
+                    ))}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {request.rating ? (

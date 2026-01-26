@@ -80,6 +80,7 @@
       
       "preferences": "Training Preferences",
       "lessonType": "Lesson Type",
+      "lessonTypeRequired": "Select at least one lesson type",
       "lessonTypes": {
         "private": "Private (1:1)",
         "duo": "Duo (2 players)",

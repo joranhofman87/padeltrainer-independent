@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -48,7 +49,7 @@ const formSchema = z.object({
   phone: z.string().optional(),
   rating_system: z.string().default('knltb'),
   rating: z.coerce.number().optional(),
-  lesson_type: z.enum(['private', 'duo', 'group', 'kids']),
+  lesson_types: z.array(z.enum(['private', 'duo', 'group', 'kids'])).min(1, 'Select at least one lesson type'),
   preferred_duration_minutes: z.coerce.number().default(60),
   sessions_per_week: z.coerce.number().min(1).max(7).default(1),
   preferred_trainer_id: z.string().optional(),
@@ -96,7 +97,7 @@ export default function AddIntakeRequestDialog({
       phone: '',
       rating_system: 'knltb',
       rating: undefined,
-      lesson_type: 'group',
+      lesson_types: ['group'],
       preferred_duration_minutes: 60,
       sessions_per_week: 1,
       preferred_trainer_id: 'none',
@@ -253,7 +254,7 @@ export default function AddIntakeRequestDialog({
         phone: data.phone || undefined,
         rating_system: data.rating_system,
         rating: data.rating,
-        lesson_type: data.lesson_type,
+        lesson_types: data.lesson_types,
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: data.preferred_duration_minutes,
@@ -426,31 +427,47 @@ export default function AddIntakeRequestDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="lesson_type"
-                  render={({ field }) => (
+                  name="lesson_types"
+                  render={() => (
                     <FormItem>
                       <FormLabel>{t('application.form.lessonType')}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="private">
-                            {t('application.form.lessonTypes.private')}
-                          </SelectItem>
-                          <SelectItem value="duo">
-                            {t('application.form.lessonTypes.duo')}
-                          </SelectItem>
-                          <SelectItem value="group">
-                            {t('application.form.lessonTypes.group')}
-                          </SelectItem>
-                          <SelectItem value="kids">
-                            {t('application.form.lessonTypes.kids')}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['private', 'duo', 'group', 'kids'] as const).map(type => (
+                          <FormField
+                            key={type}
+                            control={form.control}
+                            name="lesson_types"
+                            render={({ field }) => (
+                              <FormItem 
+                                className="flex items-center space-x-2 space-y-0 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                                onClick={() => {
+                                  const current = field.value || [];
+                                  const updated = current.includes(type)
+                                    ? current.filter((v: string) => v !== type)
+                                    : [...current, type];
+                                  field.onChange(updated);
+                                }}
+                              >
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes(type)}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value || [];
+                                      const updated = checked
+                                        ? [...current, type]
+                                        : current.filter((v: string) => v !== type);
+                                      field.onChange(updated);
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer flex-1 m-0">
+                                  {t(`application.form.lessonTypes.${type}`)}
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        ))}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -181,11 +181,15 @@ export default function IntakeRequestDetailSheet({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-sm text-muted-foreground">Lesson type</span>
-                <Badge variant="secondary">
-                  {t(`application.form.lessonTypes.${request.lesson_type}`)}
-                </Badge>
+                <div className="flex flex-wrap gap-1">
+                  {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
+                    <Badge key={type} variant="secondary">
+                      {t(`application.form.lessonTypes.${type}`)}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               {request.preferred_duration_minutes && (
                 <div className="flex items-center justify-between">

@@ -80,6 +80,7 @@
       
       "preferences": "Trainingsvoorkeuren",
       "lessonType": "Lesvorm",
+      "lessonTypeRequired": "Selecteer minimaal één lesvorm",
       "lessonTypes": {
         "private": "Privé (1:1)",
         "duo": "Duo (2 spelers)",

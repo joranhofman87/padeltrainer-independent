@@ -110,7 +110,7 @@ export default function CycleApplicationForm({
     phone: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
-    lesson_type: z.enum(LESSON_TYPES),
+    lesson_types: z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     availability: availabilitySchema,
@@ -132,7 +132,9 @@ export default function CycleApplicationForm({
       phone: playerPhone || '',
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
-      lesson_type: (cycle.settings.lesson_types?.[0] as typeof LESSON_TYPES[number]) || 'private',
+      lesson_types: cycle.settings.lesson_types?.length 
+        ? [cycle.settings.lesson_types[0] as typeof LESSON_TYPES[number]]
+        : ['group'],
       preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
       sessions_per_week: 1,
       availability: {},
@@ -169,7 +171,7 @@ export default function CycleApplicationForm({
         phone: values.phone,
         rating: values.rating,
         rating_system: values.rating_system,
-        lesson_type: values.lesson_type,
+        lesson_types: values.lesson_types,
         preferred_days: preferredDays,
         preferred_time_windows: timeWindows,
         preferred_duration_minutes: values.preferred_duration_minutes,
@@ -341,24 +343,47 @@ export default function CycleApplicationForm({
           <CardContent className="space-y-4">
             <FormField
               control={form.control}
-              name="lesson_type"
-              render={({ field }) => (
+              name="lesson_types"
+              render={() => (
                 <FormItem>
                   <FormLabel>{t('application.form.lessonType')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {allowedLessonTypes.map(type => (
-                        <SelectItem key={type} value={type}>
-                          {t(`application.form.lessonTypes.${type}`)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    {allowedLessonTypes.map(type => (
+                      <FormField
+                        key={type}
+                        control={form.control}
+                        name="lesson_types"
+                        render={({ field }) => (
+                          <FormItem 
+                            className="flex items-center space-x-2 space-y-0 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                            onClick={() => {
+                              const current = field.value || [];
+                              const updated = current.includes(type)
+                                ? current.filter((v: string) => v !== type)
+                                : [...current, type];
+                              field.onChange(updated);
+                            }}
+                          >
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(type)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  const updated = checked
+                                    ? [...current, type]
+                                    : current.filter((v: string) => v !== type);
+                                  field.onChange(updated);
+                                }}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal cursor-pointer flex-1 m-0">
+                              {t(`application.form.lessonTypes.${type}`)}
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

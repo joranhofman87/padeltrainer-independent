@@ -132,7 +132,7 @@ export interface IntakeRequestInput {
   phone?: string;
   rating?: number;
   rating_system?: string;
-  lesson_type: string;
+  lesson_types: string[];
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes?: number;
@@ -444,7 +444,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     phone: input.phone || null,
     rating: input.rating || null,
     rating_system: input.rating_system || 'knltb',
-    lesson_type: input.lesson_type,
+    lesson_type: input.lesson_types,
     preferred_days: input.preferred_days,
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
@@ -776,7 +776,7 @@ export async function createManualIntakeRequest(
     phone: input.phone || null,
     rating: input.rating || null,
     rating_system: input.rating_system || 'knltb',
-    lesson_type: input.lesson_type,
+    lesson_type: input.lesson_types,
     preferred_days: input.preferred_days,
     preferred_time_windows: input.preferred_time_windows as unknown as Json,
     preferred_duration_minutes: input.preferred_duration_minutes || 60,
