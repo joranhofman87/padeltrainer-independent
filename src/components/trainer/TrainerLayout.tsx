@@ -150,7 +150,10 @@ export default function TrainerLayout() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(`${window.location.origin}/${i18n.language}/trainer/${trainerProfileId}`, '_blank')}
+                  onClick={() => {
+                    const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'en';
+                    window.open(`${window.location.origin}/${lang}/trainer/${trainerProfileId}`, '_blank');
+                  }}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   {t('nav.viewPublicProfile')}
