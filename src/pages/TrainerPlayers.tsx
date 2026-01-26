@@ -270,6 +270,7 @@ export default function TrainerPlayers() {
                     <TableHead>{t("players.name")}</TableHead>
                     <TableHead>{t("players.contact")}</TableHead>
                     <TableHead>{t("players.skillRating")}</TableHead>
+                    <TableHead>{t("players.status")}</TableHead>
                     <TableHead>{t("players.addedOn")}</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
@@ -309,6 +310,17 @@ export default function TrainerPlayers() {
                           </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {(player as any).has_trained === false ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                            {t("players.prospect")}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            {t("players.active")}
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
