@@ -206,7 +206,10 @@ export default function ClubLayout() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(`${window.location.origin}/${i18n.language}/locations/${activeClub.location.slug}`, '_blank')}
+                    onClick={() => {
+                      const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'en';
+                      window.open(`${window.location.origin}/${lang}/locations/${activeClub.location.slug}`, '_blank');
+                    }}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     {t('dashboard.viewPublicProfile')}
