@@ -23,7 +23,7 @@ interface FollowedTrainer {
 }
 
 export default function FollowingList() {
-  const { user, role, loading } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
@@ -32,20 +32,10 @@ export default function FollowingList() {
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (role !== 'player') {
-        navigate('/trainer');
-      }
-    }
-  }, [user, role, loading, navigate]);
-
-  useEffect(() => {
-    if (user && role === 'player') {
+    if (user) {
       fetchFollowing();
     }
-  }, [user, role]);
+  }, [user]);
 
   const fetchFollowing = async () => {
     try {
@@ -188,27 +178,13 @@ export default function FollowingList() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/player')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <Users className="h-6 w-6 text-primary" />
-            <span className="font-bold text-xl">Following</span>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2">Trainers You Follow</h1>
-          <p className="text-muted-foreground">
-            Manage your followed trainers and notification preferences.
-          </p>
-        </div>
+    <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold mb-2">Trainers You Follow</h1>
+        <p className="text-muted-foreground">
+          Manage your followed trainers and notification preferences.
+        </p>
+      </div>
 
         {following.length === 0 ? (
           <Card className="p-8 text-center">
@@ -282,12 +258,11 @@ export default function FollowingList() {
           </div>
         )}
 
-        <div className="mt-8 text-center">
-          <Button variant="outline" onClick={() => navigate(localizePath('/trainers'))}>
-            Find More Trainers
-          </Button>
-        </div>
-      </main>
-    </div>
+      <div className="mt-8 text-center">
+        <Button variant="outline" onClick={() => navigate(localizePath('/trainers'))}>
+          Find More Trainers
+        </Button>
+      </div>
+    </main>
   );
 }

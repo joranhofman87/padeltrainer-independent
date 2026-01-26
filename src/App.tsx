@@ -56,6 +56,7 @@ import TrainerCycles from "./pages/TrainerCycles";
 import TrainerIntakeRequests from "./pages/TrainerIntakeRequests";
 import OpenSlots from "./pages/OpenSlots";
 import TrainerLayout from "./components/trainer/TrainerLayout";
+import PlayerLayout from "./components/player/PlayerLayout";
 import CycleRegistration from "./pages/CycleRegistration";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
@@ -130,7 +131,16 @@ const App = () => (
             <Route path="/onboarding/club" element={<ClubOnboarding />} />
             <Route path="/onboarding/:role" element={<Onboarding />} />
             <Route path="/select-role" element={<SelectRole />} />
-            <Route path="/player" element={<PlayerDashboard />} />
+            
+            {/* Player routes - wrapped in PlayerLayout for persistent header */}
+            <Route path="/player" element={<PlayerLayout />}>
+              <Route index element={<PlayerDashboard />} />
+              <Route path="bookings" element={<PlayerBookings />} />
+              <Route path="following" element={<FollowingList />} />
+              <Route path="profile" element={<EditProfile />} />
+              <Route path="settings/notifications" element={<NotificationSettings />} />
+              <Route path="settings/calendar" element={<CalendarSettings />} />
+            </Route>
             
             {/* Trainer routes - wrapped in TrainerLayout for persistent header */}
             <Route path="/trainer" element={<TrainerLayout />}>
@@ -158,7 +168,6 @@ const App = () => (
             <Route path="/analytics" element={<TrainerAnalytics />} />
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
-            <Route path="/player/following" element={<FollowingList />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/clubs" element={<AdminClubs />} />

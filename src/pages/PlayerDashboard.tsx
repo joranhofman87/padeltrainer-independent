@@ -49,7 +49,7 @@ interface PlayerStats {
 }
 
 export default function PlayerDashboard() {
-  const { user, profile, role, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
@@ -60,18 +60,6 @@ export default function PlayerDashboard() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [followedTrainers, setFollowedTrainers] = useState<FollowedTrainer[]>([]);
   const [followingLoading, setFollowingLoading] = useState(true);
-
-  useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (!role) {
-        navigate('/select-role');
-      } else if (role !== 'player') {
-        navigate('/trainer');
-      }
-    }
-  }, [user, role, loading, navigate]);
 
   useEffect(() => {
     fetchFeaturedTrainers();
@@ -260,8 +248,6 @@ export default function PlayerDashboard() {
         description: error.message,
         variant: 'destructive',
       });
-    } else {
-      navigate('/auth');
     }
   };
 
@@ -273,52 +259,22 @@ export default function PlayerDashboard() {
     );
   }
 
-  const initials = profile?.full_name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase() || 'U';
-
   const getTrainerInitials = (name: string | null) => {
     if (!name) return 'T';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg sm:text-xl">PadelTrainer<span className="text-primary">.ai</span></span>
-          </div>
-          <div className="flex items-center gap-4">
-            <LanguageSwitcher />
-            <div className="flex items-center gap-2">
-              <Avatar className="h-9 w-9">
-                <AvatarImage src={profile?.avatar_url || undefined} />
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-              <span className="font-medium hidden sm:inline">{profile?.full_name || 'Player'}</span>
-            </div>
-            <Button variant="ghost" size="icon" onClick={handleSignOut}>
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">
-            Welcome back, {profile?.full_name?.split(' ')[0] || 'Player'}! 👋
-          </h1>
-          <p className="text-muted-foreground">
-            Find your next training session and improve your padel skills
-          </p>
-        </div>
+    <main className="container mx-auto px-4 py-8">
+      {/* Welcome Section */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">
+          Welcome back, {profile?.full_name?.split(' ')[0] || 'Player'}! 👋
+        </h1>
+        <p className="text-muted-foreground">
+          Find your next training session and improve your padel skills
+        </p>
+      </div>
 
         {/* Rating Card */}
         <Card className="mb-8 bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0">
@@ -661,6 +617,5 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
       </main>
-    </div>
   );
 }
