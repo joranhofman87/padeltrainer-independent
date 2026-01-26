@@ -165,18 +165,25 @@ export default function TrainerProfile() {
   const fetchTrainerProfile = async () => {
     setLoading(true);
     
-    const [trainerResult, profileResult] = await Promise.all([
-      supabase
-        .from('trainer_profiles_safe')
-        .select('*')
-        .eq('user_id', trainerId)
-        .single(),
-      supabase
-        .from('profiles_public')
-        .select('full_name, avatar_url, bio, location')
-        .eq('user_id', trainerId)
-        .single()
-    ]);
+    // First, fetch the trainer profile by ID
+    const trainerResult = await supabase
+      .from('trainer_profiles_safe')
+      .select('*')
+      .eq('id', trainerId)
+      .maybeSingle();
+
+    if (trainerResult.error || !trainerResult.data) {
+      console.error('Error fetching trainer:', trainerResult.error);
+      setLoading(false);
+      return;
+    }
+
+    // Then fetch the user profile using the trainer's user_id
+    const profileResult = await supabase
+      .from('profiles_public')
+      .select('full_name, avatar_url, bio, location')
+      .eq('user_id', trainerResult.data.user_id)
+      .maybeSingle();
 
     if (trainerResult.error) {
       console.error('Error fetching trainer:', trainerResult.error);
