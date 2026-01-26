@@ -294,7 +294,7 @@ export default function TrainerProfile() {
     { icon: <Star className="h-4 w-4" />, label: t('common:rating', 'Rating'), value: averageRating !== null ? `${averageRating} ★` : '—' },
   ];
 
-  if (trainer?.preferred_min_rating !== null && trainer?.preferred_max_rating !== null) {
+  if (trainer && trainer.preferred_min_rating !== null && trainer.preferred_max_rating !== null) {
     quickStats.push({
       icon: <Target className="h-4 w-4" />,
       label: t('trainer:profile.preferredLevels', 'Preferred Levels'),
