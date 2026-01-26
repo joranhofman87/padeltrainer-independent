@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
@@ -73,6 +74,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             <div className="hidden md:flex items-center gap-3">
               <LanguageSwitcher />
+              <ThemeToggle />
               <Button variant="ghost" asChild>
                 <Link to="/auth">{t('nav.signIn')}</Link>
               </Button>
@@ -117,6 +119,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">{t('nav.language')}:</span>
                     <LanguageSwitcher />
+                    <ThemeToggle />
                   </div>
                   <Button variant="ghost" asChild>
                     <Link to="/auth">{t('nav.signIn')}</Link>

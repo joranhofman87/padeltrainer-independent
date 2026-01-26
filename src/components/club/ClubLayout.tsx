@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Building2, MapPin, Settings, LogOut, ExternalLink } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -164,7 +165,8 @@ export default function ClubLayout() {
             </div>
             <div className="flex items-center gap-2">
               <LanguageSwitcher />
-              <ProfileSwitcher 
+              <ThemeToggle />
+              <ProfileSwitcher
                 activeClubId={activeClub?.id} 
                 onClubChange={handleClubChange} 
               />
