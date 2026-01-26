@@ -22,8 +22,8 @@ interface ClubWithLocation extends ClubProfile {
 }
 
 interface ProfileSwitcherProps {
-  /** Current context: 'club' when on club pages, 'trainer' when on trainer pages */
-  context?: 'club' | 'trainer';
+  /** Current context: 'club' when on club pages, 'trainer' when on trainer pages, 'player' when on player pages */
+  context?: 'club' | 'trainer' | 'player';
   /** Active club ID (only used in club context) */
   activeClubId?: string;
   /** Callback when club is changed (only used in club context) */
@@ -69,14 +69,18 @@ export function ProfileSwitcher({ context = 'club', activeClubId, onClubChange }
   // Display info based on context
   const displayName = context === 'trainer' 
     ? profile?.full_name || t('trainerDashboard')
+    : context === 'player'
+    ? profile?.full_name || t('playerDashboard')
     : activeClub?.location?.name || t('clubDashboard');
   
-  const displayAvatar = context === 'trainer'
+  const displayAvatar = context === 'trainer' || context === 'player'
     ? profile?.avatar_url
     : activeClub?.logo_url;
   
   const initials = context === 'trainer'
     ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'TR'
+    : context === 'player'
+    ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'PL'
     : activeClub?.location?.name?.substring(0, 2).toUpperCase() || 'CL';
 
   const handleSwitchToTrainer = () => {

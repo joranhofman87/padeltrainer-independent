@@ -43,7 +43,7 @@ interface BookingWithDetails {
 }
 
 export default function PlayerBookings() {
-  const { user, profile, role, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
@@ -51,16 +51,6 @@ export default function PlayerBookings() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [reviewDialogOpen, setReviewDialogOpen] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/auth');
-      } else if (role !== 'player') {
-        navigate('/trainer');
-      }
-    }
-  }, [user, role, loading, navigate]);
 
   useEffect(() => {
     if (user && profile?.id) {
@@ -158,30 +148,21 @@ export default function PlayerBookings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/player')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold">My Bookings</h1>
-            <p className="text-sm text-muted-foreground">View and manage your lesson bookings</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="upcoming">
-          <TabsList className="mb-6">
-            <TabsTrigger value="upcoming">
-              Upcoming ({upcomingBookings.length})
-            </TabsTrigger>
-            <TabsTrigger value="past">
-              Past ({pastBookings.length})
-            </TabsTrigger>
-          </TabsList>
+    <main className="container mx-auto px-4 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">My Bookings</h1>
+        <p className="text-muted-foreground">View and manage your lesson bookings</p>
+      </div>
+      
+      <Tabs defaultValue="upcoming">
+        <TabsList className="mb-6">
+          <TabsTrigger value="upcoming">
+            Upcoming ({upcomingBookings.length})
+          </TabsTrigger>
+          <TabsTrigger value="past">
+            Past ({pastBookings.length})
+          </TabsTrigger>
+        </TabsList>
 
           <TabsContent value="upcoming">
             {upcomingBookings.length === 0 ? (
@@ -333,8 +314,7 @@ export default function PlayerBookings() {
               </div>
             )}
           </TabsContent>
-        </Tabs>
-      </main>
-    </div>
+      </Tabs>
+    </main>
   );
 }

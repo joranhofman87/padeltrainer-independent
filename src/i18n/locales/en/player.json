@@ -1,4 +1,14 @@
 {
+  "nav": {
+    "dashboard": "Dashboard",
+    "bookings": "Bookings",
+    "following": "Following",
+    "account": "Account",
+    "editProfile": "Edit Profile",
+    "notifications": "Notifications",
+    "calendarSync": "Calendar Sync"
+  },
+  "badge": "Player",
   "ratingSystem": {
     "label": "Rating System",
     "knltb": "KNLTB",

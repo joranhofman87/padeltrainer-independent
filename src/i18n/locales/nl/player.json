@@ -1,4 +1,14 @@
 {
+  "nav": {
+    "dashboard": "Dashboard",
+    "bookings": "Boekingen",
+    "following": "Volgend",
+    "account": "Account",
+    "editProfile": "Profiel Bewerken",
+    "notifications": "Meldingen",
+    "calendarSync": "Kalender Sync"
+  },
+  "badge": "Speler",
   "ratingSystem": {
     "label": "Beoordelingssysteem",
     "knltb": "KNLTB",
