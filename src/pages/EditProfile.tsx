@@ -32,6 +32,7 @@ interface TrainerProfileData {
   coaching_method: string;
   favourite_quote: string;
   video_url: string;
+  website_url: string;
   social_instagram: string;
   social_tiktok: string;
   social_youtube: string;

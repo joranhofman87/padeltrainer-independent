@@ -50,6 +50,7 @@ interface TrainerData {
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
+  website_url: string | null;
   social_instagram: string | null;
   social_tiktok: string | null;
   social_youtube: string | null;
