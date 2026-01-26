@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -240,6 +241,7 @@ export default function ClubPlayers() {
                     <TableHead>{t('players.email')}</TableHead>
                     <TableHead>{t('players.phone')}</TableHead>
                     <TableHead>{t('players.rating')}</TableHead>
+                    <TableHead>{t('players.status')}</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -250,6 +252,17 @@ export default function ClubPlayers() {
                       <TableCell>{player.email}</TableCell>
                       <TableCell>{player.phone || '-'}</TableCell>
                       <TableCell>{player.skill_rating || '-'}</TableCell>
+                      <TableCell>
+                        {(player as any).has_trained === false ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                            {t('players.prospect')}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            {t('players.active')}
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button

@@ -290,6 +290,73 @@ export type Database = {
         }
         Relationships: []
       }
+      club_followers: {
+        Row: {
+          club_profile_id: string
+          created_at: string
+          id: string
+          notify_new_availability: boolean
+          player_id: string
+        }
+        Insert: {
+          club_profile_id: string
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id: string
+        }
+        Update: {
+          club_profile_id?: string
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_followers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_managers: {
         Row: {
           club_profile_id: string
@@ -345,12 +412,14 @@ export type Database = {
           created_at: string
           email: string
           full_name: string
+          has_trained: boolean
           id: string
           linked_profile_id: string | null
           notes: string | null
           phone: string | null
           rating_system: string
           skill_rating: number | null
+          source: string | null
           updated_at: string
         }
         Insert: {
@@ -358,12 +427,14 @@ export type Database = {
           created_at?: string
           email: string
           full_name: string
+          has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
+          source?: string | null
           updated_at?: string
         }
         Update: {
@@ -371,12 +442,14 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string
+          has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
+          source?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -797,12 +870,14 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string
+          has_trained: boolean
           id: string
           linked_profile_id: string | null
           notes: string | null
           phone: string | null
           rating_system: string
           skill_rating: number | null
+          source: string | null
           trainer_id: string
           updated_at: string
         }
@@ -810,12 +885,14 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name: string
+          has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
+          source?: string | null
           trainer_id: string
           updated_at?: string
         }
@@ -823,12 +900,14 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string
+          has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
+          source?: string | null
           trainer_id?: string
           updated_at?: string
         }

@@ -429,6 +429,13 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     throw new Error('Too many applications submitted. Please try again later.');
   }
 
+  // Fetch cycle to get owner info for auto-follow
+  const { data: cycle } = await supabase
+    .from('cycles')
+    .select('owner_type, owner_id')
+    .eq('id', input.cycle_id)
+    .single();
+
   const insertData = {
     cycle_id: input.cycle_id,
     player_id: input.player_id,
@@ -456,7 +463,90 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     .single();
 
   if (error) throw error;
+
+  // Auto-follow and add to student list (non-blocking - don't fail registration)
+  if (cycle) {
+    await autoFollowOwner(cycle.owner_type as 'trainer' | 'club', cycle.owner_id, input.player_id);
+    await addToStudentList(cycle.owner_type as 'trainer' | 'club', cycle.owner_id, input);
+  }
+
   return toIntakeRequest(data);
+}
+
+// Auto-follow the cycle owner (trainer or club)
+async function autoFollowOwner(
+  ownerType: 'trainer' | 'club',
+  ownerId: string,
+  playerId: string
+): Promise<void> {
+  try {
+    if (ownerType === 'trainer') {
+      await supabase
+        .from('trainer_followers')
+        .upsert({
+          player_id: playerId,
+          trainer_id: ownerId,
+          notify_new_availability: true,
+        }, { onConflict: 'player_id,trainer_id' });
+    } else {
+      await supabase
+        .from('club_followers')
+        .upsert({
+          player_id: playerId,
+          club_profile_id: ownerId,
+          notify_new_availability: true,
+        }, { onConflict: 'player_id,club_profile_id' });
+    }
+  } catch (error) {
+    console.error('Auto-follow failed (non-blocking):', error);
+  }
+}
+
+// Add player to student list as a prospect
+async function addToStudentList(
+  ownerType: 'trainer' | 'club',
+  ownerId: string,
+  input: IntakeRequestInput
+): Promise<void> {
+  try {
+    if (ownerType === 'trainer') {
+      await supabase
+        .from('guest_players')
+        .upsert({
+          trainer_id: ownerId,
+          full_name: input.full_name,
+          email: input.email,
+          phone: input.phone || null,
+          skill_rating: input.rating || null,
+          rating_system: input.rating_system || 'knltb',
+          linked_profile_id: input.player_id,
+          source: 'cycle_registration',
+          has_trained: false,
+        }, { 
+          onConflict: 'trainer_id,email',
+          ignoreDuplicates: false 
+        });
+    } else {
+      await supabase
+        .from('club_players')
+        .upsert({
+          club_profile_id: ownerId,
+          full_name: input.full_name,
+          email: input.email,
+          phone: input.phone || null,
+          skill_rating: input.rating || null,
+          rating_system: input.rating_system || 'knltb',
+          linked_profile_id: input.player_id,
+          source: 'cycle_registration',
+          has_trained: false,
+        }, { 
+          onConflict: 'club_profile_id,email',
+          ignoreDuplicates: false 
+        });
+    }
+  } catch (error) {
+    console.error('Add to student list failed (non-blocking):', error);
+  }
 }
 
 export async function updateIntakeRequestStatus(

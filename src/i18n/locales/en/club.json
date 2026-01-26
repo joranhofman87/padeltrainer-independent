@@ -173,6 +173,9 @@
     "email": "Email",
     "phone": "Phone",
     "rating": "Rating",
+    "status": "Status",
+    "prospect": "Prospect",
+    "active": "Active",
     "notes": "Notes",
     "deleteConfirm": "Are you sure you want to remove this player?",
     "deleteConfirmDescription": "This action cannot be undone."
