@@ -1,5 +1,23 @@
 {
   "badge": "Trainer",
+  "nav": {
+    "dashboard": "Dashboard",
+    "schedule": "Rooster",
+    "calendar": "Kalender",
+    "openSlots": "Open Plekken",
+    "players": "Spelers",
+    "myPlayers": "Mijn Spelers",
+    "intakeRequests": "Intake Aanvragen",
+    "registration": "Registratie",
+    "cycles": "Cycli",
+    "cyclus": "Cyclus Bouwer",
+    "business": "Bedrijf",
+    "earnings": "Inkomsten",
+    "subscription": "Abonnement",
+    "analytics": "Statistieken",
+    "settings": "Instellingen",
+    "viewPublicProfile": "Bekijk Publiek Profiel"
+  },
   "profile": {
     "shareProfile": "Profiel Delen",
     "copyLink": "Link Kopiëren",

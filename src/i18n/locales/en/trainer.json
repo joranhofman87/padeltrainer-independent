@@ -1,5 +1,23 @@
 {
   "badge": "Trainer",
+  "nav": {
+    "dashboard": "Dashboard",
+    "schedule": "Schedule",
+    "calendar": "Calendar",
+    "openSlots": "Open Slots",
+    "players": "Players",
+    "myPlayers": "My Players",
+    "intakeRequests": "Intake Requests",
+    "registration": "Registration",
+    "cycles": "Cycles",
+    "cyclus": "Cyclus Builder",
+    "business": "Business",
+    "earnings": "Earnings",
+    "subscription": "Subscription",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "viewPublicProfile": "View Public Profile"
+  },
   "profile": {
     "shareProfile": "Share Profile",
     "copyLink": "Copy Link",
