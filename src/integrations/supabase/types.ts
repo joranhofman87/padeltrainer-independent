@@ -2468,6 +2468,7 @@ export type Database = {
           preferred_max_rating: number | null
           preferred_min_rating: number | null
           preferred_rating_system: string | null
+          require_booking_approval: boolean | null
           schedule_weeks_ahead: number | null
           slot_duration_minutes: number | null
           social_instagram: string | null
@@ -2475,8 +2476,11 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
+          subscription_status: string | null
           trainer_rating_system: string | null
+          trial_ends_at: string | null
           updated_at: string | null
+          use_manual_invoicing: boolean | null
           user_id: string | null
           video_url: string | null
           website_url: string | null
@@ -2495,6 +2499,7 @@ export type Database = {
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
+          require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number | null
           slot_duration_minutes?: number | null
           social_instagram?: string | null
@@ -2502,8 +2507,11 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          subscription_status?: string | null
           trainer_rating_system?: string | null
+          trial_ends_at?: string | null
           updated_at?: string | null
+          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           website_url?: string | null
@@ -2522,6 +2530,7 @@ export type Database = {
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
+          require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number | null
           slot_duration_minutes?: number | null
           social_instagram?: string | null
@@ -2529,8 +2538,11 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          subscription_status?: string | null
           trainer_rating_system?: string | null
+          trial_ends_at?: string | null
           updated_at?: string | null
+          use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
           website_url?: string | null

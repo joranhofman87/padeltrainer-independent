@@ -73,6 +73,7 @@ export default function EditProfile() {
     coaching_method: '',
     favourite_quote: '',
     video_url: '',
+    website_url: '',
     social_instagram: '',
     social_tiktok: '',
     social_youtube: '',
@@ -191,7 +192,7 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
+      .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)
       .single();
     
@@ -206,6 +207,7 @@ export default function EditProfile() {
         coaching_method: data.coaching_method || '',
         favourite_quote: data.favourite_quote || '',
         video_url: data.video_url || '',
+        website_url: data.website_url || '',
         social_instagram: data.social_instagram || '',
         social_tiktok: data.social_tiktok || '',
         social_youtube: data.social_youtube || '',
