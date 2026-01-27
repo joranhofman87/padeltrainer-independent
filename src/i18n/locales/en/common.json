@@ -152,7 +152,11 @@
     "outdoor": "Outdoor",
     "anyCourtType": "Any",
     "upcomingTournaments": "Upcoming Tournaments",
-    "register": "Register"
+    "register": "Register",
+    "viewOnMap": "View on Map",
+    "viewAsList": "View as List",
+    "locationsOnMap": "locations on map",
+    "locationsNotMapped": "not mapped"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
