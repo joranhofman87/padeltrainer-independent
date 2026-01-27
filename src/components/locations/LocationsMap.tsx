@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MapPin, Users, ExternalLink, CheckCircle } from 'lucide-react';
@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import type { Location } from '@/lib/locations';
+
+// Force dependency rebuild after React 19 upgrade
 
 // Fix for default marker icons in Leaflet with webpack/vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
