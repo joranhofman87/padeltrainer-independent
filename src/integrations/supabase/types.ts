@@ -1274,7 +1274,9 @@ export type Database = {
           id: string
           indoor_courts: number | null
           is_active: boolean
+          latitude: number | null
           logo_url: string | null
+          longitude: number | null
           name: string
           number_of_courts: number | null
           outdoor_courts: number | null
@@ -1292,7 +1294,9 @@ export type Database = {
           id?: string
           indoor_courts?: number | null
           is_active?: boolean
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           name: string
           number_of_courts?: number | null
           outdoor_courts?: number | null
@@ -1310,7 +1314,9 @@ export type Database = {
           id?: string
           indoor_courts?: number | null
           is_active?: boolean
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           name?: string
           number_of_courts?: number | null
           outdoor_courts?: number | null

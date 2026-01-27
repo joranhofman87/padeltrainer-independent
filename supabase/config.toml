@@ -67,3 +67,6 @@ verify_jwt = false
 
 [functions.enrich-clubs]
 verify_jwt = false
+
+[functions.geocode-locations]
+verify_jwt = false
