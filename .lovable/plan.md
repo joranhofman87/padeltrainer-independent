@@ -1,106 +1,145 @@
 
 
-# Fix Lesson Type Multi-Select in Registration Form
+# Add Geocoding Coordinates to Club Locations
 
-## Problem
-When clicking on a lesson type checkbox in the registration form, an error occurs. The user also wants:
-1. "Group (3+ players)" to be selected by default
-2. Users should be able to select/deselect other options
+## Overview
+Add latitude and longitude coordinates to the `locations` table and create an edge function to batch geocode all 575 existing club addresses using a free geocoding service.
 
-## Root Cause
-The current implementation has a problematic nested `FormField` structure where:
-- An outer `FormField` wraps the entire lesson types section
-- Each checkbox item also has its own `FormField` wrapper
-- Both the `FormItem` onClick handler and the `Checkbox` onCheckedChange handler try to update the same field value, causing conflicts
+## Database Changes
 
-Additionally, the `allowedLessonTypes` variable comes from `cycle.settings.lesson_types || LESSON_TYPES`, but needs to be properly typed.
+### Migration: Add coordinate columns to locations table
+```sql
+-- Add latitude and longitude columns
+ALTER TABLE public.locations
+ADD COLUMN latitude NUMERIC(10, 7),
+ADD COLUMN longitude NUMERIC(10, 7);
 
-## Solution
-Simplify the checkbox implementation by:
-1. Removing the nested `FormField` pattern - use a single `FormField` with direct checkbox controls
-2. Ensuring proper type casting for `allowedLessonTypes` 
-3. Setting `['group']` as the default value to pre-select "Group (3+ players)"
-4. Adding event.stopPropagation() to prevent conflicting click handlers
+-- Add index for spatial queries (useful for future "nearby clubs" feature)
+CREATE INDEX idx_locations_coordinates ON public.locations (latitude, longitude)
+WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+```
+
+**Column Precision**: Using `NUMERIC(10, 7)` allows for 7 decimal places, which provides ~1cm accuracy - more than sufficient for club locations.
+
+## Edge Function: `geocode-locations`
+
+Create a new edge function that:
+1. Fetches locations without coordinates (or all if forced)
+2. Uses the **Nominatim** geocoding API (free, no API key required)
+3. Processes locations in batches with rate limiting (1 request/second for Nominatim)
+4. Updates the database with coordinates
+
+### Nominatim API Details
+- **Endpoint**: `https://nominatim.openstreetmap.org/search`
+- **Rate Limit**: 1 request per second (we'll use 1.5s delay to be safe)
+- **No API Key Required**: Just needs a custom User-Agent header
+- **Format**: Returns JSON with lat/lon for matched addresses
+
+### Edge Function Structure
+```typescript
+// supabase/functions/geocode-locations/index.ts
+
+Key features:
+- Batch processing with configurable batch_size (default: 50)
+- Offset-based pagination for processing all 575 locations
+- Dry-run mode for testing
+- 1.5 second delay between requests to respect rate limits
+- Constructs address from: street_address, postal_code, city, country
+- Stores latitude/longitude in locations table
+- Returns detailed results with success/error counts
+```
+
+### Request Parameters
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `batch_size` | number | 50 | Locations per batch (max 100) |
+| `offset` | number | 0 | Starting position for pagination |
+| `dry_run` | boolean | false | Preview without saving |
+| `location_ids` | string[] | null | Specific locations to geocode |
+| `force` | boolean | false | Re-geocode even if coords exist |
+
+### Expected Response
+```json
+{
+  "success": true,
+  "batch_size": 50,
+  "offset": 0,
+  "next_offset": 50,
+  "total_processed": 50,
+  "summary": {
+    "success": 45,
+    "skipped": 2,
+    "errors": 3
+  },
+  "results": [...]
+}
+```
+
+## Running the Batch Geocoding
+
+After deployment, call the edge function multiple times to process all 575 locations:
+
+```bash
+# Process first batch
+curl -X POST https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/geocode-locations \
+  -H "Content-Type: application/json" \
+  -d '{"batch_size": 50, "offset": 0}'
+
+# Process next batch (offset increases by batch_size)
+# Repeat with offset: 50, 100, 150, ... until all processed
+```
+
+**Estimated Time**: 575 locations × 1.5s delay = ~14.4 minutes total for all locations (can be split across multiple calls).
 
 ## Code Changes
 
-**File: `src/components/cycles/CycleApplicationForm.tsx`**
+### 1. Database Migration
+- Add `latitude` and `longitude` columns to `locations` table
+- Add composite index for future spatial queries
 
-### Change 1: Fix the default value (line 135-137)
-Change the default to always include 'group':
-```tsx
-lesson_types: ['group'] as typeof LESSON_TYPES[number][],
+### 2. New Edge Function
+**File**: `supabase/functions/geocode-locations/index.ts`
+- Full implementation of batch geocoding using Nominatim
+- CORS headers for web requests
+- Rate limiting with delays
+- Error handling and logging
+
+### 3. Update TypeScript Types (Auto-generated)
+The `src/integrations/supabase/types.ts` will automatically update after migration to include:
+```typescript
+latitude: number | null;
+longitude: number | null;
 ```
 
-### Change 2: Fix the allowedLessonTypes typing (line 241)
-Cast properly to ensure type safety:
-```tsx
-const allowedLessonTypes = (cycle.settings.lesson_types as typeof LESSON_TYPES[number][] | undefined) || [...LESSON_TYPES];
+### 4. Update Location Interface
+**File**: `src/lib/locations.ts`
+```typescript
+export interface Location {
+  // ... existing fields ...
+  latitude: number | null;
+  longitude: number | null;
+}
 ```
 
-### Change 3: Simplify the checkbox group rendering (lines 344-390)
-Replace the nested FormField pattern with a single FormField and properly structured checkboxes:
+## Technical Considerations
 
-```tsx
-<FormField
-  control={form.control}
-  name="lesson_types"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>{t('application.form.lessonType')}</FormLabel>
-      <div className="grid grid-cols-2 gap-2">
-        {allowedLessonTypes.map(type => {
-          const isChecked = field.value?.includes(type) ?? false;
-          return (
-            <div
-              key={type}
-              className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-              onClick={() => {
-                const current = field.value || [];
-                const updated = current.includes(type)
-                  ? current.filter((v: string) => v !== type)
-                  : [...current, type];
-                field.onChange(updated);
-              }}
-            >
-              <Checkbox
-                id={`lesson-type-${type}`}
-                checked={isChecked}
-                onCheckedChange={(checked) => {
-                  const current = field.value || [];
-                  const updated = checked
-                    ? [...current, type]
-                    : current.filter((v: string) => v !== type);
-                  field.onChange(updated);
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-              <label 
-                htmlFor={`lesson-type-${type}`}
-                className="font-normal cursor-pointer flex-1 m-0 text-sm"
-              >
-                {t(`application.form.lessonTypes.${type}`)}
-              </label>
-            </div>
-          );
-        })}
-      </div>
-      <FormMessage />
-    </FormItem>
-  )}
-/>
-```
+### Why Nominatim?
+- **Free**: No API key or payment required
+- **Reliable**: Maintained by OpenStreetMap
+- **Good for addresses**: Works well with European (Dutch) addresses
+- **Trade-off**: Rate limited to 1 req/sec (acceptable for one-time batch)
 
-## Technical Details
-- **Single FormField**: Only one FormField wrapper for the entire checkbox group, not nested ones
-- **stopPropagation**: Prevents the checkbox click from also triggering the parent div click handler
-- **Proper typing**: Cast `allowedLessonTypes` to the correct union type array
-- **Default selection**: 'group' is pre-selected when the form loads
-- **Native HTML label**: Using standard `<label>` instead of FormLabel inside the map to avoid form hook conflicts
+### Future Enhancements (not in this phase)
+- Trigger geocoding when locations are created/updated
+- Interactive map view on `/locations` page using Leaflet
+- "Nearby clubs" feature using stored coordinates
 
-## Impact
-- Single file change to `src/components/cycles/CycleApplicationForm.tsx`
-- Fixes the error when selecting lesson types
-- "Group (3+ players)" will be selected by default
-- Users can freely select and deselect any lesson type options
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/migrations/[timestamp].sql` | Create | Add lat/lng columns |
+| `supabase/functions/geocode-locations/index.ts` | Create | Batch geocoding function |
+| `supabase/config.toml` | Modify | Add function config (verify_jwt = false) |
+| `src/lib/locations.ts` | Modify | Add lat/lng to Location interface |
 
