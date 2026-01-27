@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X } from 'lucide-react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X, Map, List } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { LocationCard } from '@/components/locations/LocationCard';
+import { LocationsMap } from '@/components/locations/LocationsMap';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type Location } from '@/lib/locations';
@@ -42,6 +43,7 @@ export default function Locations() {
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [trainersAvailable, setTrainersAvailable] = useState(false);
   const [indoorCourtsOnly, setIndoorCourtsOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [countryOpen, setCountryOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
 
@@ -178,15 +180,34 @@ export default function Locations() {
 
             {/* Search and Filters */}
             <div className="space-y-4 mt-6">
-              {/* Search box */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={t('locations.searchPlaceholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+              {/* Search box with map toggle */}
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={t('locations.searchPlaceholder')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Button
+                  variant={viewMode === 'map' ? 'default' : 'outline'}
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'map' : 'grid')}
+                  className="gap-2 whitespace-nowrap"
+                >
+                  {viewMode === 'grid' ? (
+                    <>
+                      <Map className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t('locations.viewOnMap')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <List className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t('locations.viewAsList')}</span>
+                    </>
+                  )}
+                </Button>
               </div>
 
               {/* Filter row */}
@@ -451,6 +472,13 @@ export default function Locations() {
                 {t('clearFilters')}
               </Button>
             </div>
+          ) : viewMode === 'map' ? (
+            <LocationsMap
+              locations={filteredLocations}
+              trainerCounts={trainerCounts}
+              claimedIds={claimedIds}
+              clubLogos={clubLogos}
+            />
           ) : (
             <>
               <div className="flex items-center justify-between mb-6">

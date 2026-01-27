@@ -152,7 +152,11 @@
     "outdoor": "Buiten",
     "anyCourtType": "Alle",
     "upcomingTournaments": "Aankomende Toernooien",
-    "register": "Inschrijven"
+    "register": "Inschrijven",
+    "viewOnMap": "Zoek op kaart",
+    "viewAsList": "Bekijk als lijst",
+    "locationsOnMap": "locaties op kaart",
+    "locationsNotMapped": "niet gekoppeld"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
