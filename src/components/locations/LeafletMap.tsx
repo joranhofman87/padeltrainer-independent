@@ -231,7 +231,7 @@ export function LeafletMap({ locations, trainerCounts, claimedIds, clubLogos }: 
 
   return (
     <div className="relative">
-      <div className="h-[500px] md:h-[600px] rounded-lg overflow-hidden border bg-muted">
+      <div className="h-[600px] md:h-[700px] lg:h-[800px] rounded-lg overflow-hidden border bg-muted">
         <div ref={containerRef} className="h-full w-full" />
       </div>
       
