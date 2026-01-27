@@ -1,145 +1,129 @@
 
 
-# Add Geocoding Coordinates to Club Locations
+# Add Map Toggle to Locations Page
 
 ## Overview
-Add latitude and longitude coordinates to the `locations` table and create an edge function to batch geocode all 575 existing club addresses using a free geocoding service.
+Add a "Search on Map" toggle button to the Locations page (similar to Funda's "Zoek op kaart" button) that switches between the current card grid view and an interactive map view showing all padel clubs with markers.
 
-## Database Changes
+## Current State
+- **575 locations** with geocoded coordinates (latitude/longitude)
+- Card grid view with filters (search, country, city, trainers, indoor courts)
+- No map library currently installed
+- Location interface already includes `latitude` and `longitude` fields
 
-### Migration: Add coordinate columns to locations table
-```sql
--- Add latitude and longitude columns
-ALTER TABLE public.locations
-ADD COLUMN latitude NUMERIC(10, 7),
-ADD COLUMN longitude NUMERIC(10, 7);
+## Implementation Approach
 
--- Add index for spatial queries (useful for future "nearby clubs" feature)
-CREATE INDEX idx_locations_coordinates ON public.locations (latitude, longitude)
-WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+### 1. Install Map Library
+We'll use **Leaflet** with **react-leaflet** - a lightweight, open-source solution that's:
+- Free (no API key required)
+- Uses OpenStreetMap tiles
+- Well-maintained with React bindings
+
+**Dependencies to add:**
+- `leaflet` - Core map library
+- `react-leaflet` - React wrapper components
+
+### 2. Create Map Component
+**New file: `src/components/locations/LocationsMap.tsx`**
+
+An interactive map component that:
+- Centers on Netherlands by default (52.1326, 5.2913)
+- Shows markers for all filtered locations with coordinates
+- Clusters nearby markers when zoomed out (optional enhancement)
+- Popup on marker click showing: club name, address, trainer count, and "View Details" link
+- Auto-adjusts bounds to show all visible markers
+
+### 3. Modify Locations Page
+**File: `src/pages/Locations.tsx`**
+
+Add:
+- `viewMode` state: `'grid' | 'map'`
+- Toggle button next to search bar (like Funda reference)
+- Conditional rendering: show grid OR map based on viewMode
+- Map respects all active filters
+
+### 4. Add Translations
+**Files: `src/i18n/locales/en/common.json` and `nl/common.json`**
+
+New translation keys under `locations`:
+- `viewOnMap` / `zoekOpKaart`: "Search on Map" / "Zoek op kaart"
+- `viewAsList` / `bekijkAlsLijst`: "View as List" / "Bekijk als lijst"
+- `mapView` / `kaartweergave`: "Map View" / "Kaartweergave"
+
+### 5. Leaflet CSS
+Leaflet requires its CSS to be imported. We'll add:
+```css
+@import 'leaflet/dist/leaflet.css';
+```
+To `src/index.css`
+
+## UI Design (Based on Funda Reference)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  🗺 Padel Locations                                             │
+│  Find trainers at 575 venues                                    │
+├─────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────────────────┐ ┌───────────────────────┐   │
+│ │ 🔍 Search by name or city...    │ │ 🗺 Search on Map     │   │
+│ └─────────────────────────────────┘ └───────────────────────┘   │
+│                                                                  │
+│ [Country ▼] [City ▼] ☑ Trainers available  ☑ Indoor courts     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Column Precision**: Using `NUMERIC(10, 7)` allows for 7 decimal places, which provides ~1cm accuracy - more than sufficient for club locations.
+The toggle button will:
+- Show map icon + "Search on Map" when in grid view
+- Show list icon + "View as List" when in map view
+- Be styled as an outline button with primary accent (like Funda's orange button)
 
-## Edge Function: `geocode-locations`
+## File Changes Summary
 
-Create a new edge function that:
-1. Fetches locations without coordinates (or all if forced)
-2. Uses the **Nominatim** geocoding API (free, no API key required)
-3. Processes locations in batches with rate limiting (1 request/second for Nominatim)
-4. Updates the database with coordinates
+| File | Action | Description |
+|------|--------|-------------|
+| `package.json` | Modify | Add leaflet, react-leaflet dependencies |
+| `src/index.css` | Modify | Import Leaflet CSS |
+| `src/components/locations/LocationsMap.tsx` | Create | Interactive map component |
+| `src/pages/Locations.tsx` | Modify | Add viewMode state and toggle |
+| `src/i18n/locales/en/common.json` | Modify | Add map translation keys |
+| `src/i18n/locales/nl/common.json` | Modify | Add map translation keys |
 
-### Nominatim API Details
-- **Endpoint**: `https://nominatim.openstreetmap.org/search`
-- **Rate Limit**: 1 request per second (we'll use 1.5s delay to be safe)
-- **No API Key Required**: Just needs a custom User-Agent header
-- **Format**: Returns JSON with lat/lon for matched addresses
+## Technical Details
 
-### Edge Function Structure
+### LocationsMap Component Props
 ```typescript
-// supabase/functions/geocode-locations/index.ts
-
-Key features:
-- Batch processing with configurable batch_size (default: 50)
-- Offset-based pagination for processing all 575 locations
-- Dry-run mode for testing
-- 1.5 second delay between requests to respect rate limits
-- Constructs address from: street_address, postal_code, city, country
-- Stores latitude/longitude in locations table
-- Returns detailed results with success/error counts
-```
-
-### Request Parameters
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `batch_size` | number | 50 | Locations per batch (max 100) |
-| `offset` | number | 0 | Starting position for pagination |
-| `dry_run` | boolean | false | Preview without saving |
-| `location_ids` | string[] | null | Specific locations to geocode |
-| `force` | boolean | false | Re-geocode even if coords exist |
-
-### Expected Response
-```json
-{
-  "success": true,
-  "batch_size": 50,
-  "offset": 0,
-  "next_offset": 50,
-  "total_processed": 50,
-  "summary": {
-    "success": 45,
-    "skipped": 2,
-    "errors": 3
-  },
-  "results": [...]
+interface LocationsMapProps {
+  locations: Location[];
+  trainerCounts: Record<string, number>;
+  claimedIds: Set<string>;
+  clubLogos: Record<string, string>;
 }
 ```
 
-## Running the Batch Geocoding
+### Map Configuration
+- **Default center**: Netherlands (52.1326, 5.2913)
+- **Default zoom**: 7 (shows full country)
+- **Tile provider**: OpenStreetMap (free, no API key)
+- **Marker style**: Custom padel/tennis icon or default blue marker
+- **Popup content**: Club name, city, trainer count, "View Details" button
 
-After deployment, call the edge function multiple times to process all 575 locations:
-
-```bash
-# Process first batch
-curl -X POST https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/geocode-locations \
-  -H "Content-Type: application/json" \
-  -d '{"batch_size": 50, "offset": 0}'
-
-# Process next batch (offset increases by batch_size)
-# Repeat with offset: 50, 100, 150, ... until all processed
+### Marker Popup Example
+```
+┌──────────────────────────┐
+│ ✓ Club Name              │
+│ 📍 City, Netherlands     │
+│ 👥 3 trainers            │
+│ [View Details →]         │
+└──────────────────────────┘
 ```
 
-**Estimated Time**: 575 locations × 1.5s delay = ~14.4 minutes total for all locations (can be split across multiple calls).
+### Handling Missing Coordinates
+Some locations may lack coordinates. The map will:
+- Only display markers for locations with valid lat/lng
+- Show count of "locations not shown" if any are missing coordinates
 
-## Code Changes
-
-### 1. Database Migration
-- Add `latitude` and `longitude` columns to `locations` table
-- Add composite index for future spatial queries
-
-### 2. New Edge Function
-**File**: `supabase/functions/geocode-locations/index.ts`
-- Full implementation of batch geocoding using Nominatim
-- CORS headers for web requests
-- Rate limiting with delays
-- Error handling and logging
-
-### 3. Update TypeScript Types (Auto-generated)
-The `src/integrations/supabase/types.ts` will automatically update after migration to include:
-```typescript
-latitude: number | null;
-longitude: number | null;
-```
-
-### 4. Update Location Interface
-**File**: `src/lib/locations.ts`
-```typescript
-export interface Location {
-  // ... existing fields ...
-  latitude: number | null;
-  longitude: number | null;
-}
-```
-
-## Technical Considerations
-
-### Why Nominatim?
-- **Free**: No API key or payment required
-- **Reliable**: Maintained by OpenStreetMap
-- **Good for addresses**: Works well with European (Dutch) addresses
-- **Trade-off**: Rate limited to 1 req/sec (acceptable for one-time batch)
-
-### Future Enhancements (not in this phase)
-- Trigger geocoding when locations are created/updated
-- Interactive map view on `/locations` page using Leaflet
-- "Nearby clubs" feature using stored coordinates
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `supabase/migrations/[timestamp].sql` | Create | Add lat/lng columns |
-| `supabase/functions/geocode-locations/index.ts` | Create | Batch geocoding function |
-| `supabase/config.toml` | Modify | Add function config (verify_jwt = false) |
-| `src/lib/locations.ts` | Modify | Add lat/lng to Location interface |
+## Responsive Design
+- **Desktop**: Map takes full content width with good height (500-600px)
+- **Mobile**: Map stacks below filters, maintains usable touch interaction
+- **Map controls**: Zoom buttons visible on all screen sizes
 
