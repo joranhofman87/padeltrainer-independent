@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Location } from '@/lib/locations';
 
-// Lazy load the Leaflet map to ensure fresh module resolution
+// Lazy load the Leaflet map component
 const LeafletMap = lazy(() => import('./LeafletMap'));
 
 interface LocationsMapProps {
@@ -14,7 +14,7 @@ interface LocationsMapProps {
 
 function MapLoadingFallback() {
   return (
-    <div className="h-[500px] md:h-[600px] rounded-lg overflow-hidden border bg-muted">
+    <div className="h-[500px] md:h-[600px] rounded-lg overflow-hidden border bg-muted flex items-center justify-center">
       <Skeleton className="h-full w-full" />
     </div>
   );
