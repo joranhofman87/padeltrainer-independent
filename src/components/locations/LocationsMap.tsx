@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import type { Location } from '@/lib/locations';
 
-// Force dependency rebuild after React 19 upgrade
+// react-leaflet v5.0.0 + @react-leaflet/core v3.0.0 for React 19 compatibility
 
 // Fix for default marker icons in Leaflet with webpack/vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
