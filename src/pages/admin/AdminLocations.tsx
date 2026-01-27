@@ -206,6 +206,8 @@ export default function AdminLocations() {
         outdoor_courts: formData.outdoor_courts ?? 0,
         description: null,
         logo_url: null,
+        latitude: null,
+        longitude: null,
       };
 
       if (editingLocation) {

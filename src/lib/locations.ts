@@ -15,6 +15,8 @@ export interface Location {
   outdoor_courts: number | null;
   description: string | null;
   logo_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
   updated_at: string;
 }
