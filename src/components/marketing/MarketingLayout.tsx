@@ -158,6 +158,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><LocalizedLink to="/trainers" className="hover:text-primary transition-colors">{t('footer.findTrainers')}</LocalizedLink></li>
                 <li><LocalizedLink to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</LocalizedLink></li>
+                <li><LocalizedLink to="/academies" className="hover:text-primary transition-colors">{t('footer.academies', 'Academies')}</LocalizedLink></li>
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
                 <li><Link to="/signup/club" className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link></li>
