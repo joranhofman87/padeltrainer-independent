@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAdminUsers, useInvalidateAdminData } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -91,6 +92,12 @@ export default function AdminUsers() {
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Bulk selection state
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("");
+  const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ current: number; total: number } | null>(null);
 
   const handleChangeRole = async () => {
     if (!selectedUser || !newRole) return;
@@ -216,6 +223,66 @@ export default function AdminUsers() {
       });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (bulkDeleteConfirmText !== "DELETE" || selectedUserIds.size === 0) return;
+
+    setActionLoading(true);
+    setBulkDeleteProgress({ current: 0, total: selectedUserIds.size });
+
+    const userIdsArray = Array.from(selectedUserIds);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < userIdsArray.length; i++) {
+      const userId = userIdsArray[i];
+      try {
+        const { error } = await supabase.functions.invoke("delete-user", {
+          body: { target_user_id: userId },
+        });
+        if (error) throw error;
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to delete user ${userId}:`, error);
+        failCount++;
+      }
+      setBulkDeleteProgress({ current: i + 1, total: userIdsArray.length });
+    }
+
+    toast({
+      title: "Bulk delete complete",
+      description: `${successCount} users deleted${failCount > 0 ? `, ${failCount} failed` : ""}.`,
+      variant: failCount > 0 ? "destructive" : "default",
+    });
+
+    await invalidateUsers();
+    setSelectedUserIds(new Set());
+    setBulkDeleteDialogOpen(false);
+    setBulkDeleteConfirmText("");
+    setBulkDeleteProgress(null);
+    setActionLoading(false);
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const selectableUsers = filteredUsers.filter((u) => u.role !== "admin");
+    if (selectedUserIds.size === selectableUsers.length) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(selectableUsers.map((u) => u.user_id)));
     }
   };
 
@@ -366,6 +433,16 @@ export default function AdminUsers() {
             <SelectItem value="none">No role</SelectItem>
           </SelectContent>
         </Select>
+        {selectedUserIds.size > 0 && (
+          <Button
+            variant="destructive"
+            onClick={() => setBulkDeleteDialogOpen(true)}
+            className="ml-auto"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete {selectedUserIds.size} users
+          </Button>
+        )}
       </div>
 
       {/* Data Table */}
@@ -373,6 +450,15 @@ export default function AdminUsers() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={
+                    filteredUsers.filter((u) => u.role !== "admin").length > 0 &&
+                    selectedUserIds.size === filteredUsers.filter((u) => u.role !== "admin").length
+                  }
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Joined</TableHead>
@@ -383,7 +469,7 @@ export default function AdminUsers() {
             {filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={5}
                   className="text-center py-8 text-muted-foreground"
                 >
                   No users found
@@ -391,7 +477,17 @@ export default function AdminUsers() {
               </TableRow>
             ) : (
               filteredUsers.map((u) => (
-                <TableRow key={u.user_id}>
+                <TableRow key={u.user_id} className={selectedUserIds.has(u.user_id) ? "bg-muted/50" : ""}>
+                  <TableCell>
+                    {u.role !== "admin" ? (
+                      <Checkbox
+                        checked={selectedUserIds.has(u.user_id)}
+                        onCheckedChange={() => toggleUserSelection(u.user_id)}
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
@@ -660,6 +756,62 @@ export default function AdminUsers() {
             >
               {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete User
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={(open) => {
+        setBulkDeleteDialogOpen(open);
+        if (!open) {
+          setBulkDeleteConfirmText("");
+          setBulkDeleteProgress(null);
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedUserIds.size} Users</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action is permanent and cannot be undone. All selected users and their data will be deleted.
+              Type DELETE to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 space-y-4">
+            <Input
+              placeholder="Type DELETE to confirm"
+              value={bulkDeleteConfirmText}
+              onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
+              disabled={actionLoading}
+            />
+            {bulkDeleteProgress && (
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">
+                  Deleting user {bulkDeleteProgress.current} of {bulkDeleteProgress.total}...
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all"
+                    style={{ width: `${(bulkDeleteProgress.current / bulkDeleteProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => {
+              setBulkDeleteDialogOpen(false);
+              setBulkDeleteConfirmText("");
+            }} disabled={actionLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={actionLoading || bulkDeleteConfirmText !== "DELETE"}
+            >
+              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete {selectedUserIds.size} Users
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
