@@ -69,6 +69,48 @@ export async function getAdminStats(): Promise<AdminStats> {
   return response.data as AdminStats;
 }
 
+export interface ScrapeAcademiesParams {
+  batch_size?: number;
+  page_offset?: number;
+  dry_run?: boolean;
+  academy_slugs?: string[];
+}
+
+export interface ScrapeAcademiesResult {
+  success: boolean;
+  page: number;
+  batch_size: number;
+  dry_run: boolean;
+  scraped: number;
+  created: number;
+  skipped: number;
+  errors: string[];
+  academies: Array<{ name: string; slug: string; status: string }>;
+}
+
+export async function scrapeAcademies(
+  params: ScrapeAcademiesParams = {}
+): Promise<ScrapeAcademiesResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await supabase.functions.invoke("scrape-academies", {
+    body: params,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Failed to scrape academies");
+  }
+
+  return response.data as ScrapeAcademiesResult;
+}
+
 export async function isUserAdmin(userId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("user_roles")

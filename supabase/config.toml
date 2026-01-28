@@ -70,3 +70,6 @@ verify_jwt = false
 
 [functions.geocode-locations]
 verify_jwt = false
+
+[functions.scrape-academies]
+verify_jwt = false

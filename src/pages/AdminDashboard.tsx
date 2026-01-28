@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -21,14 +21,18 @@ import {
   Award,
   Users,
   GraduationCap,
+  Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { signOut } from "@/lib/auth";
+import { scrapeAcademies, type ScrapeAcademiesParams } from "@/lib/admin";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
 
   const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const {
@@ -64,6 +68,51 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     await signOut();
     navigate("/");
+  };
+
+  const handleScrapeAcademies = async () => {
+    if (isScraping) return;
+    
+    setIsScraping(true);
+    setScrapeProgress("Starting scrape...");
+
+    try {
+      // Run multiple pages
+      for (let page = 1; page <= 10; page++) {
+        setScrapeProgress(`Scraping page ${page}/10...`);
+        
+        const result = await scrapeAcademies({
+          batch_size: 10,
+          page_offset: page,
+          dry_run: false,
+        });
+
+        toast({
+          title: `Page ${page} complete`,
+          description: `Created: ${result.created}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`,
+        });
+
+        // If no academies found on page, we've reached the end
+        if (result.academies.length === 0) {
+          break;
+        }
+      }
+
+      toast({
+        title: "Scrape complete",
+        description: "Academy import finished successfully",
+      });
+    } catch (error) {
+      console.error("Scrape error:", error);
+      toast({
+        title: "Scrape failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsScraping(false);
+      setScrapeProgress(null);
+    }
   };
 
   const loading = authLoading || isAdminLoading || (isAdmin && statsLoading);
@@ -221,6 +270,32 @@ export default function AdminDashboard() {
                       Manage trainer qualifications
                     </p>
                   </div>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-chart-4/10 flex items-center justify-center">
+                      <Download className="h-5 w-5" style={{ color: "hsl(var(--chart-4))" }} />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Scrape Academies</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {scrapeProgress || "Import from padelgids.nl"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleScrapeAcademies}
+                    disabled={isScraping}
+                  >
+                    {isScraping ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Start"
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>
