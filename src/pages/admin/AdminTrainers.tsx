@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin, useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
+import { useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +29,6 @@ import {
 import {
   Loader2,
   Search,
-  ArrowLeft,
-  ShieldAlert,
   MoreHorizontal,
   CreditCard,
   Eye,
@@ -39,23 +36,14 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { TrainerSubscriptionEditDialog } from "@/components/admin/TrainerSubscriptionEditDialog";
-export default function AdminTrainers() {
-  const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { invalidateTrainers } = useInvalidateAdminData();
 
-  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+export default function AdminTrainers() {
+  const { invalidateTrainers } = useInvalidateAdminData();
   const { data: trainers = [], isLoading: trainersLoading } = useAdminTrainers();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingTrainer, setEditingTrainer] = useState<TrainerProfileAdmin | null>(null);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth");
-    }
-  }, [authLoading, user, navigate]);
 
   const getSubscriptionStatus = (trainer: TrainerProfileAdmin) => {
     if (trainer.subscription_status === "active") return "active";
@@ -95,159 +83,143 @@ export default function AdminTrainers() {
     }
   };
 
-  const loading = authLoading || isAdminLoading || (isAdmin && trainersLoading);
-
-  if (loading) {
+  if (trainersLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <ShieldAlert className="h-16 w-16 text-destructive" />
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="text-muted-foreground">You don't have admin privileges.</p>
-        <Button onClick={() => navigate("/")}>Go Home</Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Trainer Management</h1>
-            <p className="text-sm text-muted-foreground">
-              View and manage trainer subscriptions
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Trainer Management</h1>
+          <p className="text-muted-foreground">
+            View and manage trainer subscriptions
+          </p>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All trainers</SelectItem>
-              <SelectItem value="public">Public</SelectItem>
-              <SelectItem value="private">Private</SelectItem>
-              <SelectItem value="active">Subscribed</SelectItem>
-              <SelectItem value="trial">Trial</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-            </SelectContent>
-          </Select>
+      {/* Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
         </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All trainers</SelectItem>
+            <SelectItem value="public">Public</SelectItem>
+            <SelectItem value="private">Private</SelectItem>
+            <SelectItem value="active">Subscribed</SelectItem>
+            <SelectItem value="trial">Trial</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
+      {/* Data Table */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Trainer</TableHead>
+              <TableHead>Visibility</TableHead>
+              <TableHead>Subscription</TableHead>
+              <TableHead>Joined</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredTrainers.length === 0 ? (
               <TableRow>
-                <TableHead>Trainer</TableHead>
-                <TableHead>Visibility</TableHead>
-                <TableHead>Subscription</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
+                <TableCell
+                  colSpan={5}
+                  className="text-center py-8 text-muted-foreground"
+                >
+                  No trainers found
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTrainers.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No trainers found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredTrainers.map((trainer) => {
-                  const status = getSubscriptionStatus(trainer);
-                  return (
-                    <TableRow key={trainer.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                            <AvatarFallback>
-                              {trainer.profile?.full_name?.[0]?.toUpperCase() || "T"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium">
-                              {trainer.profile?.full_name || "Unknown"}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {trainer.profile?.email || "No email"}
-                            </div>
+            ) : (
+              filteredTrainers.map((trainer) => {
+                const status = getSubscriptionStatus(trainer);
+                return (
+                  <TableRow key={trainer.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                          <AvatarFallback>
+                            {trainer.profile?.full_name?.[0]?.toUpperCase() || "T"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">
+                            {trainer.profile?.full_name || "Unknown"}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {trainer.profile?.email || "No email"}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {trainer.is_public ? (
-                          <div className="flex items-center gap-1 text-green-600">
-                            <Eye className="h-4 w-4" />
-                            <span className="text-sm">Public</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <EyeOff className="h-4 w-4" />
-                            <span className="text-sm">Private</span>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {format(new Date(trainer.created_at), "MMM d, yyyy")}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditingTrainer(trainer)}>
-                              <CreditCard className="mr-2 h-4 w-4" />
-                              Edit Subscription
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {trainer.is_public ? (
+                        <div className="flex items-center gap-1 text-green-600">
+                          <Eye className="h-4 w-4" />
+                          <span className="text-sm">Public</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <EyeOff className="h-4 w-4" />
+                          <span className="text-sm">Private</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(trainer.created_at), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingTrainer(trainer)}>
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            Edit Subscription
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-        <div className="mt-4 text-sm text-muted-foreground">
-          Showing {filteredTrainers.length} of {trainers.length} trainers
-        </div>
-      </main>
+      {/* Footer */}
+      <p className="text-sm text-muted-foreground">
+        Showing {filteredTrainers.length} of {trainers.length} trainers
+      </p>
 
       {editingTrainer && (
         <TrainerSubscriptionEditDialog

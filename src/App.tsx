@@ -61,6 +61,7 @@ import CycleRegistration from "./pages/CycleRegistration";
 import NotificationSettings from "./pages/NotificationSettings";
 import CalendarSettings from "./pages/CalendarSettings";
 import FollowingList from "./pages/FollowingList";
+import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLocations from "./pages/admin/AdminLocations";
 import AdminCertifications from "./pages/admin/AdminCertifications";
@@ -185,16 +186,18 @@ const App = () => (
             <Route path="/analytics" element={<TrainerAnalytics />} />
             <Route path="/settings/notifications" element={<NotificationSettings />} />
             <Route path="/settings/calendar" element={<CalendarSettings />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/admin/clubs" element={<AdminClubs />} />
-            <Route path="/admin/trainers" element={<AdminTrainers />} />
-            <Route path="/admin/locations" element={<AdminLocations />} />
-            <Route path="/admin/certifications" element={<AdminCertifications />} />
-            <Route path="/admin/club-claims" element={<AdminClubClaims />} />
-            <Route path="/admin/rating-systems" element={<AdminRatingSystems />} />
-            <Route path="/admin/academies" element={<AdminAcademies />} />
-            <Route path="/admin/pricing" element={<AdminPricing />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="clubs" element={<AdminClubs />} />
+              <Route path="trainers" element={<AdminTrainers />} />
+              <Route path="locations" element={<AdminLocations />} />
+              <Route path="certifications" element={<AdminCertifications />} />
+              <Route path="club-claims" element={<AdminClubClaims />} />
+              <Route path="rating-systems" element={<AdminRatingSystems />} />
+              <Route path="academies" element={<AdminAcademies />} />
+              <Route path="pricing" element={<AdminPricing />} />
+            </Route>
             <Route path="/club" element={<ClubLayout />}>
               <Route index element={<ClubDashboard />} />
               <Route path="profile" element={<ClubProfile />} />
