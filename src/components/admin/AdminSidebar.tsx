@@ -13,7 +13,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -25,57 +27,86 @@ import {
   LayoutDashboard,
   Users,
   GraduationCap,
-  Building2,
-  FileCheck,
   School,
   MapPin,
   Award,
   Settings,
   ChevronDown,
+  ChevronRight,
   CreditCard,
   Scale,
   LogOut,
   ShieldCheck,
+  FileCheck,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/admin", icon: LayoutDashboard, end: true },
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Trainers", url: "/admin/trainers", icon: GraduationCap },
-  { title: "Clubs", url: "/admin/clubs", icon: Building2 },
   { title: "Academies", url: "/admin/academies", icon: School },
-  { title: "Locations", url: "/admin/locations", icon: MapPin },
-  { title: "Certifications", url: "/admin/certifications", icon: Award },
 ];
 
 const settingsNavItems = [
+  { title: "Certifications", url: "/admin/certifications", icon: Award },
   { title: "Rating Systems", url: "/admin/rating-systems", icon: Scale },
   { title: "Pricing Plans", url: "/admin/pricing", icon: CreditCard },
 ];
 
 export function AdminSidebar() {
   const navigate = useNavigate();
-  const { state } = useSidebar();
+  const location = useLocation();
+  const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const { data: pendingClaimsCount = 0 } = usePendingClaimsCount();
+
+  // Track which collapsibles are open
+  const [locationsOpen, setLocationsOpen] = useState(
+    location.pathname.startsWith("/admin/locations") || 
+    location.pathname.startsWith("/admin/club")
+  );
+  const [settingsOpen, setSettingsOpen] = useState(
+    settingsNavItems.some(item => location.pathname.startsWith(item.url))
+  );
 
   const handleLogout = async () => {
     await signOut();
     navigate("/");
   };
 
+  const isLocationActive = location.pathname.startsWith("/admin/locations") || 
+                           location.pathname.startsWith("/admin/clubs") ||
+                           location.pathname.startsWith("/admin/club-claims");
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheck className="h-4 w-4" />
+        <div className="flex items-center justify-between px-2 py-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            {!collapsed && (
+              <span className="font-semibold">Admin Panel</span>
+            )}
           </div>
-          {!collapsed && (
-            <span className="font-semibold">Admin Panel</span>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={toggleSidebar}
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
         </div>
       </SidebarHeader>
 
@@ -99,40 +130,92 @@ export function AdminSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Club Claims with Badge */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Club Claims">
-                  <NavLink
-                    to="/admin/club-claims"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <FileCheck className="h-4 w-4" />
-                    {!collapsed && (
-                      <span className="flex-1 flex items-center justify-between">
-                        Club Claims
-                        {pendingClaimsCount > 0 && (
-                          <Badge variant="destructive" className="ml-2 h-5 px-1.5 text-xs">
-                            {pendingClaimsCount}
-                          </Badge>
-                        )}
-                      </span>
-                    )}
-                    {collapsed && pendingClaimsCount > 0 && (
-                      <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 text-[10px] flex items-center justify-center">
-                        {pendingClaimsCount}
-                      </Badge>
-                    )}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {/* Locations Group with Club Claims */}
+              <Collapsible
+                open={locationsOpen && !collapsed}
+                onOpenChange={setLocationsOpen}
+                className="group/locations"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton 
+                      tooltip="Locations" 
+                      className={isLocationActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
+                    >
+                      <MapPin className="h-4 w-4" />
+                      {!collapsed && (
+                        <>
+                          <span className="flex-1">Locations</span>
+                          {pendingClaimsCount > 0 && (
+                            <Badge variant="destructive" className="h-5 px-1.5 text-xs mr-1">
+                              {pendingClaimsCount}
+                            </Badge>
+                          )}
+                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/locations:rotate-90" />
+                        </>
+                      )}
+                      {collapsed && pendingClaimsCount > 0 && (
+                        <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 text-[10px] flex items-center justify-center">
+                          {pendingClaimsCount}
+                        </Badge>
+                      )}
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/admin/locations"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            All Locations
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/admin/clubs"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            Verified Clubs
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/admin/club-claims"
+                            className="flex items-center justify-between"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <span>Club Claims</span>
+                            {pendingClaimsCount > 0 && (
+                              <Badge variant="destructive" className="h-5 px-1.5 text-xs">
+                                {pendingClaimsCount}
+                              </Badge>
+                            )}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
         {/* Settings Group */}
         <SidebarGroup>
-          <Collapsible defaultOpen className="group/collapsible">
+          <Collapsible 
+            open={settingsOpen && !collapsed} 
+            onOpenChange={setSettingsOpen}
+            className="group/collapsible"
+          >
             <CollapsibleTrigger asChild>
               <SidebarMenuButton className="w-full justify-between" tooltip="Settings">
                 <div className="flex items-center gap-2">

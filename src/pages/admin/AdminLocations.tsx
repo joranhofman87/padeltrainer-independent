@@ -10,6 +10,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Upload,
+  CheckCircle2,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,7 @@ export default function AdminLocations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [showInactive, setShowInactive] = useState(false);
+  const [verifiedFilter, setVerifiedFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
@@ -79,6 +81,9 @@ export default function AdminLocations() {
     outdoor_courts: 0,
   });
   const [saving, setSaving] = useState(false);
+
+  // Get verified location IDs from club_profiles
+  const [verifiedLocationIds, setVerifiedLocationIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function checkAdmin() {
@@ -106,6 +111,17 @@ export default function AdminLocations() {
         setLocations(locationsData);
         setTrainerCounts(countsData);
         setCities(citiesData);
+
+        // Fetch verified club location IDs
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: verifiedClubs } = await supabase
+          .from('club_profiles')
+          .select('location_id')
+          .eq('is_verified', true);
+        
+        if (verifiedClubs) {
+          setVerifiedLocationIds(new Set(verifiedClubs.map(c => c.location_id)));
+        }
       } catch (error) {
         console.error('Error fetching locations:', error);
         toast({
@@ -128,7 +144,12 @@ export default function AdminLocations() {
       location.city.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCity = selectedCity === 'all' || location.city === selectedCity;
     const matchesActive = showInactive || location.is_active;
-    return matchesSearch && matchesCity && matchesActive;
+    const isVerified = verifiedLocationIds.has(location.id);
+    const matchesVerified = 
+      verifiedFilter === 'all' || 
+      (verifiedFilter === 'yes' && isVerified) || 
+      (verifiedFilter === 'no' && !isVerified);
+    return matchesSearch && matchesCity && matchesActive && matchesVerified;
   });
 
   const generateSlug = (name: string, city: string) => {
@@ -405,7 +426,7 @@ export default function AdminLocations() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -415,25 +436,37 @@ export default function AdminLocations() {
             className="pl-10"
           />
         </div>
-        <Select value={selectedCity} onValueChange={setSelectedCity}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by city" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All cities</SelectItem>
-            {cities.map(city => (
-              <SelectItem key={city} value={city}>
-                {city}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant={showInactive ? 'default' : 'outline'}
-          onClick={() => setShowInactive(!showInactive)}
-        >
-          {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Select value={selectedCity} onValueChange={setSelectedCity}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by city" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All cities</SelectItem>
+              {cities.map(city => (
+                <SelectItem key={city} value={city}>
+                  {city}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={verifiedFilter} onValueChange={setVerifiedFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Verified" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="yes">Verified</SelectItem>
+              <SelectItem value="no">Not Verified</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showInactive ? 'default' : 'outline'}
+            onClick={() => setShowInactive(!showInactive)}
+          >
+            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+          </Button>
+        </div>
       </div>
 
       {/* Data Table */}
@@ -445,6 +478,7 @@ export default function AdminLocations() {
               <TableHead>City</TableHead>
               <TableHead className="text-center">Courts</TableHead>
               <TableHead className="text-center">Trainers</TableHead>
+              <TableHead className="text-center">Verified</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -452,12 +486,14 @@ export default function AdminLocations() {
           <TableBody>
             {filteredLocations.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No locations found
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLocations.map(location => (
+              filteredLocations.map(location => {
+                const isVerified = verifiedLocationIds.has(location.id);
+                return (
                 <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -474,6 +510,13 @@ export default function AdminLocations() {
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {isVerified ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={location.is_active ? 'default' : 'outline'}>
@@ -504,7 +547,8 @@ export default function AdminLocations() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+              );
+            })
             )}
           </TableBody>
         </Table>
