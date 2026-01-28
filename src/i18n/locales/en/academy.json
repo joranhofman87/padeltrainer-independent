@@ -193,5 +193,10 @@
     "error": "Error",
     "success": "Success",
     "verified": "Verified"
+  },
+  "public": {
+    "notFound": "Academy Not Found",
+    "notFoundDescription": "This academy doesn't exist or is not public.",
+    "browseAcademies": "Browse Academies"
   }
 }

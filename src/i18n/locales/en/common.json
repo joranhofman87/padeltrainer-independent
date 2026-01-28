@@ -197,5 +197,21 @@
     "successDescription": "Your account has been permanently deleted.",
     "error": "Error",
     "errorDescription": "Failed to delete your account. Please try again."
-  }
+  },
+  "academies": "Academies",
+  "findAcademies": "Find Padel Academies",
+  "academiesDescription": "Discover professional padel training academies with certified trainers and multiple locations.",
+  "searchAcademies": "Search academies...",
+  "noAcademiesFound": "No academies found",
+  "tryDifferentSearch": "Try a different search term",
+  "noAcademiesYet": "There are no public academies yet.",
+  "clearSearch": "Clear Search",
+  "academyNotFound": "This academy doesn't exist or is not public.",
+  "browseAcademies": "Browse Academies",
+  "visitWebsite": "Visit Website",
+  "noDescription": "No description available.",
+  "avgRating": "Avg Rating",
+  "quickStats": "Quick Stats",
+  "location": "Location",
+  "trainer": "Trainer"
 }

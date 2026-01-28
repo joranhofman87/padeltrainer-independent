@@ -193,5 +193,10 @@
     "error": "Fout",
     "success": "Gelukt",
     "verified": "Geverifieerd"
+  },
+  "public": {
+    "notFound": "Academy Niet Gevonden",
+    "notFoundDescription": "Deze academy bestaat niet of is niet publiek.",
+    "browseAcademies": "Bekijk Academies"
   }
 }

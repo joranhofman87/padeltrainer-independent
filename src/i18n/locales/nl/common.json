@@ -197,5 +197,21 @@
     "successDescription": "Je account is permanent verwijderd.",
     "error": "Fout",
     "errorDescription": "Account verwijderen mislukt. Probeer het opnieuw."
-  }
+  },
+  "academies": "Academies",
+  "findAcademies": "Vind Padel Academies",
+  "academiesDescription": "Ontdek professionele padel trainingsacademies met gecertificeerde trainers en meerdere locaties.",
+  "searchAcademies": "Zoek academies...",
+  "noAcademiesFound": "Geen academies gevonden",
+  "tryDifferentSearch": "Probeer een andere zoekterm",
+  "noAcademiesYet": "Er zijn nog geen publieke academies.",
+  "clearSearch": "Zoekopdracht Wissen",
+  "academyNotFound": "Deze academy bestaat niet of is niet publiek.",
+  "browseAcademies": "Bekijk Academies",
+  "visitWebsite": "Bezoek Website",
+  "noDescription": "Geen beschrijving beschikbaar.",
+  "avgRating": "Gem. Beoordeling",
+  "quickStats": "Snelle Statistieken",
+  "location": "Locatie",
+  "trainer": "Trainer"
 }

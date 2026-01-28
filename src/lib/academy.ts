@@ -833,3 +833,109 @@ export async function cancelAcademyInvitation(invitationId: string): Promise<boo
 
   return true;
 }
+
+// ===== PUBLIC PROFILE FUNCTIONS =====
+
+// Get public trainers for an academy (for public profile page)
+export async function getPublicAcademyTrainers(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      id,
+      trainer_profile_id,
+      trainer_profile:trainer_profiles_safe(
+        id,
+        user_id,
+        hourly_rate,
+        experience_years,
+        specializations,
+        certifications,
+        is_verified
+      )
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .eq('status', 'active')
+    .eq('show_on_academy_page', true);
+
+  if (error) {
+    console.error('Error fetching public academy trainers:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Batch fetch profiles
+  const userIds = data.map((t: any) => t.trainer_profile?.user_id).filter(Boolean);
+  const { data: profiles } = await supabase
+    .from('profiles_public')
+    .select('user_id, full_name, avatar_url, bio, location')
+    .in('user_id', userIds);
+
+  // Batch fetch ratings
+  const trainerIds = data.map((t: any) => t.trainer_profile_id).filter(Boolean);
+  const { data: reviews } = await supabase
+    .from('reviews')
+    .select('trainer_id, rating')
+    .in('trainer_id', trainerIds)
+    .eq('is_public', true);
+
+  const ratingsByTrainer: Record<string, number[]> = {};
+  reviews?.forEach(review => {
+    if (!ratingsByTrainer[review.trainer_id]) {
+      ratingsByTrainer[review.trainer_id] = [];
+    }
+    ratingsByTrainer[review.trainer_id].push(review.rating);
+  });
+
+  const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+
+  return data
+    .map((trainer: any) => ({
+      ...trainer,
+      profile: trainer.trainer_profile?.user_id 
+        ? profileMap.get(trainer.trainer_profile.user_id) || null 
+        : null,
+      avgRating: ratingsByTrainer[trainer.trainer_profile_id]
+        ? ratingsByTrainer[trainer.trainer_profile_id].reduce((a, b) => a + b, 0) / ratingsByTrainer[trainer.trainer_profile_id].length
+        : undefined,
+    }))
+    .filter((t: any) => t.profile?.full_name);
+}
+
+// Get public locations for an academy (for public profile page)
+export async function getPublicAcademyLocations(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_locations')
+    .select(`
+      id,
+      location_id,
+      contract_type,
+      location:locations(id, name, city, slug, logo_url, street_address, postal_code)
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .eq('is_active', true)
+    .eq('show_on_academy_page', true);
+
+  if (error) {
+    console.error('Error fetching public academy locations:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Get all public academies for directory
+export async function getPublicAcademies(): Promise<AcademyProfile[]> {
+  const { data, error } = await supabase
+    .from('academy_profiles')
+    .select('*')
+    .eq('is_public', true)
+    .order('name');
+
+  if (error) {
+    console.error('Error fetching public academies:', error);
+    return [];
+  }
+
+  return data || [];
+}

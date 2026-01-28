@@ -96,6 +96,8 @@ import AcademyTrainers from "./pages/academy/AcademyTrainers";
 import AcademyLocations from "./pages/academy/AcademyLocations";
 import AcademyCycles from "./pages/academy/AcademyCycles";
 import AcademyTrainerInvitation from "./pages/academy/AcademyTrainerInvitation";
+import Academies from "./pages/Academies";
+import AcademyPublicProfile from "./pages/AcademyPublicProfile";
 
 const queryClient = new QueryClient();
 
@@ -127,6 +129,8 @@ const App = () => (
               <Route path="trainer/:trainerId" element={<TrainerProfile />} />
               <Route path="locations" element={<Locations />} />
               <Route path="locations/:slug" element={<LocationDetail />} />
+              <Route path="academies" element={<Academies />} />
+              <Route path="academies/:slug" element={<AcademyPublicProfile />} />
               <Route path="book/:trainerId" element={<BookLesson />} />
               <Route path="register/:cycleId" element={<CycleRegistration />} />
             </Route>
