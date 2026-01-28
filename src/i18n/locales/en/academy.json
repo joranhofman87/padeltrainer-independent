@@ -1,0 +1,106 @@
+{
+  "badge": "Academy Manager",
+  "dashboard": {
+    "title": "Academy Dashboard",
+    "welcome": "Welcome back",
+    "overview": "Overview",
+    "calendar": "Calendar",
+    "pendingVerification": "Your academy is pending verification",
+    "pendingVerificationDescription": "An admin will review your academy and verify it. You'll have full access once verified.",
+    "noAcademies": "You haven't created any academies yet.",
+    "createAcademy": "Create an Academy",
+    "viewPublicProfile": "View Public Profile",
+    "public": "Public"
+  },
+  "stats": {
+    "trainers": "Trainers",
+    "locations": "Locations",
+    "upcomingSessions": "Upcoming Sessions",
+    "profileViews": "Profile Views",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days"
+  },
+  "onboarding": {
+    "title": "Create Your Academy",
+    "subtitle": "Set up your padel training academy",
+    "academyName": "Academy Name",
+    "namePlaceholder": "Padel Pro Academy",
+    "contactEmail": "Contact Email",
+    "emailPlaceholder": "info@youracademy.com",
+    "description": "About Your Academy",
+    "descriptionPlaceholder": "Tell us about your academy, your teaching philosophy, and what makes you unique...",
+    "createAcademy": "Create Academy",
+    "creating": "Creating...",
+    "success": "Academy Created!",
+    "successDescription": "Your academy is pending verification. We will review it shortly.",
+    "error": "Error",
+    "errorDescription": "Failed to create academy",
+    "nameRequired": "Please enter your academy name",
+    "emailRequired": "Contact email is required",
+    "sessionExpired": "Your session has expired. Please refresh and try again.",
+    "verificationNote": "Your academy will be reviewed and verified by our team. You can start configuring your profile while waiting for verification."
+  },
+  "trainers": {
+    "title": "Academy Trainers",
+    "description": "Trainers who are part of your academy.",
+    "manage": "Manage Trainers",
+    "empty": "No trainers yet",
+    "emptyDescription": "Invite trainers to join your academy.",
+    "inviteTrainer": "Invite Trainer"
+  },
+  "locations": {
+    "title": "Academy Locations",
+    "description": "Clubs and venues where your academy operates.",
+    "manage": "Manage Locations",
+    "empty": "No locations yet",
+    "emptyDescription": "Add clubs where your academy teaches."
+  },
+  "profile": {
+    "title": "Academy Profile",
+    "description": "Manage your academy's public profile.",
+    "academyName": "Academy Name",
+    "namePlaceholder": "Your Academy Name",
+    "about": "About",
+    "descriptionPlaceholder": "Tell visitors about your academy...",
+    "contactEmail": "Contact Email",
+    "phone": "Phone",
+    "website": "Website",
+    "publicProfile": "Public Profile",
+    "publicProfileDescription": "Make your academy discoverable in the directory",
+    "verificationRequired": "Your academy must be verified before it can be made public.",
+    "socialMedia": "Social Media",
+    "socialMediaDescription": "Add links to your academy's social media profiles",
+    "saved": "Profile Saved",
+    "savedDescription": "Your profile has been updated."
+  },
+  "managers": {
+    "title": "Academy Managers",
+    "description": "People who can manage this academy.",
+    "owner": "Owner",
+    "manager": "Manager",
+    "noManagers": "No managers found"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "trainers": "Trainers",
+    "players": "Players",
+    "calendar": "Calendar",
+    "profile": "Profile",
+    "locations": "Locations",
+    "earnings": "Earnings",
+    "subscription": "Subscription",
+    "settings": "Settings",
+    "cycles": "Cycles",
+    "team": "Team",
+    "schedule": "Schedule",
+    "academy": "Academy"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save Changes",
+    "saving": "Saving...",
+    "error": "Error",
+    "success": "Success",
+    "verified": "Verified"
+  }
+}
