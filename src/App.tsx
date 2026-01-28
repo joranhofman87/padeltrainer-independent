@@ -86,6 +86,12 @@ import ClubSubscription from "./pages/club/ClubSubscription";
 import ClubTrainerInvitation from "./pages/club/ClubTrainerInvitation";
 import AdminClubClaims from "./pages/admin/AdminClubClaims";
 import NotFound from "./pages/NotFound";
+import AcademySignup from "./pages/AcademySignup";
+import AcademyOnboarding from "./pages/AcademyOnboarding";
+import AcademyLayout from "./components/academy/AcademyLayout";
+import AcademyDashboard from "./pages/academy/AcademyDashboard";
+import AcademyProfile from "./pages/academy/AcademyProfile";
+import AcademySettings from "./pages/academy/AcademySettings";
 
 const queryClient = new QueryClient();
 
@@ -128,8 +134,10 @@ const App = () => (
             <Route path="/signup/player" element={<PlayerSignup />} />
             <Route path="/signup/trainer" element={<TrainerSignup />} />
             <Route path="/signup/club" element={<ClubSignup />} />
+            <Route path="/signup/academy" element={<AcademySignup />} />
             <Route path="/onboarding/club" element={<ClubOnboarding />} />
             <Route path="/onboarding/:role" element={<Onboarding />} />
+            <Route path="/academy/onboarding" element={<AcademyOnboarding />} />
             <Route path="/select-role" element={<SelectRole />} />
             
             {/* Player routes - wrapped in PlayerLayout for persistent header */}
@@ -190,6 +198,11 @@ const App = () => (
               <Route path="settings" element={<ClubSettings />} />
               <Route path="subscription" element={<ClubSubscription />} />
               <Route path="invitation/:token" element={<ClubTrainerInvitation />} />
+            </Route>
+            <Route path="/academy" element={<AcademyLayout />}>
+              <Route index element={<AcademyDashboard />} />
+              <Route path="profile" element={<AcademyProfile />} />
+              <Route path="settings" element={<AcademySettings />} />
             </Route>
             <Route path="*" element={<NotFound />} />
             </Routes>

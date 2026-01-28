@@ -1,0 +1,106 @@
+{
+  "badge": "Academy Beheerder",
+  "dashboard": {
+    "title": "Academy Dashboard",
+    "welcome": "Welkom terug",
+    "overview": "Overzicht",
+    "calendar": "Kalender",
+    "pendingVerification": "Je academy wacht op verificatie",
+    "pendingVerificationDescription": "Een beheerder zal je academy beoordelen en verifiëren. Je krijgt volledige toegang zodra dit is goedgekeurd.",
+    "noAcademies": "Je hebt nog geen academies aangemaakt.",
+    "createAcademy": "Maak een Academy",
+    "viewPublicProfile": "Bekijk Publiek Profiel",
+    "public": "Publiek"
+  },
+  "stats": {
+    "trainers": "Trainers",
+    "locations": "Locaties",
+    "upcomingSessions": "Aankomende Sessies",
+    "profileViews": "Profielweergaven",
+    "last7Days": "Laatste 7 Dagen",
+    "last30Days": "Laatste 30 Dagen"
+  },
+  "onboarding": {
+    "title": "Maak je Academy",
+    "subtitle": "Stel je padel training academy in",
+    "academyName": "Academy Naam",
+    "namePlaceholder": "Padel Pro Academy",
+    "contactEmail": "Contact E-mail",
+    "emailPlaceholder": "info@jouacademy.com",
+    "description": "Over je Academy",
+    "descriptionPlaceholder": "Vertel ons over je academy, je trainingsfilosofie en wat jullie uniek maakt...",
+    "createAcademy": "Academy Aanmaken",
+    "creating": "Aanmaken...",
+    "success": "Academy Aangemaakt!",
+    "successDescription": "Je academy wacht op verificatie. We bekijken het zo snel mogelijk.",
+    "error": "Fout",
+    "errorDescription": "Academy aanmaken mislukt",
+    "nameRequired": "Voer de naam van je academy in",
+    "emailRequired": "Contact e-mail is verplicht",
+    "sessionExpired": "Je sessie is verlopen. Vernieuw de pagina en probeer opnieuw.",
+    "verificationNote": "Je academy wordt beoordeeld en geverifieerd door ons team. Je kunt alvast beginnen met het configureren van je profiel."
+  },
+  "trainers": {
+    "title": "Academy Trainers",
+    "description": "Trainers die deel uitmaken van je academy.",
+    "manage": "Trainers Beheren",
+    "empty": "Nog geen trainers",
+    "emptyDescription": "Nodig trainers uit om lid te worden van je academy.",
+    "inviteTrainer": "Trainer Uitnodigen"
+  },
+  "locations": {
+    "title": "Academy Locaties",
+    "description": "Clubs en locaties waar je academy actief is.",
+    "manage": "Locaties Beheren",
+    "empty": "Nog geen locaties",
+    "emptyDescription": "Voeg clubs toe waar je academy les geeft."
+  },
+  "profile": {
+    "title": "Academy Profiel",
+    "description": "Beheer het publieke profiel van je academy.",
+    "academyName": "Academy Naam",
+    "namePlaceholder": "Je Academy Naam",
+    "about": "Over",
+    "descriptionPlaceholder": "Vertel bezoekers over je academy...",
+    "contactEmail": "Contact E-mail",
+    "phone": "Telefoon",
+    "website": "Website",
+    "publicProfile": "Publiek Profiel",
+    "publicProfileDescription": "Maak je academy vindbaar in de directory",
+    "verificationRequired": "Je academy moet geverifieerd zijn voordat het publiek kan worden gemaakt.",
+    "socialMedia": "Social Media",
+    "socialMediaDescription": "Voeg links toe naar de social media profielen van je academy",
+    "saved": "Profiel Opgeslagen",
+    "savedDescription": "Je profiel is bijgewerkt."
+  },
+  "managers": {
+    "title": "Academy Beheerders",
+    "description": "Mensen die deze academy kunnen beheren.",
+    "owner": "Eigenaar",
+    "manager": "Beheerder",
+    "noManagers": "Geen beheerders gevonden"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "trainers": "Trainers",
+    "players": "Spelers",
+    "calendar": "Kalender",
+    "profile": "Profiel",
+    "locations": "Locaties",
+    "earnings": "Inkomsten",
+    "subscription": "Abonnement",
+    "settings": "Instellingen",
+    "cycles": "Cycli",
+    "team": "Team",
+    "schedule": "Schema",
+    "academy": "Academy"
+  },
+  "common": {
+    "cancel": "Annuleren",
+    "save": "Wijzigingen Opslaan",
+    "saving": "Opslaan...",
+    "error": "Fout",
+    "success": "Gelukt",
+    "verified": "Geverifieerd"
+  }
+}

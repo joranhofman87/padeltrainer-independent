@@ -1,0 +1,406 @@
+import { supabase } from '@/integrations/supabase/client';
+
+export interface AcademyProfile {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  website_url: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_linkedin: string | null;
+  social_youtube: string | null;
+  social_tiktok: string | null;
+  is_verified: boolean;
+  is_public: boolean;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
+  subscription_ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AcademyManager {
+  id: string;
+  academy_profile_id: string;
+  user_id: string;
+  role: 'owner' | 'manager';
+  invited_by: string | null;
+  created_at: string;
+}
+
+export interface AcademyTrainer {
+  id: string;
+  academy_profile_id: string;
+  trainer_profile_id: string;
+  status: 'active' | 'invited' | 'inactive';
+  payment_percentage: number;
+  show_on_academy_page: boolean;
+  invited_by: string | null;
+  joined_at: string | null;
+  created_at: string;
+}
+
+export interface AcademyLocation {
+  id: string;
+  academy_profile_id: string;
+  location_id: string;
+  contract_type: 'exclusive' | 'non_exclusive';
+  contract_start: string | null;
+  contract_end: string | null;
+  is_active: boolean;
+  show_on_academy_page: boolean;
+  show_on_club_page: boolean;
+  created_at: string;
+}
+
+// Generate a URL-friendly slug from academy name
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Remove consecutive hyphens
+    .trim();
+}
+
+// Check if a slug is already taken
+async function isSlugTaken(slug: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('academy_profiles')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle();
+  return !!data;
+}
+
+// Generate a unique slug
+async function generateUniqueSlug(name: string): Promise<string> {
+  let baseSlug = generateSlug(name);
+  let slug = baseSlug;
+  let counter = 1;
+  
+  while (await isSlugTaken(slug)) {
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+  
+  return slug;
+}
+
+// Create a new academy
+export async function createAcademy(
+  name: string,
+  userId: string,
+  contactEmail?: string,
+  description?: string
+): Promise<{ success: boolean; academyId?: string; error: Error | null }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return { 
+      success: false, 
+      error: new Error('Not authenticated. Please log in and try again.') 
+    };
+  }
+
+  try {
+    const slug = await generateUniqueSlug(name);
+
+    // Create the academy profile
+    const { data: academy, error: profileError } = await supabase
+      .from('academy_profiles')
+      .insert({
+        name,
+        slug,
+        description: description || null,
+        contact_email: contactEmail || null,
+        is_verified: false,
+        is_public: false,
+        created_by: session.user.id,
+      })
+      .select('id')
+      .single();
+
+    if (profileError) {
+      console.error('Error creating academy profile:', profileError);
+      return { success: false, error: new Error(profileError.message) };
+    }
+
+    // Add the user as the owner
+    const { error: managerError } = await supabase
+      .from('academy_managers')
+      .insert({
+        academy_profile_id: academy.id,
+        user_id: session.user.id,
+        role: 'owner',
+      });
+
+    if (managerError) {
+      console.error('Error creating academy manager:', managerError);
+      // Clean up the academy profile if manager creation fails
+      await supabase.from('academy_profiles').delete().eq('id', academy.id);
+      return { success: false, error: new Error(managerError.message) };
+    }
+
+    // Assign the 'academy' role to the user if they don't already have it
+    const { error: roleError } = await supabase
+      .from('user_roles')
+      .insert({ user_id: session.user.id, role: 'academy' });
+
+    // Ignore duplicate key error
+    if (roleError && roleError.code !== '23505') {
+      console.error('Error setting academy role:', roleError);
+    }
+
+    return { success: true, academyId: academy.id, error: null };
+  } catch (err) {
+    console.error('Error creating academy:', err);
+    return { success: false, error: err as Error };
+  }
+}
+
+// Get user's academy profiles
+export async function getUserAcademyProfiles(userId: string): Promise<(AcademyProfile & { role: string })[]> {
+  const { data, error } = await supabase
+    .from('academy_managers')
+    .select(`
+      role,
+      academy_profile:academy_profiles(*)
+    `)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching user academy profiles:', error);
+    return [];
+  }
+
+  return data?.map((item: any) => ({
+    ...item.academy_profile,
+    role: item.role,
+  })) || [];
+}
+
+// Check if user is an academy manager
+export async function isUserAcademyManager(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('academy_managers')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1);
+
+  if (error) {
+    console.error('Error checking academy manager status:', error);
+    return false;
+  }
+
+  return (data?.length || 0) > 0;
+}
+
+// Get academy by slug (for public profile)
+export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyProfile> | null> {
+  const { data, error } = await supabase
+    .from('academy_profiles_public')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_verified', true)
+    .eq('is_public', true)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching academy by slug:', error);
+    return null;
+  }
+
+  return data;
+}
+
+// Get academy by ID
+export async function getAcademyById(id: string): Promise<AcademyProfile | null> {
+  const { data, error } = await supabase
+    .from('academy_profiles')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching academy by id:', error);
+    return null;
+  }
+
+  return data;
+}
+
+// Update academy profile
+export async function updateAcademyProfile(
+  academyId: string,
+  updates: Partial<AcademyProfile>
+): Promise<AcademyProfile | null> {
+  const { data, error } = await supabase
+    .from('academy_profiles')
+    .update(updates)
+    .eq('id', academyId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating academy profile:', error);
+    return null;
+  }
+
+  return data;
+}
+
+// Get academy trainers
+export async function getAcademyTrainers(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      *,
+      trainer_profile:trainer_profiles(
+        id,
+        user_id,
+        hourly_rate,
+        experience_years,
+        specializations,
+        certifications,
+        is_verified
+      )
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('Error fetching academy trainers:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Get academy locations
+export async function getAcademyLocations(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_locations')
+    .select(`
+      *,
+      location:locations(*)
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .eq('is_active', true);
+
+  if (error) {
+    console.error('Error fetching academy locations:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Get trainer's academy affiliation (for trainer profile display)
+export async function getTrainerAcademy(trainerProfileId: string): Promise<Partial<AcademyProfile> | null> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      academy_profile:academy_profiles_public(*)
+    `)
+    .eq('trainer_profile_id', trainerProfileId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching trainer academy:', error);
+    return null;
+  }
+
+  return data?.academy_profile || null;
+}
+
+// Get academies at a location (for club/location page display)
+export async function getAcademiesAtLocation(locationId: string): Promise<Partial<AcademyProfile>[]> {
+  const { data, error } = await supabase
+    .from('academy_locations')
+    .select(`
+      academy_profile:academy_profiles_public(*)
+    `)
+    .eq('location_id', locationId)
+    .eq('is_active', true)
+    .eq('show_on_club_page', true);
+
+  if (error) {
+    console.error('Error fetching academies at location:', error);
+    return [];
+  }
+
+  return data?.map((item: any) => item.academy_profile).filter(Boolean) || [];
+}
+
+// Get academy managers
+export async function getAcademyManagers(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_managers')
+    .select('*')
+    .eq('academy_profile_id', academyProfileId);
+
+  if (error) {
+    console.error('Error fetching academy managers:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Batch fetch all profiles
+  const userIds = data.map((m) => m.user_id);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, email, avatar_url')
+    .in('user_id', userIds);
+
+  const profileMap = new Map(
+    (profiles || []).map((p) => [p.user_id, p])
+  );
+
+  return data.map((manager) => ({
+    ...manager,
+    profile: profileMap.get(manager.user_id) || null,
+  }));
+}
+
+// Get academy view stats
+export async function getAcademyViewStats(academyProfileId: string): Promise<{ last7Days: number; last30Days: number }> {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [last7Response, last30Response] = await Promise.all([
+    supabase
+      .from('academy_profile_views')
+      .select('id', { count: 'exact', head: true })
+      .eq('academy_profile_id', academyProfileId)
+      .gte('viewed_at', sevenDaysAgo),
+    supabase
+      .from('academy_profile_views')
+      .select('id', { count: 'exact', head: true })
+      .eq('academy_profile_id', academyProfileId)
+      .gte('viewed_at', thirtyDaysAgo),
+  ]);
+
+  return {
+    last7Days: last7Response.count || 0,
+    last30Days: last30Response.count || 0,
+  };
+}
+
+// Record academy profile view
+export async function recordAcademyProfileView(academyProfileId: string, sessionId?: string): Promise<void> {
+  await supabase.from('academy_profile_views').insert({
+    academy_profile_id: academyProfileId,
+    session_id: sessionId || null,
+  });
+}
