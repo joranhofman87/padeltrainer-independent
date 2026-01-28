@@ -170,6 +170,7 @@ interface AcademyProfileRow {
   created_at: string;
   contact_email: string | null;
   logo_url: string | null;
+  managers: { user_id: string; role: string }[];
 }
 
 export interface AcademyProfileAdmin {
@@ -184,6 +185,7 @@ export interface AcademyProfileAdmin {
   created_at: string;
   contact_email: string | null;
   logo_url: string | null;
+  owner_user_id: string | null;
 }
 
 export function useAdminAcademies() {
@@ -206,18 +208,44 @@ export function useAdminAcademies() {
           trial_ends_at,
           created_at,
           contact_email,
-          logo_url
+          logo_url,
+          managers:academy_managers(user_id, role)
         `
         )
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      
+      // Transform managers array to get owner user_id
+      return (data as AcademyProfileRow[] || []).map((a) => {
+        const owner = a.managers?.find((m) => m.role === "owner") || a.managers?.[0];
+        return {
+          ...a,
+          managers: undefined,
+          owner_user_id: owner?.user_id || null,
+        };
+      });
     },
     enabled: isAdmin === true,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
   });
+}
+
+interface ClubProfileRow {
+  id: string;
+  is_verified: boolean;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
+  created_at: string;
+  location: {
+    name: string;
+    city: string;
+    country: string;
+    slug: string;
+  } | null;
+  managers: { user_id: string; role: string }[];
 }
 
 export interface ClubProfileAdmin {
@@ -231,7 +259,9 @@ export interface ClubProfileAdmin {
     name: string;
     city: string;
     country: string;
+    slug: string;
   } | null;
+  owner_user_id: string | null;
 }
 
 export function useAdminClubs() {
@@ -250,13 +280,23 @@ export function useAdminClubs() {
           subscription_tier,
           trial_ends_at,
           created_at,
-          location:locations!club_profiles_location_id_fkey(name, city, country)
+          location:locations!club_profiles_location_id_fkey(name, city, country, slug),
+          managers:club_managers(user_id, role)
         `
         )
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      
+      // Transform managers array to get owner user_id
+      return (data as ClubProfileRow[] || []).map((c) => {
+        const owner = c.managers?.find((m) => m.role === "owner") || c.managers?.[0];
+        return {
+          ...c,
+          managers: undefined,
+          owner_user_id: owner?.user_id || null,
+        };
+      });
     },
     enabled: isAdmin === true,
     staleTime: STALE_TIME,

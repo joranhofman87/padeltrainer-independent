@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +23,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -33,9 +33,12 @@ import {
   CreditCard,
   Eye,
   EyeOff,
+  ExternalLink,
+  LogIn,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TrainerSubscriptionEditDialog } from "@/components/admin/TrainerSubscriptionEditDialog";
+import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 
 export default function AdminTrainers() {
   const { invalidateTrainers } = useInvalidateAdminData();
@@ -44,6 +47,7 @@ export default function AdminTrainers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingTrainer, setEditingTrainer] = useState<TrainerProfileAdmin | null>(null);
+  const [impersonatingTrainer, setImpersonatingTrainer] = useState<TrainerProfileAdmin | null>(null);
 
   const getSubscriptionStatus = (trainer: TrainerProfileAdmin) => {
     if (trainer.subscription_status === "active") return "active";
@@ -203,7 +207,20 @@ export default function AdminTrainers() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setEditingTrainer(trainer)}>
                             <CreditCard className="mr-2 h-4 w-4" />
-                            Edit Subscription
+                            Edit Trainer
+                          </DropdownMenuItem>
+                          {trainer.is_public && (
+                            <DropdownMenuItem
+                              onClick={() => window.open(`/en/trainers/${trainer.id}`, "_blank")}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View Profile
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setImpersonatingTrainer(trainer)}>
+                            <LogIn className="mr-2 h-4 w-4" />
+                            Login as Trainer
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -233,6 +250,16 @@ export default function AdminTrainers() {
             is_public: editingTrainer.is_public,
           }}
           onSuccess={() => invalidateTrainers()}
+        />
+      )}
+
+      {impersonatingTrainer && (
+        <ImpersonateUserDialog
+          open={!!impersonatingTrainer}
+          onOpenChange={(open) => !open && setImpersonatingTrainer(null)}
+          targetUserId={impersonatingTrainer.user_id}
+          targetUserName={impersonatingTrainer.profile?.full_name || "Unknown"}
+          targetUserEmail={impersonatingTrainer.profile?.email}
         />
       )}
     </div>
