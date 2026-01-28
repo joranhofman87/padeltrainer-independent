@@ -13,7 +13,9 @@ import {
   ToggleLeft,
   ToggleRight,
   ShieldAlert,
+  Upload,
 } from 'lucide-react';
+import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +67,7 @@ export default function AdminLocations() {
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -208,6 +211,14 @@ export default function AdminLocations() {
         logo_url: null,
         latitude: null,
         longitude: null,
+        phone: null,
+        email: null,
+        facebook_url: null,
+        instagram_url: null,
+        google_maps_url: null,
+        google_rating: null,
+        google_review_count: null,
+        opening_hours: null,
       };
 
       if (editingLocation) {
@@ -285,6 +296,10 @@ export default function AdminLocations() {
               Manage padel venues · {locations.length} total locations
             </p>
           </div>
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openAddDialog}>
@@ -520,6 +535,18 @@ export default function AdminLocations() {
           </Table>
         </div>
       </main>
+
+      <ImportLocationsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onLocationsImported={async () => {
+          const locationsData = await getAllLocations();
+          setLocations(locationsData);
+          const countsData = await getLocationTrainerCounts();
+          setTrainerCounts(countsData);
+          toast({ title: 'Success', description: 'Locations imported successfully' });
+        }}
+      />
     </div>
   );
 }

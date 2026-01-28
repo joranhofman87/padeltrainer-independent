@@ -3,6 +3,38 @@
   "noPermission": "You don't have permission to access this page.",
   "goHome": "Go Home",
   "goBack": "Go Back",
+  "locations": {
+    "import": {
+      "title": "Import Locations",
+      "description": "Bulk import padel clubs from CSV file",
+      "dropHere": "Drop CSV file here",
+      "orClickToSelect": "or click to select",
+      "selectFile": "Select File",
+      "downloadTemplate": "Download Template",
+      "needTemplate": "Need a template?",
+      "templateDescription": "Download our CSV template with the correct column format",
+      "requiredColumns": "Required columns",
+      "optionalColumns": "Optional columns",
+      "validRows": "{{count}} valid",
+      "invalidRows": "{{count}} invalid",
+      "duplicateRows": "{{count}} duplicates",
+      "importing": "Importing locations...",
+      "complete": "Import Complete",
+      "importedCount": "{{count}} locations imported",
+      "failedCount": "{{count}} failed",
+      "skippedCount": "{{count}} skipped (duplicates)",
+      "invalidFile": "Invalid file",
+      "noDataRows": "No data rows found",
+      "missingColumns": "Missing required columns: name, city",
+      "csvOnly": "Please select a CSV file",
+      "errors": {
+        "nameMissing": "Name is required",
+        "cityMissing": "City is required",
+        "duplicateSlug": "Already exists",
+        "duplicateInFile": "Duplicate in file"
+      }
+    }
+  },
   "pricing": {
     "title": "Pricing Management",
     "trainerPlans": "Trainer Plans",
