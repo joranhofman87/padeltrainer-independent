@@ -128,28 +128,33 @@ export function useAdminTrainers() {
   return useQuery({
     queryKey: ["admin", "trainers"],
     queryFn: async (): Promise<TrainerProfileAdmin[]> => {
-      const { data, error } = await supabase
+      // Fetch trainer profiles
+      const { data: trainers, error: trainersError } = await supabase
         .from("trainer_profiles")
-        .select(
-          `
-          id,
-          user_id,
-          subscription_status,
-          trial_ends_at,
-          trial_started_at,
-          is_public,
-          created_at,
-          profile:profiles!trainer_profiles_user_id_fkey(full_name, email, avatar_url)
-        `
-        )
+        .select("id, user_id, subscription_status, trial_ends_at, trial_started_at, is_public, created_at")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      
-      // Transform profile array to single object
-      return (data as TrainerProfileRow[] || []).map((t) => ({
+      if (trainersError) throw trainersError;
+      if (!trainers || trainers.length === 0) return [];
+
+      // Fetch profiles for these trainers
+      const userIds = trainers.map((t) => t.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email, avatar_url")
+        .in("user_id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Create lookup map for profiles
+      const profilesMap = new Map(
+        (profiles || []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email, avatar_url: p.avatar_url }])
+      );
+
+      // Merge trainers with profiles
+      return trainers.map((t) => ({
         ...t,
-        profile: t.profile?.[0] || null,
+        profile: profilesMap.get(t.user_id) || null,
       }));
     },
     enabled: isAdmin === true,
