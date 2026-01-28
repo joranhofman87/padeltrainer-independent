@@ -85,17 +85,17 @@ export function TrainerSubscriptionEditDialog({
       if (error) throw error;
 
       toast({
-        title: "Subscription updated",
-        description: `${trainerName}'s subscription has been updated successfully.`,
+        title: "Trainer updated",
+        description: `${trainerName}'s profile has been updated successfully.`,
       });
 
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating subscription:", error);
+      console.error("Error updating trainer:", error);
       toast({
         title: "Error",
-        description: "Failed to update subscription. Please try again.",
+        description: "Failed to update trainer. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -107,13 +107,27 @@ export function TrainerSubscriptionEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit Trainer Subscription</DialogTitle>
+          <DialogTitle>Edit Trainer</DialogTitle>
           <DialogDescription>
-            Manually update subscription for {trainerName}
+            Update settings for {trainerName}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="is-public">Profile Visibility</Label>
+              <p className="text-sm text-muted-foreground">
+                Allow trainer to appear in public listings
+              </p>
+            </div>
+            <Switch
+              id="is-public"
+              checked={isPublic}
+              onCheckedChange={setIsPublic}
+            />
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="status">Subscription Status</Label>
             <Select value={status} onValueChange={handleStatusChange}>
@@ -157,20 +171,6 @@ export function TrainerSubscriptionEditDialog({
               </Popover>
             </div>
           )}
-
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="is-public">Profile Visibility</Label>
-              <p className="text-sm text-muted-foreground">
-                Allow trainer to appear in public listings
-              </p>
-            </div>
-            <Switch
-              id="is-public"
-              checked={isPublic}
-              onCheckedChange={setIsPublic}
-            />
-          </div>
         </div>
 
         <DialogFooter>

@@ -22,8 +22,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Loader2,
   Search,
@@ -32,9 +39,12 @@ import {
   XCircle,
   MoreHorizontal,
   CreditCard,
+  ExternalLink,
+  LogIn,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ClubSubscriptionEditDialog } from "@/components/admin/ClubSubscriptionEditDialog";
+import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 
 export default function AdminClubs() {
   const { invalidateClubs } = useInvalidateAdminData();
@@ -46,6 +56,7 @@ export default function AdminClubs() {
   const [verifiedFilter, setVerifiedFilter] = useState<string>("all");
   const [paidFilter, setPaidFilter] = useState<string>("all");
   const [editingClub, setEditingClub] = useState<ClubProfileAdmin | null>(null);
+  const [impersonatingClub, setImpersonatingClub] = useState<ClubProfileAdmin | null>(null);
 
   // Extract unique countries and cities for filter dropdowns
   const { countries, cities } = useMemo(() => {
@@ -281,8 +292,37 @@ export default function AdminClubs() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setEditingClub(club)}>
                             <CreditCard className="mr-2 h-4 w-4" />
-                            Edit Subscription
+                            Edit Club
                           </DropdownMenuItem>
+                          {club.location?.slug && (
+                            <DropdownMenuItem
+                              onClick={() => window.open(`/en/locations/${club.location?.slug}`, "_blank")}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View Profile
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {club.owner_user_id ? (
+                            <DropdownMenuItem onClick={() => setImpersonatingClub(club)}>
+                              <LogIn className="mr-2 h-4 w-4" />
+                              Login as Manager
+                            </DropdownMenuItem>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuItem disabled className="opacity-50">
+                                    <LogIn className="mr-2 h-4 w-4" />
+                                    Login as Manager
+                                  </DropdownMenuItem>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>No manager assigned</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -309,8 +349,18 @@ export default function AdminClubs() {
             subscription_status: editingClub.subscription_status,
             subscription_tier: editingClub.subscription_tier,
             trial_ends_at: editingClub.trial_ends_at,
+            is_verified: editingClub.is_verified,
           }}
           onSuccess={() => invalidateClubs()}
+        />
+      )}
+
+      {impersonatingClub && impersonatingClub.owner_user_id && (
+        <ImpersonateUserDialog
+          open={!!impersonatingClub}
+          onOpenChange={(open) => !open && setImpersonatingClub(null)}
+          targetUserId={impersonatingClub.owner_user_id}
+          targetUserName={impersonatingClub.location?.name || "Unknown"}
         />
       )}
     </div>

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -32,6 +33,7 @@ interface ClubSubscriptionData {
   subscription_status: string | null;
   subscription_tier: string | null;
   trial_ends_at: string | null;
+  is_verified: boolean;
 }
 
 interface ClubSubscriptionEditDialogProps {
@@ -62,6 +64,7 @@ export function ClubSubscriptionEditDialog({
   const [trialEndsAt, setTrialEndsAt] = useState<Date | undefined>(
     currentData.trial_ends_at ? new Date(currentData.trial_ends_at) : undefined
   );
+  const [isVerified, setIsVerified] = useState(currentData.is_verified);
 
   const handleStatusChange = (newStatus: string) => {
     setStatus(newStatus);
@@ -79,23 +82,24 @@ export function ClubSubscriptionEditDialog({
           subscription_status: status,
           subscription_tier: tier,
           trial_ends_at: status === "active" ? null : (trialEndsAt?.toISOString() || null),
+          is_verified: isVerified,
         })
         .eq("id", clubId);
 
       if (error) throw error;
 
       toast({
-        title: "Subscription updated",
-        description: `${clubName}'s subscription has been updated successfully.`,
+        title: "Club updated",
+        description: `${clubName} has been updated successfully.`,
       });
 
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating subscription:", error);
+      console.error("Error updating club:", error);
       toast({
         title: "Error",
-        description: "Failed to update subscription. Please try again.",
+        description: "Failed to update club. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -107,13 +111,27 @@ export function ClubSubscriptionEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit Club Subscription</DialogTitle>
+          <DialogTitle>Edit Club</DialogTitle>
           <DialogDescription>
-            Manually update subscription for {clubName}
+            Update settings for {clubName}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="is-verified">Verified</Label>
+              <p className="text-sm text-muted-foreground">
+                Mark this club as verified
+              </p>
+            </div>
+            <Switch
+              id="is-verified"
+              checked={isVerified}
+              onCheckedChange={setIsVerified}
+            />
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="status">Subscription Status</Label>
             <Select value={status} onValueChange={handleStatusChange}>

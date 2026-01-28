@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin, useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
+import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +26,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Loader2,
   Search,
   GraduationCap,
@@ -37,9 +42,11 @@ import {
   Eye,
   ExternalLink,
   Download,
+  LogIn,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AcademySubscriptionEditDialog } from "@/components/admin/AcademySubscriptionEditDialog";
+import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 import { scrapeAcademies } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
 
@@ -52,6 +59,7 @@ export default function AdminAcademies() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingAcademy, setEditingAcademy] = useState<AcademyProfileAdmin | null>(null);
+  const [impersonatingAcademy, setImpersonatingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
 
@@ -298,15 +306,33 @@ export default function AdminAcademies() {
                             Edit Academy
                           </DropdownMenuItem>
                           {academy.is_public && academy.is_verified && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => window.open(`/en/academies/${academy.slug}`, "_blank")}
-                              >
-                                <ExternalLink className="mr-2 h-4 w-4" />
-                                View Public Page
-                              </DropdownMenuItem>
-                            </>
+                            <DropdownMenuItem
+                              onClick={() => window.open(`/en/academies/${academy.slug}`, "_blank")}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View Public Page
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {academy.owner_user_id ? (
+                            <DropdownMenuItem onClick={() => setImpersonatingAcademy(academy)}>
+                              <LogIn className="mr-2 h-4 w-4" />
+                              Login as Manager
+                            </DropdownMenuItem>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuItem disabled className="opacity-50">
+                                    <LogIn className="mr-2 h-4 w-4" />
+                                    Login as Manager
+                                  </DropdownMenuItem>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>No manager assigned</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -338,6 +364,16 @@ export default function AdminAcademies() {
             is_public: editingAcademy.is_public,
           }}
           onSuccess={() => invalidateAcademies()}
+        />
+      )}
+
+      {impersonatingAcademy && impersonatingAcademy.owner_user_id && (
+        <ImpersonateUserDialog
+          open={!!impersonatingAcademy}
+          onOpenChange={(open) => !open && setImpersonatingAcademy(null)}
+          targetUserId={impersonatingAcademy.owner_user_id}
+          targetUserName={impersonatingAcademy.name}
+          targetUserEmail={impersonatingAcademy.contact_email}
         />
       )}
     </div>
