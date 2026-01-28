@@ -38,7 +38,7 @@ import {
   CheckCircle2,
   XCircle,
   MoreHorizontal,
-  CreditCard,
+  Pencil,
   Eye,
   ExternalLink,
   Download,
@@ -46,7 +46,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
-import { AcademySubscriptionEditDialog } from "@/components/admin/AcademySubscriptionEditDialog";
+import { AcademyEditDialog } from "@/components/admin/AcademyEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 import { scrapeAcademies } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
@@ -363,7 +363,7 @@ export default function AdminAcademies() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setEditingAcademy(academy)}>
-                            <CreditCard className="mr-2 h-4 w-4" />
+                            <Pencil className="mr-2 h-4 w-4" />
                             Edit Academy
                           </DropdownMenuItem>
                           {academy.is_public && academy.is_verified && (
@@ -412,17 +412,30 @@ export default function AdminAcademies() {
       </p>
 
       {editingAcademy && (
-        <AcademySubscriptionEditDialog
+        <AcademyEditDialog
           open={!!editingAcademy}
           onOpenChange={(open) => !open && setEditingAcademy(null)}
-          academyId={editingAcademy.id}
-          academyName={editingAcademy.name}
-          currentData={{
+          academy={{
+            id: editingAcademy.id,
+            name: editingAcademy.name,
+            slug: editingAcademy.slug,
+            description: editingAcademy.description,
+            contact_email: editingAcademy.contact_email,
+            phone: editingAcademy.phone,
+            website_url: editingAcademy.website_url,
+            logo_url: editingAcademy.logo_url,
+            banner_url: editingAcademy.banner_url,
+            social_instagram: editingAcademy.social_instagram,
+            social_facebook: editingAcademy.social_facebook,
+            social_tiktok: editingAcademy.social_tiktok,
+            social_youtube: editingAcademy.social_youtube,
+            social_linkedin: editingAcademy.social_linkedin,
             subscription_status: editingAcademy.subscription_status,
             subscription_tier: editingAcademy.subscription_tier,
             trial_ends_at: editingAcademy.trial_ends_at,
             is_verified: editingAcademy.is_verified,
             is_public: editingAcademy.is_public,
+            owner_user_id: editingAcademy.owner_user_id,
           }}
           onSuccess={() => invalidateAcademies()}
         />

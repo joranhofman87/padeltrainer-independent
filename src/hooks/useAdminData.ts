@@ -174,7 +174,16 @@ interface AcademyProfileRow {
   trial_ends_at: string | null;
   created_at: string;
   contact_email: string | null;
+  phone: string | null;
+  website_url: string | null;
   logo_url: string | null;
+  banner_url: string | null;
+  description: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
   managers: { user_id: string; role: string }[];
 }
 
@@ -189,7 +198,16 @@ export interface AcademyProfileAdmin {
   trial_ends_at: string | null;
   created_at: string;
   contact_email: string | null;
+  phone: string | null;
+  website_url: string | null;
   logo_url: string | null;
+  banner_url: string | null;
+  description: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
   owner_user_id: string | null;
 }
 
@@ -213,7 +231,16 @@ export function useAdminAcademies() {
           trial_ends_at,
           created_at,
           contact_email,
+          phone,
+          website_url,
           logo_url,
+          banner_url,
+          description,
+          social_instagram,
+          social_facebook,
+          social_tiktok,
+          social_youtube,
+          social_linkedin,
           managers:academy_managers(user_id, role)
         `
         )
