@@ -156,7 +156,8 @@
     "viewOnMap": "Zoek op kaart",
     "viewAsList": "Bekijk als lijst",
     "locationsOnMap": "locaties op kaart",
-    "locationsNotMapped": "niet gekoppeld"
+    "locationsNotMapped": "niet gekoppeld",
+    "academiesAtLocation": "Trainings Academies"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
@@ -213,5 +214,7 @@
   "avgRating": "Gem. Beoordeling",
   "quickStats": "Snelle Statistieken",
   "location": "Locatie",
-  "trainer": "Trainer"
+  "trainer": "Trainer",
+  "viewAcademy": "Bekijk Academy",
+  "academy": "Academy"
 }

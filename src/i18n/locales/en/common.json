@@ -156,7 +156,8 @@
     "viewOnMap": "View on Map",
     "viewAsList": "View as List",
     "locationsOnMap": "locations on map",
-    "locationsNotMapped": "not mapped"
+    "locationsNotMapped": "not mapped",
+    "academiesAtLocation": "Training Academies"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
@@ -213,5 +214,7 @@
   "avgRating": "Avg Rating",
   "quickStats": "Quick Stats",
   "location": "Location",
-  "trainer": "Trainer"
+  "trainer": "Trainer",
+  "viewAcademy": "View Academy",
+  "academy": "Academy"
 }
