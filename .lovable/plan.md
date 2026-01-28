@@ -1,244 +1,186 @@
 
-# Plan: Comprehensive E2E Test Suite Enhancement
+
+# Plan: Fix Academy Visibility & Enhance Admin Club Editing
 
 ## Overview
 
-Enhance the E2E test suite to cover all main user flows for Admin, Player, Club, and Academy roles. This includes adding new test files and updating existing fixtures to support authenticated testing scenarios.
+Two issues need to be addressed:
 
-## Current State Analysis
+1. **Academies not showing on public page**: The `getPublicAcademies()` function queries `academy_profiles` directly, but the RLS policy requires **BOTH** `is_verified = true AND is_public = true`. Since all scraped academies have `is_verified: false`, they're filtered out by RLS.
 
-### Test Coverage Summary
+2. **Admin club editing limitations**: Admins can only edit subscription/verification settings, not full profile details like description, contact info, social links, etc.
 
-| Category | Current Coverage | Gap |
-|----------|------------------|-----|
-| **Admin** | Only auth guard check | No dashboard, CRUD, or management tests |
-| **Player** | Auth guard + basic dashboard route check | No authenticated functionality tests |
-| **Trainer** | Auth guard + basic dashboard route check | No authenticated functionality tests |
-| **Club** | Auth guard + basic dashboard route check | No dashboard, profile, or management tests |
-| **Academy** | Auth guard + public profile tests | No dashboard management tests |
+## Root Cause Analysis
 
-### Existing Test Files (9 files, ~750 lines)
-- `auth.spec.ts` - Authentication flows
-- `navigation.spec.ts` - Marketing pages
-- `booking.spec.ts` - Booking flows
-- `dashboard.spec.ts` - Protected route checks
-- `roles.spec.ts` - Role-specific signup and auth guards
-- `i18n.spec.ts` - Internationalization
-- `accessibility.spec.ts` - A11y tests
-- `error-handling.spec.ts` - Error states
-- `performance.spec.ts` - Performance metrics
+### Academy Visibility Issue
+
+**Database state** (from query):
+- All academies have `is_public: true` but `is_verified: false`
+- RLS policy on `academy_profiles`:
+  ```sql
+  Policy: "Anyone can view verified public academies"
+  Using: ((is_verified = true) AND (is_public = true))
+  ```
+
+**Current code** in `src/lib/academy.ts`:
+```typescript
+export async function getPublicAcademies(): Promise<AcademyProfile[]> {
+  const { data, error } = await supabase
+    .from('academy_profiles')
+    .select('*')
+    .eq('is_public', true)  // Only filters by is_public
+    .order('name');
+  // ...
+}
+```
+
+The RLS policy is stricter than the query filter, so no results are returned.
+
+**Solution options**:
+1. Use `academy_profiles_public` view (already exists) which respects RLS
+2. Modify RLS to show public academies regardless of verification
+3. Auto-verify scraped academies
+
+Recommended: Use the existing `academy_profiles_public` view for consistency with other public queries.
+
+### Admin Club Editing
+
+**Current state**: `ClubSubscriptionEditDialog` only edits:
+- `subscription_status`
+- `subscription_tier`
+- `trial_ends_at`
+- `is_verified`
+
+**Missing fields**:
+- `description`
+- `contact_email`
+- `phone`
+- `logo_url`
+- `banner_url`
+- Social links (instagram, facebook, etc.)
 
 ## Implementation Plan
 
-### Phase 1: Update Test Fixtures
+### Phase 1: Fix Academy Visibility
 
-**File:** `e2e/fixtures/test-data.ts`
+**File:** `src/lib/academy.ts`
 
-Add admin routes and expand route definitions:
+Update `getPublicAcademies()` to:
+1. Query `academy_profiles_public` view instead of `academy_profiles` table
+2. This view already excludes PII and respects visibility rules
 
 ```typescript
-export const ROUTES = {
-  // ... existing routes ...
-  admin: '/admin',
-  adminUsers: '/admin/users',
-  adminTrainers: '/admin/trainers',
-  adminClubs: '/admin/clubs',
-  adminAcademies: '/admin/academies',
-  adminLocations: '/admin/locations',
-  adminCertifications: '/admin/certifications',
-  adminClubClaims: '/admin/club-claims',
-  adminPricing: '/admin/pricing',
-  adminRatingSystems: '/admin/rating-systems',
-};
+// Before
+.from('academy_profiles')
+.select('*')
+.eq('is_public', true)
+
+// After  
+.from('academy_profiles_public')
+.select('*')
+.order('name')
 ```
 
-### Phase 2: Create Admin E2E Tests
+The view filters: `WHERE is_verified = true AND is_public = true`
 
-**File:** `e2e/admin.spec.ts`
+**Alternative approach**: Since the admins want to see public academies even if not verified yet, we could:
+- Modify RLS to allow `is_public = true` to be viewable (less strict)
+- Keep current strict policy and have admins verify academies
 
-New test file covering:
+Given the admin request to make changes easily, I recommend **keeping the strict RLS** but making it easy for admins to bulk-verify academies.
 
-1. **Admin Dashboard Access**
-   - Redirect to auth when not logged in
-   - Access denied for non-admin users (if testable)
+### Phase 2: Create Comprehensive Club Edit Dialog
 
-2. **Admin Sidebar Navigation**
-   - All menu items visible
-   - Navigation between sections works
-   - Pending claims badge visible (if claims exist)
+**File:** `src/components/admin/ClubEditDialog.tsx` (NEW)
 
-3. **Admin Sub-Pages**
-   - Users page loads with table
-   - Trainers page loads with table and actions
-   - Clubs page loads with table and actions
-   - Academies page loads with scrape action
-   - Locations page loads with import action
-   - Certifications page loads
-   - Club Claims page loads
-   - Pricing page loads
-   - Rating Systems page loads
+A full-featured dialog that allows admins to edit:
+- All subscription fields (existing)
+- Verification status (existing)
+- Description
+- Contact email & phone
+- Logo URL
+- Banner URL
+- Social links
 
-4. **Admin Actions**
-   - Edit dialogs open correctly
-   - View profile links work
-   - Impersonation dialog opens (if testable without actual login)
+This is separate from the subscription-focused dialog to keep concerns separate.
 
-### Phase 3: Enhance Player Flow Tests
+### Phase 3: Update Admin Clubs Page
 
-**File:** `e2e/roles.spec.ts` (update existing)
+**File:** `src/pages/admin/AdminClubs.tsx`
 
-Add tests under "Player Flows":
+Change dropdown menu to offer:
+- "Edit Club" - Opens new comprehensive `ClubEditDialog`
+- Keep other actions (View Profile, Login as Manager)
 
-1. **Player Dashboard Elements**
-   - Dashboard route returns < 500 status
-   - Navigation sidebar items exist
-   
-2. **Player Actions (UI existence)**
-   - Bookings page structure
-   - Following list page structure
-   - Profile edit page structure
+### Phase 4: Add "Bulk Verify" for Academies
 
-### Phase 4: Enhance Club Flow Tests
+**File:** `src/pages/admin/AdminAcademies.tsx`
 
-**File:** `e2e/roles.spec.ts` (update existing)
-
-Add tests under "Club Flows":
-
-1. **Club Dashboard Elements**
-   - Dashboard page structure
-   - Sidebar navigation items
-
-2. **Club Management Pages**
-   - Players page loads
-   - Trainers page loads
-   - Calendar page loads
-   - Cycles page loads
-   - Tournaments page loads
-   - Settings page loads
-   - Subscription page loads
-
-### Phase 5: Enhance Academy Flow Tests
-
-**File:** `e2e/roles.spec.ts` (update existing)
-
-Add tests under "Academy Flows":
-
-1. **Academy Dashboard Elements**
-   - Dashboard page structure
-   - Sidebar navigation items
-
-2. **Academy Management Pages**
-   - Trainers page loads
-   - Locations page loads
-   - Cycles page loads
-   - Settings page loads
-
-### Phase 6: Add Trainer Flow Tests
-
-**File:** `e2e/roles.spec.ts` (update existing)
-
-Expand "Trainer Flows" with:
-
-1. **Trainer Dashboard Elements**
-   - Dashboard route check
-   - Sidebar navigation items
-
-2. **Trainer Management Pages**
-   - Settings page loads
-   - Calendar page loads
-   - Players page loads
-   - Cycles page loads
-   - Intake requests page loads
-   - Subscription page loads
+Add a "Verify All Public" action button that:
+- Sets `is_verified = true` for all academies where `is_public = true`
+- Useful after scraping new academies
 
 ## File Changes Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `e2e/fixtures/test-data.ts` | Modify | Add admin routes and expand route constants |
-| `e2e/admin.spec.ts` | Create | Comprehensive admin panel tests |
-| `e2e/roles.spec.ts` | Modify | Add more tests for each role |
+| `src/lib/academy.ts` | Modify | Use `academy_profiles_public` view for public queries |
+| `src/components/admin/ClubEditDialog.tsx` | Create | Full club editing dialog with all profile fields |
+| `src/pages/admin/AdminClubs.tsx` | Modify | Use new ClubEditDialog |
+| `src/pages/admin/AdminAcademies.tsx` | Modify | Add "Verify All Public" bulk action |
+| `src/hooks/useAdminData.ts` | Modify | Include more club fields for admin editing |
 
-## New Test File: admin.spec.ts
+## Detailed Implementation
+
+### ClubEditDialog Fields
 
 ```typescript
-// Structure overview
-test.describe('Admin Panel', () => {
-  test.describe('Admin Access Control', () => {
-    // Auth guard tests
-  });
-
-  test.describe('Admin Dashboard', () => {
-    // Dashboard content tests
-  });
-
-  test.describe('Admin Sidebar Navigation', () => {
-    // Sidebar presence and navigation tests
-  });
-
-  test.describe('Admin Users Management', () => {
-    // Users table and actions
-  });
-
-  test.describe('Admin Trainers Management', () => {
-    // Trainers table and actions
-  });
-
-  test.describe('Admin Clubs Management', () => {
-    // Clubs table and actions
-  });
-
-  test.describe('Admin Academies Management', () => {
-    // Academies table and actions
-  });
-
-  test.describe('Admin Locations Management', () => {
-    // Locations table and actions
-  });
-
-  test.describe('Admin Certifications', () => {
-    // Certifications management
-  });
-
-  test.describe('Admin Club Claims', () => {
-    // Club claims handling
-  });
-});
+interface ClubEditData {
+  // Subscription (existing)
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
+  is_verified: boolean;
+  
+  // Profile (new)
+  description: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
+  
+  // Social (new)
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
+}
 ```
 
-## Test Expectations
+### UI Structure
 
-Since we cannot authenticate in E2E tests without mock users or seeded data, tests will focus on:
+The dialog will use tabs or accordion sections:
+1. **Status** - Verified toggle, subscription status/tier
+2. **Profile** - Description, contact info
+3. **Media** - Logo/banner URLs (with preview)
+4. **Social** - All social links
 
-1. **Route accessibility** - Verify routes exist and return valid HTTP status
-2. **Auth guard verification** - Confirm protected routes redirect to `/auth`
-3. **UI structure presence** - When accessible, verify expected elements exist
-4. **No 500 errors** - All pages should handle gracefully without server errors
+## Technical Notes
 
-## Limitations
+### RLS Considerations
+- Admin update policy: `is_admin(auth.uid())` already allows admins to update any club
+- No RLS changes needed
 
-### Cannot Test (without seeded auth):
-- Actual CRUD operations with data persistence
-- Full booking flow completion
-- Impersonation functionality
-- Subscription/payment flows
-- File uploads and data import
+### Data Flow
+1. Admin clicks "Edit Club" in dropdown
+2. Full club data is fetched (or passed from list if already available)
+3. Dialog shows all editable fields in organized sections
+4. On save, updates `club_profiles` table directly
 
-### Recommendation for Future:
-Consider adding:
-1. Test database seeding with known users
-2. Playwright `storageState` for auth persistence
-3. Mock authentication tokens
-4. Visual regression testing
+## Expected Outcome
 
-## Expected Results
+1. **Academies page**: Will show all academies that are both `is_public = true` AND `is_verified = true`
+2. **Admin workflow**: Admins can bulk-verify academies after scraping, then they appear publicly
+3. **Club editing**: Admins can edit any club field directly without needing to impersonate
 
-After implementation:
-- **Admin tests**: ~25 new test cases
-- **Enhanced role tests**: ~15 additional test cases
-- **Total test count**: ~100+ test cases across all files
-
-Coverage improvements:
-- All admin sub-routes tested for accessibility
-- All role dashboards tested for structure
-- Better documentation of expected UI elements
