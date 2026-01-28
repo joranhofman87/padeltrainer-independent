@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -38,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker } from "./SlotLocationPicker";
+import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -62,6 +63,7 @@ interface BulkSlotConfig {
   courtType: 'indoor' | 'outdoor' | null;
   locationId: string | null;
   isMarkedFull: boolean;
+  academyProfileId: string | null;
 }
 
 interface AddSlotDialogProps {
@@ -96,7 +98,21 @@ export function AddSlotDialog({
   const [slotLessonId, setSlotLessonId] = useState<string | null>(null);
   const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
   const [slotLocationId, setSlotLocationId] = useState<string | null>(null);
+  const [slotAcademyId, setSlotAcademyId] = useState<string | null>(null);
+  const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch trainer's academy affiliation
+  useEffect(() => {
+    async function fetchAcademy() {
+      if (!trainerId) return;
+      const academy = await getTrainerAcademy(trainerId);
+      setTrainerAcademy(academy);
+    }
+    if (open && trainerId) {
+      fetchAcademy();
+    }
+  }, [open, trainerId]);
 
   const handleAddSingleSlot = async () => {
     if (!trainerId) return;
@@ -114,6 +130,7 @@ export function AddSlotDialog({
         lesson_id: slotLessonId,
         court_type: slotCourtType,
         location_id: slotLocationId,
+        academy_profile_id: slotAcademyId,
       });
 
       if (error) throw error;
@@ -261,6 +278,35 @@ export function AddSlotDialog({
             </Select>
           </div>
 
+          {/* Working As (Academy) */}
+          {trainerAcademy && trainerAcademy.id && (
+            <div className="space-y-2">
+              <Label>{t("calendar.workingAs", "Working as")}</Label>
+              <Select
+                value={slotAcademyId || "independent"}
+                onValueChange={(v) => setSlotAcademyId(v === "independent" ? null : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="independent">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      {t("calendar.independent", "Independent")}
+                    </div>
+                  </SelectItem>
+                  <SelectItem value={trainerAcademy.id}>
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4" />
+                      {trainerAcademy.name}
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <Button
             onClick={handleAddSingleSlot}
             disabled={isSaving}
@@ -305,12 +351,20 @@ export function BulkCreateSheet({
   const [players, setPlayers] = useState<GuestPlayer[]>([]);
   const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
   const [addPlayerContext, setAddPlayerContext] = useState<{ slotIndex: number; playerIndex: number } | null>(null);
+  const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
 
   useEffect(() => {
     if (open && trainerId) {
       fetchPlayers();
+      fetchAcademy();
     }
   }, [open, trainerId]);
+
+  const fetchAcademy = async () => {
+    if (!trainerId) return;
+    const academy = await getTrainerAcademy(trainerId);
+    setTrainerAcademy(academy);
+  };
 
   const fetchPlayers = async () => {
     if (!trainerId) return;
@@ -362,6 +416,7 @@ export function BulkCreateSheet({
           courtType: null,
           locationId: null,
           isMarkedFull: false,
+          academyProfileId: null,
         },
       ]);
     }
@@ -398,6 +453,7 @@ export function BulkCreateSheet({
           addPlayers: false,                        // Reset (different players)
           selectedPlayers: [],                      // Reset
           isMarkedFull: false,                      // Reset
+          academyProfileId: lastSlot.academyProfileId, // Copy
         },
       ]);
     } else {
@@ -417,6 +473,7 @@ export function BulkCreateSheet({
           courtType: null,
           locationId: null,
           isMarkedFull: false,
+          academyProfileId: null,
         },
       ]);
     }
@@ -464,6 +521,7 @@ export function BulkCreateSheet({
         court_type: 'indoor' | 'outdoor' | null;
         location_id: string | null;
         is_marked_full: boolean;
+        academy_profile_id: string | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates
@@ -507,6 +565,7 @@ export function BulkCreateSheet({
             court_type: config.courtType,
             location_id: config.locationId,
             is_marked_full: config.isMarkedFull,
+            academy_profile_id: config.academyProfileId,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -828,6 +887,37 @@ export function BulkCreateSheet({
                       className="h-8"
                     />
                   </div>
+
+                  {/* Working As (Academy) */}
+                  {trainerAcademy && trainerAcademy.id && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("calendar.workingAs", "Working as")}</Label>
+                      <Select
+                        value={slot.academyProfileId || "independent"}
+                        onValueChange={(v) =>
+                          updateBulkSlot(index, { academyProfileId: v === "independent" ? null : v })
+                        }
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="independent">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              {t("calendar.independent", "Independent")}
+                            </div>
+                          </SelectItem>
+                          <SelectItem value={trainerAcademy.id}>
+                            <div className="flex items-center gap-2">
+                              <GraduationCap className="h-4 w-4" />
+                              {trainerAcademy.name}
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* Add Players Checkbox */}
                   <div className="space-y-3 pt-2 border-t">

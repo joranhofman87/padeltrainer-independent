@@ -514,7 +514,9 @@
     "deleteCyclus": "Cyclus Verwijderen",
     "cyclusDeleted": "Cyclus verwijderd",
     "cyclusDeletedDescription": "{{count}} slots verwijderd en bijbehorende boekingen geannuleerd",
-    "notifyPlayers": "Getroffen spelers per e-mail informeren"
+    "notifyPlayers": "Getroffen spelers per e-mail informeren",
+    "workingAs": "Werkend als",
+    "independent": "Zelfstandig"
   },
   "openSlots": {
     "title": "Open Trainingsslots",
