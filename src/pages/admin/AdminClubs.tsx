@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin, useAdminClubs, useInvalidateAdminData } from "@/hooks/useAdminData";
+import { useIsAdmin, useAdminClubs, useInvalidateAdminData, ClubProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -40,19 +40,6 @@ import {
 import { format } from "date-fns";
 import { ClubSubscriptionEditDialog } from "@/components/admin/ClubSubscriptionEditDialog";
 
-interface ClubProfile {
-  id: string;
-  is_verified: boolean;
-  subscription_status: string | null;
-  subscription_tier: string | null;
-  trial_ends_at: string | null;
-  created_at: string;
-  location: {
-    name: string;
-    city: string;
-  } | null;
-}
-
 export default function AdminClubs() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -62,8 +49,11 @@ export default function AdminClubs() {
   const { data: clubs = [], isLoading: clubsLoading } = useAdminClubs();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [editingClub, setEditingClub] = useState<ClubProfile | null>(null);
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+  const [cityFilter, setCityFilter] = useState<string>("all");
+  const [verifiedFilter, setVerifiedFilter] = useState<string>("all");
+  const [paidFilter, setPaidFilter] = useState<string>("all");
+  const [editingClub, setEditingClub] = useState<ClubProfileAdmin | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -71,7 +61,32 @@ export default function AdminClubs() {
     }
   }, [authLoading, user, navigate]);
 
-  const getSubscriptionStatus = (club: ClubProfile) => {
+  // Extract unique countries and cities for filter dropdowns
+  const { countries, cities } = useMemo(() => {
+    const countrySet = new Set<string>();
+    const citySet = new Set<string>();
+    clubs.forEach((c) => {
+      if (c.location?.country) countrySet.add(c.location.country);
+      if (c.location?.city) citySet.add(c.location.city);
+    });
+    return {
+      countries: Array.from(countrySet).sort(),
+      cities: Array.from(citySet).sort(),
+    };
+  }, [clubs]);
+
+  // Filter cities based on selected country
+  const filteredCities = useMemo(() => {
+    if (countryFilter === "all") return cities;
+    return clubs
+      .filter((c) => c.location?.country === countryFilter)
+      .map((c) => c.location?.city)
+      .filter((city): city is string => !!city)
+      .filter((city, index, arr) => arr.indexOf(city) === index)
+      .sort();
+  }, [clubs, countryFilter, cities]);
+
+  const getSubscriptionStatus = (club: ClubProfileAdmin) => {
     if (club.subscription_status === "active") return "active";
     if (club.subscription_status === "trial") {
       if (!club.trial_ends_at) return "trial";
@@ -80,20 +95,38 @@ export default function AdminClubs() {
     return club.subscription_status || "inactive";
   };
 
+  const isPaid = (club: ClubProfileAdmin) => {
+    return club.subscription_status === "active";
+  };
+
   const filteredClubs = clubs.filter((c) => {
+    // Search filter
     const matchesSearch =
       !searchQuery ||
       c.location?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.location?.city?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const status = getSubscriptionStatus(c);
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "verified" && c.is_verified) ||
-      (statusFilter === "unverified" && !c.is_verified) ||
-      status === statusFilter;
+    // Country filter
+    const matchesCountry =
+      countryFilter === "all" || c.location?.country === countryFilter;
 
-    return matchesSearch && matchesStatus;
+    // City filter
+    const matchesCity =
+      cityFilter === "all" || c.location?.city === cityFilter;
+
+    // Verified filter
+    const matchesVerified =
+      verifiedFilter === "all" ||
+      (verifiedFilter === "yes" && c.is_verified) ||
+      (verifiedFilter === "no" && !c.is_verified);
+
+    // Paid filter
+    const matchesPaid =
+      paidFilter === "all" ||
+      (paidFilter === "yes" && isPaid(c)) ||
+      (paidFilter === "no" && !isPaid(c));
+
+    return matchesSearch && matchesCountry && matchesCity && matchesVerified && matchesPaid;
   });
 
   const getStatusBadgeVariant = (status: string) => {
@@ -147,8 +180,10 @@ export default function AdminClubs() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
+        {/* Filters */}
+        <div className="mb-6 space-y-4">
+          {/* Search */}
+          <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search by club or city name..."
@@ -157,19 +192,66 @@ export default function AdminClubs() {
               className="pl-10"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All clubs</SelectItem>
-              <SelectItem value="verified">Verified</SelectItem>
-              <SelectItem value="unverified">Unverified</SelectItem>
-              <SelectItem value="active">Subscribed</SelectItem>
-              <SelectItem value="trial">Trial</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-            </SelectContent>
-          </Select>
+
+          {/* Filter row */}
+          <div className="flex flex-wrap gap-3">
+            {/* Country filter */}
+            <Select value={countryFilter} onValueChange={(val) => {
+              setCountryFilter(val);
+              setCityFilter("all"); // Reset city when country changes
+            }}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Country" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All countries</SelectItem>
+                {countries.map((country) => (
+                  <SelectItem key={country} value={country}>
+                    {country}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* City filter */}
+            <Select value={cityFilter} onValueChange={setCityFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="City" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All cities</SelectItem>
+                {filteredCities.map((city) => (
+                  <SelectItem key={city} value={city}>
+                    {city}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Verified filter */}
+            <Select value={verifiedFilter} onValueChange={setVerifiedFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Verified" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="yes">Verified</SelectItem>
+                <SelectItem value="no">Unverified</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Paid filter */}
+            <Select value={paidFilter} onValueChange={setPaidFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Paid" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="yes">Paid</SelectItem>
+                <SelectItem value="no">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="rounded-md border">
