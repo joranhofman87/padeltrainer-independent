@@ -43,12 +43,14 @@ import {
   ExternalLink,
   Download,
   LogIn,
+  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AcademySubscriptionEditDialog } from "@/components/admin/AcademySubscriptionEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 import { scrapeAcademies } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminAcademies() {
   const { toast } = useToast();
@@ -62,6 +64,7 @@ export default function AdminAcademies() {
   const [impersonatingAcademy, setImpersonatingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const getSubscriptionStatus = (academy: AcademyProfileAdmin) => {
     if (academy.subscription_status === "active") return "active";
@@ -148,6 +151,45 @@ export default function AdminAcademies() {
     }
   };
 
+  const handleBulkVerify = async () => {
+    if (isVerifying) return;
+
+    const unverifiedPublic = academies.filter((a) => a.is_public && !a.is_verified);
+    if (unverifiedPublic.length === 0) {
+      toast({
+        title: "No academies to verify",
+        description: "All public academies are already verified.",
+      });
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const { error } = await supabase
+        .from("academy_profiles")
+        .update({ is_verified: true })
+        .eq("is_public", true)
+        .eq("is_verified", false);
+
+      if (error) throw error;
+
+      toast({
+        title: "Bulk verify complete",
+        description: `${unverifiedPublic.length} academies have been verified.`,
+      });
+      invalidateAcademies();
+    } catch (error) {
+      console.error("Bulk verify error:", error);
+      toast({
+        title: "Verification failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   if (academiesLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -166,23 +208,42 @@ export default function AdminAcademies() {
             View and manage academies in the system
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleScrapeAcademies}
-          disabled={isScraping}
-        >
-          {isScraping ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {scrapeProgress || "Scraping..."}
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4 mr-2" />
-              Scrape from PadelGids
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleBulkVerify}
+            disabled={isVerifying || isScraping}
+          >
+            {isVerifying ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Verify All Public
+              </>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleScrapeAcademies}
+            disabled={isScraping || isVerifying}
+          >
+            {isScraping ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {scrapeProgress || "Scraping..."}
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Scrape from PadelGids
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

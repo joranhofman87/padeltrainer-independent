@@ -18,7 +18,7 @@ export default function Academies() {
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
 
-  const [academies, setAcademies] = useState<AcademyProfile[]>([]);
+  const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -37,7 +37,7 @@ export default function Academies() {
   }, []);
 
   const filteredAcademies = academies.filter(academy =>
-    academy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (academy.name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (academy.description?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
@@ -56,7 +56,7 @@ export default function Academies() {
       "position": index + 1,
       "item": {
         "@type": "EducationalOrganization",
-        "name": academy.name,
+        "name": academy.name || "",
         "description": academy.description,
         "url": `https://padeltrainer.ai/academies/${academy.slug}`,
         ...(academy.logo_url && { "logo": academy.logo_url })
@@ -148,11 +148,11 @@ export default function Academies() {
                     <div className="flex items-start gap-4">
                       <Avatar className="h-16 w-16 rounded-lg">
                         <AvatarImage src={academy.logo_url || ''} />
-                        <AvatarFallback className="rounded-lg text-lg">{getInitials(academy.name)}</AvatarFallback>
+                        <AvatarFallback className="rounded-lg text-lg">{getInitials(academy.name || "")}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold truncate">{academy.name}</h3>
+                          <h3 className="font-semibold truncate">{academy.name || ""}</h3>
                           {academy.is_verified && (
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
