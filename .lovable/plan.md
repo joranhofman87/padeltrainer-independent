@@ -1,6 +1,68 @@
-
-
 # Plan: Academy Layer with Public Profiles & Cross-Linking
+
+## Implementation Status
+
+### ✅ Phase 1: Database Foundation (COMPLETE)
+- [x] Created `academy_profiles` table
+- [x] Created `academy_managers` table  
+- [x] Created `academy_trainers` table
+- [x] Created `academy_locations` table
+- [x] Created `academy_stripe_accounts` table
+- [x] Created `academy_trainer_invitations` table
+- [x] Created `academy_followers` table
+- [x] Created `academy_profile_views` table
+- [x] Added `academy` to `app_role` enum
+- [x] Created secure views (`academy_profiles_public`, `academy_profiles_safe`)
+- [x] Created helper functions (`is_academy_manager`, `is_any_academy_manager`, `get_user_academy_ids`, `is_academy_owner`, `academy_has_managers`)
+- [x] Added `academy_profile_id` to `availability_slots` for per-slot assignment
+- [x] Created trial trigger for 14-day free trial
+- [x] Created comprehensive RLS policies for all tables
+- [x] Created indexes for slug lookups and availability_slots
+
+### 🔄 Phase 2: Academy Core Management (IN PROGRESS)
+- [ ] Academy signup and onboarding flow
+- [ ] Academy profile management (settings, branding)
+- [ ] Academy managers system
+- [ ] Basic dashboard with stats
+- [ ] `AcademyLayout` with navigation
+
+### ⏳ Phase 3: Trainer Affiliation
+- [ ] Invite trainers to academy
+- [ ] Trainer acceptance/decline flow
+- [ ] Payment percentage configuration
+- [ ] Trainer visibility settings
+
+### ⏳ Phase 4: Location Contracts
+- [ ] Academy-club contract management
+- [ ] Location picker for academies
+- [ ] Visibility settings per location
+- [ ] Contract terms and expiration
+
+### ⏳ Phase 5: Public Profiles & Cross-Linking
+- [ ] Academy public profile page (`/:lang/academies/:slug`)
+- [ ] Academies directory (`/:lang/academies`)
+- [ ] Trainer profile update - Show academy affiliation with link
+- [ ] Location detail update - Show academies at club with links
+- [ ] SEO optimization (structured data, meta tags)
+
+### ⏳ Phase 6: Slot-Level Assignment
+- [ ] Update `AddSlotDialog` with "Working as" picker
+- [ ] Update `BulkCreateSheet` with same option
+- [ ] Club calendar respects academy assignments
+
+### ⏳ Phase 7: Payment & Billing
+- [ ] Academy Stripe Connect integration
+- [ ] Payment routing based on slot assignment
+- [ ] Academy subscription billing
+- [ ] Earnings dashboard with splits
+
+### ⏳ Phase 8: Analytics & Polish
+- [ ] Academy profile views tracking
+- [ ] Follow academy functionality
+- [ ] Academy performance analytics
+- [ ] i18n translations (EN/NL)
+
+---
 
 ## Overview
 
@@ -10,42 +72,6 @@ This plan extends the hybrid trainer model to include **public academy profiles*
 - Clubs show which academies operate at their location  
 - Academies have their own discoverable public profiles
 - All links are clickable and lead to the academy profile page
-
----
-
-## Public Profile Cross-Linking
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    DISCOVERY NETWORK                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   TRAINER PROFILE                     CLUB/LOCATION PAGE        │
-│   ┌─────────────────────┐             ┌─────────────────────┐   │
-│   │ John Trainer        │             │ TC Amsterdam        │   │
-│   │ ⭐ 4.8 rating       │             │ 📍 Amsterdam        │   │
-│   │                     │             │                     │   │
-│   │ 🏫 Part of:         │             │ 🏫 Academies:       │   │
-│   │ [Padel Pro Academy] │──────┐      │ [Padel Pro Academy] │   │
-│   │        ↑            │      │      │        ↑            │   │
-│   └────────│────────────┘      │      └────────│────────────┘   │
-│            │                   │               │                │
-│            └───────────────────┼───────────────┘                │
-│                                │                                │
-│                                ▼                                │
-│                    ┌─────────────────────┐                      │
-│                    │  ACADEMY PROFILE    │                      │
-│                    │  Padel Pro Academy  │                      │
-│                    │                     │                      │
-│                    │  👥 12 Trainers     │                      │
-│                    │  📍 5 Locations     │                      │
-│                    │                     │                      │
-│                    │  [Our Trainers]     │                      │
-│                    │  [Our Locations]    │                      │
-│                    └─────────────────────┘                      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
