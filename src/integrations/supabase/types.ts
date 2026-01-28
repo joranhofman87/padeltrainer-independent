@@ -1271,15 +1271,23 @@ export type Database = {
           country: string
           created_at: string
           description: string | null
+          email: string | null
+          facebook_url: string | null
+          google_maps_url: string | null
+          google_rating: number | null
+          google_review_count: number | null
           id: string
           indoor_courts: number | null
+          instagram_url: string | null
           is_active: boolean
           latitude: number | null
           logo_url: string | null
           longitude: number | null
           name: string
           number_of_courts: number | null
+          opening_hours: string | null
           outdoor_courts: number | null
+          phone: string | null
           postal_code: string | null
           slug: string
           street_address: string | null
@@ -1291,15 +1299,23 @@ export type Database = {
           country?: string
           created_at?: string
           description?: string | null
+          email?: string | null
+          facebook_url?: string | null
+          google_maps_url?: string | null
+          google_rating?: number | null
+          google_review_count?: number | null
           id?: string
           indoor_courts?: number | null
+          instagram_url?: string | null
           is_active?: boolean
           latitude?: number | null
           logo_url?: string | null
           longitude?: number | null
           name: string
           number_of_courts?: number | null
+          opening_hours?: string | null
           outdoor_courts?: number | null
+          phone?: string | null
           postal_code?: string | null
           slug: string
           street_address?: string | null
@@ -1311,15 +1327,23 @@ export type Database = {
           country?: string
           created_at?: string
           description?: string | null
+          email?: string | null
+          facebook_url?: string | null
+          google_maps_url?: string | null
+          google_rating?: number | null
+          google_review_count?: number | null
           id?: string
           indoor_courts?: number | null
+          instagram_url?: string | null
           is_active?: boolean
           latitude?: number | null
           logo_url?: string | null
           longitude?: number | null
           name?: string
           number_of_courts?: number | null
+          opening_hours?: string | null
           outdoor_courts?: number | null
+          phone?: string | null
           postal_code?: string | null
           slug?: string
           street_address?: string | null

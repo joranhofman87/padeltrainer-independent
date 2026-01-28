@@ -17,6 +17,14 @@ export interface Location {
   logo_url: string | null;
   latitude: number | null;
   longitude: number | null;
+  phone: string | null;
+  email: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  google_maps_url: string | null;
+  google_rating: number | null;
+  google_review_count: number | null;
+  opening_hours: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -3,6 +3,38 @@
   "noPermission": "Je hebt geen toestemming om deze pagina te bekijken.",
   "goHome": "Naar Home",
   "goBack": "Ga Terug",
+  "locations": {
+    "import": {
+      "title": "Locaties Importeren",
+      "description": "Bulk importeer padelclubs vanuit CSV bestand",
+      "dropHere": "Sleep CSV bestand hierheen",
+      "orClickToSelect": "of klik om te selecteren",
+      "selectFile": "Bestand Selecteren",
+      "downloadTemplate": "Download Template",
+      "needTemplate": "Template nodig?",
+      "templateDescription": "Download onze CSV template met het juiste kolomformaat",
+      "requiredColumns": "Verplichte kolommen",
+      "optionalColumns": "Optionele kolommen",
+      "validRows": "{{count}} geldig",
+      "invalidRows": "{{count}} ongeldig",
+      "duplicateRows": "{{count}} duplicaten",
+      "importing": "Locaties importeren...",
+      "complete": "Import Voltooid",
+      "importedCount": "{{count}} locaties geïmporteerd",
+      "failedCount": "{{count}} mislukt",
+      "skippedCount": "{{count}} overgeslagen (duplicaten)",
+      "invalidFile": "Ongeldig bestand",
+      "noDataRows": "Geen data rijen gevonden",
+      "missingColumns": "Verplichte kolommen ontbreken: name, city",
+      "csvOnly": "Selecteer een CSV bestand",
+      "errors": {
+        "nameMissing": "Naam is verplicht",
+        "cityMissing": "Stad is verplicht",
+        "duplicateSlug": "Bestaat al",
+        "duplicateInFile": "Duplicaat in bestand"
+      }
+    }
+  },
   "pricing": {
     "title": "Prijsbeheer",
     "trainerPlans": "Trainer Plannen",
