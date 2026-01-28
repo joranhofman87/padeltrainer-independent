@@ -220,7 +220,7 @@ export function useAdminAcademies() {
   });
 }
 
-interface ClubProfile {
+export interface ClubProfileAdmin {
   id: string;
   is_verified: boolean;
   subscription_status: string | null;
@@ -230,6 +230,7 @@ interface ClubProfile {
   location: {
     name: string;
     city: string;
+    country: string;
   } | null;
 }
 
@@ -238,7 +239,7 @@ export function useAdminClubs() {
 
   return useQuery({
     queryKey: ["admin", "clubs"],
-    queryFn: async (): Promise<ClubProfile[]> => {
+    queryFn: async (): Promise<ClubProfileAdmin[]> => {
       const { data, error } = await supabase
         .from("club_profiles")
         .select(
@@ -249,7 +250,7 @@ export function useAdminClubs() {
           subscription_tier,
           trial_ends_at,
           created_at,
-          location:locations!club_profiles_location_id_fkey(name, city)
+          location:locations!club_profiles_location_id_fkey(name, city, country)
         `
         )
         .order("created_at", { ascending: false });
