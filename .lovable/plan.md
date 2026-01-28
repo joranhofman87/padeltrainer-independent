@@ -1,249 +1,162 @@
 
-# Plan: Admin Panel Sidebar Navigation Redesign
+
+# Plan: Enhanced Admin Editing & User Impersonation
 
 ## Overview
 
-Transform the admin panel from a card-based navigation on the dashboard to a modern sidebar-driven layout with consistent page structure across all admin pages. This will declutter the interface, improve navigation, and move the "Scrape Academies" action to the Academies page where it belongs.
+Add comprehensive admin editing capabilities across all entity types (Clubs, Academies, Locations, Trainers) with quick-action buttons for viewing profiles and logging in as users.
 
 ## Current State Analysis
 
-### Problems Identified
-1. Dashboard is cluttered with 8 navigation cards + scrape action + stats + charts + fee structure
-2. Each admin sub-page has its own header with back button - inconsistent navigation
-3. No persistent navigation between admin sections
-4. "Scrape Academies" is on the dashboard instead of the Academies page
-5. Each page has slightly different filter/table layouts
+### What Already Exists
+- **User impersonation**: `impersonate-user` edge function generates magic links for admin login-as-user
+- **Subscription editing**: Dialogs exist for Clubs, Academies, and Trainers but with limited fields
+- **Location editing**: Full edit form exists inline in `AdminLocations.tsx`
+- **User editing**: Full CRUD in `AdminUsers.tsx` (edit, delete, change role, reset password, impersonate)
 
-### Current Admin Routes
-- `/admin` - Dashboard (stats, charts, navigation cards)
-- `/admin/users` - User management
-- `/admin/trainers` - Trainer management
-- `/admin/clubs` - Club management
-- `/admin/academies` - Academy management
-- `/admin/locations` - Location management
-- `/admin/certifications` - Certifications and specializations
-- `/admin/club-claims` - Pending club claims
-- `/admin/rating-systems` - Rating systems
-- `/admin/pricing` - Pricing plans
+### What's Missing
+1. **Quick profile access**: No links to view entity public profiles directly
+2. **Impersonation from entity pages**: Can only impersonate from Users page, not from Trainers/Clubs/Academies
+3. **Expanded edit dialogs**: Club dialogs don't include verification status; Trainer dialogs don't include all profile fields
+4. **Unified action patterns**: Inconsistent action menus across entity types
 
-## Proposed Architecture
+## Implementation Plan
 
-### New Component Structure
+### Phase 1: Add "View Profile" and "Login as User" to Trainers Page
 
-```text
-AdminLayout (new)
-├── Sidebar (left)
-│   ├── Logo + Brand
-│   ├── SidebarMenu
-│   │   ├── Dashboard (with metrics icon)
-│   │   ├── Users
-│   │   ├── Trainers
-│   │   ├── Clubs
-│   │   ├── Club Claims (with badge for pending)
-│   │   ├── Academies
-│   │   ├── Locations
-│   │   └── Certifications
-│   └── Footer (theme toggle, logout)
-└── Main Content Area (Outlet)
-    └── Page-specific content (no individual headers)
-```
+**File:** `src/pages/admin/AdminTrainers.tsx`
 
-### Sidebar Navigation Items
+Add to the dropdown menu:
+- **View Profile** - Opens `/en/trainers/{slug}` in new tab
+- **Login as User** - Calls impersonate-user edge function with trainer's `user_id`
 
-| Item | Icon | Route | Badge |
-|------|------|-------|-------|
-| Dashboard | LayoutDashboard | /admin | - |
-| Users | Users | /admin/users | - |
-| Trainers | GraduationCap | /admin/trainers | - |
-| Clubs | Building2 | /admin/clubs | - |
-| Club Claims | FileCheck | /admin/club-claims | pending count |
-| Academies | School | /admin/academies | - |
-| Locations | MapPin | /admin/locations | - |
-| Certifications | Award | /admin/certifications | - |
+This requires:
+1. Fetching the trainer's `slug` (add to `useAdminTrainers` query)
+2. Adding impersonation dialog (copy pattern from AdminUsers)
 
-Note: Rating Systems and Pricing are less frequently used - they will be accessible via a "Settings" dropdown or secondary menu section.
+### Phase 2: Add "View Profile" and "Login as Manager" to Clubs Page
 
-## Implementation Details
+**File:** `src/pages/admin/AdminClubs.tsx`
 
-### Phase 1: Create AdminLayout Component
+Add to the dropdown menu:
+- **View Profile** - Opens `/en/locations/{slug}` in new tab (club profiles are at location URLs)
+- **Login as Manager** - Calls impersonate-user with the club's primary owner from `club_managers`
+- **Edit Club** - Expand dialog to include verification toggle
 
-**File:** `src/components/admin/AdminLayout.tsx`
+This requires:
+1. Fetching the location's `slug` and club's `owner_user_id` (add to `useAdminClubs` query)
+2. Adding impersonation confirmation dialog
+3. Expanding `ClubSubscriptionEditDialog` to include `is_verified` toggle
 
-```typescript
-// Uses SidebarProvider, Sidebar, SidebarContent from shadcn
-// Includes:
-// - Collapsible sidebar with icons in collapsed state
-// - Active route highlighting using NavLink
-// - Pending claims badge fetched via usePendingClaimsCount
-// - Theme toggle + logout in sidebar footer
-// - SidebarTrigger in mobile header
-```
+### Phase 3: Add "View Profile" and "Login as Manager" to Academies Page
 
-Key features:
-- Sidebar collapsible (icon mode on desktop, sheet on mobile)
-- Persists collapsed state in localStorage
-- Active route highlighting
-- Badge for pending club claims
+**File:** `src/pages/admin/AdminAcademies.tsx`
 
-### Phase 2: Update App Routing
+Current state:
+- Already has "View Public Page" action
+- Already has edit dialog with verification/public toggles
 
-Wrap all `/admin/*` routes under the new `AdminLayout`:
+Add:
+- **Login as Manager** - Calls impersonate-user with academy's primary manager from `academy_managers`
 
-```tsx
-<Route path="/admin" element={<AdminLayout />}>
-  <Route index element={<AdminDashboard />} />
-  <Route path="users" element={<AdminUsers />} />
-  <Route path="trainers" element={<AdminTrainers />} />
-  <Route path="clubs" element={<AdminClubs />} />
-  <Route path="academies" element={<AdminAcademies />} />
-  <Route path="locations" element={<AdminLocations />} />
-  <Route path="certifications" element={<AdminCertifications />} />
-  <Route path="club-claims" element={<AdminClubClaims />} />
-  <Route path="rating-systems" element={<AdminRatingSystems />} />
-  <Route path="pricing" element={<AdminPricing />} />
-</Route>
-```
+This requires:
+1. Fetching the academy's manager `user_id` (add to `useAdminAcademies` query)
+2. Adding impersonation confirmation dialog
 
-### Phase 3: Simplify AdminDashboard
+### Phase 4: Update Admin Data Hooks
 
-Remove from dashboard:
-- All navigation cards (now in sidebar)
-- Scrape Academies action (move to Academies page)
+**File:** `src/hooks/useAdminData.ts`
 
-Keep on dashboard:
-- Stats cards (AdminStatsCards)
-- Charts (AdminCharts)
-- Fee structure info card
+Extend queries to fetch additional data needed for impersonation:
 
-New dashboard layout:
-```text
-┌─────────────────────────────────────┐
-│ Platform Overview (title only)      │
-├─────────────────────────────────────┤
-│ Stats Cards (row)                   │
-├─────────────────────────────────────┤
-│ Charts Grid (2 columns)             │
-├─────────────────────────────────────┤
-│ Fee Structure Card                  │
-└─────────────────────────────────────┘
-```
+| Hook | Additional Fields |
+|------|-------------------|
+| `useAdminTrainers` | `slug` from `profiles` |
+| `useAdminClubs` | `slug` from `locations`, owner `user_id` from `club_managers` |
+| `useAdminAcademies` | manager `user_id` from `academy_managers` |
 
-### Phase 4: Standardize Sub-Pages
+### Phase 5: Create Shared Impersonation Dialog Component
 
-Remove from each admin page:
-- Individual header with back button
-- Duplicate access control logic (handled by AdminLayout)
+**File:** `src/components/admin/ImpersonateUserDialog.tsx`
 
-Standardize page structure:
-```text
-┌─────────────────────────────────────┐
-│ Page Title + Description + Actions  │
-├─────────────────────────────────────┤
-│ Filter Row (search + dropdowns)     │
-├─────────────────────────────────────┤
-│ Data Table                          │
-├─────────────────────────────────────┤
-│ Footer (showing X of Y)             │
-└─────────────────────────────────────┘
-```
+A reusable confirmation dialog that:
+- Shows the target user name/email
+- Warns about logging in as another user
+- Calls the `impersonate-user` edge function
+- Opens magic link in new tab
+- Shows success/error toast
 
-### Phase 5: Move Scrape Academies to Academies Page
+### Phase 6: Expand Club Edit Dialog
 
-Add to `AdminAcademies.tsx`:
-- "Scrape from PadelGids" button in the header actions area
-- Progress indicator and toast notifications
-- Same logic currently in AdminDashboard
+**File:** `src/components/admin/ClubSubscriptionEditDialog.tsx`
 
-## Files to Create/Modify
+Add fields:
+- `is_verified` toggle (matching Academy dialog pattern)
+- Club name (read-only, for display)
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/admin/AdminLayout.tsx` | Create | New layout with sidebar |
-| `src/components/admin/AdminSidebar.tsx` | Create | Sidebar navigation component |
-| `src/App.tsx` | Modify | Nest admin routes under AdminLayout |
-| `src/pages/AdminDashboard.tsx` | Modify | Remove nav cards, keep stats/charts |
-| `src/pages/admin/AdminAcademies.tsx` | Modify | Add scrape action, remove header |
-| `src/pages/admin/AdminUsers.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminTrainers.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminClubs.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminLocations.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminCertifications.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminClubClaims.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminRatingSystems.tsx` | Modify | Remove header, standardize layout |
-| `src/pages/admin/AdminPricing.tsx` | Modify | Remove header, standardize layout |
+### Phase 7: Expand Trainer Edit Dialog
 
-## Standardized Page Template
+**File:** `src/components/admin/TrainerSubscriptionEditDialog.tsx`
 
-Each admin page will follow this structure:
+Add fields:
+- `is_verified` toggle
 
-```tsx
-export default function AdminXxx() {
-  // Data fetching hooks
-  // Filter state
-  // Actions/handlers
+## Detailed Changes by File
 
-  return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Page Title</h1>
-          <p className="text-muted-foreground">Description text</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Action buttons */}
-        </div>
-      </div>
+| File | Changes |
+|------|---------|
+| `src/hooks/useAdminData.ts` | Extend `TrainerProfileAdmin`, `ClubProfileAdmin`, `AcademyProfileAdmin` types; update queries to fetch slug, manager user_ids |
+| `src/components/admin/ImpersonateUserDialog.tsx` | Create new reusable dialog component |
+| `src/components/admin/ClubSubscriptionEditDialog.tsx` | Add `is_verified` toggle |
+| `src/components/admin/TrainerSubscriptionEditDialog.tsx` | Add `is_verified` toggle |
+| `src/pages/admin/AdminTrainers.tsx` | Add View Profile + Login as User actions |
+| `src/pages/admin/AdminClubs.tsx` | Add View Profile + Login as Manager actions |
+| `src/pages/admin/AdminAcademies.tsx` | Add Login as Manager action (View Profile already exists) |
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        {/* Search + filter dropdowns */}
-      </div>
+## User Experience
 
-      {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>...</Table>
-      </div>
+After implementation, from any admin entity table:
 
-      {/* Footer */}
-      <p className="text-sm text-muted-foreground">
-        Showing X of Y items
-      </p>
-    </div>
-  );
-}
-```
+**Trainers:**
+- Edit Subscription (expanded)
+- View Profile (opens public trainer page)
+- Login as Trainer (opens magic link)
+
+**Clubs:**
+- Edit Club (expanded with verification)
+- View Profile (opens public club page)
+- Login as Manager (if manager exists)
+
+**Academies:**
+- Edit Academy (already expanded)
+- View Public Page (already exists)
+- Login as Manager (if manager exists)
 
 ## Technical Considerations
 
-### Auth Guard
-- AdminLayout will check `useIsAdmin()` and redirect non-admins
-- Individual pages no longer need auth checks
+### Manager Lookup for Impersonation
+- Clubs: Query `club_managers` for `role = 'owner'`, fallback to any manager
+- Academies: Query `academy_managers` for `role = 'owner'`, fallback to any manager
+- If no manager exists, show "No manager assigned" tooltip and disable button
 
-### Sidebar State Persistence
-- Collapsed state saved to localStorage
-- Mobile uses Sheet drawer pattern (auto-handled by shadcn sidebar)
+### Impersonation Safety
+- The edge function already prevents impersonating admins
+- Logs all impersonation attempts to `admin_impersonation_logs`
+- Magic links expire after 1 hour
 
-### Pending Claims Badge
-- Sidebar fetches `usePendingClaimsCount()` hook
-- Updates automatically when claims are processed
+### Query Optimization
+- Use single queries with JOINs to fetch related manager data
+- Keep existing cache times (2 min stale, 10 min gc)
 
-### Active Route
-- Use `NavLink` component with `isActive` prop
-- Highlight current section in sidebar
+## Files to Create/Modify
 
-## Expected Result
+| Action | File |
+|--------|------|
+| Create | `src/components/admin/ImpersonateUserDialog.tsx` |
+| Modify | `src/hooks/useAdminData.ts` |
+| Modify | `src/components/admin/ClubSubscriptionEditDialog.tsx` |
+| Modify | `src/components/admin/TrainerSubscriptionEditDialog.tsx` |
+| Modify | `src/pages/admin/AdminTrainers.tsx` |
+| Modify | `src/pages/admin/AdminClubs.tsx` |
+| Modify | `src/pages/admin/AdminAcademies.tsx` |
 
-Visual comparison:
-
-**Before:**
-- Cluttered dashboard with 8+ cards
-- Each page has its own header/back button
-- Inconsistent navigation patterns
-
-**After:**
-- Clean sidebar with 8 main navigation items
-- Dashboard focuses on metrics/analytics
-- All pages have consistent structure
-- Scrape action logically placed on Academies page
-- Better mobile experience with collapsible sidebar
