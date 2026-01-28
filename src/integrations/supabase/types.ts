@@ -14,6 +14,525 @@ export type Database = {
   }
   public: {
     Tables: {
+      academy_followers: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          id: string
+          notify_new_availability: boolean
+          player_id: string
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id: string
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          id?: string
+          notify_new_availability?: boolean
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_followers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_followers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_locations: {
+        Row: {
+          academy_profile_id: string
+          contract_end: string | null
+          contract_start: string | null
+          contract_type: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          location_id: string
+          show_on_academy_page: boolean
+          show_on_club_page: boolean
+        }
+        Insert: {
+          academy_profile_id: string
+          contract_end?: string | null
+          contract_start?: string | null
+          contract_type?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id: string
+          show_on_academy_page?: boolean
+          show_on_club_page?: boolean
+        }
+        Update: {
+          academy_profile_id?: string
+          contract_end?: string | null
+          contract_start?: string | null
+          contract_type?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          show_on_academy_page?: boolean
+          show_on_club_page?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_locations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_managers: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          id: string
+          invited_by: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_managers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_managers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_managers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_profile_views: {
+        Row: {
+          academy_profile_id: string
+          id: string
+          session_id: string | null
+          viewed_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          id?: string
+          session_id?: string | null
+          viewed_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          id?: string
+          session_id?: string | null
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_profile_views_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_profile_views_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_profile_views_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_profiles: {
+        Row: {
+          banner_url: string | null
+          contact_email: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_public: boolean
+          is_verified: boolean
+          logo_url: string | null
+          name: string
+          phone: string | null
+          slug: string
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          stripe_customer_id: string | null
+          subscription_ends_at: string | null
+          subscription_id: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          trial_ends_at: string | null
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          contact_email?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          is_verified?: boolean
+          logo_url?: string | null
+          name: string
+          phone?: string | null
+          slug: string
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          contact_email?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          is_verified?: boolean
+          logo_url?: string | null
+          name?: string
+          phone?: string | null
+          slug?: string
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          stripe_customer_id?: string | null
+          subscription_ends_at?: string | null
+          subscription_id?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
+      academy_stripe_accounts: {
+        Row: {
+          academy_profile_id: string
+          charges_enabled: boolean
+          created_at: string
+          id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          stripe_account_id: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_trainer_invitations: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          id: string
+          invited_by: string
+          message: string | null
+          payment_percentage: number
+          responded_at: string | null
+          status: string
+          token: string
+          trainer_email: string
+          trainer_profile_id: string | null
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          id?: string
+          invited_by: string
+          message?: string | null
+          payment_percentage?: number
+          responded_at?: string | null
+          status?: string
+          token?: string
+          trainer_email: string
+          trainer_profile_id?: string | null
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          id?: string
+          invited_by?: string
+          message?: string | null
+          payment_percentage?: number
+          responded_at?: string | null
+          status?: string
+          token?: string
+          trainer_email?: string
+          trainer_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_trainer_invitations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainer_invitations_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_trainers: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          id: string
+          invited_by: string | null
+          joined_at: string | null
+          payment_percentage: number
+          show_on_academy_page: boolean
+          status: string
+          trainer_profile_id: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          payment_percentage?: number
+          show_on_academy_page?: boolean
+          status?: string
+          trainer_profile_id: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          payment_percentage?: number
+          show_on_academy_page?: boolean
+          status?: string
+          trainer_profile_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null
@@ -55,6 +574,7 @@ export type Database = {
       }
       availability_slots: {
         Row: {
+          academy_profile_id: string | null
           court_type: string | null
           created_at: string
           cyclus_id: string | null
@@ -70,6 +590,7 @@ export type Database = {
           trainer_id: string
         }
         Insert: {
+          academy_profile_id?: string | null
           court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
@@ -85,6 +606,7 @@ export type Database = {
           trainer_id: string
         }
         Update: {
+          academy_profile_id?: string | null
           court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
@@ -100,6 +622,27 @@ export type Database = {
           trainer_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "availability_slots_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "availability_slots_lesson_id_fkey"
             columns: ["lesson_id"]
@@ -2278,6 +2821,126 @@ export type Database = {
       }
     }
     Views: {
+      academy_profiles_public: {
+        Row: {
+          banner_url: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_public: boolean | null
+          is_verified: boolean | null
+          logo_url: string | null
+          name: string | null
+          slug: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          updated_at: string | null
+          website_url: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          logo_url?: string | null
+          name?: string | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          logo_url?: string | null
+          name?: string | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+          website_url?: string | null
+        }
+        Relationships: []
+      }
+      academy_profiles_safe: {
+        Row: {
+          banner_url: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_public: boolean | null
+          is_verified: boolean | null
+          logo_url: string | null
+          name: string | null
+          slug: string | null
+          social_facebook: string | null
+          social_instagram: string | null
+          social_linkedin: string | null
+          social_tiktok: string | null
+          social_youtube: string | null
+          updated_at: string | null
+          website_url: string | null
+        }
+        Insert: {
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          logo_url?: string | null
+          name?: string | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          updated_at?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_public?: boolean | null
+          is_verified?: boolean | null
+          logo_url?: string | null
+          name?: string | null
+          slug?: string | null
+          social_facebook?: string | null
+          social_instagram?: string | null
+          social_linkedin?: string | null
+          social_tiktok?: string | null
+          social_youtube?: string | null
+          updated_at?: string | null
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       club_profiles_public: {
         Row: {
           banner_url: string | null
@@ -2581,6 +3244,10 @@ export type Database = {
       }
     }
     Functions: {
+      academy_has_managers: {
+        Args: { _academy_profile_id: string }
+        Returns: boolean
+      }
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
@@ -2589,6 +3256,7 @@ export type Database = {
         Args: { city: string; name: string }
         Returns: string
       }
+      get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {
         Args: { _user_id: string }
@@ -2601,7 +3269,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_academy_manager: {
+        Args: { _academy_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_academy_owner: {
+        Args: { _academy_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_any_academy_manager: { Args: { _user_id: string }; Returns: boolean }
       is_any_club_manager: { Args: { _user_id: string }; Returns: boolean }
       is_club_manager: {
         Args: { _club_profile_id: string; _user_id: string }
@@ -2615,7 +3292,13 @@ export type Database = {
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "player" | "trainer" | "admin" | "club_manager" | "club"
+      app_role:
+        | "player"
+        | "trainer"
+        | "admin"
+        | "club_manager"
+        | "club"
+        | "academy"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2743,7 +3426,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["player", "trainer", "admin", "club_manager", "club"],
+      app_role: [
+        "player",
+        "trainer",
+        "admin",
+        "club_manager",
+        "club",
+        "academy",
+      ],
     },
   },
 } as const
