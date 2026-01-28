@@ -244,6 +244,16 @@ interface ClubProfileRow {
   subscription_tier: string | null;
   trial_ends_at: string | null;
   created_at: string;
+  description: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
   location: {
     name: string;
     city: string;
@@ -260,6 +270,16 @@ export interface ClubProfileAdmin {
   subscription_tier: string | null;
   trial_ends_at: string | null;
   created_at: string;
+  description: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
   location: {
     name: string;
     city: string;
@@ -285,6 +305,16 @@ export function useAdminClubs() {
           subscription_tier,
           trial_ends_at,
           created_at,
+          description,
+          contact_email,
+          phone,
+          logo_url,
+          banner_url,
+          social_instagram,
+          social_facebook,
+          social_tiktok,
+          social_youtube,
+          social_linkedin,
           location:locations!club_profiles_location_id_fkey(name, city, country, slug),
           managers:club_managers(user_id, role)
         `

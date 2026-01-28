@@ -924,12 +924,11 @@ export async function getPublicAcademyLocations(academyProfileId: string): Promi
   return data || [];
 }
 
-// Get all public academies for directory
-export async function getPublicAcademies(): Promise<AcademyProfile[]> {
+// Get all public academies for directory (uses public view which requires is_verified AND is_public)
+export async function getPublicAcademies(): Promise<Partial<AcademyProfile>[]> {
   const { data, error } = await supabase
-    .from('academy_profiles')
+    .from('academy_profiles_public')
     .select('*')
-    .eq('is_public', true)
     .order('name');
 
   if (error) {

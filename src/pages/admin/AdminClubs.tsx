@@ -43,7 +43,7 @@ import {
   LogIn,
 } from "lucide-react";
 import { format } from "date-fns";
-import { ClubSubscriptionEditDialog } from "@/components/admin/ClubSubscriptionEditDialog";
+import { ClubEditDialog } from "@/components/admin/ClubEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 
 export default function AdminClubs() {
@@ -340,7 +340,7 @@ export default function AdminClubs() {
       </p>
 
       {editingClub && (
-        <ClubSubscriptionEditDialog
+        <ClubEditDialog
           open={!!editingClub}
           onOpenChange={(open) => !open && setEditingClub(null)}
           clubId={editingClub.id}
@@ -350,6 +350,16 @@ export default function AdminClubs() {
             subscription_tier: editingClub.subscription_tier,
             trial_ends_at: editingClub.trial_ends_at,
             is_verified: editingClub.is_verified,
+            description: editingClub.description,
+            contact_email: editingClub.contact_email,
+            phone: editingClub.phone,
+            logo_url: editingClub.logo_url,
+            banner_url: editingClub.banner_url,
+            social_instagram: editingClub.social_instagram,
+            social_facebook: editingClub.social_facebook,
+            social_tiktok: editingClub.social_tiktok,
+            social_youtube: editingClub.social_youtube,
+            social_linkedin: editingClub.social_linkedin,
           }}
           onSuccess={() => invalidateClubs()}
         />
