@@ -221,6 +221,22 @@ export default function AdminDashboard() {
               </div>
               <div
                 className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate("/admin/academies")}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-chart-4/10 flex items-center justify-center">
+                    <GraduationCap className="h-5 w-5" style={{ color: "hsl(var(--chart-4))" }} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Academy Management</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage academies and verification
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div
+                className="rounded-lg border bg-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => navigate("/admin/club-claims")}
               >
                 <div className="flex items-center justify-between">
