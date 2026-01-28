@@ -43,15 +43,13 @@
 - [x] Extended Cycle types to support 'academy' owner_type
 - [x] CycleForm updated to support academy with trainer selection
 
-### 🔄 Phase 6: Public Academy Profiles (TODO)
-- [ ] Contract terms and expiration
+### ✅ Phase 6: Public Academy Profiles (COMPLETE)
+- [x] Academy public profile page (`/:lang/academies/:slug`)
+- [x] Academies directory (`/:lang/academies`)
+- [x] getPublicAcademyTrainers, getPublicAcademyLocations, getPublicAcademies functions
+- [x] SEO optimization with structured data
 
-### ⏳ Phase 5: Public Profiles & Cross-Linking
-- [ ] Academy public profile page (`/:lang/academies/:slug`)
-- [ ] Academies directory (`/:lang/academies`)
-- [ ] Trainer profile update - Show academy affiliation with link
-- [ ] Location detail update - Show academies at club with links
-- [ ] SEO optimization (structured data, meta tags)
+### ⏳ Phase 7: Cross-Linking
 
 ### ⏳ Phase 6: Slot-Level Assignment
 - [ ] Update `AddSlotDialog` with "Working as" picker
