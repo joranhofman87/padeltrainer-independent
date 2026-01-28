@@ -1,5 +1,6 @@
 import { test, expect } from '../playwright-fixture';
 import { dismissCookieConsent, waitForNavigation } from './fixtures/helpers';
+import { ROUTES, PLAYER_ROUTES, TRAINER_ROUTES, CLUB_ROUTES, ACADEMY_ROUTES } from './fixtures/test-data';
 
 test.describe('Academy Flows', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,14 +9,14 @@ test.describe('Academy Flows', () => {
 
   test.describe('Academy Signup', () => {
     test('should display academy signup page', async ({ page }) => {
-      await page.goto('/signup/academy');
+      await page.goto(ROUTES.academySignup);
       await waitForNavigation(page);
       
       await expect(page.locator('body')).toBeVisible();
     });
 
     test('should have required form fields', async ({ page }) => {
-      await page.goto('/signup/academy');
+      await page.goto(ROUTES.academySignup);
       await waitForNavigation(page);
       
       // Check for email and password at minimum
@@ -24,7 +25,7 @@ test.describe('Academy Flows', () => {
     });
 
     test('should have Google OAuth option', async ({ page }) => {
-      await page.goto('/signup/academy');
+      await page.goto(ROUTES.academySignup);
       await waitForNavigation(page);
       
       const googleButton = page.locator('button:has-text("Google")');
@@ -36,14 +37,14 @@ test.describe('Academy Flows', () => {
 
   test.describe('Academy Public Profile', () => {
     test('should navigate to academies listing', async ({ page }) => {
-      await page.goto('/en/academies');
+      await page.goto(ROUTES.academies);
       await waitForNavigation(page);
       
       await expect(page.locator('body')).toBeVisible();
     });
 
     test('should display academy profile when available', async ({ page }) => {
-      await page.goto('/en/academies');
+      await page.goto(ROUTES.academies);
       await waitForNavigation(page);
       
       const academyLink = page.locator('a[href*="/academies/"]').first();
@@ -58,7 +59,7 @@ test.describe('Academy Flows', () => {
     });
 
     test('should show trainers affiliated with academy', async ({ page }) => {
-      await page.goto('/en/academies');
+      await page.goto(ROUTES.academies);
       await waitForNavigation(page);
       
       const academyLink = page.locator('a[href*="/academies/"]').first();
@@ -73,7 +74,7 @@ test.describe('Academy Flows', () => {
     });
 
     test('should show locations where academy operates', async ({ page }) => {
-      await page.goto('/en/academies');
+      await page.goto(ROUTES.academies);
       await waitForNavigation(page);
       
       const academyLink = page.locator('a[href*="/academies/"]').first();
@@ -90,35 +91,28 @@ test.describe('Academy Flows', () => {
 
   test.describe('Academy Dashboard Access', () => {
     test('should redirect to auth when not logged in', async ({ page }) => {
-      await page.goto('/academy');
+      await page.goto(ROUTES.academyDashboard);
       await waitForNavigation(page);
       
       const currentUrl = page.url();
       expect(currentUrl).toMatch(/auth|login|unauthorized/i);
     });
 
-    test('academy trainers page requires auth', async ({ page }) => {
-      await page.goto('/academy/trainers');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('all academy routes require auth', async ({ page }) => {
+      for (const route of ACADEMY_ROUTES) {
+        await page.goto(route);
+        await waitForNavigation(page);
+        
+        const currentUrl = page.url();
+        expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+      }
     });
 
-    test('academy locations page requires auth', async ({ page }) => {
-      await page.goto('/academy/locations');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
-    });
-
-    test('academy cycles page requires auth', async ({ page }) => {
-      await page.goto('/academy/cycles');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('academy routes should not return 500 errors', async ({ page }) => {
+      for (const route of ACADEMY_ROUTES) {
+        const response = await page.goto(route);
+        expect(response?.status()).toBeLessThan(500);
+      }
     });
   });
 
@@ -141,7 +135,7 @@ test.describe('Club Flows', () => {
 
   test.describe('Club Signup', () => {
     test('should display club signup page', async ({ page }) => {
-      await page.goto('/signup/club');
+      await page.goto(ROUTES.clubSignup);
       await waitForNavigation(page);
       
       await expect(page.locator('body')).toBeVisible();
@@ -150,35 +144,28 @@ test.describe('Club Flows', () => {
 
   test.describe('Club Dashboard Access', () => {
     test('should redirect to auth when not logged in', async ({ page }) => {
-      await page.goto('/club');
+      await page.goto(ROUTES.clubDashboard);
       await waitForNavigation(page);
       
       const currentUrl = page.url();
       expect(currentUrl).toMatch(/auth|login|unauthorized/i);
     });
 
-    test('club trainers page requires auth', async ({ page }) => {
-      await page.goto('/club/trainers');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('all club routes require auth', async ({ page }) => {
+      for (const route of CLUB_ROUTES) {
+        await page.goto(route);
+        await waitForNavigation(page);
+        
+        const currentUrl = page.url();
+        expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+      }
     });
 
-    test('club calendar page requires auth', async ({ page }) => {
-      await page.goto('/club/calendar');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
-    });
-
-    test('club cycles page requires auth', async ({ page }) => {
-      await page.goto('/club/cycles');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('club routes should not return 500 errors', async ({ page }) => {
+      for (const route of CLUB_ROUTES) {
+        const response = await page.goto(route);
+        expect(response?.status()).toBeLessThan(500);
+      }
     });
   });
 
@@ -198,45 +185,47 @@ test.describe('Trainer Flows', () => {
     await dismissCookieConsent(page);
   });
 
+  test.describe('Trainer Signup', () => {
+    test('should display trainer signup page', async ({ page }) => {
+      await page.goto(ROUTES.trainerSignup);
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+
+    test('should have required form fields', async ({ page }) => {
+      await page.goto(ROUTES.trainerSignup);
+      await waitForNavigation(page);
+      
+      await expect(page.locator('input[type="email"]')).toBeVisible();
+      await expect(page.locator('input[type="password"]')).toBeVisible();
+    });
+  });
+
   test.describe('Trainer Dashboard Access', () => {
     test('should redirect to auth when not logged in', async ({ page }) => {
-      await page.goto('/trainer');
+      await page.goto(ROUTES.trainerDashboard);
       await waitForNavigation(page);
       
       const currentUrl = page.url();
       expect(currentUrl).toMatch(/auth|login|unauthorized/i);
     });
 
-    test('trainer calendar page requires auth', async ({ page }) => {
-      await page.goto('/trainer/calendar');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('all trainer routes require auth', async ({ page }) => {
+      for (const route of TRAINER_ROUTES) {
+        await page.goto(route);
+        await waitForNavigation(page);
+        
+        const currentUrl = page.url();
+        expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+      }
     });
 
-    test('trainer players page requires auth', async ({ page }) => {
-      await page.goto('/trainer/players');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
-    });
-
-    test('trainer cycles page requires auth', async ({ page }) => {
-      await page.goto('/trainer/cycles');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
-    });
-
-    test('trainer subscription page requires auth', async ({ page }) => {
-      await page.goto('/trainer/subscription');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('trainer routes should not return 500 errors', async ({ page }) => {
+      for (const route of TRAINER_ROUTES) {
+        const response = await page.goto(route);
+        expect(response?.status()).toBeLessThan(500);
+      }
     });
   });
 });
@@ -246,29 +235,47 @@ test.describe('Player Flows', () => {
     await dismissCookieConsent(page);
   });
 
+  test.describe('Player Signup', () => {
+    test('should display player signup page', async ({ page }) => {
+      await page.goto(ROUTES.playerSignup);
+      await waitForNavigation(page);
+      
+      await expect(page.locator('body')).toBeVisible();
+    });
+
+    test('should have required form fields', async ({ page }) => {
+      await page.goto(ROUTES.playerSignup);
+      await waitForNavigation(page);
+      
+      await expect(page.locator('input[type="email"]')).toBeVisible();
+      await expect(page.locator('input[type="password"]')).toBeVisible();
+    });
+  });
+
   test.describe('Player Dashboard Access', () => {
     test('should redirect to auth when not logged in', async ({ page }) => {
-      await page.goto('/player');
+      await page.goto(ROUTES.playerDashboard);
       await waitForNavigation(page);
       
       const currentUrl = page.url();
       expect(currentUrl).toMatch(/auth|login|unauthorized/i);
     });
 
-    test('player bookings page requires auth', async ({ page }) => {
-      await page.goto('/player/bookings');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('all player routes require auth', async ({ page }) => {
+      for (const route of PLAYER_ROUTES) {
+        await page.goto(route);
+        await waitForNavigation(page);
+        
+        const currentUrl = page.url();
+        expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+      }
     });
 
-    test('player following page requires auth', async ({ page }) => {
-      await page.goto('/player/following');
-      await waitForNavigation(page);
-      
-      const currentUrl = page.url();
-      expect(currentUrl).toMatch(/auth|login|unauthorized/i);
+    test('player routes should not return 500 errors', async ({ page }) => {
+      for (const route of PLAYER_ROUTES) {
+        const response = await page.goto(route);
+        expect(response?.status()).toBeLessThan(500);
+      }
     });
   });
 });
