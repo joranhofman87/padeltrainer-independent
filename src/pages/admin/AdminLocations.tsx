@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
 import { isUserAdmin } from '@/lib/admin';
 import {
-  ArrowLeft,
   Loader2,
   Plus,
   Search,
@@ -12,7 +9,6 @@ import {
   Edit,
   ToggleLeft,
   ToggleRight,
-  ShieldAlert,
   Upload,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
@@ -45,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import {
   getAllLocations,
   createLocation,
@@ -55,8 +52,7 @@ import {
 } from '@/lib/locations';
 
 export default function AdminLocations() {
-  const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -83,12 +79,6 @@ export default function AdminLocations() {
     outdoor_courts: 0,
   });
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
-  }, [authLoading, user, navigate]);
 
   useEffect(() => {
     async function checkAdmin() {
@@ -229,7 +219,6 @@ export default function AdminLocations() {
         toast({ title: 'Success', description: 'Location created successfully' });
       }
 
-      // Refresh data
       const locationsData = await getAllLocations();
       setLocations(locationsData);
       setDialogOpen(false);
@@ -264,38 +253,25 @@ export default function AdminLocations() {
     }
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <ShieldAlert className="h-16 w-16 text-destructive" />
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="text-muted-foreground">You don't have admin privileges.</p>
-        <Button onClick={() => navigate('/')}>Go Home</Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">Location Management</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage padel venues · {locations.length} total locations
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Location Management</h1>
+          <p className="text-muted-foreground">
+            Manage padel venues · {locations.length} total locations
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
@@ -426,125 +402,128 @@ export default function AdminLocations() {
             </DialogContent>
           </Dialog>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search locations..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by city" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All cities</SelectItem>
-              {cities.map(city => (
-                <SelectItem key={city} value={city}>
-                  {city}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant={showInactive ? 'default' : 'outline'}
-            onClick={() => setShowInactive(!showInactive)}
-          >
-            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-          </Button>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search locations..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
         </div>
+        <Select value={selectedCity} onValueChange={setSelectedCity}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by city" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All cities</SelectItem>
+            {cities.map(city => (
+              <SelectItem key={city} value={city}>
+                {city}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant={showInactive ? 'default' : 'outline'}
+          onClick={() => setShowInactive(!showInactive)}
+        >
+          {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+        </Button>
+      </div>
 
-        {/* Table */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
+      {/* Data Table */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>City</TableHead>
+              <TableHead className="text-center">Courts</TableHead>
+              <TableHead className="text-center">Trainers</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredLocations.length === 0 ? (
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>City</TableHead>
-                <TableHead className="text-center">Courts</TableHead>
-                <TableHead className="text-center">Trainers</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  No locations found
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLocations.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No locations found
+            ) : (
+              filteredLocations.map(location => (
+                <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{location.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{location.city}</TableCell>
+                  <TableCell className="text-center text-sm">
+                    {(location.indoor_courts || 0) > 0 && <span title="Indoor">🏠{location.indoor_courts}</span>}
+                    {(location.indoor_courts || 0) > 0 && (location.outdoor_courts || 0) > 0 && ' / '}
+                    {(location.outdoor_courts || 0) > 0 && <span title="Outdoor">☀️{location.outdoor_courts}</span>}
+                    {!(location.indoor_courts || location.outdoor_courts) && '-'}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={location.is_active ? 'default' : 'outline'}>
+                      {location.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {location.website_url && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => window.open(location.website_url!, '_blank')}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(location)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => toggleActive(location)}>
+                        {location.is_active ? (
+                          <ToggleRight className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <ToggleLeft className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredLocations.map(location => (
-                  <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{location.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{location.city}</TableCell>
-                    <TableCell className="text-center text-sm">
-                      {(location.indoor_courts || 0) > 0 && <span title="Indoor">🏠{location.indoor_courts}</span>}
-                      {(location.indoor_courts || 0) > 0 && (location.outdoor_courts || 0) > 0 && ' / '}
-                      {(location.outdoor_courts || 0) > 0 && <span title="Outdoor">☀️{location.outdoor_courts}</span>}
-                      {!(location.indoor_courts || 0) && !(location.outdoor_courts || 0) && '-'}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={location.is_active ? 'default' : 'secondary'}>
-                        {location.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {location.website_url && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => window.open(location.website_url!, '_blank')}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(location)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => toggleActive(location)}>
-                          {location.is_active ? (
-                            <ToggleRight className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <ToggleLeft className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </main>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
+      {/* Footer */}
+      <p className="text-sm text-muted-foreground">
+        Showing {filteredLocations.length} of {locations.length} locations
+      </p>
+
+      {/* Import Dialog */}
       <ImportLocationsDialog
         open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onLocationsImported={async () => {
-          const locationsData = await getAllLocations();
-          setLocations(locationsData);
-          const countsData = await getLocationTrainerCounts();
-          setTrainerCounts(countsData);
-          toast({ title: 'Success', description: 'Locations imported successfully' });
+        onOpenChange={async (open) => {
+          setImportDialogOpen(open);
+          if (!open) {
+            const locationsData = await getAllLocations();
+            setLocations(locationsData);
+          }
         }}
       />
     </div>
