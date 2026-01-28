@@ -514,7 +514,9 @@
     "deleteCyclus": "Delete Cyclus",
     "cyclusDeleted": "Cyclus deleted",
     "cyclusDeletedDescription": "Deleted {{count}} slots and cancelled associated bookings",
-    "notifyPlayers": "Notify affected players by email"
+    "notifyPlayers": "Notify affected players by email",
+    "workingAs": "Working as",
+    "independent": "Independent"
   },
   "openSlots": {
     "title": "Open Training Slots",

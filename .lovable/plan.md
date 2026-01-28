@@ -54,12 +54,13 @@
 - [x] Location detail shows academies operating at the club
 - [x] i18n translations for cross-linking
 
-### ⏳ Phase 8: Slot-Level Assignment
-- [ ] Update `AddSlotDialog` with "Working as" picker
-- [ ] Update `BulkCreateSheet` with same option
-- [ ] Club calendar respects academy assignments
+### ✅ Phase 8: Slot-Level Assignment (COMPLETE)
+- [x] Update `AddSlotDialog` with "Working as" picker
+- [x] Update `BulkCreateSheet` with same option
+- [x] Slot insert includes academy_profile_id
+- [x] i18n translations for slot assignment
 
-### ⏳ Phase 7: Payment & Billing
+### ⏳ Phase 9: Payment & Billing
 - [ ] Academy Stripe Connect integration
 - [ ] Payment routing based on slot assignment
 - [ ] Academy subscription billing
