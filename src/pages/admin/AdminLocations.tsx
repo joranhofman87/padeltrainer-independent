@@ -518,12 +518,10 @@ export default function AdminLocations() {
       {/* Import Dialog */}
       <ImportLocationsDialog
         open={importDialogOpen}
-        onOpenChange={async (open) => {
-          setImportDialogOpen(open);
-          if (!open) {
-            const locationsData = await getAllLocations();
-            setLocations(locationsData);
-          }
+        onOpenChange={setImportDialogOpen}
+        onLocationsImported={async () => {
+          const locationsData = await getAllLocations();
+          setLocations(locationsData);
         }}
       />
     </div>
