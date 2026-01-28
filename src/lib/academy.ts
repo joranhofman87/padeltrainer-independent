@@ -404,3 +404,321 @@ export async function recordAcademyProfileView(academyProfileId: string, session
     session_id: sessionId || null,
   });
 }
+
+// ===================== Trainer Invitation Functions =====================
+
+export interface AcademyTrainerInvitation {
+  id: string;
+  academy_profile_id: string;
+  trainer_email: string;
+  trainer_profile_id: string | null;
+  invited_by: string;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  payment_percentage: number;
+  message: string | null;
+  token: string;
+  created_at: string;
+  responded_at: string | null;
+}
+
+// Invite a trainer to the academy
+export async function inviteAcademyTrainer(
+  academyProfileId: string,
+  trainerEmail: string,
+  invitedBy: string,
+  paymentPercentage: number,
+  message?: string
+): Promise<{ success: boolean; invitation?: AcademyTrainerInvitation; error?: string }> {
+  // Check if trainer is already part of academy
+  const { data: existingTrainer } = await supabase
+    .from('academy_trainers')
+    .select('id')
+    .eq('academy_profile_id', academyProfileId)
+    .eq('status', 'active');
+
+  // Check if there's already a pending invitation
+  const { data: existingInvitation } = await supabase
+    .from('academy_trainer_invitations')
+    .select('id')
+    .eq('academy_profile_id', academyProfileId)
+    .eq('trainer_email', trainerEmail.toLowerCase())
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (existingInvitation) {
+    return { success: false, error: 'An invitation is already pending for this email' };
+  }
+
+  // Find if trainer has a profile with this email
+  const { data: trainerProfile } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('email', trainerEmail.toLowerCase())
+    .maybeSingle();
+
+  let trainerProfileId: string | null = null;
+  if (trainerProfile) {
+    const { data: tp } = await supabase
+      .from('trainer_profiles')
+      .select('id')
+      .eq('user_id', trainerProfile.user_id)
+      .maybeSingle();
+    trainerProfileId = tp?.id || null;
+
+    // Check if this trainer is already active in the academy
+    if (trainerProfileId) {
+      const alreadyActive = existingTrainer?.some((t: any) => t.trainer_profile_id === trainerProfileId);
+      if (alreadyActive) {
+        return { success: false, error: 'This trainer is already part of your academy' };
+      }
+    }
+  }
+
+  // Create invitation
+  const { data: invitation, error } = await supabase
+    .from('academy_trainer_invitations')
+    .insert({
+      academy_profile_id: academyProfileId,
+      trainer_email: trainerEmail.toLowerCase(),
+      trainer_profile_id: trainerProfileId,
+      invited_by: invitedBy,
+      payment_percentage: paymentPercentage,
+      message: message || null,
+      status: 'pending',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating academy trainer invitation:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, invitation: invitation as AcademyTrainerInvitation };
+}
+
+// Get invitation by token
+export async function getAcademyInvitationByToken(token: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from('academy_trainer_invitations')
+    .select(`
+      *,
+      academy_profiles(id, name, slug, logo_url, description)
+    `)
+    .eq('token', token)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error('Error fetching academy invitation:', error);
+    return null;
+  }
+
+  // Get inviter name
+  const { data: inviterProfile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('user_id', data.invited_by)
+    .maybeSingle();
+
+  return {
+    ...data,
+    inviter_name: inviterProfile?.full_name || 'Unknown',
+  };
+}
+
+// Respond to trainer invitation (accept/decline)
+export async function respondToAcademyTrainerInvitation(
+  token: string,
+  accept: boolean,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  // Get the invitation
+  const { data: invitation, error: fetchError } = await supabase
+    .from('academy_trainer_invitations')
+    .select('*')
+    .eq('token', token)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (fetchError || !invitation) {
+    return { success: false, error: 'Invitation not found or already responded' };
+  }
+
+  // Get trainer profile for this user
+  const { data: trainerProfile } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!trainerProfile) {
+    return { success: false, error: 'You must be a trainer to accept this invitation' };
+  }
+
+  // Update invitation status
+  const { error: updateError } = await supabase
+    .from('academy_trainer_invitations')
+    .update({
+      status: accept ? 'accepted' : 'declined',
+      responded_at: new Date().toISOString(),
+      trainer_profile_id: trainerProfile.id,
+    })
+    .eq('id', invitation.id);
+
+  if (updateError) {
+    console.error('Error updating invitation:', updateError);
+    return { success: false, error: updateError.message };
+  }
+
+  // If accepted, create the academy_trainers record
+  if (accept) {
+    const { error: trainerError } = await supabase
+      .from('academy_trainers')
+      .insert({
+        academy_profile_id: invitation.academy_profile_id,
+        trainer_profile_id: trainerProfile.id,
+        status: 'active',
+        payment_percentage: invitation.payment_percentage,
+        invited_by: invitation.invited_by,
+        joined_at: new Date().toISOString(),
+      });
+
+    if (trainerError) {
+      console.error('Error creating academy trainer:', trainerError);
+      // Try to rollback invitation status
+      await supabase
+        .from('academy_trainer_invitations')
+        .update({ status: 'pending', responded_at: null })
+        .eq('id', invitation.id);
+      return { success: false, error: trainerError.message };
+    }
+  }
+
+  return { success: true };
+}
+
+// Get all trainers for academy (including invited)
+export async function getAcademyTrainersWithProfiles(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      *,
+      trainer_profile:trainer_profiles(
+        id,
+        user_id,
+        hourly_rate,
+        experience_years,
+        specializations,
+        certifications,
+        is_verified
+      )
+    `)
+    .eq('academy_profile_id', academyProfileId);
+
+  if (error) {
+    console.error('Error fetching academy trainers:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Batch fetch profiles
+  const userIds = data.map((t: any) => t.trainer_profile?.user_id).filter(Boolean);
+  const { data: profiles } = await supabase
+    .from('profiles_public')
+    .select('user_id, full_name, avatar_url')
+    .in('user_id', userIds);
+
+  const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+
+  return data.map((trainer: any) => ({
+    ...trainer,
+    profile: trainer.trainer_profile?.user_id 
+      ? profileMap.get(trainer.trainer_profile.user_id) || null 
+      : null,
+  }));
+}
+
+// Get pending invitations for academy
+export async function getAcademyPendingInvitations(academyProfileId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('academy_trainer_invitations')
+    .select('*')
+    .eq('academy_profile_id', academyProfileId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching pending invitations:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Update trainer payment percentage
+export async function updateAcademyTrainerPayment(
+  academyTrainerId: string,
+  paymentPercentage: number
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_trainers')
+    .update({ payment_percentage: paymentPercentage })
+    .eq('id', academyTrainerId);
+
+  if (error) {
+    console.error('Error updating trainer payment:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Update trainer visibility on academy page
+export async function updateAcademyTrainerVisibility(
+  academyTrainerId: string,
+  showOnAcademyPage: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_trainers')
+    .update({ show_on_academy_page: showOnAcademyPage })
+    .eq('id', academyTrainerId);
+
+  if (error) {
+    console.error('Error updating trainer visibility:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Remove trainer from academy
+export async function removeAcademyTrainer(academyTrainerId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_trainers')
+    .update({ status: 'inactive' })
+    .eq('id', academyTrainerId);
+
+  if (error) {
+    console.error('Error removing trainer from academy:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Cancel pending invitation
+export async function cancelAcademyInvitation(invitationId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_trainer_invitations')
+    .update({ status: 'expired' })
+    .eq('id', invitationId)
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('Error canceling invitation:', error);
+    return false;
+  }
+
+  return true;
+}
