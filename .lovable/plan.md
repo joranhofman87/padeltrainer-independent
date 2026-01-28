@@ -1,162 +1,244 @@
 
-
-# Plan: Enhanced Admin Editing & User Impersonation
+# Plan: Comprehensive E2E Test Suite Enhancement
 
 ## Overview
 
-Add comprehensive admin editing capabilities across all entity types (Clubs, Academies, Locations, Trainers) with quick-action buttons for viewing profiles and logging in as users.
+Enhance the E2E test suite to cover all main user flows for Admin, Player, Club, and Academy roles. This includes adding new test files and updating existing fixtures to support authenticated testing scenarios.
 
 ## Current State Analysis
 
-### What Already Exists
-- **User impersonation**: `impersonate-user` edge function generates magic links for admin login-as-user
-- **Subscription editing**: Dialogs exist for Clubs, Academies, and Trainers but with limited fields
-- **Location editing**: Full edit form exists inline in `AdminLocations.tsx`
-- **User editing**: Full CRUD in `AdminUsers.tsx` (edit, delete, change role, reset password, impersonate)
+### Test Coverage Summary
 
-### What's Missing
-1. **Quick profile access**: No links to view entity public profiles directly
-2. **Impersonation from entity pages**: Can only impersonate from Users page, not from Trainers/Clubs/Academies
-3. **Expanded edit dialogs**: Club dialogs don't include verification status; Trainer dialogs don't include all profile fields
-4. **Unified action patterns**: Inconsistent action menus across entity types
+| Category | Current Coverage | Gap |
+|----------|------------------|-----|
+| **Admin** | Only auth guard check | No dashboard, CRUD, or management tests |
+| **Player** | Auth guard + basic dashboard route check | No authenticated functionality tests |
+| **Trainer** | Auth guard + basic dashboard route check | No authenticated functionality tests |
+| **Club** | Auth guard + basic dashboard route check | No dashboard, profile, or management tests |
+| **Academy** | Auth guard + public profile tests | No dashboard management tests |
+
+### Existing Test Files (9 files, ~750 lines)
+- `auth.spec.ts` - Authentication flows
+- `navigation.spec.ts` - Marketing pages
+- `booking.spec.ts` - Booking flows
+- `dashboard.spec.ts` - Protected route checks
+- `roles.spec.ts` - Role-specific signup and auth guards
+- `i18n.spec.ts` - Internationalization
+- `accessibility.spec.ts` - A11y tests
+- `error-handling.spec.ts` - Error states
+- `performance.spec.ts` - Performance metrics
 
 ## Implementation Plan
 
-### Phase 1: Add "View Profile" and "Login as User" to Trainers Page
+### Phase 1: Update Test Fixtures
 
-**File:** `src/pages/admin/AdminTrainers.tsx`
+**File:** `e2e/fixtures/test-data.ts`
 
-Add to the dropdown menu:
-- **View Profile** - Opens `/en/trainers/{slug}` in new tab
-- **Login as User** - Calls impersonate-user edge function with trainer's `user_id`
+Add admin routes and expand route definitions:
 
-This requires:
-1. Fetching the trainer's `slug` (add to `useAdminTrainers` query)
-2. Adding impersonation dialog (copy pattern from AdminUsers)
+```typescript
+export const ROUTES = {
+  // ... existing routes ...
+  admin: '/admin',
+  adminUsers: '/admin/users',
+  adminTrainers: '/admin/trainers',
+  adminClubs: '/admin/clubs',
+  adminAcademies: '/admin/academies',
+  adminLocations: '/admin/locations',
+  adminCertifications: '/admin/certifications',
+  adminClubClaims: '/admin/club-claims',
+  adminPricing: '/admin/pricing',
+  adminRatingSystems: '/admin/rating-systems',
+};
+```
 
-### Phase 2: Add "View Profile" and "Login as Manager" to Clubs Page
+### Phase 2: Create Admin E2E Tests
 
-**File:** `src/pages/admin/AdminClubs.tsx`
+**File:** `e2e/admin.spec.ts`
 
-Add to the dropdown menu:
-- **View Profile** - Opens `/en/locations/{slug}` in new tab (club profiles are at location URLs)
-- **Login as Manager** - Calls impersonate-user with the club's primary owner from `club_managers`
-- **Edit Club** - Expand dialog to include verification toggle
+New test file covering:
 
-This requires:
-1. Fetching the location's `slug` and club's `owner_user_id` (add to `useAdminClubs` query)
-2. Adding impersonation confirmation dialog
-3. Expanding `ClubSubscriptionEditDialog` to include `is_verified` toggle
+1. **Admin Dashboard Access**
+   - Redirect to auth when not logged in
+   - Access denied for non-admin users (if testable)
 
-### Phase 3: Add "View Profile" and "Login as Manager" to Academies Page
+2. **Admin Sidebar Navigation**
+   - All menu items visible
+   - Navigation between sections works
+   - Pending claims badge visible (if claims exist)
 
-**File:** `src/pages/admin/AdminAcademies.tsx`
+3. **Admin Sub-Pages**
+   - Users page loads with table
+   - Trainers page loads with table and actions
+   - Clubs page loads with table and actions
+   - Academies page loads with scrape action
+   - Locations page loads with import action
+   - Certifications page loads
+   - Club Claims page loads
+   - Pricing page loads
+   - Rating Systems page loads
 
-Current state:
-- Already has "View Public Page" action
-- Already has edit dialog with verification/public toggles
+4. **Admin Actions**
+   - Edit dialogs open correctly
+   - View profile links work
+   - Impersonation dialog opens (if testable without actual login)
 
-Add:
-- **Login as Manager** - Calls impersonate-user with academy's primary manager from `academy_managers`
+### Phase 3: Enhance Player Flow Tests
 
-This requires:
-1. Fetching the academy's manager `user_id` (add to `useAdminAcademies` query)
-2. Adding impersonation confirmation dialog
+**File:** `e2e/roles.spec.ts` (update existing)
 
-### Phase 4: Update Admin Data Hooks
+Add tests under "Player Flows":
 
-**File:** `src/hooks/useAdminData.ts`
+1. **Player Dashboard Elements**
+   - Dashboard route returns < 500 status
+   - Navigation sidebar items exist
+   
+2. **Player Actions (UI existence)**
+   - Bookings page structure
+   - Following list page structure
+   - Profile edit page structure
 
-Extend queries to fetch additional data needed for impersonation:
+### Phase 4: Enhance Club Flow Tests
 
-| Hook | Additional Fields |
-|------|-------------------|
-| `useAdminTrainers` | `slug` from `profiles` |
-| `useAdminClubs` | `slug` from `locations`, owner `user_id` from `club_managers` |
-| `useAdminAcademies` | manager `user_id` from `academy_managers` |
+**File:** `e2e/roles.spec.ts` (update existing)
 
-### Phase 5: Create Shared Impersonation Dialog Component
+Add tests under "Club Flows":
 
-**File:** `src/components/admin/ImpersonateUserDialog.tsx`
+1. **Club Dashboard Elements**
+   - Dashboard page structure
+   - Sidebar navigation items
 
-A reusable confirmation dialog that:
-- Shows the target user name/email
-- Warns about logging in as another user
-- Calls the `impersonate-user` edge function
-- Opens magic link in new tab
-- Shows success/error toast
+2. **Club Management Pages**
+   - Players page loads
+   - Trainers page loads
+   - Calendar page loads
+   - Cycles page loads
+   - Tournaments page loads
+   - Settings page loads
+   - Subscription page loads
 
-### Phase 6: Expand Club Edit Dialog
+### Phase 5: Enhance Academy Flow Tests
 
-**File:** `src/components/admin/ClubSubscriptionEditDialog.tsx`
+**File:** `e2e/roles.spec.ts` (update existing)
 
-Add fields:
-- `is_verified` toggle (matching Academy dialog pattern)
-- Club name (read-only, for display)
+Add tests under "Academy Flows":
 
-### Phase 7: Expand Trainer Edit Dialog
+1. **Academy Dashboard Elements**
+   - Dashboard page structure
+   - Sidebar navigation items
 
-**File:** `src/components/admin/TrainerSubscriptionEditDialog.tsx`
+2. **Academy Management Pages**
+   - Trainers page loads
+   - Locations page loads
+   - Cycles page loads
+   - Settings page loads
 
-Add fields:
-- `is_verified` toggle
+### Phase 6: Add Trainer Flow Tests
 
-## Detailed Changes by File
+**File:** `e2e/roles.spec.ts` (update existing)
 
-| File | Changes |
-|------|---------|
-| `src/hooks/useAdminData.ts` | Extend `TrainerProfileAdmin`, `ClubProfileAdmin`, `AcademyProfileAdmin` types; update queries to fetch slug, manager user_ids |
-| `src/components/admin/ImpersonateUserDialog.tsx` | Create new reusable dialog component |
-| `src/components/admin/ClubSubscriptionEditDialog.tsx` | Add `is_verified` toggle |
-| `src/components/admin/TrainerSubscriptionEditDialog.tsx` | Add `is_verified` toggle |
-| `src/pages/admin/AdminTrainers.tsx` | Add View Profile + Login as User actions |
-| `src/pages/admin/AdminClubs.tsx` | Add View Profile + Login as Manager actions |
-| `src/pages/admin/AdminAcademies.tsx` | Add Login as Manager action (View Profile already exists) |
+Expand "Trainer Flows" with:
 
-## User Experience
+1. **Trainer Dashboard Elements**
+   - Dashboard route check
+   - Sidebar navigation items
 
-After implementation, from any admin entity table:
+2. **Trainer Management Pages**
+   - Settings page loads
+   - Calendar page loads
+   - Players page loads
+   - Cycles page loads
+   - Intake requests page loads
+   - Subscription page loads
 
-**Trainers:**
-- Edit Subscription (expanded)
-- View Profile (opens public trainer page)
-- Login as Trainer (opens magic link)
+## File Changes Summary
 
-**Clubs:**
-- Edit Club (expanded with verification)
-- View Profile (opens public club page)
-- Login as Manager (if manager exists)
+| File | Action | Description |
+|------|--------|-------------|
+| `e2e/fixtures/test-data.ts` | Modify | Add admin routes and expand route constants |
+| `e2e/admin.spec.ts` | Create | Comprehensive admin panel tests |
+| `e2e/roles.spec.ts` | Modify | Add more tests for each role |
 
-**Academies:**
-- Edit Academy (already expanded)
-- View Public Page (already exists)
-- Login as Manager (if manager exists)
+## New Test File: admin.spec.ts
 
-## Technical Considerations
+```typescript
+// Structure overview
+test.describe('Admin Panel', () => {
+  test.describe('Admin Access Control', () => {
+    // Auth guard tests
+  });
 
-### Manager Lookup for Impersonation
-- Clubs: Query `club_managers` for `role = 'owner'`, fallback to any manager
-- Academies: Query `academy_managers` for `role = 'owner'`, fallback to any manager
-- If no manager exists, show "No manager assigned" tooltip and disable button
+  test.describe('Admin Dashboard', () => {
+    // Dashboard content tests
+  });
 
-### Impersonation Safety
-- The edge function already prevents impersonating admins
-- Logs all impersonation attempts to `admin_impersonation_logs`
-- Magic links expire after 1 hour
+  test.describe('Admin Sidebar Navigation', () => {
+    // Sidebar presence and navigation tests
+  });
 
-### Query Optimization
-- Use single queries with JOINs to fetch related manager data
-- Keep existing cache times (2 min stale, 10 min gc)
+  test.describe('Admin Users Management', () => {
+    // Users table and actions
+  });
 
-## Files to Create/Modify
+  test.describe('Admin Trainers Management', () => {
+    // Trainers table and actions
+  });
 
-| Action | File |
-|--------|------|
-| Create | `src/components/admin/ImpersonateUserDialog.tsx` |
-| Modify | `src/hooks/useAdminData.ts` |
-| Modify | `src/components/admin/ClubSubscriptionEditDialog.tsx` |
-| Modify | `src/components/admin/TrainerSubscriptionEditDialog.tsx` |
-| Modify | `src/pages/admin/AdminTrainers.tsx` |
-| Modify | `src/pages/admin/AdminClubs.tsx` |
-| Modify | `src/pages/admin/AdminAcademies.tsx` |
+  test.describe('Admin Clubs Management', () => {
+    // Clubs table and actions
+  });
 
+  test.describe('Admin Academies Management', () => {
+    // Academies table and actions
+  });
+
+  test.describe('Admin Locations Management', () => {
+    // Locations table and actions
+  });
+
+  test.describe('Admin Certifications', () => {
+    // Certifications management
+  });
+
+  test.describe('Admin Club Claims', () => {
+    // Club claims handling
+  });
+});
+```
+
+## Test Expectations
+
+Since we cannot authenticate in E2E tests without mock users or seeded data, tests will focus on:
+
+1. **Route accessibility** - Verify routes exist and return valid HTTP status
+2. **Auth guard verification** - Confirm protected routes redirect to `/auth`
+3. **UI structure presence** - When accessible, verify expected elements exist
+4. **No 500 errors** - All pages should handle gracefully without server errors
+
+## Limitations
+
+### Cannot Test (without seeded auth):
+- Actual CRUD operations with data persistence
+- Full booking flow completion
+- Impersonation functionality
+- Subscription/payment flows
+- File uploads and data import
+
+### Recommendation for Future:
+Consider adding:
+1. Test database seeding with known users
+2. Playwright `storageState` for auth persistence
+3. Mock authentication tokens
+4. Visual regression testing
+
+## Expected Results
+
+After implementation:
+- **Admin tests**: ~25 new test cases
+- **Enhanced role tests**: ~15 additional test cases
+- **Total test count**: ~100+ test cases across all files
+
+Coverage improvements:
+- All admin sub-routes tested for accessibility
+- All role dashboards tested for structure
+- Better documentation of expected UI elements
