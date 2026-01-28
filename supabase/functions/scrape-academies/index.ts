@@ -83,29 +83,57 @@ async function scrapeUrl(
   }
 }
 
-// Parse listing page markdown to extract academy entries
+// Parse listing page markdown to extract academy entries from the table
 function parseListingPage(markdown: string): AcademyListItem[] {
   const academies: AcademyListItem[] = [];
+  const seen = new Set<string>();
 
-  // Pattern: Academy entries typically have links like [Academy Name](/padelscholen/slug/)
-  const academyPattern =
-    /\[([^\]]+)\]\(\/padelscholen\/([a-z0-9-]+)\/?\)\s*(?:.*?(?:in|te|uit)\s+)?([A-Z][a-zA-Z\s'-]+)?/gi;
+  // The page has a table structure with rows like:
+  // | [![Logo Name](url)\<br>Academy Name](https://padelgids.nl/padelscholen/slug/) | City | Number |
+  
+  // Find the table section - it starts after "| Name | City | Number of locations |"
+  const tableStart = markdown.indexOf("| Name | City | Number of locations |");
+  const tableEnd = markdown.indexOf("## Veelgestelde vragen");
+  
+  if (tableStart === -1) {
+    console.log("Could not find academy table in markdown");
+    return academies;
+  }
+  
+  // Extract only the table content, excluding FAQ section
+  const tableContent = tableEnd !== -1 
+    ? markdown.slice(tableStart, tableEnd) 
+    : markdown.slice(tableStart);
+  
+  // Pattern to match table rows with academy links
+  // Matches: [Academy Name](https://padelgids.nl/padelscholen/slug/) | City | Number |
+  const tableRowPattern = /\[([^\]]+)\]\(https:\/\/padelgids\.nl\/padelscholen\/([a-z0-9-]+)\/?\)\s*\|\s*([^|]+)\s*\|\s*(\d+)/gi;
+  
   let match;
-
-  while ((match = academyPattern.exec(markdown)) !== null) {
-    const name = match[1].trim();
+  while ((match = tableRowPattern.exec(tableContent)) !== null) {
+    let name = match[1].trim();
     const slug = match[2].trim();
-    let city = match[3]?.trim() || "";
-
-    // Skip navigation links
+    const city = match[3].trim();
+    
+    // Clean up name - remove any remaining markdown like \<br>
+    name = name.replace(/\\?<br>/gi, "").trim();
+    
+    // Skip if we've already seen this slug
+    if (seen.has(slug)) {
+      continue;
+    }
+    
+    // Skip navigation or invalid entries
     if (
       slug === "padelscholen" ||
+      slug === "toevoegen" ||
       name.toLowerCase().includes("page") ||
       name.length < 3
     ) {
       continue;
     }
-
+    
+    seen.add(slug);
     academies.push({
       name,
       city,
@@ -114,28 +142,40 @@ function parseListingPage(markdown: string): AcademyListItem[] {
     });
   }
 
-  // Alternative pattern for different listing formats
-  const altPattern =
-    /###?\s*\[?([^\]\n]+)\]?\s*(?:\(\/padelscholen\/([a-z0-9-]+)\/?\))?/gi;
-  while ((match = altPattern.exec(markdown)) !== null) {
-    const name = match[1].trim();
-    const slug = match[2]?.trim() || generateSlug(name);
-
+  // Fallback: also try to match simpler academy link pattern within table
+  // For cases where the full URL might be formatted differently
+  const simplePattern = /\|\s*\[!\[.*?\].*?\n?([^\]]+)\]\((?:https:\/\/padelgids\.nl)?\/padelscholen\/([a-z0-9-]+)\/?\)\s*\|\s*([^|]+)\s*\|/gi;
+  
+  while ((match = simplePattern.exec(tableContent)) !== null) {
+    let name = match[1].trim();
+    const slug = match[2].trim();
+    const city = match[3].trim();
+    
+    name = name.replace(/\\?<br>/gi, "").trim();
+    
+    if (seen.has(slug)) {
+      continue;
+    }
+    
     if (
-      name.length < 3 ||
-      academies.some((a) => a.slug === slug || a.name === name)
+      slug === "padelscholen" ||
+      slug === "toevoegen" ||
+      name.toLowerCase().includes("page") ||
+      name.length < 3
     ) {
       continue;
     }
-
+    
+    seen.add(slug);
     academies.push({
       name,
-      city: "",
+      city,
       slug,
       logoThumb: null,
     });
   }
 
+  console.log(`Parsed ${academies.length} academies from table`);
   return academies;
 }
 
