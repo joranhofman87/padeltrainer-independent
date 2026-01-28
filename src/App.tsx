@@ -94,6 +94,7 @@ import AcademyProfile from "./pages/academy/AcademyProfile";
 import AcademySettings from "./pages/academy/AcademySettings";
 import AcademyTrainers from "./pages/academy/AcademyTrainers";
 import AcademyLocations from "./pages/academy/AcademyLocations";
+import AcademyCycles from "./pages/academy/AcademyCycles";
 import AcademyTrainerInvitation from "./pages/academy/AcademyTrainerInvitation";
 
 const queryClient = new QueryClient();
@@ -207,6 +208,7 @@ const App = () => (
               <Route path="profile" element={<AcademyProfile />} />
               <Route path="trainers" element={<AcademyTrainers />} />
               <Route path="locations" element={<AcademyLocations />} />
+              <Route path="cycles" element={<AcademyCycles />} />
               <Route path="settings" element={<AcademySettings />} />
             </Route>
             <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />

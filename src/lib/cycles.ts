@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 // Types
 export interface Cycle {
   id: string;
-  owner_type: 'trainer' | 'club';
+  owner_type: 'trainer' | 'club' | 'academy';
   owner_id: string;
   name: string;
   description: string | null;
@@ -144,7 +144,7 @@ export interface IntakeRequestInput {
 }
 
 export interface CycleInput {
-  owner_type: 'trainer' | 'club';
+  owner_type: 'trainer' | 'club' | 'academy';
   owner_id: string;
   name: string;
   description?: string;
@@ -178,7 +178,7 @@ function toProposedAssignment(row: any): ProposedAssignment {
 }
 
 // Cycle CRUD
-export async function getCycles(ownerType: 'trainer' | 'club', ownerId: string): Promise<Cycle[]> {
+export async function getCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
     .select('*')
@@ -190,7 +190,7 @@ export async function getCycles(ownerType: 'trainer' | 'club', ownerId: string):
   return (data || []) as Cycle[];
 }
 
-export async function getActiveCycles(ownerType: 'trainer' | 'club', ownerId: string): Promise<Cycle[]> {
+export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
     .select('*')

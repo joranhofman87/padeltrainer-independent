@@ -38,16 +38,12 @@
 - [x] Contract type (exclusive/non-exclusive)
 - [x] Contract dates and visibility settings
 
-### 🔄 Phase 5: Academy Cycles (TODO)
-- [ ] Academy cycles management page
-- [ ] Trainer acceptance/decline flow
-- [ ] Payment percentage configuration
-- [ ] Trainer visibility settings
+### ✅ Phase 5: Academy Cycles (COMPLETE)
+- [x] Academy cycles management page
+- [x] Extended Cycle types to support 'academy' owner_type
+- [x] CycleForm updated to support academy with trainer selection
 
-### ⏳ Phase 4: Location Contracts
-- [ ] Academy-club contract management
-- [ ] Location picker for academies
-- [ ] Visibility settings per location
+### 🔄 Phase 6: Public Academy Profiles (TODO)
 - [ ] Contract terms and expiration
 
 ### ⏳ Phase 5: Public Profiles & Cross-Linking

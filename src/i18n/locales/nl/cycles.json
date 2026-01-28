@@ -13,6 +13,7 @@
   "deleteCycle": "Cyclus Verwijderen",
   "noCycles": "Nog geen trainingscycli",
   "noCyclesDescription": "Maak je eerste trainingscyclus aan om aanmeldingen te accepteren",
+  "academyDescription": "Beheer inschrijvingscycli voor je academy programma's",
   
   "status": {
     "draft": "Concept",

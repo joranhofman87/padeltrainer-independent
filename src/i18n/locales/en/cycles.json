@@ -13,6 +13,7 @@
   "deleteCycle": "Delete Cycle",
   "noCycles": "No training cycles yet",
   "noCyclesDescription": "Create your first training cycle to start accepting applications",
+  "academyDescription": "Create and manage registration cycles for your academy programs",
   
   "status": {
     "draft": "Draft",
