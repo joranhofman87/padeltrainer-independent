@@ -1,270 +1,249 @@
 
-
-# Plan: Scrape Padel Academies with AI-Generated Unique Descriptions
+# Plan: Admin Panel Sidebar Navigation Redesign
 
 ## Overview
 
-Create an edge function that scrapes **~234 padel academies** from padelgids.nl and imports them with **AI-generated unique descriptions** (not copied content). The system will extract factual data (name, locations, contact info) and use that metadata to generate original Dutch descriptions via Lovable AI.
+Transform the admin panel from a card-based navigation on the dashboard to a modern sidebar-driven layout with consistent page structure across all admin pages. This will declutter the interface, improve navigation, and move the "Scrape Academies" action to the Academies page where it belongs.
 
-## Data Strategy
+## Current State Analysis
 
-### What We Scrape (Facts Only)
-| Data Point | Source | Purpose |
-|------------|--------|---------|
-| Academy name | Listing page | Direct use |
-| City | Listing page | Direct use |
-| Logo URL | Detail page | Download & store |
-| Website URL | Detail page | Direct use |
-| Contact email | Detail page | Direct use |
-| Social links | Detail page | Direct use |
-| Location names | Detail page | Match to existing locations |
-| Trainer names | Detail page | Store for future matching |
-| Number of locations | Detail page | Context for AI description |
+### Problems Identified
+1. Dashboard is cluttered with 8 navigation cards + scrape action + stats + charts + fee structure
+2. Each admin sub-page has its own header with back button - inconsistent navigation
+3. No persistent navigation between admin sections
+4. "Scrape Academies" is on the dashboard instead of the Academies page
+5. Each page has slightly different filter/table layouts
 
-### What We Generate (Unique Content)
-The AI will generate a unique Dutch description based on:
-- Academy name and city
-- Number and names of affiliated locations
-- Any specializations mentioned (jeugd, beginners, competitie, etc.)
-- Whether they have multiple locations (regional vs local presence)
+### Current Admin Routes
+- `/admin` - Dashboard (stats, charts, navigation cards)
+- `/admin/users` - User management
+- `/admin/trainers` - Trainer management
+- `/admin/clubs` - Club management
+- `/admin/academies` - Academy management
+- `/admin/locations` - Location management
+- `/admin/certifications` - Certifications and specializations
+- `/admin/club-claims` - Pending club claims
+- `/admin/rating-systems` - Rating systems
+- `/admin/pricing` - Pricing plans
 
-**Example AI Prompt:**
-```text
-Schrijf een unieke, feitelijke beschrijving (2-3 zinnen, max 100 woorden) 
-voor deze padelacademie in het Nederlands.
+## Proposed Architecture
 
-REGELS:
-- Begin NIET met "Welkom bij" of generieke zinnen
-- Schrijf in de derde persoon
-- Maak de tekst uniek door specifieke details te noemen
-- Focus op wat deze academie onderscheidt
-
-Academie: Padel Pro Academy
-Stad: Amsterdam
-Aantal locaties: 4
-Locaties: TC Amsterdam, Amstelpark Padel, Noord Padel, Oost Tennis
-Specialisaties: jeugdtraining, competitiebegeleiding
-```
-
-**Example Output:**
-"Padel Pro Academy is een toonaangevende padelschool in de regio Amsterdam met trainingsmogelijkheden op vier locaties, waaronder TC Amsterdam en Amstelpark Padel. De academie richt zich op zowel jeugdtraining als competitiebegeleiding voor gevorderde spelers."
-
-## Technical Implementation
-
-### New Edge Function: `scrape-academies`
-
-**File:** `supabase/functions/scrape-academies/index.ts`
-
-**Parameters:**
-```typescript
-{
-  batch_size: number;     // Academies per run (default: 10, max: 30)
-  page_offset: number;    // Starting page (1-10)
-  dry_run: boolean;       // Preview without DB writes
-  academy_slugs?: string[]; // Specific academies to process
-}
-```
-
-### Processing Pipeline
+### New Component Structure
 
 ```text
-Phase 1: Scrape Listing Pages
-┌─────────────────────────────────────────────┐
-│ Firecrawl: padelgids.nl/padelscholen/?page=N │
-│ Extract: name, city, slug, logo thumbnail   │
-└─────────────────────────────────────────────┘
-                    ▼
-Phase 2: Scrape Detail Pages
-┌─────────────────────────────────────────────┐
-│ Firecrawl: padelgids.nl/padelscholen/{slug}  │
-│ Extract: website, email, socials, locations │
-└─────────────────────────────────────────────┘
-                    ▼
-Phase 3: AI Extraction (Structured Data)
-┌─────────────────────────────────────────────┐
-│ Lovable AI: Parse markdown → JSON           │
-│ Extract: email, phone, social URLs          │
-│ Extract: location names, trainer names      │
-└─────────────────────────────────────────────┘
-                    ▼
-Phase 4: Location Matching
-┌─────────────────────────────────────────────┐
-│ Query locations table for fuzzy matches     │
-│ Match by name similarity + city             │
-└─────────────────────────────────────────────┘
-                    ▼
-Phase 5: Generate Unique Description
-┌─────────────────────────────────────────────┐
-│ Lovable AI: Generate Dutch description      │
-│ Input: name, city, locations, specialties   │
-│ Output: 2-3 sentence unique description     │
-└─────────────────────────────────────────────┘
-                    ▼
-Phase 6: Database Insert
-┌─────────────────────────────────────────────┐
-│ INSERT academy_profiles                      │
-│ INSERT academy_locations (linked records)    │
-│ Upload logo to storage                       │
-└─────────────────────────────────────────────┘
+AdminLayout (new)
+├── Sidebar (left)
+│   ├── Logo + Brand
+│   ├── SidebarMenu
+│   │   ├── Dashboard (with metrics icon)
+│   │   ├── Users
+│   │   ├── Trainers
+│   │   ├── Clubs
+│   │   ├── Club Claims (with badge for pending)
+│   │   ├── Academies
+│   │   ├── Locations
+│   │   └── Certifications
+│   └── Footer (theme toggle, logout)
+└── Main Content Area (Outlet)
+    └── Page-specific content (no individual headers)
 ```
 
-### AI Functions
+### Sidebar Navigation Items
 
-**1. Extract Structured Data:**
-```typescript
-async function extractAcademyData(markdown: string): Promise<{
-  website_url: string | null;
-  contact_email: string | null;
-  phone: string | null;
-  social_instagram: string | null;
-  social_facebook: string | null;
-  social_linkedin: string | null;
-  locations: string[];      // Names of affiliated clubs
-  trainers: string[];       // Trainer names for future matching
-  specializations: string[]; // e.g., ["jeugd", "competitie"]
-}>
-```
+| Item | Icon | Route | Badge |
+|------|------|-------|-------|
+| Dashboard | LayoutDashboard | /admin | - |
+| Users | Users | /admin/users | - |
+| Trainers | GraduationCap | /admin/trainers | - |
+| Clubs | Building2 | /admin/clubs | - |
+| Club Claims | FileCheck | /admin/club-claims | pending count |
+| Academies | School | /admin/academies | - |
+| Locations | MapPin | /admin/locations | - |
+| Certifications | Award | /admin/certifications | - |
 
-**2. Generate Unique Description:**
-```typescript
-async function generateUniqueDescription(
-  name: string,
-  city: string,
-  locationNames: string[],
-  specializations: string[]
-): Promise<string>
-```
+Note: Rating Systems and Pricing are less frequently used - they will be accessible via a "Settings" dropdown or secondary menu section.
 
-### Location Matching Strategy
+## Implementation Details
 
-```sql
--- Find best matching location by name similarity
-SELECT id, name, city,
-  similarity(LOWER(name), LOWER($scraped_name)) as score
-FROM locations
-WHERE city ILIKE $scraped_city
-  OR similarity(LOWER(name), LOWER($scraped_name)) > 0.4
-ORDER BY score DESC
-LIMIT 1;
-```
+### Phase 1: Create AdminLayout Component
 
-### Database Operations
-
-```sql
--- 1. Insert academy profile
-INSERT INTO academy_profiles (
-  name, slug, description,
-  logo_url, website_url, contact_email, phone,
-  social_instagram, social_facebook, social_linkedin,
-  is_verified, is_public
-) VALUES (...);
-
--- 2. Link to matched locations
-INSERT INTO academy_locations (
-  academy_profile_id, location_id,
-  is_active, show_on_academy_page
-) VALUES (...);
-```
-
-### Deduplication
-
-Before inserting, check for existing academies:
-```typescript
-const { data: existing } = await supabase
-  .from("academy_profiles")
-  .select("id, slug")
-  .or(`slug.eq.${slug},name.ilike.${name}`);
-```
-
-## Admin UI Integration
-
-Add a card to `AdminDashboard.tsx` for triggering the scrape:
+**File:** `src/components/admin/AdminLayout.tsx`
 
 ```typescript
-// New card in admin actions grid
-<div className="rounded-lg border bg-card p-4">
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-3">
-      <GraduationCap className="h-5 w-5 text-primary" />
-      <div>
-        <h3 className="font-semibold">Scrape Academies</h3>
-        <p className="text-sm text-muted-foreground">
-          Import from padelgids.nl
-        </p>
-      </div>
-    </div>
-    <Button onClick={handleScrapeAcademies} disabled={isScraping}>
-      {isScraping ? <Loader2 className="animate-spin" /> : "Start"}
-    </Button>
-  </div>
-</div>
+// Uses SidebarProvider, Sidebar, SidebarContent from shadcn
+// Includes:
+// - Collapsible sidebar with icons in collapsed state
+// - Active route highlighting using NavLink
+// - Pending claims badge fetched via usePendingClaimsCount
+// - Theme toggle + logout in sidebar footer
+// - SidebarTrigger in mobile header
 ```
 
-## Implementation Phases
+Key features:
+- Sidebar collapsible (icon mode on desktop, sheet on mobile)
+- Persists collapsed state in localStorage
+- Active route highlighting
+- Badge for pending club claims
 
-### Phase 1: Edge Function Core
-- Create `scrape-academies/index.ts`
-- Implement Firecrawl integration for listing pages
-- Parse academy entries (name, city, slug)
-- Add to `config.toml`
+### Phase 2: Update App Routing
 
-### Phase 2: Detail Page Processing
-- Scrape individual academy pages
-- AI extraction of structured contact data
-- AI extraction of location/trainer lists
+Wrap all `/admin/*` routes under the new `AdminLayout`:
 
-### Phase 3: AI Description Generation
-- Generate unique Dutch descriptions
-- Use metadata (locations, specializations) for variety
-- Avoid any copied content
+```tsx
+<Route path="/admin" element={<AdminLayout />}>
+  <Route index element={<AdminDashboard />} />
+  <Route path="users" element={<AdminUsers />} />
+  <Route path="trainers" element={<AdminTrainers />} />
+  <Route path="clubs" element={<AdminClubs />} />
+  <Route path="academies" element={<AdminAcademies />} />
+  <Route path="locations" element={<AdminLocations />} />
+  <Route path="certifications" element={<AdminCertifications />} />
+  <Route path="club-claims" element={<AdminClubClaims />} />
+  <Route path="rating-systems" element={<AdminRatingSystems />} />
+  <Route path="pricing" element={<AdminPricing />} />
+</Route>
+```
 
-### Phase 4: Database Integration
-- Location matching algorithm
-- Insert academy profiles with generated descriptions
-- Create `academy_locations` links
-- Upload logos to storage
+### Phase 3: Simplify AdminDashboard
 
-### Phase 5: Admin UI
-- Add scrape trigger to AdminDashboard
-- Show progress/results in toast
-- Track total imported academies
+Remove from dashboard:
+- All navigation cards (now in sidebar)
+- Scrape Academies action (move to Academies page)
 
-## Expected Results
+Keep on dashboard:
+- Stats cards (AdminStatsCards)
+- Charts (AdminCharts)
+- Fee structure info card
 
-| Metric | Estimate |
-|--------|----------|
-| Total Academies | ~234 |
-| With Website URLs | ~200 |
-| With Matched Locations | ~150 |
-| Unique Descriptions | 100% (AI-generated) |
-| Processing Time | ~45-60 min (full import) |
-| Batches Required | ~24 (10 per batch) |
+New dashboard layout:
+```text
+┌─────────────────────────────────────┐
+│ Platform Overview (title only)      │
+├─────────────────────────────────────┤
+│ Stats Cards (row)                   │
+├─────────────────────────────────────┤
+│ Charts Grid (2 columns)             │
+├─────────────────────────────────────┤
+│ Fee Structure Card                  │
+└─────────────────────────────────────┘
+```
 
-## Rate Limiting
+### Phase 4: Standardize Sub-Pages
 
-- Firecrawl: 500ms delay between requests
-- Lovable AI: 200ms delay between calls
-- Process 10 academies per run
-- Full import: ~24 runs
+Remove from each admin page:
+- Individual header with back button
+- Duplicate access control logic (handled by AdminLayout)
+
+Standardize page structure:
+```text
+┌─────────────────────────────────────┐
+│ Page Title + Description + Actions  │
+├─────────────────────────────────────┤
+│ Filter Row (search + dropdowns)     │
+├─────────────────────────────────────┤
+│ Data Table                          │
+├─────────────────────────────────────┤
+│ Footer (showing X of Y)             │
+└─────────────────────────────────────┘
+```
+
+### Phase 5: Move Scrape Academies to Academies Page
+
+Add to `AdminAcademies.tsx`:
+- "Scrape from PadelGids" button in the header actions area
+- Progress indicator and toast notifications
+- Same logic currently in AdminDashboard
 
 ## Files to Create/Modify
 
-| File | Action |
-|------|--------|
-| `supabase/functions/scrape-academies/index.ts` | Create |
-| `supabase/config.toml` | Add function config |
-| `src/pages/AdminDashboard.tsx` | Add scrape trigger card |
-| `src/lib/admin.ts` | Add scrapeAcademies function |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/admin/AdminLayout.tsx` | Create | New layout with sidebar |
+| `src/components/admin/AdminSidebar.tsx` | Create | Sidebar navigation component |
+| `src/App.tsx` | Modify | Nest admin routes under AdminLayout |
+| `src/pages/AdminDashboard.tsx` | Modify | Remove nav cards, keep stats/charts |
+| `src/pages/admin/AdminAcademies.tsx` | Modify | Add scrape action, remove header |
+| `src/pages/admin/AdminUsers.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminTrainers.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminClubs.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminLocations.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminCertifications.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminClubClaims.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminRatingSystems.tsx` | Modify | Remove header, standardize layout |
+| `src/pages/admin/AdminPricing.tsx` | Modify | Remove header, standardize layout |
 
-## Technical Details
+## Standardized Page Template
 
-### Dependencies Used
-- **Firecrawl**: Web scraping (already configured)
-- **Lovable AI**: Gemini for data extraction + description generation
-- **Supabase Storage**: Logo upload to `avatars/academies/`
+Each admin page will follow this structure:
 
-### Error Handling
-- Skip academies that fail scraping (log and continue)
-- Retry failed AI calls once
-- Report summary of success/failures
+```tsx
+export default function AdminXxx() {
+  // Data fetching hooks
+  // Filter state
+  // Actions/handlers
 
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Page Title</h1>
+          <p className="text-muted-foreground">Description text</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Action buttons */}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        {/* Search + filter dropdowns */}
+      </div>
+
+      {/* Data Table */}
+      <div className="rounded-md border">
+        <Table>...</Table>
+      </div>
+
+      {/* Footer */}
+      <p className="text-sm text-muted-foreground">
+        Showing X of Y items
+      </p>
+    </div>
+  );
+}
+```
+
+## Technical Considerations
+
+### Auth Guard
+- AdminLayout will check `useIsAdmin()` and redirect non-admins
+- Individual pages no longer need auth checks
+
+### Sidebar State Persistence
+- Collapsed state saved to localStorage
+- Mobile uses Sheet drawer pattern (auto-handled by shadcn sidebar)
+
+### Pending Claims Badge
+- Sidebar fetches `usePendingClaimsCount()` hook
+- Updates automatically when claims are processed
+
+### Active Route
+- Use `NavLink` component with `isActive` prop
+- Highlight current section in sidebar
+
+## Expected Result
+
+Visual comparison:
+
+**Before:**
+- Cluttered dashboard with 8+ cards
+- Each page has its own header/back button
+- Inconsistent navigation patterns
+
+**After:**
+- Clean sidebar with 8 main navigation items
+- Dashboard focuses on metrics/analytics
+- All pages have consistent structure
+- Scrape action logically placed on Academies page
+- Better mobile experience with collapsible sidebar
