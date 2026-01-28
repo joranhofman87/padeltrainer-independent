@@ -41,7 +41,7 @@ const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
 
 interface CycleFormProps {
   cycle?: Cycle | null;
-  ownerType: 'trainer' | 'club';
+  ownerType: 'trainer' | 'club' | 'academy';
   ownerId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -350,7 +350,7 @@ export default function CycleForm({
               )}
             />
 
-            {ownerType === 'club' && trainers.length > 0 && (
+            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (
               <FormField
                 control={form.control}
                 name="applicable_trainer_ids"
