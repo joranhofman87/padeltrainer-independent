@@ -19,6 +19,8 @@ export type EmailType =
   | "club_claim_rejected"
   | "club_trainer_invitation"
   | "club_trainer_invitation_accepted"
+  | "academy_trainer_invitation"
+  | "academy_trainer_invitation_accepted"
   | "partner_inquiry"
   | "location_request";
 
@@ -58,6 +60,9 @@ export interface EmailData {
   additionalNotes?: string;
   requestedBy?: string;
   requestedByEmail?: string;
+  // Academy invitation fields
+  academyName?: string;
+  paymentPercentage?: number;
 }
 
 /**

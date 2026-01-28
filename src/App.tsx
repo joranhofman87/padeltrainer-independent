@@ -92,6 +92,8 @@ import AcademyLayout from "./components/academy/AcademyLayout";
 import AcademyDashboard from "./pages/academy/AcademyDashboard";
 import AcademyProfile from "./pages/academy/AcademyProfile";
 import AcademySettings from "./pages/academy/AcademySettings";
+import AcademyTrainers from "./pages/academy/AcademyTrainers";
+import AcademyTrainerInvitation from "./pages/academy/AcademyTrainerInvitation";
 
 const queryClient = new QueryClient();
 
@@ -202,8 +204,10 @@ const App = () => (
             <Route path="/academy" element={<AcademyLayout />}>
               <Route index element={<AcademyDashboard />} />
               <Route path="profile" element={<AcademyProfile />} />
+              <Route path="trainers" element={<AcademyTrainers />} />
               <Route path="settings" element={<AcademySettings />} />
             </Route>
+            <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
             <Route path="*" element={<NotFound />} />
             </Routes>
             <CookieConsentBanner />
