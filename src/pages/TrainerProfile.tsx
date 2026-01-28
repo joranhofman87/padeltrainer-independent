@@ -19,13 +19,14 @@ import {
   ArrowLeft, MapPin, Star, Clock, Award, Mail, 
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
-  Target, Sparkles, Linkedin
+  Target, Sparkles, Linkedin, GraduationCap
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
+import { getTrainerAcademy, type AcademyProfile } from '@/lib/academy';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 import {
@@ -103,6 +104,7 @@ export default function TrainerProfile() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [lessons, setLessons] = useState<LessonData[]>([]);
   const [trainerLocations, setTrainerLocations] = useState<TrainerLocationData[]>([]);
+  const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [loading, setLoading] = useState(true);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -269,6 +271,10 @@ export default function TrainerProfile() {
         club: clubsMap[(loc.location as any)?.id] || null
       })));
     }
+
+    // Fetch academy affiliation
+    const academyData = await getTrainerAcademy(trainerResult.data.id);
+    setTrainerAcademy(academyData);
 
     if (profileResult.error) {
       console.error('Error fetching profile:', profileResult.error);
@@ -573,6 +579,50 @@ export default function TrainerProfile() {
                       </li>
                     ))}
                   </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Academy Affiliation */}
+            {trainerAcademy && trainerAcademy.name && (
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <GraduationCap className="h-5 w-5 text-primary" />
+                    {t('trainer:profile.academy', 'Academy')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-start gap-4">
+                    {trainerAcademy.logo_url && (
+                      <img 
+                        src={trainerAcademy.logo_url} 
+                        alt={trainerAcademy.name} 
+                        className="h-16 w-16 rounded-lg object-cover border"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold">{trainerAcademy.name}</h4>
+                        {trainerAcademy.is_verified && (
+                          <CheckCircle className="h-4 w-4 text-primary" />
+                        )}
+                      </div>
+                      {trainerAcademy.description && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          {trainerAcademy.description}
+                        </p>
+                      )}
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="px-0 mt-2"
+                        onClick={() => navigate(localizePath(`/academies/${trainerAcademy.slug}`))}
+                      >
+                        {t('common:viewAcademy', 'View Academy')} →
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}

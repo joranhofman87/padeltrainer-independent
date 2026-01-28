@@ -49,9 +49,12 @@
 - [x] getPublicAcademyTrainers, getPublicAcademyLocations, getPublicAcademies functions
 - [x] SEO optimization with structured data
 
-### ⏳ Phase 7: Cross-Linking
+### ✅ Phase 7: Cross-Linking (COMPLETE)
+- [x] Trainer profile shows academy affiliation with link
+- [x] Location detail shows academies operating at the club
+- [x] i18n translations for cross-linking
 
-### ⏳ Phase 6: Slot-Level Assignment
+### ⏳ Phase 8: Slot-Level Assignment
 - [ ] Update `AddSlotDialog` with "Working as" picker
 - [ ] Update `BulkCreateSheet` with same option
 - [ ] Club calendar respects academy assignments

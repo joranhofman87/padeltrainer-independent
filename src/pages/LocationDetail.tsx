@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle } from 'lucide-react';
+import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award } from 'lucide-react';
 import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
@@ -19,6 +19,7 @@ import { SEO } from '@/components/SEO';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getLocationBySlug, getTrainersAtLocation, getClubProfileByLocationId, type Location } from '@/lib/locations';
 import { isLocationClaimed, isUserClubManager } from '@/lib/club';
+import { getAcademiesAtLocation } from '@/lib/academy';
 import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -89,6 +90,7 @@ export default function LocationDetail() {
   const [location, setLocation] = useState<Location | null>(null);
   const [clubProfile, setClubProfile] = useState<ClubProfile | null>(null);
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
+  const [academies, setAcademies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClaimed, setIsClaimed] = useState(false);
   const [isManager, setIsManager] = useState(false);
@@ -156,6 +158,10 @@ export default function LocationDetail() {
           .filter(trainer => trainer.profile?.full_name);
 
         setTrainers(trainersWithProfiles);
+
+        // Fetch academies at this location
+        const academiesData = await getAcademiesAtLocation(locationData.id);
+        setAcademies(academiesData);
       } catch (error) {
         console.error('Error fetching location:', error);
       } finally {
@@ -538,6 +544,53 @@ export default function LocationDetail() {
             </div>
           )}
         </ProfileFullWidthSection>
+
+        {/* Full Width - Academies Section */}
+        {academies.length > 0 && (
+          <ProfileFullWidthSection>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <GraduationCap className="h-6 w-6 text-primary" />
+                {t('common:locations.academiesAtLocation', 'Training Academies')}
+              </h2>
+              <Badge variant="secondary" className="text-sm">
+                {academies.length} {academies.length === 1 ? t('common:academy', 'Academy') : t('common:academies')}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {academies.map(academy => (
+                <Card
+                  key={academy.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+                  onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-14 w-14 rounded-lg">
+                        <AvatarImage src={academy.logo_url || ''} />
+                        <AvatarFallback className="rounded-lg">{getInitials(academy.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold truncate">{academy.name}</h3>
+                          {academy.is_verified && (
+                            <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                        {academy.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                            {academy.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </ProfileFullWidthSection>
+        )}
 
         {/* Claim Dialog */}
         {location && user && (
