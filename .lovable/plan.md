@@ -19,15 +19,27 @@
 - [x] Created comprehensive RLS policies for all tables
 - [x] Created indexes for slug lookups and availability_slots
 
-### 🔄 Phase 2: Academy Core Management (IN PROGRESS)
-- [ ] Academy signup and onboarding flow
-- [ ] Academy profile management (settings, branding)
-- [ ] Academy managers system
-- [ ] Basic dashboard with stats
-- [ ] `AcademyLayout` with navigation
+### ✅ Phase 2: Academy Core Management (COMPLETE)
+- [x] Academy signup and onboarding flow
+- [x] Academy profile management (settings, branding)
+- [x] Academy managers system
+- [x] Basic dashboard with stats
+- [x] `AcademyLayout` with navigation
 
-### ⏳ Phase 3: Trainer Affiliation
-- [ ] Invite trainers to academy
+### ✅ Phase 3: Trainer Affiliation (COMPLETE)
+- [x] Invite trainers to academy with payment percentage
+- [x] Trainer acceptance/decline flow
+- [x] Payment percentage configuration
+- [x] Trainer visibility settings
+
+### ✅ Phase 4: Location Contracts (COMPLETE)
+- [x] Academy-club contract management
+- [x] Location picker for academies
+- [x] Contract type (exclusive/non-exclusive)
+- [x] Contract dates and visibility settings
+
+### 🔄 Phase 5: Academy Cycles (TODO)
+- [ ] Academy cycles management page
 - [ ] Trainer acceptance/decline flow
 - [ ] Payment percentage configuration
 - [ ] Trainer visibility settings

@@ -405,6 +405,117 @@ export async function recordAcademyProfileView(academyProfileId: string, session
   });
 }
 
+// ===================== Location Contract Functions =====================
+
+export interface AcademyLocationWithDetails extends AcademyLocation {
+  location: {
+    id: string;
+    name: string;
+    city: string;
+    street_address: string | null;
+    logo_url: string | null;
+    slug: string;
+  };
+}
+
+// Get all locations for an academy
+export async function getAcademyLocationsWithDetails(academyProfileId: string): Promise<AcademyLocationWithDetails[]> {
+  const { data, error } = await supabase
+    .from('academy_locations')
+    .select(`
+      *,
+      location:locations(id, name, city, street_address, logo_url, slug)
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching academy locations:', error);
+    return [];
+  }
+
+  return (data || []) as AcademyLocationWithDetails[];
+}
+
+// Add a location to an academy
+export async function addAcademyLocation(
+  academyProfileId: string,
+  locationId: string,
+  contractType: 'exclusive' | 'non_exclusive' = 'non_exclusive',
+  contractStart?: string,
+  contractEnd?: string
+): Promise<{ success: boolean; error?: string }> {
+  // Check if already added
+  const { data: existing } = await supabase
+    .from('academy_locations')
+    .select('id')
+    .eq('academy_profile_id', academyProfileId)
+    .eq('location_id', locationId)
+    .maybeSingle();
+
+  if (existing) {
+    return { success: false, error: 'This location is already added to your academy' };
+  }
+
+  const { error } = await supabase.from('academy_locations').insert({
+    academy_profile_id: academyProfileId,
+    location_id: locationId,
+    contract_type: contractType,
+    contract_start: contractStart || null,
+    contract_end: contractEnd || null,
+    is_active: true,
+    show_on_academy_page: true,
+    show_on_club_page: true,
+  });
+
+  if (error) {
+    console.error('Error adding academy location:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+// Update academy location settings
+export async function updateAcademyLocation(
+  academyLocationId: string,
+  updates: {
+    contract_type?: 'exclusive' | 'non_exclusive';
+    contract_start?: string | null;
+    contract_end?: string | null;
+    is_active?: boolean;
+    show_on_academy_page?: boolean;
+    show_on_club_page?: boolean;
+  }
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_locations')
+    .update(updates)
+    .eq('id', academyLocationId);
+
+  if (error) {
+    console.error('Error updating academy location:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Remove a location from an academy
+export async function removeAcademyLocation(academyLocationId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_locations')
+    .delete()
+    .eq('id', academyLocationId);
+
+  if (error) {
+    console.error('Error removing academy location:', error);
+    return false;
+  }
+
+  return true;
+}
+
 // ===================== Trainer Invitation Functions =====================
 
 export interface AcademyTrainerInvitation {

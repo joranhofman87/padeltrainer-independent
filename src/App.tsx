@@ -93,6 +93,7 @@ import AcademyDashboard from "./pages/academy/AcademyDashboard";
 import AcademyProfile from "./pages/academy/AcademyProfile";
 import AcademySettings from "./pages/academy/AcademySettings";
 import AcademyTrainers from "./pages/academy/AcademyTrainers";
+import AcademyLocations from "./pages/academy/AcademyLocations";
 import AcademyTrainerInvitation from "./pages/academy/AcademyTrainerInvitation";
 
 const queryClient = new QueryClient();
@@ -205,6 +206,7 @@ const App = () => (
               <Route index element={<AcademyDashboard />} />
               <Route path="profile" element={<AcademyProfile />} />
               <Route path="trainers" element={<AcademyTrainers />} />
+              <Route path="locations" element={<AcademyLocations />} />
               <Route path="settings" element={<AcademySettings />} />
             </Route>
             <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
