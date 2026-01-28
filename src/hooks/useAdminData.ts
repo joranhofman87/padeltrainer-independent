@@ -158,6 +158,68 @@ export function useAdminTrainers() {
   });
 }
 
+interface AcademyProfileRow {
+  id: string;
+  name: string;
+  slug: string;
+  is_verified: boolean;
+  is_public: boolean;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
+  created_at: string;
+  contact_email: string | null;
+  logo_url: string | null;
+}
+
+export interface AcademyProfileAdmin {
+  id: string;
+  name: string;
+  slug: string;
+  is_verified: boolean;
+  is_public: boolean;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
+  created_at: string;
+  contact_email: string | null;
+  logo_url: string | null;
+}
+
+export function useAdminAcademies() {
+  const { data: isAdmin } = useIsAdmin();
+
+  return useQuery({
+    queryKey: ["admin", "academies"],
+    queryFn: async (): Promise<AcademyProfileAdmin[]> => {
+      const { data, error } = await supabase
+        .from("academy_profiles")
+        .select(
+          `
+          id,
+          name,
+          slug,
+          is_verified,
+          is_public,
+          subscription_status,
+          subscription_tier,
+          trial_ends_at,
+          created_at,
+          contact_email,
+          logo_url
+        `
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isAdmin === true,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
+  });
+}
+
 interface ClubProfile {
   id: string;
   is_verified: boolean;
@@ -213,6 +275,8 @@ export function useInvalidateAdminData() {
       queryClient.invalidateQueries({ queryKey: ["admin", "clubs"] }),
     invalidateTrainers: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "trainers"] }),
+    invalidateAcademies: () =>
+      queryClient.invalidateQueries({ queryKey: ["admin", "academies"] }),
     invalidatePendingClaims: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "pendingClaims"] }),
     invalidateAll: () =>
