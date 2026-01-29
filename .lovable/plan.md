@@ -1,186 +1,112 @@
 
-
-# Plan: Fix Academy Visibility & Enhance Admin Club Editing
+# Plan: Add Clickable Row Functionality to Admin Tables
 
 ## Overview
 
-Two issues need to be addressed:
+Enable clicking on table rows in the admin panel to directly open the edit popup for Clubs, Academies, Trainers, and Users. This improves UX by providing a faster way to access entity details without needing to click the dropdown menu.
 
-1. **Academies not showing on public page**: The `getPublicAcademies()` function queries `academy_profiles` directly, but the RLS policy requires **BOTH** `is_verified = true AND is_public = true`. Since all scraped academies have `is_verified: false`, they're filtered out by RLS.
+## Implementation Approach
 
-2. **Admin club editing limitations**: Admins can only edit subscription/verification settings, not full profile details like description, contact info, social links, etc.
+For each admin table, add an `onClick` handler to the `TableRow` component that triggers the same edit state as the dropdown menu action. The row will also get a `cursor-pointer` class to indicate it's clickable.
 
-## Root Cause Analysis
+### Key Considerations
 
-### Academy Visibility Issue
+1. **Prevent event bubbling**: The dropdown menu trigger button and checkbox (for users) should NOT trigger the row click. We'll use `e.stopPropagation()` on these interactive elements.
+2. **Visual feedback**: Add `cursor-pointer` and `hover:bg-muted/50` classes to indicate clickability.
+3. **Consistency**: All four entity types (Clubs, Academies, Trainers, Users) will have the same behavior.
 
-**Database state** (from query):
-- All academies have `is_public: true` but `is_verified: false`
-- RLS policy on `academy_profiles`:
-  ```sql
-  Policy: "Anyone can view verified public academies"
-  Using: ((is_verified = true) AND (is_public = true))
-  ```
+## File Changes
 
-**Current code** in `src/lib/academy.ts`:
-```typescript
-export async function getPublicAcademies(): Promise<AcademyProfile[]> {
-  const { data, error } = await supabase
-    .from('academy_profiles')
-    .select('*')
-    .eq('is_public', true)  // Only filters by is_public
-    .order('name');
-  // ...
-}
-```
+### 1. AdminClubs.tsx
 
-The RLS policy is stricter than the query filter, so no results are returned.
-
-**Solution options**:
-1. Use `academy_profiles_public` view (already exists) which respects RLS
-2. Modify RLS to show public academies regardless of verification
-3. Auto-verify scraped academies
-
-Recommended: Use the existing `academy_profiles_public` view for consistency with other public queries.
-
-### Admin Club Editing
-
-**Current state**: `ClubSubscriptionEditDialog` only edits:
-- `subscription_status`
-- `subscription_tier`
-- `trial_ends_at`
-- `is_verified`
-
-**Missing fields**:
-- `description`
-- `contact_email`
-- `phone`
-- `logo_url`
-- `banner_url`
-- Social links (instagram, facebook, etc.)
-
-## Implementation Plan
-
-### Phase 1: Fix Academy Visibility
-
-**File:** `src/lib/academy.ts`
-
-Update `getPublicAcademies()` to:
-1. Query `academy_profiles_public` view instead of `academy_profiles` table
-2. This view already excludes PII and respects visibility rules
+| Change | Details |
+|--------|---------|
+| Add onClick to TableRow | `onClick={() => setEditingClub(club)}` |
+| Add cursor-pointer class | Visual indication of clickability |
+| Stop propagation on dropdown | Prevent row click when using dropdown menu |
 
 ```typescript
 // Before
-.from('academy_profiles')
-.select('*')
-.eq('is_public', true)
+<TableRow key={club.id}>
 
 // After  
-.from('academy_profiles_public')
-.select('*')
-.order('name')
+<TableRow 
+  key={club.id} 
+  className="cursor-pointer hover:bg-muted/50"
+  onClick={() => setEditingClub(club)}
+>
 ```
-
-The view filters: `WHERE is_verified = true AND is_public = true`
-
-**Alternative approach**: Since the admins want to see public academies even if not verified yet, we could:
-- Modify RLS to allow `is_public = true` to be viewable (less strict)
-- Keep current strict policy and have admins verify academies
-
-Given the admin request to make changes easily, I recommend **keeping the strict RLS** but making it easy for admins to bulk-verify academies.
-
-### Phase 2: Create Comprehensive Club Edit Dialog
-
-**File:** `src/components/admin/ClubEditDialog.tsx` (NEW)
-
-A full-featured dialog that allows admins to edit:
-- All subscription fields (existing)
-- Verification status (existing)
-- Description
-- Contact email & phone
-- Logo URL
-- Banner URL
-- Social links
-
-This is separate from the subscription-focused dialog to keep concerns separate.
-
-### Phase 3: Update Admin Clubs Page
-
-**File:** `src/pages/admin/AdminClubs.tsx`
-
-Change dropdown menu to offer:
-- "Edit Club" - Opens new comprehensive `ClubEditDialog`
-- Keep other actions (View Profile, Login as Manager)
-
-### Phase 4: Add "Bulk Verify" for Academies
-
-**File:** `src/pages/admin/AdminAcademies.tsx`
-
-Add a "Verify All Public" action button that:
-- Sets `is_verified = true` for all academies where `is_public = true`
-- Useful after scraping new academies
-
-## File Changes Summary
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/lib/academy.ts` | Modify | Use `academy_profiles_public` view for public queries |
-| `src/components/admin/ClubEditDialog.tsx` | Create | Full club editing dialog with all profile fields |
-| `src/pages/admin/AdminClubs.tsx` | Modify | Use new ClubEditDialog |
-| `src/pages/admin/AdminAcademies.tsx` | Modify | Add "Verify All Public" bulk action |
-| `src/hooks/useAdminData.ts` | Modify | Include more club fields for admin editing |
-
-## Detailed Implementation
-
-### ClubEditDialog Fields
 
 ```typescript
-interface ClubEditData {
-  // Subscription (existing)
-  subscription_status: string | null;
-  subscription_tier: string | null;
-  trial_ends_at: string | null;
-  is_verified: boolean;
-  
-  // Profile (new)
-  description: string | null;
-  contact_email: string | null;
-  phone: string | null;
-  logo_url: string | null;
-  banner_url: string | null;
-  
-  // Social (new)
-  social_instagram: string | null;
-  social_facebook: string | null;
-  social_tiktok: string | null;
-  social_youtube: string | null;
-  social_linkedin: string | null;
-}
+// Dropdown button - add stopPropagation
+<DropdownMenuTrigger asChild>
+  <Button 
+    variant="ghost" 
+    size="icon" 
+    onClick={(e) => e.stopPropagation()}
+  >
 ```
 
-### UI Structure
+### 2. AdminAcademies.tsx
 
-The dialog will use tabs or accordion sections:
-1. **Status** - Verified toggle, subscription status/tier
-2. **Profile** - Description, contact info
-3. **Media** - Logo/banner URLs (with preview)
-4. **Social** - All social links
+| Change | Details |
+|--------|---------|
+| Add onClick to TableRow | `onClick={() => setEditingAcademy(academy)}` |
+| Add cursor-pointer class | Visual indication of clickability |
+| Stop propagation on dropdown | Prevent row click when using dropdown menu |
+
+### 3. AdminTrainers.tsx
+
+| Change | Details |
+|--------|---------|
+| Add onClick to TableRow | `onClick={() => setEditingTrainer(trainer)}` |
+| Add cursor-pointer class | Visual indication of clickability |
+| Stop propagation on dropdown | Prevent row click when using dropdown menu |
+
+### 4. AdminUsers.tsx
+
+| Change | Details |
+|--------|---------|
+| Add onClick to TableRow | `onClick={() => openEditDialog(user)}` |
+| Add cursor-pointer class | Visual indication of clickability |
+| Stop propagation on dropdown AND checkbox | Both need to prevent row click |
+
+For users, clicking the row will open the edit dialog (not the role change dialog), as editing user details is the most common action. The edit dialog handler will need to set the user and open the dialog:
+
+```typescript
+// Row click handler for users
+const handleRowClick = (user: UserWithRole) => {
+  setSelectedUser(user);
+  setEditName(user.full_name || "");
+  setEditEmail(user.email || "");
+  setEditDialogOpen(true);
+};
+
+<TableRow 
+  key={u.user_id}
+  className={cn("cursor-pointer hover:bg-muted/50", selectedUserIds.has(u.user_id) && "bg-muted/50")}
+  onClick={() => handleRowClick(u)}
+>
+
+// Checkbox - add stopPropagation
+<Checkbox
+  checked={selectedUserIds.has(u.user_id)}
+  onCheckedChange={() => toggleUserSelection(u.user_id)}
+  onClick={(e) => e.stopPropagation()}
+/>
+```
+
+## Summary of Changes
+
+| File | Primary Change |
+|------|----------------|
+| `src/pages/admin/AdminClubs.tsx` | Row click opens ClubEditDialog |
+| `src/pages/admin/AdminAcademies.tsx` | Row click opens AcademyEditDialog |
+| `src/pages/admin/AdminTrainers.tsx` | Row click opens TrainerSubscriptionEditDialog |
+| `src/pages/admin/AdminUsers.tsx` | Row click opens Edit User dialog |
 
 ## Technical Notes
 
-### RLS Considerations
-- Admin update policy: `is_admin(auth.uid())` already allows admins to update any club
-- No RLS changes needed
-
-### Data Flow
-1. Admin clicks "Edit Club" in dropdown
-2. Full club data is fetched (or passed from list if already available)
-3. Dialog shows all editable fields in organized sections
-4. On save, updates `club_profiles` table directly
-
-## Expected Outcome
-
-1. **Academies page**: Will show all academies that are both `is_public = true` AND `is_verified = true`
-2. **Admin workflow**: Admins can bulk-verify academies after scraping, then they appear publicly
-3. **Club editing**: Admins can edit any club field directly without needing to impersonate
-
+- Using `e.stopPropagation()` ensures interactive elements (dropdowns, checkboxes) don't trigger the row click
+- The `cursor-pointer` class provides visual feedback that rows are clickable
+- Existing edit dialog/state logic is reused - no new components needed
