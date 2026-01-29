@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
       { path: '/pricing', priority: '0.9', changefreq: 'weekly' },
       { path: '/trainers', priority: '0.9', changefreq: 'daily' },
       { path: '/locations', priority: '0.8', changefreq: 'daily' },
+      { path: '/academies', priority: '0.8', changefreq: 'weekly' },
       { path: '/blog', priority: '0.7', changefreq: 'weekly' },
       { path: '/partner', priority: '0.6', changefreq: 'monthly' },
       { path: '/terms', priority: '0.3', changefreq: 'yearly' },
@@ -48,6 +49,17 @@ Deno.serve(async (req) => {
 
     if (locationsError) {
       console.error('Error fetching locations:', locationsError);
+    }
+
+    // Fetch all verified public academies
+    const { data: academies, error: academiesError } = await supabase
+      .from('academy_profiles')
+      .select('slug, updated_at')
+      .eq('is_verified', true)
+      .eq('is_public', true);
+
+    if (academiesError) {
+      console.error('Error fetching academies:', academiesError);
     }
 
     // Extract unique cities and create slugs (deduplicated, case-insensitive)
@@ -116,6 +128,16 @@ Deno.serve(async (req) => {
     // Add city landing pages for SEO (for each language)
     for (const citySlug of uniqueCitySlugs) {
       xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
+    }
+
+    // Add academy profile pages (for each language)
+    if (academies) {
+      for (const academy of academies) {
+        const lastmod = academy.updated_at 
+          ? new Date(academy.updated_at).toISOString().split('T')[0] 
+          : today;
+        xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
+      }
     }
 
     xml += '</urlset>';

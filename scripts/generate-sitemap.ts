@@ -41,16 +41,18 @@ async function generateSitemap() {
     console.log(`📁 Output: ${OUTPUT_PATH}`);
     
     // Show breakdown
-    const staticCount = 9 * 2; // 9 static pages × 2 languages
+    const staticCount = 10 * 2; // 10 static pages × 2 languages (including /academies)
     const trainerMatches = sitemapXml.match(/\/trainer\//g) || [];
     const locationMatches = sitemapXml.match(/\/locations\//g) || [];
     const cityMatches = sitemapXml.match(/\/trainers\/[^<]+/g) || [];
+    const academyMatches = sitemapXml.match(/\/academies\/[^<]+/g) || [];
     
     console.log('\n📈 Breakdown:');
     console.log(`   Static pages: ${staticCount}`);
     console.log(`   Trainer profiles: ${trainerMatches.length}`);
     console.log(`   Location pages: ${locationMatches.length}`);
     console.log(`   City landing pages: ${cityMatches.length - (sitemapXml.match(/\/trainers<\/loc>/g) || []).length}`);
+    console.log(`   Academy pages: ${academyMatches.length}`);
     
   } catch (error) {
     console.error('❌ Error generating sitemap:', error);
