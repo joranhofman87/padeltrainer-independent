@@ -1,112 +1,140 @@
 
-# Plan: Add Clickable Row Functionality to Admin Tables
+# Plan: Add Academies to Sitemap and Dynamic Pages
 
 ## Overview
 
-Enable clicking on table rows in the admin panel to directly open the edit popup for Clubs, Academies, Trainers, and Users. This improves UX by providing a faster way to access entity details without needing to click the dropdown menu.
+Add academy pages to the sitemap and ensure SEO is properly configured for both the academy directory page and individual academy profile pages. The routing already exists, but we need to include academies in the sitemap edge function.
 
-## Implementation Approach
+## Current State
 
-For each admin table, add an `onClick` handler to the `TableRow` component that triggers the same edit state as the dropdown menu action. The row will also get a `cursor-pointer` class to indicate it's clickable.
+| Component | Status |
+|-----------|--------|
+| `/academies` directory page | Already exists at `src/pages/Academies.tsx` |
+| `/academies/:slug` profile page | Already exists at `src/pages/AcademyPublicProfile.tsx` |
+| Routes configured | Already in `App.tsx` under language-prefixed routes |
+| SEO component used | Already implemented on both pages |
+| Sitemap edge function | Missing academy pages |
 
-### Key Considerations
+## Implementation Steps
 
-1. **Prevent event bubbling**: The dropdown menu trigger button and checkbox (for users) should NOT trigger the row click. We'll use `e.stopPropagation()` on these interactive elements.
-2. **Visual feedback**: Add `cursor-pointer` and `hover:bg-muted/50` classes to indicate clickability.
-3. **Consistency**: All four entity types (Clubs, Academies, Trainers, Users) will have the same behavior.
+### 1. Update Sitemap Edge Function
 
-## File Changes
+**File:** `supabase/functions/sitemap/index.ts`
 
-### 1. AdminClubs.tsx
+Add academies to the sitemap by:
 
-| Change | Details |
-|--------|---------|
-| Add onClick to TableRow | `onClick={() => setEditingClub(club)}` |
-| Add cursor-pointer class | Visual indication of clickability |
-| Stop propagation on dropdown | Prevent row click when using dropdown menu |
+1. Adding `/academies` to static pages list
+2. Fetching all verified public academies from database
+3. Generating URL entries for each academy profile page
 
-```typescript
-// Before
-<TableRow key={club.id}>
+```text
+Changes:
++------------------------------------------+
+| Static Pages                             |
++------------------------------------------+
+| Add: /academies (priority: 0.8, weekly)  |
++------------------------------------------+
 
-// After  
-<TableRow 
-  key={club.id} 
-  className="cursor-pointer hover:bg-muted/50"
-  onClick={() => setEditingClub(club)}
->
++------------------------------------------+
+| Dynamic Pages                            |
++------------------------------------------+
+| Query: academy_profiles                  |
+| Filter: is_verified=true, is_public=true |
+| Generate: /academies/:slug for each      |
+| Priority: 0.7                            |
+| Changefreq: weekly                       |
++------------------------------------------+
 ```
 
+### 2. Update Generate Sitemap Script
+
+**File:** `scripts/generate-sitemap.ts`
+
+Update the breakdown logging to include academy page counts.
+
+## Technical Details
+
+### Sitemap Edge Function Changes
+
+Add to static pages array:
 ```typescript
-// Dropdown button - add stopPropagation
-<DropdownMenuTrigger asChild>
-  <Button 
-    variant="ghost" 
-    size="icon" 
-    onClick={(e) => e.stopPropagation()}
-  >
+{ path: '/academies', priority: '0.8', changefreq: 'weekly' },
 ```
 
-### 2. AdminAcademies.tsx
-
-| Change | Details |
-|--------|---------|
-| Add onClick to TableRow | `onClick={() => setEditingAcademy(academy)}` |
-| Add cursor-pointer class | Visual indication of clickability |
-| Stop propagation on dropdown | Prevent row click when using dropdown menu |
-
-### 3. AdminTrainers.tsx
-
-| Change | Details |
-|--------|---------|
-| Add onClick to TableRow | `onClick={() => setEditingTrainer(trainer)}` |
-| Add cursor-pointer class | Visual indication of clickability |
-| Stop propagation on dropdown | Prevent row click when using dropdown menu |
-
-### 4. AdminUsers.tsx
-
-| Change | Details |
-|--------|---------|
-| Add onClick to TableRow | `onClick={() => openEditDialog(user)}` |
-| Add cursor-pointer class | Visual indication of clickability |
-| Stop propagation on dropdown AND checkbox | Both need to prevent row click |
-
-For users, clicking the row will open the edit dialog (not the role change dialog), as editing user details is the most common action. The edit dialog handler will need to set the user and open the dialog:
-
+Add academy fetching (similar pattern to trainers/locations):
 ```typescript
-// Row click handler for users
-const handleRowClick = (user: UserWithRole) => {
-  setSelectedUser(user);
-  setEditName(user.full_name || "");
-  setEditEmail(user.email || "");
-  setEditDialogOpen(true);
-};
+// Fetch all verified public academies
+const { data: academies, error: academiesError } = await supabase
+  .from('academy_profiles')
+  .select('slug, updated_at')
+  .eq('is_verified', true)
+  .eq('is_public', true);
 
-<TableRow 
-  key={u.user_id}
-  className={cn("cursor-pointer hover:bg-muted/50", selectedUserIds.has(u.user_id) && "bg-muted/50")}
-  onClick={() => handleRowClick(u)}
->
-
-// Checkbox - add stopPropagation
-<Checkbox
-  checked={selectedUserIds.has(u.user_id)}
-  onCheckedChange={() => toggleUserSelection(u.user_id)}
-  onClick={(e) => e.stopPropagation()}
-/>
+if (academiesError) {
+  console.error('Error fetching academies:', academiesError);
+}
 ```
 
-## Summary of Changes
+Add academy URL generation:
+```typescript
+// Add academy profile pages (for each language)
+if (academies) {
+  for (const academy of academies) {
+    const lastmod = academy.updated_at 
+      ? new Date(academy.updated_at).toISOString().split('T')[0] 
+      : today;
+    xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
+  }
+}
+```
 
-| File | Primary Change |
-|------|----------------|
-| `src/pages/admin/AdminClubs.tsx` | Row click opens ClubEditDialog |
-| `src/pages/admin/AdminAcademies.tsx` | Row click opens AcademyEditDialog |
-| `src/pages/admin/AdminTrainers.tsx` | Row click opens TrainerSubscriptionEditDialog |
-| `src/pages/admin/AdminUsers.tsx` | Row click opens Edit User dialog |
+### Updated Sitemap Breakdown Script
 
-## Technical Notes
+Add to the breakdown logging:
+```typescript
+const academyMatches = sitemapXml.match(/\/academies\/[^<]+/g) || [];
 
-- Using `e.stopPropagation()` ensures interactive elements (dropdowns, checkboxes) don't trigger the row click
-- The `cursor-pointer` class provides visual feedback that rows are clickable
-- Existing edit dialog/state logic is reused - no new components needed
+console.log(`   Academy pages: ${academyMatches.length - (sitemapXml.match(/\/academies<\/loc>/g) || []).length}`);
+```
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/sitemap/index.ts` | Add `/academies` to static pages, fetch and add academy profiles |
+| `scripts/generate-sitemap.ts` | Update breakdown to count academy pages |
+
+## Expected Output
+
+After implementation, the sitemap will include:
+- 1 static academies directory page (x2 languages = 2 URLs)
+- All verified public academy profile pages (x2 languages each)
+
+Example sitemap entries:
+```xml
+<url>
+  <loc>https://padeltrainer.ai/en/academies</loc>
+  <lastmod>2026-01-29</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.8</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="..."/>
+  <xhtml:link rel="alternate" hreflang="nl" href="..."/>
+</url>
+
+<url>
+  <loc>https://padeltrainer.ai/en/academies/padel-amsterdam-academy</loc>
+  <lastmod>2026-01-15</lastmod>
+  <changefreq>weekly</changefreq>
+  <priority>0.7</priority>
+  <xhtml:link rel="alternate" hreflang="en" href="..."/>
+  <xhtml:link rel="alternate" hreflang="nl" href="..."/>
+</url>
+```
+
+## Visibility Rules
+
+Academy pages will only appear in the sitemap if:
+- `is_verified = true`
+- `is_public = true`
+
+This aligns with the existing visibility rules enforced in `Academies.tsx` and `AcademyPublicProfile.tsx`.
