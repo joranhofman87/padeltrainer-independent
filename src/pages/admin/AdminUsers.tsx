@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAdminUsers, useInvalidateAdminData } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,6 +58,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
+import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { useTableSort } from "@/hooks/useTableSort";
 
 interface UserWithRole {
   user_id: string;
@@ -66,6 +68,11 @@ interface UserWithRole {
   avatar_url: string | null;
   created_at: string;
   role: string | null;
+}
+
+// Extended type for sorting
+interface UserWithComputedFields extends UserWithRole {
+  _name: string;
 }
 
 export default function AdminUsers() {
@@ -278,7 +285,7 @@ export default function AdminUsers() {
   };
 
   const toggleSelectAll = () => {
-    const selectableUsers = filteredUsers.filter((u) => u.role !== "admin");
+    const selectableUsers = sortedData.filter((u) => u.role !== "admin");
     if (selectedUserIds.size === selectableUsers.length) {
       setSelectedUserIds(new Set());
     } else {
@@ -363,7 +370,15 @@ export default function AdminUsers() {
     }
   };
 
-  const filteredUsers = users.filter((u) => {
+  // Prepare data with computed fields for sorting
+  const usersWithComputed = useMemo(() => {
+    return users.map((u) => ({
+      ...u,
+      _name: (u.full_name || u.email || "").toLowerCase(),
+    }));
+  }, [users]);
+
+  const filteredUsers = usersWithComputed.filter((u) => {
     const matchesSearch =
       !searchQuery ||
       u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -376,6 +391,11 @@ export default function AdminUsers() {
 
     return matchesSearch && matchesRole;
   });
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<UserWithComputedFields>(
+    filteredUsers,
+    "_name"
+  );
 
   const getRoleBadgeVariant = (role: string | null) => {
     switch (role) {
@@ -453,15 +473,36 @@ export default function AdminUsers() {
               <TableHead className="w-[50px]">
                 <Checkbox
                   checked={
-                    filteredUsers.filter((u) => u.role !== "admin").length > 0 &&
-                    selectedUserIds.size === filteredUsers.filter((u) => u.role !== "admin").length
+                    sortedData.filter((u) => u.role !== "admin").length > 0 &&
+                    selectedUserIds.size === sortedData.filter((u) => u.role !== "admin").length
                   }
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Joined</TableHead>
+              <SortableTableHead
+                sortKey="_name"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof UserWithComputedFields)}
+              >
+                User
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="role"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof UserWithComputedFields)}
+              >
+                Role
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="created_at"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof UserWithComputedFields)}
+              >
+                Joined
+              </SortableTableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -476,7 +517,7 @@ export default function AdminUsers() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((u) => (
+              sortedData.map((u) => (
                 <TableRow 
                   key={u.user_id} 
                   className={`cursor-pointer ${selectedUserIds.has(u.user_id) ? "bg-muted/50" : ""}`}

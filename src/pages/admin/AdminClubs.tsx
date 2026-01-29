@@ -45,6 +45,15 @@ import {
 import { format } from "date-fns";
 import { ClubEditDialog } from "@/components/admin/ClubEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
+import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { useTableSort } from "@/hooks/useTableSort";
+
+// Extended type to include computed fields for sorting
+interface ClubWithComputedFields extends ClubProfileAdmin {
+  _name: string;
+  _city: string;
+  _subscriptionStatus: string;
+}
 
 export default function AdminClubs() {
   const { invalidateClubs } = useInvalidateAdminData();
@@ -96,7 +105,17 @@ export default function AdminClubs() {
     return club.subscription_status === "active";
   };
 
-  const filteredClubs = clubs.filter((c) => {
+  // Prepare data with computed fields for sorting
+  const clubsWithComputed = useMemo(() => {
+    return clubs.map((c) => ({
+      ...c,
+      _name: c.location?.name?.toLowerCase() || "",
+      _city: c.location?.city?.toLowerCase() || "",
+      _subscriptionStatus: getSubscriptionStatus(c),
+    }));
+  }, [clubs]);
+
+  const filteredClubs = clubsWithComputed.filter((c) => {
     const matchesSearch =
       !searchQuery ||
       c.location?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -120,6 +139,11 @@ export default function AdminClubs() {
 
     return matchesSearch && matchesCountry && matchesCity && matchesVerified && matchesPaid;
   });
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<ClubWithComputedFields>(
+    filteredClubs,
+    "_name"
+  );
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -227,10 +251,38 @@ export default function AdminClubs() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Club</TableHead>
-              <TableHead>Verified</TableHead>
-              <TableHead>Subscription</TableHead>
-              <TableHead>Created</TableHead>
+              <SortableTableHead
+                sortKey="_name"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
+              >
+                Club
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="is_verified"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
+              >
+                Verified
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="_subscriptionStatus"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
+              >
+                Subscription
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="created_at"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
+              >
+                Created
+              </SortableTableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -245,10 +297,10 @@ export default function AdminClubs() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredClubs.map((club) => {
-                const status = getSubscriptionStatus(club);
+              sortedData.map((club) => {
+                const status = club._subscriptionStatus;
                 return (
-                  <TableRow 
+                  <TableRow
                     key={club.id}
                     className="cursor-pointer"
                     onClick={() => setEditingClub(club)}
