@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,9 +59,16 @@ import {
 import { format } from "date-fns";
 import { AcademyEditDialog } from "@/components/admin/AcademyEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
+import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { useTableSort } from "@/hooks/useTableSort";
 import { scrapeAcademies } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+
+// Extended type to include computed fields for sorting
+interface AcademyWithComputedFields extends AcademyProfileAdmin {
+  _subscriptionStatus: string;
+}
 
 export default function AdminAcademies() {
   const { toast } = useToast();
@@ -88,14 +95,22 @@ export default function AdminAcademies() {
     return academy.subscription_status || "inactive";
   };
 
-  const filteredAcademies = academies.filter((a) => {
+  // Prepare data with computed fields for sorting
+  const academiesWithComputed = useMemo(() => {
+    return academies.map((a) => ({
+      ...a,
+      _subscriptionStatus: getSubscriptionStatus(a),
+    }));
+  }, [academies]);
+
+  const filteredAcademies = academiesWithComputed.filter((a) => {
     const matchesSearch =
       !searchQuery ||
       a.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.contact_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.slug?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const status = getSubscriptionStatus(a);
+    const status = a._subscriptionStatus;
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "verified" && a.is_verified) ||
@@ -106,6 +121,11 @@ export default function AdminAcademies() {
 
     return matchesSearch && matchesStatus;
   });
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
+    filteredAcademies,
+    "name"
+  );
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -373,10 +393,38 @@ export default function AdminAcademies() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Academy</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Subscription</TableHead>
-              <TableHead>Created</TableHead>
+              <SortableTableHead
+                sortKey="name"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof AcademyWithComputedFields)}
+              >
+                Academy
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="is_verified"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof AcademyWithComputedFields)}
+              >
+                Status
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="_subscriptionStatus"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof AcademyWithComputedFields)}
+              >
+                Subscription
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="created_at"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof AcademyWithComputedFields)}
+              >
+                Created
+              </SortableTableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -391,10 +439,10 @@ export default function AdminAcademies() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredAcademies.map((academy) => {
-                const subscriptionStatus = getSubscriptionStatus(academy);
+              sortedData.map((academy) => {
+                const subscriptionStatus = academy._subscriptionStatus;
                 return (
-                  <TableRow 
+                  <TableRow
                     key={academy.id}
                     className="cursor-pointer"
                     onClick={() => setEditingAcademy(academy)}

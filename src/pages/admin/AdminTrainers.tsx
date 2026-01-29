@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,14 @@ import {
 import { format } from "date-fns";
 import { TrainerSubscriptionEditDialog } from "@/components/admin/TrainerSubscriptionEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
+import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { useTableSort } from "@/hooks/useTableSort";
+
+// Extended type to include computed fields for sorting
+interface TrainerWithComputedFields extends TrainerProfileAdmin {
+  _name: string;
+  _subscriptionStatus: string;
+}
 
 export default function AdminTrainers() {
   const { invalidateTrainers } = useInvalidateAdminData();
@@ -58,13 +66,22 @@ export default function AdminTrainers() {
     return trainer.subscription_status || "inactive";
   };
 
-  const filteredTrainers = trainers.filter((t) => {
+  // Prepare data with computed fields for sorting
+  const trainersWithComputed = useMemo(() => {
+    return trainers.map((t) => ({
+      ...t,
+      _name: t.profile?.full_name?.toLowerCase() || "",
+      _subscriptionStatus: getSubscriptionStatus(t),
+    }));
+  }, [trainers]);
+
+  const filteredTrainers = trainersWithComputed.filter((t) => {
     const matchesSearch =
       !searchQuery ||
       t.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.profile?.email?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const status = getSubscriptionStatus(t);
+    const status = t._subscriptionStatus;
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "public" && t.is_public) ||
@@ -73,6 +90,11 @@ export default function AdminTrainers() {
 
     return matchesSearch && matchesStatus;
   });
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<TrainerWithComputedFields>(
+    filteredTrainers,
+    "_name"
+  );
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -138,10 +160,38 @@ export default function AdminTrainers() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Trainer</TableHead>
-              <TableHead>Visibility</TableHead>
-              <TableHead>Subscription</TableHead>
-              <TableHead>Joined</TableHead>
+              <SortableTableHead
+                sortKey="_name"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof TrainerWithComputedFields)}
+              >
+                Trainer
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="is_public"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof TrainerWithComputedFields)}
+              >
+                Visibility
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="_subscriptionStatus"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof TrainerWithComputedFields)}
+              >
+                Subscription
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="created_at"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof TrainerWithComputedFields)}
+              >
+                Joined
+              </SortableTableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -156,10 +206,10 @@ export default function AdminTrainers() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredTrainers.map((trainer) => {
-                const status = getSubscriptionStatus(trainer);
+              sortedData.map((trainer) => {
+                const status = trainer._subscriptionStatus;
                 return (
-                  <TableRow 
+                  <TableRow
                     key={trainer.id}
                     className="cursor-pointer"
                     onClick={() => setEditingTrainer(trainer)}

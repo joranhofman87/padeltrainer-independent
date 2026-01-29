@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { isUserAdmin } from '@/lib/admin';
 import {
   Loader2,
@@ -51,6 +51,14 @@ import {
   getUniqueCities,
   type Location,
 } from '@/lib/locations';
+import { SortableTableHead } from '@/components/admin/SortableTableHead';
+import { useTableSort } from '@/hooks/useTableSort';
+
+// Extended type to include computed fields for sorting
+interface LocationWithComputedFields extends Location {
+  _trainerCount: number;
+  _isVerified: boolean;
+}
 
 export default function AdminLocations() {
   const { user } = useAuth();
@@ -138,19 +146,32 @@ export default function AdminLocations() {
     }
   }, [isAdmin, toast]);
 
-  const filteredLocations = locations.filter(location => {
+  // Prepare data with computed fields for sorting
+  const locationsWithComputed = useMemo(() => {
+    return locations.map((location) => ({
+      ...location,
+      _trainerCount: trainerCounts[location.id] || 0,
+      _isVerified: verifiedLocationIds.has(location.id),
+    }));
+  }, [locations, trainerCounts, verifiedLocationIds]);
+
+  const filteredLocations = locationsWithComputed.filter(location => {
     const matchesSearch =
       location.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       location.city.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCity = selectedCity === 'all' || location.city === selectedCity;
     const matchesActive = showInactive || location.is_active;
-    const isVerified = verifiedLocationIds.has(location.id);
     const matchesVerified = 
       verifiedFilter === 'all' || 
-      (verifiedFilter === 'yes' && isVerified) || 
-      (verifiedFilter === 'no' && !isVerified);
+      (verifiedFilter === 'yes' && location._isVerified) || 
+      (verifiedFilter === 'no' && !location._isVerified);
     return matchesSearch && matchesCity && matchesActive && matchesVerified;
   });
+
+  const { sortedData, sortConfig, handleSort } = useTableSort<LocationWithComputedFields>(
+    filteredLocations,
+    "name"
+  );
 
   const generateSlug = (name: string, city: string) => {
     return `${name}-${city}`
@@ -474,12 +495,58 @@ export default function AdminLocations() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>City</TableHead>
-              <TableHead className="text-center">Courts</TableHead>
-              <TableHead className="text-center">Trainers</TableHead>
-              <TableHead className="text-center">Verified</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <SortableTableHead
+                sortKey="name"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+              >
+                Name
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="city"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+              >
+                City
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="number_of_courts"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+                className="text-center"
+              >
+                Courts
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="_trainerCount"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+                className="text-center"
+              >
+                Trainers
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="_isVerified"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+                className="text-center"
+              >
+                Verified
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="is_active"
+                currentSortKey={sortConfig.key as string}
+                currentDirection={sortConfig.direction}
+                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+                className="text-center"
+              >
+                Status
+              </SortableTableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -491,8 +558,7 @@ export default function AdminLocations() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLocations.map(location => {
-                const isVerified = verifiedLocationIds.has(location.id);
+              sortedData.map(location => {
                 return (
                 <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
                   <TableCell>
@@ -512,7 +578,7 @@ export default function AdminLocations() {
                     <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {isVerified ? (
+                    {location._isVerified ? (
                       <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
                     ) : (
                       <span className="text-muted-foreground">-</span>
