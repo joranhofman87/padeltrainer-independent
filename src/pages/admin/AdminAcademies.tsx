@@ -32,6 +32,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
   Search,
   GraduationCap,
@@ -44,6 +54,7 @@ import {
   Download,
   LogIn,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AcademyEditDialog } from "@/components/admin/AcademyEditDialog";
@@ -65,6 +76,8 @@ export default function AdminAcademies() {
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [deletingAcademy, setDeletingAcademy] = useState<AcademyProfileAdmin | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const getSubscriptionStatus = (academy: AcademyProfileAdmin) => {
     if (academy.subscription_status === "active") return "active";
@@ -187,6 +200,87 @@ export default function AdminAcademies() {
       });
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleDeleteAcademy = async () => {
+    if (!deletingAcademy || isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      // Delete related records first (academy_managers, academy_locations, academy_trainers, etc.)
+      const { error: managersError } = await supabase
+        .from("academy_managers")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (managersError) throw managersError;
+
+      const { error: locationsError } = await supabase
+        .from("academy_locations")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (locationsError) throw locationsError;
+
+      const { error: trainersError } = await supabase
+        .from("academy_trainers")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (trainersError) throw trainersError;
+
+      const { error: invitationsError } = await supabase
+        .from("academy_trainer_invitations")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (invitationsError) throw invitationsError;
+
+      const { error: viewsError } = await supabase
+        .from("academy_profile_views")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (viewsError) throw viewsError;
+
+      const { error: followersError } = await supabase
+        .from("academy_followers")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (followersError) throw followersError;
+
+      const { error: stripeError } = await supabase
+        .from("academy_stripe_accounts")
+        .delete()
+        .eq("academy_profile_id", deletingAcademy.id);
+
+      if (stripeError) throw stripeError;
+
+      // Finally delete the academy profile
+      const { error: profileError } = await supabase
+        .from("academy_profiles")
+        .delete()
+        .eq("id", deletingAcademy.id);
+
+      if (profileError) throw profileError;
+
+      toast({
+        title: "Academy deleted",
+        description: `${deletingAcademy.name} has been deleted successfully.`,
+      });
+      invalidateAcademies();
+      setDeletingAcademy(null);
+    } catch (error) {
+      console.error("Delete academy error:", error);
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -399,6 +493,14 @@ export default function AdminAcademies() {
                               </Tooltip>
                             </TooltipProvider>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeletingAcademy(academy)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Academy
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -454,6 +556,34 @@ export default function AdminAcademies() {
           targetUserEmail={impersonatingAcademy.contact_email}
         />
       )}
+
+      <AlertDialog open={!!deletingAcademy} onOpenChange={(open) => !open && setDeletingAcademy(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Academy</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deletingAcademy?.name}</strong>? This will permanently remove the academy and all associated data including trainers, locations, and managers. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAcademy}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Academy"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
