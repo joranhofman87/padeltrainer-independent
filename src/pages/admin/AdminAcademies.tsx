@@ -300,7 +300,11 @@ export default function AdminAcademies() {
               filteredAcademies.map((academy) => {
                 const subscriptionStatus = getSubscriptionStatus(academy);
                 return (
-                  <TableRow key={academy.id}>
+                  <TableRow 
+                    key={academy.id}
+                    className="cursor-pointer"
+                    onClick={() => setEditingAcademy(academy)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
@@ -357,7 +361,7 @@ export default function AdminAcademies() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

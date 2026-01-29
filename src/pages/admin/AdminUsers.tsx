@@ -477,12 +477,22 @@ export default function AdminUsers() {
               </TableRow>
             ) : (
               filteredUsers.map((u) => (
-                <TableRow key={u.user_id} className={selectedUserIds.has(u.user_id) ? "bg-muted/50" : ""}>
+                <TableRow 
+                  key={u.user_id} 
+                  className={`cursor-pointer ${selectedUserIds.has(u.user_id) ? "bg-muted/50" : ""}`}
+                  onClick={() => {
+                    setSelectedUser(u);
+                    setEditName(u.full_name || "");
+                    setEditEmail(u.email || "");
+                    setEditDialogOpen(true);
+                  }}
+                >
                   <TableCell>
                     {u.role !== "admin" ? (
                       <Checkbox
                         checked={selectedUserIds.has(u.user_id)}
                         onCheckedChange={() => toggleUserSelection(u.user_id)}
+                        onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -520,7 +530,7 @@ export default function AdminUsers() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

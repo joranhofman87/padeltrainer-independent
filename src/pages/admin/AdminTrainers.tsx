@@ -159,7 +159,11 @@ export default function AdminTrainers() {
               filteredTrainers.map((trainer) => {
                 const status = getSubscriptionStatus(trainer);
                 return (
-                  <TableRow key={trainer.id}>
+                  <TableRow 
+                    key={trainer.id}
+                    className="cursor-pointer"
+                    onClick={() => setEditingTrainer(trainer)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9">
@@ -200,7 +204,7 @@ export default function AdminTrainers() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
