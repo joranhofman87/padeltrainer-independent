@@ -1,140 +1,131 @@
 
-# Plan: Add Academies to Sitemap and Dynamic Pages
+
+# Plan: Scheduled Sitemap Regeneration
 
 ## Overview
 
-Add academy pages to the sitemap and ensure SEO is properly configured for both the academy directory page and individual academy profile pages. The routing already exists, but we need to include academies in the sitemap edge function.
+Set up automated daily regeneration of the sitemap using GitHub Actions. This ensures the sitemap stays fresh as you add new academies, clubs, and trainers, while keeping the sitemap file on your primary domain for optimal SEO.
 
-## Current State
-
-| Component | Status |
-|-----------|--------|
-| `/academies` directory page | Already exists at `src/pages/Academies.tsx` |
-| `/academies/:slug` profile page | Already exists at `src/pages/AcademyPublicProfile.tsx` |
-| Routes configured | Already in `App.tsx` under language-prefixed routes |
-| SEO component used | Already implemented on both pages |
-| Sitemap edge function | Missing academy pages |
-
-## Implementation Steps
-
-### 1. Update Sitemap Edge Function
-
-**File:** `supabase/functions/sitemap/index.ts`
-
-Add academies to the sitemap by:
-
-1. Adding `/academies` to static pages list
-2. Fetching all verified public academies from database
-3. Generating URL entries for each academy profile page
+## How It Works
 
 ```text
-Changes:
-+------------------------------------------+
-| Static Pages                             |
-+------------------------------------------+
-| Add: /academies (priority: 0.8, weekly)  |
-+------------------------------------------+
-
-+------------------------------------------+
-| Dynamic Pages                            |
-+------------------------------------------+
-| Query: academy_profiles                  |
-| Filter: is_verified=true, is_public=true |
-| Generate: /academies/:slug for each      |
-| Priority: 0.7                            |
-| Changefreq: weekly                       |
-+------------------------------------------+
++------------------+     +----------------------+     +-------------------+
+|  GitHub Actions  | --> |  Sitemap Edge        | --> |  public/sitemap.xml |
+|  (Daily @ 6 AM)  |     |  Function            |     |  (committed)        |
++------------------+     +----------------------+     +-------------------+
+         |                         |                           |
+         |  1. Runs script         |  2. Fetches fresh data    |  3. Committed back
+         |                         |     from database          |     to repository
+         v                         v                           v
+    Scheduled trigger      Trainers, Locations,         Served at
+    (cron: 0 6 * * *)      Academies, Cities           padeltrainer.ai/sitemap.xml
 ```
 
-### 2. Update Generate Sitemap Script
+## Implementation
 
-**File:** `scripts/generate-sitemap.ts`
+### 1. Create GitHub Actions Workflow
 
-Update the breakdown logging to include academy page counts.
+**New File:** `.github/workflows/sitemap.yml`
 
-## Technical Details
+This workflow will:
+- Run daily at 6:00 AM UTC
+- Allow manual triggering for immediate regeneration
+- Fetch the latest sitemap from the edge function
+- Commit and push the updated file if there are changes
 
-### Sitemap Edge Function Changes
+### 2. Add npm Script for Sitemap Generation
 
-Add to static pages array:
-```typescript
-{ path: '/academies', priority: '0.8', changefreq: 'weekly' },
-```
+**File:** `package.json`
 
-Add academy fetching (similar pattern to trainers/locations):
-```typescript
-// Fetch all verified public academies
-const { data: academies, error: academiesError } = await supabase
-  .from('academy_profiles')
-  .select('slug, updated_at')
-  .eq('is_verified', true)
-  .eq('is_public', true);
-
-if (academiesError) {
-  console.error('Error fetching academies:', academiesError);
+Add a convenient script to run the sitemap generator:
+```json
+"scripts": {
+  "sitemap": "npx tsx scripts/generate-sitemap.ts"
 }
 ```
 
-Add academy URL generation:
-```typescript
-// Add academy profile pages (for each language)
-if (academies) {
-  for (const academy of academies) {
-    const lastmod = academy.updated_at 
-      ? new Date(academy.updated_at).toISOString().split('T')[0] 
-      : today;
-    xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
-  }
-}
+## Workflow Configuration
+
+```yaml
+name: Regenerate Sitemap
+
+on:
+  schedule:
+    # Run daily at 6:00 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  regenerate-sitemap:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate sitemap
+        run: npx tsx scripts/generate-sitemap.ts
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add public/sitemap.xml
+          git diff --staged --quiet || git commit -m "chore: regenerate sitemap [skip ci]"
+          git push
 ```
 
-### Updated Sitemap Breakdown Script
+## Key Features
 
-Add to the breakdown logging:
-```typescript
-const academyMatches = sitemapXml.match(/\/academies\/[^<]+/g) || [];
+| Feature | Description |
+|---------|-------------|
+| **Daily schedule** | Runs every day at 6 AM UTC automatically |
+| **Manual trigger** | Can be run anytime from GitHub Actions UI |
+| **Smart commits** | Only commits if sitemap actually changed |
+| **Skip CI** | Uses `[skip ci]` to avoid triggering other workflows |
+| **Permissions** | Uses `contents: write` for pushing changes |
 
-console.log(`   Academy pages: ${academyMatches.length - (sitemapXml.match(/\/academies<\/loc>/g) || []).length}`);
-```
+## Files to Create/Modify
 
-## Files to Modify
+| File | Action | Purpose |
+|------|--------|---------|
+| `.github/workflows/sitemap.yml` | Create | New workflow for scheduled regeneration |
+| `package.json` | Modify | Add `sitemap` script for convenience |
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/sitemap/index.ts` | Add `/academies` to static pages, fetch and add academy profiles |
-| `scripts/generate-sitemap.ts` | Update breakdown to count academy pages |
+## Schedule Options
 
-## Expected Output
+The default is daily at 6 AM UTC. You can adjust the cron expression:
 
-After implementation, the sitemap will include:
-- 1 static academies directory page (x2 languages = 2 URLs)
-- All verified public academy profile pages (x2 languages each)
+| Schedule | Cron Expression |
+|----------|-----------------|
+| Daily at 6 AM UTC | `0 6 * * *` |
+| Twice daily (6 AM & 6 PM) | `0 6,18 * * *` |
+| Every 6 hours | `0 */6 * * *` |
+| Weekly (Sundays at 6 AM) | `0 6 * * 0` |
 
-Example sitemap entries:
-```xml
-<url>
-  <loc>https://padeltrainer.ai/en/academies</loc>
-  <lastmod>2026-01-29</lastmod>
-  <changefreq>weekly</changefreq>
-  <priority>0.8</priority>
-  <xhtml:link rel="alternate" hreflang="en" href="..."/>
-  <xhtml:link rel="alternate" hreflang="nl" href="..."/>
-</url>
+## Manual Regeneration
 
-<url>
-  <loc>https://padeltrainer.ai/en/academies/padel-amsterdam-academy</loc>
-  <lastmod>2026-01-15</lastmod>
-  <changefreq>weekly</changefreq>
-  <priority>0.7</priority>
-  <xhtml:link rel="alternate" hreflang="en" href="..."/>
-  <xhtml:link rel="alternate" hreflang="nl" href="..."/>
-</url>
-```
+You can still regenerate manually anytime:
+- **GitHub Actions UI**: Go to Actions → Regenerate Sitemap → Run workflow
+- **Local command**: `npm run sitemap` or `npx tsx scripts/generate-sitemap.ts`
 
-## Visibility Rules
+## Expected Outcome
 
-Academy pages will only appear in the sitemap if:
-- `is_verified = true`
-- `is_public = true`
+After implementation:
+- Sitemap automatically updates daily with all new trainers, locations, academies, and clubs
+- No manual intervention required
+- Sitemap remains at `padeltrainer.ai/sitemap.xml` (optimal for SEO)
+- Changes are tracked in git history
 
-This aligns with the existing visibility rules enforced in `Academies.tsx` and `AcademyPublicProfile.tsx`.
