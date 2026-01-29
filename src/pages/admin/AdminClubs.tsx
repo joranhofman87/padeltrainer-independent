@@ -248,7 +248,11 @@ export default function AdminClubs() {
               filteredClubs.map((club) => {
                 const status = getSubscriptionStatus(club);
                 return (
-                  <TableRow key={club.id}>
+                  <TableRow 
+                    key={club.id}
+                    className="cursor-pointer"
+                    onClick={() => setEditingClub(club)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
@@ -285,7 +289,7 @@ export default function AdminClubs() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
