@@ -1,141 +1,56 @@
 
-# Plan: Add Featured Section to Listing Pages
+# Plan: Remove "Featured" Badge from Featured Section Cards
 
 ## Overview
 
-Add a "Featured" section at the top of the Trainers, Locations, and Academies listing pages that showcases profiles with active paid subscriptions. This provides visibility incentives for paying users and helps players discover premium profiles.
+The user wants to remove the "Featured" badge from the cards shown in the featured sections since the section header already clearly indicates these are featured profiles. The cards in featured sections should look identical to the regular cards.
 
-## What Makes a Profile "Featured"
+## Current State
 
-A profile is considered "featured" (paid) when:
+The `FeaturedBadge` component is currently used in 3 places:
 
-| Entity | Condition |
-|--------|-----------|
-| **Trainers** | `subscription_status = 'active'` |
-| **Locations** | Location has a claimed club with `subscription_status = 'active'` |
-| **Academies** | `subscription_status = 'active'` |
+| File | Location | How it's used |
+|------|----------|---------------|
+| `Trainers.tsx` | Line 533 | Inside featured trainer card's `CardContent` |
+| `Locations.tsx` | Lines 483-485 | Absolutely positioned on top of `LocationCard` |
+| `Academies.tsx` | Line 140 | Inside featured academy card after the name |
 
-## Design
+## Changes Required
 
-The featured section will appear below the hero/header and above the regular listing grid:
+### 1. Trainers.tsx
 
-```text
-+--------------------------------------------------+
-| Hero Section (title, search, filters)            |
-+--------------------------------------------------+
-| Featured (highlighted section with gradient bg)  |
-| +--------+ +--------+ +--------+ +--------+      |
-| | Card 1 | | Card 2 | | Card 3 | | Card 4 |      |
-| +--------+ +--------+ +--------+ +--------+      |
-+--------------------------------------------------+
-| All Trainers/Locations/Academies                 |
-| (regular grid of all results)                    |
-+--------------------------------------------------+
-```
+Remove `<FeaturedBadge />` from line 533 in the featured trainers section.
 
-**Design details:**
-- Subtle gradient background to distinguish from main content
-- Horizontal scrollable carousel on mobile
-- Grid of 4 cards on desktop
-- "Featured" badge on each card
-- Star icon in section header
-- Only shows if there are featured profiles
-- Randomize order to give fair rotation
+### 2. Locations.tsx
 
-## Implementation
+Remove the wrapper `<div className="relative">` and the `<FeaturedBadge />` overlay (lines 476-486). Just render the `LocationCard` directly like in the regular grid.
 
-### 1. Create Reusable FeaturedSection Component
+### 3. Academies.tsx
 
-**New file:** `src/components/featured/FeaturedSection.tsx`
+Remove `<FeaturedBadge />` from line 140 in the featured academies section. Also add back the description like regular cards have.
 
-```typescript
-interface FeaturedSectionProps {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  emptyMessage?: string;
-}
-```
+### 4. Optional: Remove FeaturedBadge export
 
-A wrapper component that:
-- Provides consistent styling (gradient background, section header with star icon)
-- Handles empty state (hides section if no children)
-- Adds horizontal scroll on mobile
+If `FeaturedBadge` is no longer used anywhere, we can remove the export from `FeaturedSection.tsx`. However, keeping it for potential future use is fine.
 
-### 2. Update Trainers Page
-
-**File:** `src/pages/Trainers.tsx`
-
-- Add `featuredTrainers` computed from trainers where `subscription_status === 'active'`
-- Shuffle featured trainers for fair rotation
-- Limit to 8 featured max
-- Render `FeaturedSection` with trainer cards after the hero section
-- Add "Featured" badge to trainer cards when shown in featured section
-
-### 3. Update Locations Page
-
-**File:** `src/pages/Locations.tsx`
-
-- Cross-reference with `club_profiles_public` to find locations with active paid clubs
-- Featured locations = locations where the claimed club has `subscription_status = 'active'`
-- Render `FeaturedSection` with location cards after filters
-- Limit to 8 featured max
-
-### 4. Update Academies Page
-
-**File:** `src/pages/Academies.tsx`
-
-- Filter academies where `subscription_status === 'active'`
-- Render `FeaturedSection` with academy cards before the regular grid
-- Limit to 8 featured max
-
-### 5. Add Translations
-
-**Files:**
-- `src/i18n/locales/en/common.json`
-- `src/i18n/locales/nl/common.json`
-
-Add keys:
-- `featured.title` - "Featured"
-- `featured.trainers` - "Featured Trainers"
-- `featured.locations` - "Featured Locations"
-- `featured.academies` - "Featured Academies"
-- `featured.badge` - "Featured"
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/featured/FeaturedSection.tsx` | Create | Reusable featured section wrapper |
-| `src/pages/Trainers.tsx` | Modify | Add featured trainers section |
-| `src/pages/Locations.tsx` | Modify | Add featured locations section |
-| `src/pages/Academies.tsx` | Modify | Add featured academies section |
-| `src/i18n/locales/en/common.json` | Modify | Add featured translations |
-| `src/i18n/locales/nl/common.json` | Modify | Add featured translations |
-
-## Visual Preview
+## Visual Result
 
 ```text
-┌────────────────────────────────────────────────────────────────┐
-│                     ⭐ Featured Trainers                       │
-│                 Premium trainers with verified profiles        │
-├────────────────────────────────────────────────────────────────┤
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│ │ Avatar   │ │ Avatar   │ │ Avatar   │ │ Avatar   │           │
-│ │ Name     │ │ Name     │ │ Name     │ │ Name     │  ───────► │
-│ │ ⭐ 4.8   │ │ ⭐ 4.9   │ │ ⭐ 4.7   │ │ ⭐ 5.0   │   scroll  │
-│ │ Featured │ │ Featured │ │ Featured │ │ Featured │           │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
-└────────────────────────────────────────────────────────────────┘
+Before (Featured Section):          After (Featured Section):
++------------------+                +------------------+
+| Avatar  Name     |                | Avatar  Name     |
+| ⭐ 4.8           |                | ⭐ 4.8           |
+| [Featured Badge] |                | €50/hr · 5y exp  |
+| €50/hr · 5y exp  |                +------------------+
++------------------+
+
+Cards now look identical to regular grid cards.
 ```
 
-## Summary
+## Files to Modify
 
-| Change | Purpose |
-|--------|---------|
-| Featured section component | Reusable wrapper for consistent styling |
-| Trainers featured section | Showcase trainers with active subscriptions |
-| Locations featured section | Showcase clubs with active subscriptions |
-| Academies featured section | Showcase academies with active subscriptions |
-
-This incentivizes users to upgrade to paid plans for increased visibility while helping players discover premium profiles.
+| File | Change |
+|------|--------|
+| `src/pages/Trainers.tsx` | Remove `<FeaturedBadge />` from featured section |
+| `src/pages/Locations.tsx` | Remove wrapper div and `<FeaturedBadge />` overlay |
+| `src/pages/Academies.tsx` | Remove `<FeaturedBadge />` and add description like regular cards |
