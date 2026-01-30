@@ -162,7 +162,19 @@
     "socialMedia": "Social Media",
     "socialMediaDescription": "Voeg links toe naar de social media profielen van je academy",
     "saved": "Profiel Opgeslagen",
-    "savedDescription": "Je profiel is bijgewerkt."
+    "savedDescription": "Je profiel is bijgewerkt.",
+    "banner": "Banner",
+    "bannerDescription": "Wordt bovenaan je publieke profiel weergegeven.",
+    "bannerSizeHint": "Aanbevolen: 1200×400px (3:1 verhouding), max 10MB",
+    "noBanner": "Geen banner geüpload",
+    "uploadBanner": "Banner Uploaden",
+    "changeBanner": "Banner Wijzigen",
+    "bannerUpdated": "Banner Bijgewerkt",
+    "bannerUpdatedDescription": "Je bannerafbeelding is opgeslagen.",
+    "bannerInvalidType": "Selecteer een afbeeldingsbestand.",
+    "bannerTooLarge": "Afbeelding moet kleiner zijn dan 10MB.",
+    "bannerInvalidWidth": "Afbeeldingsbreedte moet tussen 800 en 2400 pixels zijn.",
+    "bannerInvalidRatio": "Beeldverhouding moet tussen 2.5:1 en 5:1 zijn (brede banner)."
   },
   "managers": {
     "title": "Academy Beheerders",

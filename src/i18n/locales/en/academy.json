@@ -162,7 +162,19 @@
     "socialMedia": "Social Media",
     "socialMediaDescription": "Add links to your academy's social media profiles",
     "saved": "Profile Saved",
-    "savedDescription": "Your profile has been updated."
+    "savedDescription": "Your profile has been updated.",
+    "banner": "Banner",
+    "bannerDescription": "Displayed at the top of your public profile.",
+    "bannerSizeHint": "Recommended: 1200×400px (3:1 ratio), max 10MB",
+    "noBanner": "No banner uploaded",
+    "uploadBanner": "Upload Banner",
+    "changeBanner": "Change Banner",
+    "bannerUpdated": "Banner Updated",
+    "bannerUpdatedDescription": "Your banner image has been saved.",
+    "bannerInvalidType": "Please select an image file.",
+    "bannerTooLarge": "Image must be smaller than 10MB.",
+    "bannerInvalidWidth": "Image width must be between 800 and 2400 pixels.",
+    "bannerInvalidRatio": "Image aspect ratio must be between 2.5:1 and 5:1 (wide banner)."
   },
   "managers": {
     "title": "Academy Managers",
