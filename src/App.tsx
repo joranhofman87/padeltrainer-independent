@@ -66,6 +66,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminLocations from "./pages/admin/AdminLocations";
 import AdminCertifications from "./pages/admin/AdminCertifications";
 import AdminRatingSystems from "./pages/admin/AdminRatingSystems";
+import AdminReviewTags from "./pages/admin/AdminReviewTags";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminClubs from "./pages/admin/AdminClubs";
 import AdminTrainers from "./pages/admin/AdminTrainers";
@@ -193,6 +194,7 @@ const App = () => (
               <Route path="certifications" element={<AdminCertifications />} />
               <Route path="club-claims" element={<AdminClubClaims />} />
               <Route path="rating-systems" element={<AdminRatingSystems />} />
+              <Route path="review-tags" element={<AdminReviewTags />} />
               <Route path="academies" element={<AdminAcademies />} />
               <Route path="pricing" element={<AdminPricing />} />
             </Route>
