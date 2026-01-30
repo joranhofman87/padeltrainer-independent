@@ -37,6 +37,7 @@ import {
   Scale,
   LogOut,
   ShieldCheck,
+  Tags,
   FileCheck,
   PanelLeftClose,
   PanelLeft,
@@ -55,6 +56,7 @@ const mainNavItems = [
 const settingsNavItems = [
   { title: "Certifications", url: "/admin/certifications", icon: Award },
   { title: "Rating Systems", url: "/admin/rating-systems", icon: Scale },
+  { title: "Review Tags", url: "/admin/review-tags", icon: Tags },
   { title: "Pricing Plans", url: "/admin/pricing", icon: CreditCard },
 ];
 
