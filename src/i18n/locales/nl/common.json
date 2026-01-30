@@ -230,5 +230,10 @@
     "trainersDescription": "Premium trainers met geverifieerde profielen",
     "locationsDescription": "Premium padelclubs",
     "academiesDescription": "Professionele trainingsacademies"
+  },
+  "reviewTags": {
+    "teaching_style": "Lesstijl",
+    "skill_focus": "Vaardigheden",
+    "specialties": "Specialisaties"
   }
 }

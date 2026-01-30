@@ -85,8 +85,28 @@ export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesP
     return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
   };
 
-  if (loading || cycles.length === 0) {
+  if (loading) {
     return null;
+  }
+
+  if (cycles.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-primary" />
+            {t('registration.openCycles', 'Open for Registration')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground">
+            <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-medium">{t('registration.noCycles', 'No open registrations')}</p>
+            <p className="text-sm mt-1">{t('registration.checkBackLater', 'Check back later for upcoming training cycles.')}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

@@ -5,7 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StarRating } from './StarRating';
-import { createReview } from '@/lib/reviews';
+import { ReviewTagSelector } from './ReviewTagSelector';
+import { createReviewWithTags } from '@/lib/reviews';
 import { useToast } from '@/hooks/use-toast';
 import { sendReviewNotification } from '@/lib/email';
 
@@ -35,6 +36,7 @@ export function ReviewForm({
   const { toast } = useToast();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,11 +53,12 @@ export function ReviewForm({
     }
 
     setSubmitting(true);
-    const { error } = await createReview(
+    const { error } = await createReviewWithTags(
       bookingId,
       playerId,
       trainerId,
       rating,
+      selectedTags,
       comment || undefined,
       isAnonymous
     );
@@ -105,6 +108,11 @@ export function ReviewForm({
               onChange={setRating}
             />
           </div>
+
+          <ReviewTagSelector
+            selectedTags={selectedTags}
+            onChange={setSelectedTags}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="comment">Comment (optional)</Label>

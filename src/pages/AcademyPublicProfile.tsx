@@ -36,6 +36,7 @@ import {
   type AcademyProfile 
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
+import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -393,6 +394,11 @@ export default function AcademyPublicProfile() {
             academyId={academy.id!}
             academyName={academy.name || 'Academy'}
           />
+        </ProfileFullWidthSection>
+
+        {/* Full Width - Reviews Section */}
+        <ProfileFullWidthSection>
+          <AcademyReviews academyId={academy.id!} />
         </ProfileFullWidthSection>
 
         {/* Full Width - Locations Section */}

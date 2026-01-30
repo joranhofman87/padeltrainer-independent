@@ -6,7 +6,9 @@
   "registration": {
     "openCycles": "Open for Registration",
     "deadline": "Deadline",
-    "notFound": "Registration Not Found"
+    "notFound": "Registration Not Found",
+    "noCycles": "No open registrations",
+    "checkBackLater": "Check back later for upcoming training cycles."
   },
   "createCycle": "Create Cycle",
   "editCycle": "Edit Cycle",
