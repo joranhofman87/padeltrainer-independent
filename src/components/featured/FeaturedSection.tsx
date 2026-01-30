@@ -21,7 +21,7 @@ export function FeaturedSection({ title, description, children, className = '' }
         <p className="text-sm text-muted-foreground mb-4">{description}</p>
       )}
       <div className="overflow-x-auto pb-2 -mx-4 px-4">
-        <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
+        <div className="flex gap-6 min-w-max lg:grid lg:grid-cols-3 lg:min-w-0">
           {children}
         </div>
       </div>
