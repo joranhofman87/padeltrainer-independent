@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   MapPin, Users, Star, ExternalLink, Calendar, Share2, Copy, Check, 
-  MessageCircle, Building2, CheckCircle, Award
+  MessageCircle, CheckCircle, Award
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SEO } from '@/components/SEO';
 import { toast } from 'sonner';
 import {
@@ -233,12 +234,6 @@ export default function AcademyPublicProfile() {
           avatarUrl={academy.logo_url}
           isVerified={academy.is_verified}
           socialLinks={socialLinks}
-          badgeSlot={
-            <Badge variant="secondary" className="w-fit">
-              <Building2 className="h-3 w-3 mr-1" />
-              {t('badge')}
-            </Badge>
-          }
           statsSlot={
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -351,7 +346,16 @@ export default function AcademyPublicProfile() {
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold truncate">{trainer.profile?.full_name}</h3>
                           {trainer.trainer_profile?.is_verified && (
-                            <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t('common:verifiedProfile', 'Verified profile')}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                         {trainer.profile?.location && (
