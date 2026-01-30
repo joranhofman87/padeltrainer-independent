@@ -1,70 +1,73 @@
 
-# Plan: Make Featured Cards Same Size as Regular Cards
+# Plan: Fix Academy Visibility and Verified Badge Logic
 
-## Overview
+## Problem
 
-The featured section cards are currently smaller and show less content than the regular grid cards. This creates an inconsistent visual experience. The user wants them to look the same.
+"Hello Padel" is set to `is_public = true` but does not appear on the academies page because the database view `academy_profiles_public` requires BOTH `is_verified = true AND is_public = true`.
 
-## Current Differences
+**Current Database View Filter:**
+```sql
+WHERE is_verified = true AND is_public = true
+```
 
-### Academies Page
-| Element | Featured Cards | Regular Cards |
-|---------|---------------|---------------|
-| Avatar | `h-14 w-14` | `h-16 w-16` |
-| Title | `text-sm` | (default) |
-| Description | `text-xs` | `text-sm` |
-| Website URL | Missing | Shown |
+**Hello Padel's Current State:**
+| Field | Value |
+|-------|-------|
+| is_public | true |
+| is_verified | false |
+| subscription_status | trial |
 
-### Trainers Page
-| Element | Featured Cards | Regular Cards |
-|---------|---------------|---------------|
-| Avatar | `h-12 w-12` | `h-14 w-14` |
-| Title | `text-sm` | `text-base` |
-| Location | Missing | Shown |
-| Bio | Missing | Shown |
-| Verified Badge | Missing | Shown |
-| Follow Button | Missing | Shown |
-| Rating System | Missing | Shown |
-| Specializations | Missing | Shown |
+## User Requirements
 
-### Locations Page
-Already uses the same `LocationCard` component in both sections - no changes needed.
+1. **Visibility**: All academies should show when `is_public = true`, regardless of verified status
+2. **Verified Badge**: Show checkmark when academy is claimed/verified OR has paid subscription (`is_verified = true OR subscription_status = 'active'`)
 
 ## Solution
 
-Update the featured card markup in each page to exactly match the regular card markup:
+### 1. Database Migration: Update the View
 
-1. **Academies.tsx** - Update lines 122-148 to match lines 190-224
-2. **Trainers.tsx** - Update lines 503-542 to match lines 609-696
+Change the `academy_profiles_public` view to only require `is_public = true`:
 
-## Changes Required
+```sql
+CREATE OR REPLACE VIEW public.academy_profiles_public AS
+SELECT 
+  id, name, slug, description, logo_url, banner_url, website_url,
+  social_instagram, social_facebook, social_linkedin, social_youtube, social_tiktok,
+  is_verified, is_public, subscription_status, subscription_tier,
+  created_at, updated_at
+FROM academy_profiles
+WHERE is_public = true;  -- Only check is_public, not is_verified
+```
 
-### File: `src/pages/Academies.tsx`
+### 2. Code Change: Update Badge Logic
 
-Expand the featured card to match the regular card:
-- Increase avatar size from `h-14 w-14` to `h-16 w-16`
-- Remove `text-sm` from title
-- Change description from `text-xs` to `text-sm`
-- Add website URL display
-- Add `mb-2` to description
+Update both the featured cards and regular cards in `Academies.tsx` to show the verified checkmark when:
+- `is_verified = true` OR 
+- `subscription_status = 'active'`
 
-### File: `src/pages/Trainers.tsx`
+**Before (lines 136-138 and 211-213):**
+```tsx
+{academy.is_verified && (
+  <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+)}
+```
 
-Expand the featured card to match the regular card completely:
-- Increase avatar size from `h-12 w-12` to `h-14 w-14`
-- Increase avatar fallback text from `text-sm` to `text-lg`
-- Change title from `text-sm` to `text-base`
-- Add verified badge
-- Add follow button
-- Add location display
-- Add bio section
-- Add rating system and experience in same layout
-- Add specializations badges
+**After:**
+```tsx
+{(academy.is_verified || academy.subscription_status === 'active') && (
+  <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+)}
+```
 
-### File: `src/pages/Locations.tsx`
+## File Changes
 
-No changes needed - already uses `LocationCard` component consistently.
+| File | Change |
+|------|--------|
+| Database | Update `academy_profiles_public` view to only filter by `is_public = true` |
+| `src/pages/Academies.tsx` | Update verified badge condition in both card sections |
 
 ## Result
 
-After changes, the featured section cards will be visually identical to the regular grid cards, just displayed in a horizontally scrollable section with a gradient background.
+After these changes:
+- Hello Padel (and any `is_public = true` academy) will appear in the directory
+- The verified checkmark will show for academies that are either verified by admin OR have an active paid subscription
