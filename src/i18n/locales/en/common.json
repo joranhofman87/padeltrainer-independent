@@ -230,5 +230,10 @@
     "trainersDescription": "Premium trainers with verified profiles",
     "locationsDescription": "Premium padel clubs",
     "academiesDescription": "Professional training academies"
+  },
+  "reviewTags": {
+    "teaching_style": "Teaching Style",
+    "skill_focus": "Skill Focus",
+    "specialties": "Specialties"
   }
 }

@@ -6,7 +6,9 @@
   "registration": {
     "openCycles": "Open voor Inschrijving",
     "deadline": "Deadline",
-    "notFound": "Inschrijving Niet Gevonden"
+    "notFound": "Inschrijving Niet Gevonden",
+    "noCycles": "Geen open inschrijvingen",
+    "checkBackLater": "Kom later terug voor aankomende trainings-cycli."
   },
   "createCycle": "Cyclus Aanmaken",
   "editCycle": "Cyclus Bewerken",

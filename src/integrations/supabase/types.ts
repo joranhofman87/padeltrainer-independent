@@ -2221,6 +2221,72 @@ export type Database = {
         }
         Relationships: []
       }
+      review_tag_selections: {
+        Row: {
+          created_at: string
+          id: string
+          review_id: string
+          tag_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          review_id: string
+          tag_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          review_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_tag_selections_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_tag_selections_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "review_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_tags: {
+        Row: {
+          category: string
+          created_at: string
+          display_order: number | null
+          id: string
+          is_active: boolean
+          name: string
+          name_nl: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+          name_nl: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          name_nl?: string
+        }
+        Relationships: []
+      }
       reviews: {
         Row: {
           booking_id: string
