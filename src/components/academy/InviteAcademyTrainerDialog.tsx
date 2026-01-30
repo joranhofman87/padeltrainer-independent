@@ -14,7 +14,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { inviteAcademyTrainer } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
@@ -39,7 +38,6 @@ export function InviteAcademyTrainerDialog({
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const [paymentPercentage, setPaymentPercentage] = useState(70);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,7 +50,6 @@ export function InviteAcademyTrainerDialog({
         academyProfileId,
         email,
         inviterId,
-        paymentPercentage,
         message
       );
 
@@ -70,7 +67,6 @@ export function InviteAcademyTrainerDialog({
       await sendEmail('academy_trainer_invitation', email, {
         academyName,
         inviterName,
-        paymentPercentage,
         inviteMessage: message,
         inviteLink,
       });
@@ -82,7 +78,6 @@ export function InviteAcademyTrainerDialog({
 
       setEmail('');
       setMessage('');
-      setPaymentPercentage(70);
       setOpen(false);
       onInviteSent();
     } catch (error) {
@@ -124,24 +119,6 @@ export function InviteAcademyTrainerDialog({
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>{t('trainerInvitation.paymentPercentage')}</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  value={[paymentPercentage]}
-                  onValueChange={(value) => setPaymentPercentage(value[0])}
-                  min={0}
-                  max={100}
-                  step={5}
-                  className="flex-1"
-                />
-                <span className="w-16 text-right font-medium">{paymentPercentage}%</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t('trainerInvitation.paymentDescription', { percentage: paymentPercentage, academyPercentage: 100 - paymentPercentage })}
-              </p>
             </div>
 
             <div className="grid gap-2">

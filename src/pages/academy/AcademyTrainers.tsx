@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, Calendar, ExternalLink, Eye, EyeOff, Trash2, Clock, Percent } from 'lucide-react';
+import { Users, Calendar, ExternalLink, Eye, EyeOff, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +33,6 @@ import {
   cancelAcademyInvitation,
 } from '@/lib/academy';
 import { InviteAcademyTrainerDialog } from '@/components/academy/InviteAcademyTrainerDialog';
-import { EditAcademyTrainerDialog } from '@/components/academy/EditAcademyTrainerDialog';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -197,10 +196,6 @@ export default function AcademyTrainers() {
                                 {t('common:verified')}
                               </Badge>
                             )}
-                            <Badge variant="outline" className="text-xs flex items-center gap-1">
-                              <Percent className="h-3 w-3" />
-                              {trainer.payment_percentage}%
-                            </Badge>
                             <Badge
                               variant={isVisible ? 'default' : 'secondary'}
                               className="text-xs flex items-center gap-1"
@@ -268,10 +263,6 @@ export default function AcademyTrainers() {
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-2">
-                        <EditAcademyTrainerDialog
-                          trainer={trainer}
-                          onTrainerUpdated={fetchData}
-                        />
                         <Button
                           variant="outline"
                           size="sm"
@@ -332,10 +323,6 @@ export default function AcademyTrainers() {
                             time: formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true }),
                           })}
                         </p>
-                        <Badge variant="outline" className="mt-1">
-                          <Percent className="h-3 w-3 mr-1" />
-                          {invitation.payment_percentage}% {t('trainerInvitation.trainerShare')}
-                        </Badge>
                       </div>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
