@@ -2,12 +2,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { 
   MapPin, CheckCircle, Clock, Play,
   Instagram, Youtube, Linkedin, Facebook
 } from 'lucide-react';
 import { StarRating } from '@/components/reviews/StarRating';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SocialLink {
   platform: 'instagram' | 'tiktok' | 'youtube' | 'linkedin' | 'facebook';
@@ -123,10 +123,16 @@ export function ProfileHeroCard({
               <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-3">
                 <h1 className="text-3xl md:text-4xl font-bold">{name}</h1>
                 {isVerified && (
-                  <Badge className="w-fit mx-auto lg:mx-0 bg-green-500 hover:bg-green-600">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    {t('verified', 'Verified')}
-                  </Badge>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{t('verifiedProfile', 'Verified profile')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 {badgeSlot}
               </div>

@@ -69,6 +69,7 @@
   "reviews": "{{count}} review",
   "reviews_plural": "{{count}} reviews",
   "verified": "Geverifieerd",
+  "verifiedProfile": "Geverifieerd profiel",
   "upcoming": "Aankomend",
   "completed": "Voltooid",
   "pending": "In afwachting",

@@ -69,6 +69,7 @@
   "reviews": "{{count}} review",
   "reviews_plural": "{{count}} reviews",
   "verified": "Verified",
+  "verifiedProfile": "Verified profile",
   "upcoming": "Upcoming",
   "completed": "Completed",
   "pending": "Pending",
