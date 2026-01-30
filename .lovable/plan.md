@@ -1,131 +1,136 @@
 
-
-# Plan: Scheduled Sitemap Regeneration
+# Plan: Academy Banner Upload
 
 ## Overview
 
-Set up automated daily regeneration of the sitemap using GitHub Actions. This ensures the sitemap stays fresh as you add new academies, clubs, and trainers, while keeping the sitemap file on your primary domain for optimal SEO.
+Add the ability for academy managers to upload a custom banner image for their academy profile. The banner will be displayed on the public academy profile page (already supported in the UI) and can be managed from the Academy Profile settings page.
 
 ## How It Works
 
 ```text
 +------------------+     +----------------------+     +-------------------+
-|  GitHub Actions  | --> |  Sitemap Edge        | --> |  public/sitemap.xml |
-|  (Daily @ 6 AM)  |     |  Function            |     |  (committed)        |
+|  Academy Manager | --> |  AcademyProfile.tsx  | --> |  Supabase Storage |
+|  (Profile Page)  |     |  (Upload UI)         |     |  avatars/academies/|
 +------------------+     +----------------------+     +-------------------+
          |                         |                           |
-         |  1. Runs script         |  2. Fetches fresh data    |  3. Committed back
-         |                         |     from database          |     to repository
+         |  1. Select banner       |  2. Validate dimensions   |  3. Store file
+         |     image               |     & upload to storage    |     & update DB
          v                         v                           v
-    Scheduled trigger      Trainers, Locations,         Served at
-    (cron: 0 6 * * *)      Academies, Cities           padeltrainer.ai/sitemap.xml
+    File picker UI         Image validation          Public URL saved
+                           (800-2400px width,        to banner_url field
+                            2.5:1 - 5:1 ratio)
 ```
 
 ## Implementation
 
-### 1. Create GitHub Actions Workflow
+### 1. Database Migration: Storage RLS Policies for Academies
 
-**New File:** `.github/workflows/sitemap.yml`
+Add storage policies so academy managers can upload to `academies/` folder in the avatars bucket:
 
-This workflow will:
-- Run daily at 6:00 AM UTC
-- Allow manual triggering for immediate regeneration
-- Fetch the latest sitemap from the edge function
-- Commit and push the updated file if there are changes
+| Policy | Command | Purpose |
+|--------|---------|---------|
+| Academy managers can upload | INSERT | Allow uploading logo/banner to `academies/{academy_id}/` |
+| Academy managers can update | UPDATE | Allow replacing existing images |
 
-### 2. Add npm Script for Sitemap Generation
+### 2. Update Academy Profile Page
 
-**File:** `package.json`
+**File:** `src/pages/academy/AcademyProfile.tsx`
 
-Add a convenient script to run the sitemap generator:
-```json
-"scripts": {
-  "sitemap": "npx tsx scripts/generate-sitemap.ts"
-}
+Add a banner upload section similar to the existing club profile implementation:
+- Show current banner preview if one exists
+- Upload button with file picker
+- Image dimension validation (width: 800-2400px, aspect ratio 2.5:1 to 5:1)
+- Loading state during upload
+- Store file at path: `academies/{academy_id}/banner.{ext}`
+
+### 3. Add Translations
+
+**Files:** `src/i18n/locales/en/academy.json` and `src/i18n/locales/nl/academy.json`
+
+Add banner-related translation keys to the profile section:
+- `profile.banner` - Section title
+- `profile.bannerDescription` - Explanation text
+- `profile.bannerSizeHint` - Size recommendations
+- `profile.uploadBanner` / `profile.changeBanner` - Button labels
+- `profile.bannerUpdated` - Success message
+- Validation error messages
+
+## Technical Details
+
+### Storage Path Structure
+```text
+avatars/
+  academies/
+    {academy_id}/
+      logo.png
+      banner.jpg
 ```
 
-## Workflow Configuration
+### Image Validation Rules (matching club banner)
+| Constraint | Value |
+|------------|-------|
+| Min width | 800px |
+| Max width | 2400px |
+| Aspect ratio | 2.5:1 to 5:1 (wide banner) |
+| Max file size | 10MB |
+| Accepted formats | image/* |
 
-```yaml
-name: Regenerate Sitemap
+### RLS Policy SQL
+```sql
+-- Academy managers can upload to academies folder
+CREATE POLICY "Academy managers can upload academy images"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'avatars' AND
+  (storage.foldername(name))[1] = 'academies' AND
+  ((storage.foldername(name))[2])::uuid IN (
+    SELECT get_user_academy_ids(auth.uid())
+  )
+);
 
-on:
-  schedule:
-    # Run daily at 6:00 AM UTC
-    - cron: '0 6 * * *'
-  workflow_dispatch:
-    # Allow manual triggering
-
-jobs:
-  regenerate-sitemap:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate sitemap
-        run: npx tsx scripts/generate-sitemap.ts
-
-      - name: Commit and push if changed
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add public/sitemap.xml
-          git diff --staged --quiet || git commit -m "chore: regenerate sitemap [skip ci]"
-          git push
+-- Academy managers can update their academy images
+CREATE POLICY "Academy managers can update academy images"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id = 'avatars' AND
+  (storage.foldername(name))[1] = 'academies' AND
+  ((storage.foldername(name))[2])::uuid IN (
+    SELECT get_user_academy_ids(auth.uid())
+  )
+);
 ```
-
-## Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Daily schedule** | Runs every day at 6 AM UTC automatically |
-| **Manual trigger** | Can be run anytime from GitHub Actions UI |
-| **Smart commits** | Only commits if sitemap actually changed |
-| **Skip CI** | Uses `[skip ci]` to avoid triggering other workflows |
-| **Permissions** | Uses `contents: write` for pushing changes |
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `.github/workflows/sitemap.yml` | Create | New workflow for scheduled regeneration |
-| `package.json` | Modify | Add `sitemap` script for convenience |
+| Database migration | Create | Add storage RLS policies for academy uploads |
+| `src/pages/academy/AcademyProfile.tsx` | Modify | Add banner upload UI with validation |
+| `src/i18n/locales/en/academy.json` | Modify | Add English banner translations |
+| `src/i18n/locales/nl/academy.json` | Modify | Add Dutch banner translations |
 
-## Schedule Options
+## UI Preview
 
-The default is daily at 6 AM UTC. You can adjust the cron expression:
+The banner upload section will appear as a new card in the Academy Profile page:
 
-| Schedule | Cron Expression |
-|----------|-----------------|
-| Daily at 6 AM UTC | `0 6 * * *` |
-| Twice daily (6 AM & 6 PM) | `0 6,18 * * *` |
-| Every 6 hours | `0 */6 * * *` |
-| Weekly (Sundays at 6 AM) | `0 6 * * 0` |
-
-## Manual Regeneration
-
-You can still regenerate manually anytime:
-- **GitHub Actions UI**: Go to Actions → Regenerate Sitemap → Run workflow
-- **Local command**: `npm run sitemap` or `npx tsx scripts/generate-sitemap.ts`
+```text
++--------------------------------------------------+
+|  Banner                                          |
+|  Displayed at the top of your public profile     |
+|  Recommended: 1200×400px (3:1 ratio), max 10MB   |
+|                                                  |
+|  +--------------------------------------------+  |
+|  |            [Current Banner Preview]         |  |
+|  +--------------------------------------------+  |
+|                                                  |
+|  [Upload Banner] or [Change Banner]              |
++--------------------------------------------------+
+```
 
 ## Expected Outcome
 
 After implementation:
-- Sitemap automatically updates daily with all new trainers, locations, academies, and clubs
-- No manual intervention required
-- Sitemap remains at `padeltrainer.ai/sitemap.xml` (optimal for SEO)
-- Changes are tracked in git history
-
+- Academy managers can upload a banner from their profile settings
+- Banner displays on the public academy profile page (already rendering `banner_url`)
+- Images are securely stored with proper RLS policies
+- Consistent UX with the existing club banner upload feature
