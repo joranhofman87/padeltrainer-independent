@@ -491,116 +491,153 @@ export default function LocationDetail() {
               title={t('common:locations.quickStats')}
               stats={quickStats}
             />
+            
+            {/* Academy Card in Sidebar */}
+            {academies.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" />
+                    {academies.length === 1 ? t('common:academy', 'Academy') : t('common:academies')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {academies.map(academy => (
+                    <div
+                      key={academy.id}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
+                      onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
+                    >
+                      <Avatar className="h-10 w-10 rounded-lg">
+                        <AvatarImage src={academy.logo_url || ''} />
+                        <AvatarFallback className="rounded-lg">{getInitials(academy.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-sm truncate">{academy.name}</span>
+                          {academy.is_verified && (
+                            <CheckCircle className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </ProfileSidebarColumn>
         </ProfileContentGrid>
 
         {/* Full Width - Trainers Section */}
         <ProfileFullWidthSection>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-semibold flex items-center gap-2">
-              <Users className="h-6 w-6 text-primary" />
-              {t('common:locations.trainersAtLocation')}
-            </h2>
-            <Badge variant="secondary" className="text-sm">
-              {trainers.length} {trainers.length === 1 ? t('common:locations.trainer') : t('common:locations.trainers')}
-            </Badge>
-          </div>
-
-          {trainers.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">{t('common:locations.noTrainers')}</h3>
-                <p className="text-muted-foreground">
-                  {t('common:locations.noTrainersDescription')}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trainers.map(trainer => (
-                <Card
-                  key={trainer.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-                  onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start gap-4">
-                      <Avatar className="h-14 w-14">
-                        <AvatarImage src={trainer.profile?.avatar_url || ''} />
-                        <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-lg truncate">
-                            {trainer.profile?.full_name || 'Trainer'}
-                          </CardTitle>
-                          {trainer.trainer_profiles.is_verified && (
-                            <Badge variant="secondary" className="shrink-0">
-                              {t('common:verified')}
-                            </Badge>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  {t('common:locations.trainersAtLocation')}
+                </CardTitle>
+                <Badge variant="secondary" className="text-sm">
+                  {trainers.length} {trainers.length === 1 ? t('common:locations.trainer') : t('common:locations.trainers')}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {trainers.length === 0 ? (
+                <div className="py-8 text-center">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">{t('common:locations.noTrainers')}</h3>
+                  <p className="text-muted-foreground">
+                    {t('common:locations.noTrainersDescription')}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {trainers.map(trainer => (
+                    <Card
+                      key={trainer.id}
+                      className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start gap-4">
+                          <Avatar className="h-14 w-14">
+                            <AvatarImage src={trainer.profile?.avatar_url || ''} />
+                            <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-lg truncate">
+                                {trainer.profile?.full_name || 'Trainer'}
+                              </CardTitle>
+                              {trainer.trainer_profiles.is_verified && (
+                                <Badge variant="secondary" className="shrink-0">
+                                  {t('common:verified')}
+                                </Badge>
+                              )}
+                            </div>
+                            {trainer.avgRating && (
+                              <div className="flex items-center gap-1 text-sm">
+                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                <span>{trainer.avgRating.toFixed(1)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          {trainer.trainer_profiles.hourly_rate && (
+                            <span className="font-semibold text-primary">
+                              €{trainer.trainer_profiles.hourly_rate}{t('common:perHour')}
+                            </span>
+                          )}
+                          {trainer.trainer_profiles.experience_years && (
+                            <span className="text-muted-foreground">
+                              {t('common:yearsExperience', { count: trainer.trainer_profiles.experience_years })}
+                            </span>
                           )}
                         </div>
-                        {trainer.avgRating && (
-                          <div className="flex items-center gap-1 text-sm">
-                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                            <span>{trainer.avgRating.toFixed(1)}</span>
+
+                        {trainer.trainer_profiles.specializations && trainer.trainer_profiles.specializations.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {trainer.trainer_profiles.specializations.slice(0, 3).map(spec => (
+                              <Badge key={spec} variant="outline" className="text-xs">
+                                {spec}
+                              </Badge>
+                            ))}
+                            {trainer.trainer_profiles.specializations.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{trainer.trainer_profiles.specializations.length - 3}
+                              </Badge>
+                            )}
                           </div>
                         )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      {trainer.trainer_profiles.hourly_rate && (
-                        <span className="font-semibold text-primary">
-                          €{trainer.trainer_profiles.hourly_rate}{t('common:perHour')}
-                        </span>
-                      )}
-                      {trainer.trainer_profiles.experience_years && (
-                        <span className="text-muted-foreground">
-                          {t('common:yearsExperience', { count: trainer.trainer_profiles.experience_years })}
-                        </span>
-                      )}
-                    </div>
 
-                    {trainer.trainer_profiles.specializations && trainer.trainer_profiles.specializations.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {trainer.trainer_profiles.specializations.slice(0, 3).map(spec => (
-                          <Badge key={spec} variant="outline" className="text-xs">
-                            {spec}
-                          </Badge>
-                        ))}
-                        {trainer.trainer_profiles.specializations.length > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{trainer.trainer_profiles.specializations.length - 3}
+                        {trainer.is_primary && (
+                          <Badge variant="default" className="text-xs">
+                            {t('common:locations.primaryLocation')}
                           </Badge>
                         )}
-                      </div>
-                    )}
 
-                    {trainer.is_primary && (
-                      <Badge variant="default" className="text-xs">
-                        {t('common:locations.primaryLocation')}
-                      </Badge>
-                    )}
-
-                    <div className="flex gap-2 pt-2" onClick={e => e.stopPropagation()}>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
-                      >
-                        {t('common:viewProfile')}
-                      </Button>
-                      <FollowButton trainerProfileId={trainer.trainer_id} size="sm" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                        <div className="flex gap-2 pt-2" onClick={e => e.stopPropagation()}>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
+                          >
+                            {t('common:viewProfile')}
+                          </Button>
+                          <FollowButton trainerProfileId={trainer.trainer_id} size="sm" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </ProfileFullWidthSection>
 
         {/* Full Width - Academies Section */}
@@ -659,7 +696,7 @@ export default function LocationDetail() {
                 {t('common:locations.similarClubs', { city: location.city })}
               </h2>
               <Badge variant="secondary" className="text-sm">
-                {similarLocations.length} {similarLocations.length === 1 ? t('common:locations.court') : t('common:locations.courts')}
+                {similarLocations.length} {similarLocations.length === 1 ? t('common:locations.club', 'Club') : t('common:locations.clubs', 'Clubs')}
               </Badge>
             </div>
 

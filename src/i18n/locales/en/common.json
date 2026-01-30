@@ -159,7 +159,9 @@
     "locationsOnMap": "locations on map",
     "locationsNotMapped": "not mapped",
     "academiesAtLocation": "Training Academies",
-    "similarClubs": "Similar Clubs in {{city}}"
+    "similarClubs": "Similar Clubs in {{city}}",
+    "club": "Club",
+    "clubs": "Clubs"
   },
   "profile": {
     "preferredClubs": "Preferred Padel Clubs",
