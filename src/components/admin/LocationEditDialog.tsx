@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { createLocation, updateLocation, type Location } from '@/lib/locations';
 
@@ -182,18 +182,10 @@ export function LocationEditDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="contact">Contact</TabsTrigger>
-            <TabsTrigger value="media">Media</TabsTrigger>
-            <TabsTrigger value="social">Social</TabsTrigger>
-            <TabsTrigger value="coords">Coords</TabsTrigger>
-          </TabsList>
-
-          {/* Basic Tab */}
-          <TabsContent value="basic" className="space-y-4 mt-4">
+        <div className="space-y-6 py-4">
+          {/* Basic Info */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Basic Info</h3>
             <div className="space-y-2">
               <Label htmlFor="name">Name *</Label>
               <Input
@@ -230,45 +222,52 @@ export function LocationEditDialog({
                 </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="street_address">Street Address</Label>
-              <Input
-                id="street_address"
-                value={formData.street_address}
-                onChange={e => updateField('street_address', e.target.value)}
-                placeholder="Street address"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="street_address">Street Address</Label>
+                <Input
+                  id="street_address"
+                  value={formData.street_address}
+                  onChange={e => updateField('street_address', e.target.value)}
+                  placeholder="Street address"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="postal_code">Postal Code</Label>
+                <Input
+                  id="postal_code"
+                  value={formData.postal_code}
+                  onChange={e => updateField('postal_code', e.target.value)}
+                  placeholder="Postal code"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="postal_code">Postal Code</Label>
-              <Input
-                id="postal_code"
-                value={formData.postal_code}
-                onChange={e => updateField('postal_code', e.target.value)}
-                placeholder="Postal code"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="slug">URL Slug</Label>
+                <Input
+                  id="slug"
+                  value={formData.slug}
+                  onChange={e => updateField('slug', e.target.value)}
+                  placeholder="Auto-generated if empty"
+                />
+              </div>
+              <div className="flex items-center justify-between pt-6">
+                <Label htmlFor="is_active">Active</Label>
+                <Switch
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={checked => updateField('is_active', checked)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="slug">URL Slug</Label>
-              <Input
-                id="slug"
-                value={formData.slug}
-                onChange={e => updateField('slug', e.target.value)}
-                placeholder="Auto-generated if empty"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="is_active">Active</Label>
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={checked => updateField('is_active', checked)}
-              />
-            </div>
-          </TabsContent>
+          </div>
 
-          {/* Details Tab */}
-          <TabsContent value="details" className="space-y-4 mt-4">
+          <Separator />
+
+          {/* Details */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Details</h3>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
@@ -276,7 +275,7 @@ export function LocationEditDialog({
                 value={formData.description}
                 onChange={e => updateField('description', e.target.value)}
                 placeholder="Description of the venue..."
-                rows={4}
+                rows={3}
               />
             </div>
             <div className="space-y-2">
@@ -319,36 +318,44 @@ export function LocationEditDialog({
                 value={formData.opening_hours}
                 onChange={e => updateField('opening_hours', e.target.value)}
                 placeholder="Mon-Fri: 9:00-22:00&#10;Sat-Sun: 8:00-20:00"
-                rows={3}
+                rows={2}
               />
             </div>
-          </TabsContent>
+          </div>
 
-          {/* Contact Tab */}
-          <TabsContent value="contact" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={e => updateField('phone', e.target.value)}
-                placeholder="+31 6 12345678"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={e => updateField('email', e.target.value)}
-                placeholder="info@example.com"
-              />
-            </div>
-          </TabsContent>
+          <Separator />
 
-          {/* Media Tab */}
-          <TabsContent value="media" className="space-y-4 mt-4">
+          {/* Contact */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Contact</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={e => updateField('phone', e.target.value)}
+                  placeholder="+31 6 12345678"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={e => updateField('email', e.target.value)}
+                  placeholder="info@example.com"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Media */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Media</h3>
             <div className="space-y-2">
               <Label htmlFor="logo_url">Logo URL</Label>
               <Input
@@ -362,7 +369,7 @@ export function LocationEditDialog({
                   <img
                     src={formData.logo_url}
                     alt="Logo preview"
-                    className="h-20 w-20 object-contain rounded-md border"
+                    className="h-16 w-16 object-contain rounded-md border"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
                     }}
@@ -370,27 +377,32 @@ export function LocationEditDialog({
                 </div>
               )}
             </div>
-          </TabsContent>
+          </div>
 
-          {/* Social Tab */}
-          <TabsContent value="social" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="facebook_url">Facebook URL</Label>
-              <Input
-                id="facebook_url"
-                value={formData.facebook_url}
-                onChange={e => updateField('facebook_url', e.target.value)}
-                placeholder="https://facebook.com/..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="instagram_url">Instagram URL</Label>
-              <Input
-                id="instagram_url"
-                value={formData.instagram_url}
-                onChange={e => updateField('instagram_url', e.target.value)}
-                placeholder="https://instagram.com/..."
-              />
+          <Separator />
+
+          {/* Social & Google */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Social & Google</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="facebook_url">Facebook URL</Label>
+                <Input
+                  id="facebook_url"
+                  value={formData.facebook_url}
+                  onChange={e => updateField('facebook_url', e.target.value)}
+                  placeholder="https://facebook.com/..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="instagram_url">Instagram URL</Label>
+                <Input
+                  id="instagram_url"
+                  value={formData.instagram_url}
+                  onChange={e => updateField('instagram_url', e.target.value)}
+                  placeholder="https://instagram.com/..."
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="google_maps_url">Google Maps URL</Label>
@@ -427,10 +439,13 @@ export function LocationEditDialog({
                 />
               </div>
             </div>
-          </TabsContent>
+          </div>
 
-          {/* Coords Tab */}
-          <TabsContent value="coords" className="space-y-4 mt-4">
+          <Separator />
+
+          {/* Coordinates */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Coordinates</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="latitude">Latitude</Label>
@@ -455,8 +470,8 @@ export function LocationEditDialog({
                 />
               </div>
             </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
