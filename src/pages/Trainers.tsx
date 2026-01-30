@@ -506,38 +506,86 @@ export default function Trainers() {
                 onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
               >
                 <CardHeader className="pb-3">
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-12 w-12">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="h-14 w-14">
                       <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                      <AvatarFallback className="text-sm">
+                      <AvatarFallback className="text-lg">
                         {getInitials(trainer.profile?.full_name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-sm truncate">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base truncate">
                           {trainer.profile?.full_name || 'Trainer'}
                         </CardTitle>
+                        {trainer.is_verified && (
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            Verified
+                          </Badge>
+                        )}
+                        <div className="ml-auto">
+                          <FollowButton trainerProfileId={trainer.id} />
+                        </div>
                       </div>
+                      {trainer.profile?.location && (
+                        <CardDescription className="flex items-center gap-1 mt-1 text-xs">
+                          <MapPin className="h-3 w-3" />
+                          {trainer.profile.location}
+                        </CardDescription>
+                      )}
                       {trainer.reviewCount > 0 && (
-                        <div className="flex items-center gap-1 mt-0.5">
+                        <div className="flex items-center gap-1 mt-1">
                           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium text-xs">{trainer.averageRating.toFixed(1)}</span>
-                          <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
+                          <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({trainer.reviewCount})
+                          </span>
                         </div>
                       )}
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="flex items-center justify-between text-xs">
+                <CardContent className="space-y-3 pt-0">
+                  {trainer.profile?.bio && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {trainer.profile.bio}
+                    </p>
+                  )}
+                  
+                  <div className="flex items-center justify-between text-sm">
                     {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
+                      <span className="font-semibold text-primary">
+                        €{trainer.hourly_rate}/hr
+                      </span>
                     )}
-                    {trainer.experience_years && (
-                      <span className="text-muted-foreground">{trainer.experience_years}y exp</span>
-                    )}
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                      {trainer.knltb_rating && trainer.trainer_rating_system && (
+                        <span className="font-medium text-foreground">
+                          {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
+                        </span>
+                      )}
+                      {trainer.experience_years && (
+                        <span>
+                          {trainer.experience_years}y exp
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {trainer.specializations && trainer.specializations.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {trainer.specializations.slice(0, 2).map((spec, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {spec}
+                        </Badge>
+                      ))}
+                      {trainer.specializations.length > 2 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{trainer.specializations.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
