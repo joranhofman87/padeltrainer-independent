@@ -50,11 +50,11 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, lo
       )}
       <CardHeader className="pb-2">
         <div className="flex items-start gap-3">
-          {isClaimed && (
+          {(isClaimed || logoUrl) && (
             <Avatar className="h-10 w-10 shrink-0">
-              <AvatarImage src={logoUrl || undefined} alt={location.name} />
+              <AvatarImage src={logoUrl || undefined} alt={location.name} className="object-contain" />
               <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                {logoUrl ? <Building2 className="h-5 w-5" /> : getInitials(location.name)}
+                {getInitials(location.name)}
               </AvatarFallback>
             </Avatar>
           )}
