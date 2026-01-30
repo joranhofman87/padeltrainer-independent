@@ -9,8 +9,6 @@ import {
   Settings,
   CreditCard,
   BookOpen,
-  CalendarDays,
-  FileText,
   Trophy,
   ChevronDown
 } from "lucide-react";
@@ -55,14 +53,6 @@ const groupedItems: NavGroup[] = [
     items: [
       { key: "calendar", path: "/club/calendar", icon: Calendar },
       { key: "lessons", path: "/club/lessons", icon: BookOpen },
-    ],
-  },
-  {
-    key: "registration",
-    icon: CalendarDays,
-    items: [
-      { key: "cycles", path: "/club/cycles", icon: CalendarDays },
-      { key: "intakeRequests", path: "/club/intake-requests", icon: FileText },
     ],
   },
   {

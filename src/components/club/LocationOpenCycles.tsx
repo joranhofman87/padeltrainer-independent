@@ -11,13 +11,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { getActiveCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getLocationCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { supabase } from '@/integrations/supabase/client';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 
-interface ClubOpenCyclesProps {
-  clubProfileId: string;
-  clubName: string;
+interface LocationOpenCyclesProps {
+  locationId: string;
+  locationName: string;
 }
 
 interface TrainerOption {
@@ -25,7 +25,7 @@ interface TrainerOption {
   name: string;
 }
 
-export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps) {
+export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
   const { user, profile } = useAuth();
   const navigate = useNavigate();
@@ -43,18 +43,18 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch open cycles for this club
-        const cyclesData = await getActiveCycles('club', clubProfileId);
+        // Fetch open cycles from trainers + academies at this location
+        const cyclesData = await getLocationCycles(locationId);
         setCycles(cyclesData);
 
-        // Fetch club trainers
-        const { data: clubTrainers } = await supabase
-          .from('club_trainers' as any)
+        // Fetch trainers at this location for the application form
+        const { data: trainerLocations } = await supabase
+          .from('trainer_locations')
           .select('trainer_id')
-          .eq('club_id', clubProfileId);
+          .eq('location_id', locationId);
 
-        if (clubTrainers && clubTrainers.length > 0) {
-          const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_id);
+        if (trainerLocations && trainerLocations.length > 0) {
+          const trainerIds = trainerLocations.map(tl => tl.trainer_id);
           
           const { data: trainerProfiles } = await supabase
             .from('trainer_profiles')
@@ -98,7 +98,7 @@ export function ClubOpenCycles({ clubProfileId, clubName }: ClubOpenCyclesProps)
     }
 
     fetchData();
-  }, [clubProfileId, user]);
+  }, [locationId, user]);
 
   const handleSignupRedirect = () => {
     const currentPath = window.location.pathname;

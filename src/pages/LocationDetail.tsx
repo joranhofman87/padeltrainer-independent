@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
-import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
+import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
@@ -471,13 +471,11 @@ export default function LocationDetail() {
               </CardContent>
             </Card>
 
-            {/* Open Cycles for Registration */}
-            {clubProfile && (
-              <ClubOpenCycles
-                clubProfileId={clubProfile.id}
-                clubName={location.name}
-              />
-            )}
+            {/* Open Cycles for Registration - from trainers and academies at this location */}
+            <LocationOpenCycles
+              locationId={location.id}
+              locationName={location.name}
+            />
 
             {/* Upcoming Tournaments */}
             {clubProfile && (
