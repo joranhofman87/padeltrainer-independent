@@ -158,7 +158,8 @@
     "viewAsList": "Bekijk als lijst",
     "locationsOnMap": "locaties op kaart",
     "locationsNotMapped": "niet gekoppeld",
-    "academiesAtLocation": "Trainings Academies"
+    "academiesAtLocation": "Trainings Academies",
+    "similarClubs": "Vergelijkbare Clubs in {{city}}"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
