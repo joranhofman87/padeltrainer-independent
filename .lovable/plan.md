@@ -1,174 +1,140 @@
 
-# Plan: Admin Academy Location & Trainer Linking
+# Plan: Simplify Verified Badge and Remove "Academy Manager" from Public Pages
 
 ## Overview
 
-Extend the AcademyEditDialog to allow admins to link/unlink locations and trainers directly. Currently, the dialog only displays existing connections but doesn't allow modifications.
+Two changes are requested:
+1. Remove the "Academy Manager" badge from public academy profile pages
+2. Change the "Verified" badge to be just a green icon with tooltip, shown only when verified
 
 ## Current State
 
-The Locations and Trainers tabs in the AcademyEditDialog show:
-- A table of connected locations/trainers if any exist
-- An empty state message if none are connected
+**AcademyPublicProfile.tsx (line 236-240)**
+```jsx
+badgeSlot={
+  <Badge variant="secondary" className="w-fit">
+    <Building2 className="h-3 w-3 mr-1" />
+    {t('badge')}  // "Academy Manager"
+  </Badge>
+}
+```
+
+**ProfileHeroCard.tsx (line 125-130)**
+```jsx
+{isVerified && (
+  <Badge className="w-fit mx-auto lg:mx-0 bg-green-500 hover:bg-green-600">
+    <CheckCircle className="h-3 w-3 mr-1" />
+    {t('verified', 'Verified')}
+  </Badge>
+)}
+```
 
 ## Proposed Changes
 
-### Locations Tab Enhancements
+### 1. Remove "Academy Manager" Badge from Public Profile
 
-Add the ability for admins to:
-1. **Add Location**: A searchable dropdown (using LocationPicker) to select and link locations
-2. **Remove Location**: A delete button on each location row to unlink
-3. **Toggle Settings**: Inline switches for `is_active` and `show_on_academy_page`
+**File:** `src/pages/AcademyPublicProfile.tsx`
 
-```text
-+--------------------------------------------------+
-|  Locations (2)                                   |
-+--------------------------------------------------+
-|  [+ Add Location]                                |
-|                                                  |
-|  Location    | City     | Status  | Visible | X |
-|  ------------|----------|---------|---------|---|
-|  Padel X     | Amsterdam| Active  | Yes     | X |
-|  Club Y      | Rotterdam| Inactive| No      | X |
-+--------------------------------------------------+
-```
+Remove the `badgeSlot` prop entirely from the `ProfileHeroCard` component on the public academy profile page.
 
-### Trainers Tab Enhancements
+### 2. Change Verified Badge to Icon-Only with Tooltip
 
-Add the ability for admins to:
-1. **Add Trainer**: A searchable dropdown to select existing trainers from the platform
-2. **Set Payment %**: Slider/input for payment percentage when adding
-3. **Remove Trainer**: A delete button on each trainer row
-4. **Update Status**: Inline status toggle (active/inactive)
+**File:** `src/components/profiles/ProfileHeroCard.tsx`
+
+Replace the Badge component with a simple Tooltip-wrapped CheckCircle icon:
+- Only show when `isVerified` is true
+- Use green color (`text-green-500`)
+- Add tooltip on hover showing "Verified profile"
 
 ```text
-+--------------------------------------------------+
-|  Trainers (1)                                    |
-+--------------------------------------------------+
-|  [+ Add Trainer]                                 |
-|                                                  |
-|  Trainer     | Email     | Status | Pay % |  X  |
-|  ------------|-----------|--------|-------|-----|
-|  John Doe    | john@..   | Active | 70%   |  X  |
-+--------------------------------------------------+
+Before:                    After:
++------------------+       +------+
+| ✓ Verified      |  -->  | ✓    |  (green, with hover tooltip)
++------------------+       +------+
 ```
 
-## Implementation
+### 3. Update Trainer Cards Verified Icon (Already correct, just add tooltip)
 
-### 1. Add Trainer Picker Component
+**File:** `src/pages/AcademyPublicProfile.tsx`
 
-Create a searchable trainer picker that:
-- Fetches all trainers from `trainer_profiles` joined with `profiles` for names/emails
-- Excludes trainers already linked to this academy
-- Returns selected trainer_profile_id
+The trainer cards already show just an icon, but we should add a tooltip for consistency.
 
-### 2. Update AcademyEditDialog
+## Technical Implementation
 
-**File:** `src/components/admin/AcademyEditDialog.tsx`
+### ProfileHeroCard.tsx Changes
 
-Add state and handlers for:
-- `showAddLocation` / `showAddTrainer` dialogs
-- `handleAddLocation(locationId, contractType)` - Insert into `academy_locations`
-- `handleRemoveLocation(academyLocationId)` - Delete from `academy_locations`
-- `handleToggleLocationActive(id, value)` - Update `is_active`
-- `handleAddTrainer(trainerProfileId, paymentPercentage)` - Insert into `academy_trainers`
-- `handleRemoveTrainer(academyTrainerId)` - Delete from `academy_trainers`
-
-**Note:** Admin operations need to bypass regular RLS since admins have full access.
-
-### 3. Update Database RLS (if needed)
-
-Check if admins already have policies for:
-- `academy_locations` - INSERT/DELETE
-- `academy_trainers` - INSERT/DELETE
-
-If not, add admin policies for these operations.
-
-## Technical Details
-
-### Adding a Location (Admin)
+Add imports:
 ```typescript
-const handleAddLocation = async (locationIds: string[]) => {
-  for (const locationId of locationIds) {
-    await supabase.from("academy_locations").insert({
-      academy_profile_id: academy.id,
-      location_id: locationId,
-      is_active: true,
-      show_on_academy_page: true,
-      contract_type: "non_exclusive"
-    });
-  }
-  loadRelatedData(); // Refresh
-};
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 ```
 
-### Adding a Trainer (Admin)
-```typescript
-const handleAddTrainer = async (trainerProfileId: string, paymentPercentage: number) => {
-  await supabase.from("academy_trainers").insert({
-    academy_profile_id: academy.id,
-    trainer_profile_id: trainerProfileId,
-    status: "active",
-    payment_percentage: paymentPercentage,
-    show_on_academy_page: true,
-    joined_at: new Date().toISOString()
-  });
-  loadRelatedData();
-};
+Replace verified Badge with:
+```jsx
+{isVerified && (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{t('verifiedProfile', 'Verified profile')}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+)}
 ```
 
-### Fetching All Trainers for Selection
-Using the established pattern from `useAdminData.ts`:
-```typescript
-// Get trainer_profiles
-const { data: trainers } = await supabase
-  .from("trainer_profiles")
-  .select("id, user_id")
-  .eq("is_verified", true);
+### AcademyPublicProfile.tsx Changes
 
-// Get profiles for names
-const { data: profiles } = await supabase
-  .from("profiles")
-  .select("user_id, full_name, email")
-  .in("user_id", userIds);
+Remove `badgeSlot` prop from `ProfileHeroCard`:
+```jsx
+<ProfileHeroCard
+  name={academy.name}
+  avatarUrl={academy.logo_url}
+  isVerified={academy.is_verified}
+  socialLinks={socialLinks}
+  // Remove badgeSlot entirely
+  statsSlot={...}
+>
 ```
 
-## Database Changes Required
+Add tooltip to trainer verified icons:
+```jsx
+{trainer.trainer_profile?.is_verified && (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{t('common:verifiedProfile', 'Verified profile')}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+)}
+```
 
-Add admin RLS policies for direct manipulation:
+## Files to Modify
 
-| Table | Policy | Command |
-|-------|--------|---------|
-| `academy_locations` | Admins can insert locations | INSERT |
-| `academy_locations` | Admins can update locations | UPDATE |
-| `academy_trainers` | Admins can insert trainers | INSERT |
-| `academy_trainers` | Admins can update trainers | UPDATE |
+| File | Change |
+|------|--------|
+| `src/components/profiles/ProfileHeroCard.tsx` | Replace verified Badge with icon + tooltip |
+| `src/pages/AcademyPublicProfile.tsx` | Remove badgeSlot, add tooltip to trainer icons |
+| `src/i18n/locales/en/common.json` | Add "verifiedProfile" translation |
+| `src/i18n/locales/nl/common.json` | Add "verifiedProfile" translation |
 
-## Files to Create/Modify
+## Visual Result
 
-| File | Action | Purpose |
-|------|--------|---------|
-| Database migration | Create | Add admin RLS policies for academy_locations and academy_trainers |
-| `src/components/admin/AcademyEditDialog.tsx` | Modify | Add location/trainer management UI and handlers |
+```text
+Before:
+[Academy Logo] Academy Name [✓ Verified badge] [Academy Manager badge]
 
-## UI Components
+After:
+[Academy Logo] Academy Name [✓]  (green checkmark with tooltip "Verified profile")
+```
 
-The enhanced Locations tab will include:
-- "Add Location" button at the top
-- LocationPicker popover for selection
-- Table with action column (delete button)
-- Inline toggles for status/visibility
-
-The enhanced Trainers tab will include:
-- "Add Trainer" button at the top
-- TrainerPicker popover with search
-- Payment percentage input when adding
-- Table with action column (delete button)
-
-## Expected Outcome
-
-After implementation:
-- Admins can add/remove locations from any academy
-- Admins can add/remove trainers from any academy
-- Changes are immediately reflected in the dialog
-- All operations use proper admin RLS policies
+The verified icon will:
+- Only appear when profile is verified
+- Be colored green (text-green-500)
+- Show "Verified profile" tooltip on hover
+- Not include any text label
