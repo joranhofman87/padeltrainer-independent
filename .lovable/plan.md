@@ -1,136 +1,174 @@
 
-# Plan: Academy Banner Upload
+# Plan: Admin Academy Location & Trainer Linking
 
 ## Overview
 
-Add the ability for academy managers to upload a custom banner image for their academy profile. The banner will be displayed on the public academy profile page (already supported in the UI) and can be managed from the Academy Profile settings page.
+Extend the AcademyEditDialog to allow admins to link/unlink locations and trainers directly. Currently, the dialog only displays existing connections but doesn't allow modifications.
 
-## How It Works
+## Current State
+
+The Locations and Trainers tabs in the AcademyEditDialog show:
+- A table of connected locations/trainers if any exist
+- An empty state message if none are connected
+
+## Proposed Changes
+
+### Locations Tab Enhancements
+
+Add the ability for admins to:
+1. **Add Location**: A searchable dropdown (using LocationPicker) to select and link locations
+2. **Remove Location**: A delete button on each location row to unlink
+3. **Toggle Settings**: Inline switches for `is_active` and `show_on_academy_page`
 
 ```text
-+------------------+     +----------------------+     +-------------------+
-|  Academy Manager | --> |  AcademyProfile.tsx  | --> |  Supabase Storage |
-|  (Profile Page)  |     |  (Upload UI)         |     |  avatars/academies/|
-+------------------+     +----------------------+     +-------------------+
-         |                         |                           |
-         |  1. Select banner       |  2. Validate dimensions   |  3. Store file
-         |     image               |     & upload to storage    |     & update DB
-         v                         v                           v
-    File picker UI         Image validation          Public URL saved
-                           (800-2400px width,        to banner_url field
-                            2.5:1 - 5:1 ratio)
++--------------------------------------------------+
+|  Locations (2)                                   |
++--------------------------------------------------+
+|  [+ Add Location]                                |
+|                                                  |
+|  Location    | City     | Status  | Visible | X |
+|  ------------|----------|---------|---------|---|
+|  Padel X     | Amsterdam| Active  | Yes     | X |
+|  Club Y      | Rotterdam| Inactive| No      | X |
++--------------------------------------------------+
+```
+
+### Trainers Tab Enhancements
+
+Add the ability for admins to:
+1. **Add Trainer**: A searchable dropdown to select existing trainers from the platform
+2. **Set Payment %**: Slider/input for payment percentage when adding
+3. **Remove Trainer**: A delete button on each trainer row
+4. **Update Status**: Inline status toggle (active/inactive)
+
+```text
++--------------------------------------------------+
+|  Trainers (1)                                    |
++--------------------------------------------------+
+|  [+ Add Trainer]                                 |
+|                                                  |
+|  Trainer     | Email     | Status | Pay % |  X  |
+|  ------------|-----------|--------|-------|-----|
+|  John Doe    | john@..   | Active | 70%   |  X  |
++--------------------------------------------------+
 ```
 
 ## Implementation
 
-### 1. Database Migration: Storage RLS Policies for Academies
+### 1. Add Trainer Picker Component
 
-Add storage policies so academy managers can upload to `academies/` folder in the avatars bucket:
+Create a searchable trainer picker that:
+- Fetches all trainers from `trainer_profiles` joined with `profiles` for names/emails
+- Excludes trainers already linked to this academy
+- Returns selected trainer_profile_id
 
-| Policy | Command | Purpose |
-|--------|---------|---------|
-| Academy managers can upload | INSERT | Allow uploading logo/banner to `academies/{academy_id}/` |
-| Academy managers can update | UPDATE | Allow replacing existing images |
+### 2. Update AcademyEditDialog
 
-### 2. Update Academy Profile Page
+**File:** `src/components/admin/AcademyEditDialog.tsx`
 
-**File:** `src/pages/academy/AcademyProfile.tsx`
+Add state and handlers for:
+- `showAddLocation` / `showAddTrainer` dialogs
+- `handleAddLocation(locationId, contractType)` - Insert into `academy_locations`
+- `handleRemoveLocation(academyLocationId)` - Delete from `academy_locations`
+- `handleToggleLocationActive(id, value)` - Update `is_active`
+- `handleAddTrainer(trainerProfileId, paymentPercentage)` - Insert into `academy_trainers`
+- `handleRemoveTrainer(academyTrainerId)` - Delete from `academy_trainers`
 
-Add a banner upload section similar to the existing club profile implementation:
-- Show current banner preview if one exists
-- Upload button with file picker
-- Image dimension validation (width: 800-2400px, aspect ratio 2.5:1 to 5:1)
-- Loading state during upload
-- Store file at path: `academies/{academy_id}/banner.{ext}`
+**Note:** Admin operations need to bypass regular RLS since admins have full access.
 
-### 3. Add Translations
+### 3. Update Database RLS (if needed)
 
-**Files:** `src/i18n/locales/en/academy.json` and `src/i18n/locales/nl/academy.json`
+Check if admins already have policies for:
+- `academy_locations` - INSERT/DELETE
+- `academy_trainers` - INSERT/DELETE
 
-Add banner-related translation keys to the profile section:
-- `profile.banner` - Section title
-- `profile.bannerDescription` - Explanation text
-- `profile.bannerSizeHint` - Size recommendations
-- `profile.uploadBanner` / `profile.changeBanner` - Button labels
-- `profile.bannerUpdated` - Success message
-- Validation error messages
+If not, add admin policies for these operations.
 
 ## Technical Details
 
-### Storage Path Structure
-```text
-avatars/
-  academies/
-    {academy_id}/
-      logo.png
-      banner.jpg
+### Adding a Location (Admin)
+```typescript
+const handleAddLocation = async (locationIds: string[]) => {
+  for (const locationId of locationIds) {
+    await supabase.from("academy_locations").insert({
+      academy_profile_id: academy.id,
+      location_id: locationId,
+      is_active: true,
+      show_on_academy_page: true,
+      contract_type: "non_exclusive"
+    });
+  }
+  loadRelatedData(); // Refresh
+};
 ```
 
-### Image Validation Rules (matching club banner)
-| Constraint | Value |
-|------------|-------|
-| Min width | 800px |
-| Max width | 2400px |
-| Aspect ratio | 2.5:1 to 5:1 (wide banner) |
-| Max file size | 10MB |
-| Accepted formats | image/* |
-
-### RLS Policy SQL
-```sql
--- Academy managers can upload to academies folder
-CREATE POLICY "Academy managers can upload academy images"
-ON storage.objects FOR INSERT TO authenticated
-WITH CHECK (
-  bucket_id = 'avatars' AND
-  (storage.foldername(name))[1] = 'academies' AND
-  ((storage.foldername(name))[2])::uuid IN (
-    SELECT get_user_academy_ids(auth.uid())
-  )
-);
-
--- Academy managers can update their academy images
-CREATE POLICY "Academy managers can update academy images"
-ON storage.objects FOR UPDATE TO authenticated
-USING (
-  bucket_id = 'avatars' AND
-  (storage.foldername(name))[1] = 'academies' AND
-  ((storage.foldername(name))[2])::uuid IN (
-    SELECT get_user_academy_ids(auth.uid())
-  )
-);
+### Adding a Trainer (Admin)
+```typescript
+const handleAddTrainer = async (trainerProfileId: string, paymentPercentage: number) => {
+  await supabase.from("academy_trainers").insert({
+    academy_profile_id: academy.id,
+    trainer_profile_id: trainerProfileId,
+    status: "active",
+    payment_percentage: paymentPercentage,
+    show_on_academy_page: true,
+    joined_at: new Date().toISOString()
+  });
+  loadRelatedData();
+};
 ```
+
+### Fetching All Trainers for Selection
+Using the established pattern from `useAdminData.ts`:
+```typescript
+// Get trainer_profiles
+const { data: trainers } = await supabase
+  .from("trainer_profiles")
+  .select("id, user_id")
+  .eq("is_verified", true);
+
+// Get profiles for names
+const { data: profiles } = await supabase
+  .from("profiles")
+  .select("user_id, full_name, email")
+  .in("user_id", userIds);
+```
+
+## Database Changes Required
+
+Add admin RLS policies for direct manipulation:
+
+| Table | Policy | Command |
+|-------|--------|---------|
+| `academy_locations` | Admins can insert locations | INSERT |
+| `academy_locations` | Admins can update locations | UPDATE |
+| `academy_trainers` | Admins can insert trainers | INSERT |
+| `academy_trainers` | Admins can update trainers | UPDATE |
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| Database migration | Create | Add storage RLS policies for academy uploads |
-| `src/pages/academy/AcademyProfile.tsx` | Modify | Add banner upload UI with validation |
-| `src/i18n/locales/en/academy.json` | Modify | Add English banner translations |
-| `src/i18n/locales/nl/academy.json` | Modify | Add Dutch banner translations |
+| Database migration | Create | Add admin RLS policies for academy_locations and academy_trainers |
+| `src/components/admin/AcademyEditDialog.tsx` | Modify | Add location/trainer management UI and handlers |
 
-## UI Preview
+## UI Components
 
-The banner upload section will appear as a new card in the Academy Profile page:
+The enhanced Locations tab will include:
+- "Add Location" button at the top
+- LocationPicker popover for selection
+- Table with action column (delete button)
+- Inline toggles for status/visibility
 
-```text
-+--------------------------------------------------+
-|  Banner                                          |
-|  Displayed at the top of your public profile     |
-|  Recommended: 1200×400px (3:1 ratio), max 10MB   |
-|                                                  |
-|  +--------------------------------------------+  |
-|  |            [Current Banner Preview]         |  |
-|  +--------------------------------------------+  |
-|                                                  |
-|  [Upload Banner] or [Change Banner]              |
-+--------------------------------------------------+
-```
+The enhanced Trainers tab will include:
+- "Add Trainer" button at the top
+- TrainerPicker popover with search
+- Payment percentage input when adding
+- Table with action column (delete button)
 
 ## Expected Outcome
 
 After implementation:
-- Academy managers can upload a banner from their profile settings
-- Banner displays on the public academy profile page (already rendering `banner_url`)
-- Images are securely stored with proper RLS policies
-- Consistent UX with the existing club banner upload feature
+- Admins can add/remove locations from any academy
+- Admins can add/remove trainers from any academy
+- Changes are immediately reflected in the dialog
+- All operations use proper admin RLS policies
