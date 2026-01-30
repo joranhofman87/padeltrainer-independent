@@ -1,273 +1,124 @@
 
 
-# Plan: Enhance Location Pages with SEO, Stats & Similar Clubs
+# Plan: Remove Payment Percentage Feature from Academy Trainers
 
 ## Overview
 
-Three enhancements for location pages:
-1. Verify unique SEO title & meta tags (already implemented, but can be improved)
-2. Add "Similar Clubs" section at the bottom
-3. Add Indoor/Outdoor court counts to quick stats (always show, even if unknown)
+The user has clarified that academies pay trainers a salary directly (not a percentage-based split from lesson payments), so the entire "Payment Percentage" feature should be removed from the academy-trainer relationship.
 
-## Current State Analysis
+## Current State
 
-### 1. SEO (Already Implemented)
+The payment percentage slider and display appears in **5 locations**:
 
-**LocationDetail.tsx (lines 281-288):**
-```jsx
-<SEO
-  title={`${location.name} - Padel Training in ${location.city}`}
-  description={seoDescription}
-  url={`/locations/${location.slug}`}
-  type="place"
-  image={displayLogo || clubProfile?.banner_url || 'https://padeltrainer.ai/og-locations.png'}
-  structuredData={getStructuredData() || undefined}
-/>
-```
-
-Each location already has:
-- Unique title with location name and city
-- Dynamic description with trainer count
-- SportsClub structured data
-- Place type for Open Graph
-
-**Improvement**: Make titles more localized using translation keys instead of hardcoded English.
-
-### 2. Quick Stats (lines 235-255)
-
-Currently shows:
-- Number of courts (only if > 0)
-- Number of trainers (always shown)
-- Member since (if claimed)
-
-**Problem**: Indoor/outdoor courts are NOT shown separately. They exist in the database (`indoor_courts`, `outdoor_courts`) but aren't displayed.
-
-### 3. Similar Clubs (Not Implemented)
-
-Need to add a new section at the bottom showing other clubs in the same city.
+| Location | What it shows |
+|----------|---------------|
+| Admin AcademyEditDialog | Slider when adding trainer + column in trainers table |
+| InviteAcademyTrainerDialog | Slider when inviting trainer via email |
+| EditAcademyTrainerDialog | Full dialog dedicated to editing percentage |
+| AcademyTrainers.tsx | Badge showing "70%" on trainer cards + pending invitations |
+| Database | `academy_trainers.payment_percentage` column |
 
 ## Proposed Changes
 
-### 1. Improve SEO Titles (Minor Enhancement)
+### 1. Admin AcademyEditDialog
 
-Keep existing unique SEO but consider using localized text. The current implementation is good.
+**File:** `src/components/admin/AcademyEditDialog.tsx`
 
-| Aspect | Current | Status |
-|--------|---------|--------|
-| Unique title per location | Yes (`{location.name} - Padel Training in {location.city}`) | Good |
-| Unique description | Yes (uses club description or dynamic fallback) | Good |
-| Structured data | Yes (SportsClub schema) | Good |
-| Localized | Partially (title is hardcoded English) | Could improve |
+Remove:
+- The payment percentage slider section when adding a trainer (lines 975-992)
+- The "Payment %" column from trainers table (line 1024, 1046)
+- The state variable `newTrainerPayment` and its usage
+- The `Slider` import if no longer needed
 
-### 2. Add Indoor/Outdoor Courts to Quick Stats
+Instead, add trainers directly without needing to set a percentage.
 
-**File:** `src/pages/LocationDetail.tsx`
+### 2. InviteAcademyTrainerDialog
 
-Replace the current court stat logic with separate indoor/outdoor entries that always show (displaying "-" or "Unknown" if null):
+**File:** `src/components/academy/InviteAcademyTrainerDialog.tsx`
 
-```text
-Before (Quick Stats):
-+------------------+-------+
-| Courts           | 8     |  (only shows if > 0)
-| Trainers         | 3     |
-| Member since     | Jan 25|
-+------------------+-------+
+Remove:
+- The payment percentage slider section (lines 129-145)
+- The `paymentPercentage` state
+- The `Slider` import
+- The percentage from the email template parameters
 
-After (Quick Stats):
-+------------------+-------+
-| Indoor Courts    | 4     |  (always shows, "-" if unknown)
-| Outdoor Courts   | 4     |  (always shows, "-" if unknown)
-| Trainers         | 3     |
-| Member since     | Jan 25|
-+------------------+-------+
-```
+### 3. EditAcademyTrainerDialog
 
-**Implementation:**
-```jsx
-// Always show indoor courts
-quickStats.push({
-  icon: <Home className="h-4 w-4" />,
-  label: t('common:locations.indoorCourts'),
-  value: location.indoor_courts ?? '-',
-});
+**File:** `src/components/academy/EditAcademyTrainerDialog.tsx`
 
-// Always show outdoor courts
-quickStats.push({
-  icon: <Sun className="h-4 w-4" />,
-  label: t('common:locations.outdoorCourts'),
-  value: location.outdoor_courts ?? '-',
-});
-```
+This entire component only exists to edit the payment percentage. Options:
+- **Remove entirely** if there's nothing else to edit about an academy trainer
+- Or repurpose it for other settings if needed in the future
 
-### 3. Add Similar Clubs Section
+For now, we'll remove it entirely.
 
-**File:** `src/pages/LocationDetail.tsx`
+### 4. AcademyTrainers Page
 
-Add a new state for similar locations and a new section at the bottom showing other clubs from the same city:
+**File:** `src/pages/academy/AcademyTrainers.tsx`
 
-```text
-+------------------------------------------+
-| Similar Clubs in {city}                  |
-| 3 more clubs                             |
-+------------------------------------------+
-| [Club Card 1] [Club Card 2] [Club Card 3]|
-+------------------------------------------+
-```
+Remove:
+- The payment percentage badge from trainer cards (lines 200-203)
+- The payment percentage badge from pending invitations (lines 335-337)
+- The `Percent` icon import
+- The `EditAcademyTrainerDialog` usage (lines 271-274)
 
-**Implementation Steps:**
+### 5. Translation Cleanup
 
-1. Add new state: `const [similarLocations, setSimilarLocations] = useState<Location[]>([]);`
+**Files:** 
+- `src/i18n/locales/en/academy.json`
+- `src/i18n/locales/nl/academy.json`
 
-2. Fetch similar locations in the useEffect:
-```jsx
-// Fetch similar locations from same city (exclude current location)
-const { data: similar } = await supabase
-  .from('locations')
-  .select('*')
-  .eq('city', locationData.city)
-  .eq('is_active', true)
-  .neq('id', locationData.id)
-  .limit(6);
-if (similar) setSimilarLocations(similar);
-```
+Remove or keep (for future use):
+- `trainerInvitation.paymentPercentage`
+- `trainerInvitation.paymentDescription`
+- `trainerInvitation.trainerShare`
 
-3. Add the section before the ClaimClubDialog:
-```jsx
-{similarLocations.length > 0 && (
-  <ProfileFullWidthSection>
-    <h2>{t('common:locations.similarClubs', 'Similar Clubs in {{city}}', { city: location.city })}</h2>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {similarLocations.map(loc => (
-        <LocationCard 
-          key={loc.id} 
-          location={loc} 
-          trainerCount={trainerCounts[loc.id] || 0}
-          isClaimed={claimedIds.has(loc.id)}
-          logoUrl={clubLogos[loc.id]}
-        />
-      ))}
-    </div>
-  </ProfileFullWidthSection>
-)}
-```
+### 6. Database Consideration
 
-4. Will also need to fetch trainer counts and claimed status for similar locations.
+The `academy_trainers.payment_percentage` column will remain in the database but will no longer be used. It can be:
+- Set to a default value (like 100) when inserting
+- Left as-is for existing records
+
+No database migration is needed since we're just removing the UI.
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/LocationDetail.tsx` | Add indoor/outdoor stats, add similar clubs section, add Home/Sun icons |
-| `src/i18n/locales/en/common.json` | Add "similarClubs" translation key |
-| `src/i18n/locales/nl/common.json` | Add "similarClubs" translation key |
+| `src/components/admin/AcademyEditDialog.tsx` | Remove payment slider and table column |
+| `src/components/academy/InviteAcademyTrainerDialog.tsx` | Remove payment slider section |
+| `src/components/academy/EditAcademyTrainerDialog.tsx` | Delete entire file (or repurpose) |
+| `src/pages/academy/AcademyTrainers.tsx` | Remove payment badges and edit dialog |
+| `src/lib/academy.ts` | Update `inviteAcademyTrainer` to use default percentage |
 
-## Translation Additions
+## Visual Result
 
-**English (common.json):**
-```json
-{
-  "locations": {
-    "similarClubs": "Similar Clubs in {{city}}",
-    "unknown": "-"
-  }
-}
-```
+```text
+Before (Add Trainer):                After (Add Trainer):
++------------------------+           +------------------------+
+| Search trainers...     |           | Search trainers...     |
++------------------------+           +------------------------+
+| [x] Patrick Bernardus  |           | [x] Patrick Bernardus  |
++------------------------+           +------------------------+
+| Payment Percentage 70% |           | [Add Trainer] button   |
+| [====O=======]         |           +------------------------+
+| Trainer receives 70%   |
++------------------------+
+| [Add Trainer]          |
++------------------------+
 
-**Dutch (common.json):**
-```json
-{
-  "locations": {
-    "similarClubs": "Vergelijkbare Clubs in {{city}}",
-    "unknown": "-"
-  }
-}
-```
-
-## Technical Implementation Details
-
-### Indoor/Outdoor Stats Logic
-
-```jsx
-import { Home, Sun } from 'lucide-react';
-
-// Build quick stats - always include indoor/outdoor courts
-const quickStats = [];
-
-// Indoor courts - always show
-quickStats.push({
-  icon: <Home className="h-4 w-4" />,
-  label: t('common:locations.indoorCourts'),
-  value: location.indoor_courts != null ? location.indoor_courts : '-',
-});
-
-// Outdoor courts - always show  
-quickStats.push({
-  icon: <Sun className="h-4 w-4" />,
-  label: t('common:locations.outdoorCourts'),
-  value: location.outdoor_courts != null ? location.outdoor_courts : '-',
-});
-
-// Trainers - always show
-quickStats.push({
-  icon: <Users className="h-4 w-4" />,
-  label: trainers.length === 1 ? t('common:locations.trainer') : t('common:locations.trainers'),
-  value: trainers.length,
-});
-
-// Member since - only if claimed
-if (clubProfile?.claimed_at) {
-  quickStats.push({
-    icon: <Calendar className="h-4 w-4" />,
-    label: t('common:locations.memberSince'),
-    value: format(new Date(clubProfile.claimed_at), 'MMM yyyy', { locale: dateLocale }),
-  });
-}
-```
-
-### Similar Clubs Fetch
-
-```jsx
-// In the useEffect, after fetching the location:
-const [claimedIdsForSimilar, setClaimedIdsForSimilar] = useState<Set<string>>(new Set());
-const [trainerCountsForSimilar, setTrainerCountsForSimilar] = useState<Record<string, number>>({});
-const [logoUrlsForSimilar, setLogoUrlsForSimilar] = useState<Record<string, string>>({});
-
-// Fetch similar locations
-const { data: similar } = await supabase
-  .from('locations')
-  .select('*')
-  .eq('city', locationData.city)
-  .eq('is_active', true)
-  .neq('id', locationData.id)
-  .limit(6);
-
-if (similar && similar.length > 0) {
-  setSimilarLocations(similar);
-  
-  // Fetch trainer counts for similar locations
-  const similarIds = similar.map(l => l.id);
-  const { data: trainerLocs } = await supabase
-    .from('trainer_locations')
-    .select('location_id')
-    .in('location_id', similarIds);
-  
-  // ... count trainers per location
-  
-  // Fetch claimed status for similar locations
-  const { data: clubProfiles } = await supabase
-    .from('club_profiles')
-    .select('location_id, logo_url')
-    .in('location_id', similarIds);
-  
-  // ... build claimed set and logo map
-}
+Before (Trainer Card):               After (Trainer Card):
++------------------------+           +------------------------+
+| Avatar  Patrick        |           | Avatar  Patrick        |
+| [Verified] [70%]       |           | [Verified] [Visible]   |
+| [Visible]              |           +------------------------+
++------------------------+           | [Profile] [Remove]     |
+| [Edit] [Profile]       |           +------------------------+
+| [Remove]               |
++------------------------+
 ```
 
 ## Summary
 
-| Feature | Description |
-|---------|-------------|
-| SEO | Already unique per location. Working correctly. |
-| Indoor/Outdoor Courts | Add as separate stats, always visible (show "-" if unknown) |
-| Similar Clubs | New section at bottom showing 3-6 clubs from same city |
+This change simplifies the academy-trainer relationship by removing the unused payment percentage feature. Academies handle trainer compensation outside the platform (salaries), so there's no need for percentage-based lesson payment splits.
 
