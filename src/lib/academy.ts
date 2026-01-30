@@ -537,7 +537,6 @@ export async function inviteAcademyTrainer(
   academyProfileId: string,
   trainerEmail: string,
   invitedBy: string,
-  paymentPercentage: number,
   message?: string
 ): Promise<{ success: boolean; invitation?: AcademyTrainerInvitation; error?: string }> {
   // Check if trainer is already part of academy
@@ -585,7 +584,7 @@ export async function inviteAcademyTrainer(
     }
   }
 
-  // Create invitation
+  // Create invitation (use default payment_percentage of 100 since academies pay salaries directly)
   const { data: invitation, error } = await supabase
     .from('academy_trainer_invitations')
     .insert({
@@ -593,7 +592,7 @@ export async function inviteAcademyTrainer(
       trainer_email: trainerEmail.toLowerCase(),
       trainer_profile_id: trainerProfileId,
       invited_by: invitedBy,
-      payment_percentage: paymentPercentage,
+      payment_percentage: 100, // Default value, not used for academy trainers
       message: message || null,
       status: 'pending',
     })

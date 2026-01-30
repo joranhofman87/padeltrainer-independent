@@ -43,7 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Slider } from "@/components/ui/slider";
+
 import {
   CalendarIcon,
   Check,
@@ -179,7 +179,6 @@ export function AcademyEditDialog({
   const [trainerSearch, setTrainerSearch] = useState("");
   const [addingTrainer, setAddingTrainer] = useState(false);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string | null>(null);
-  const [newTrainerPayment, setNewTrainerPayment] = useState(70);
 
   // File upload refs
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -423,7 +422,7 @@ export function AcademyEditDialog({
         academy_profile_id: academy.id,
         trainer_profile_id: selectedTrainerId,
         status: "active",
-        payment_percentage: newTrainerPayment,
+        payment_percentage: 100, // Default value, academies pay trainers via salary
         show_on_academy_page: true,
         joined_at: new Date().toISOString(),
       });
@@ -434,7 +433,6 @@ export function AcademyEditDialog({
       await loadRelatedData();
       setTrainerOpen(false);
       setSelectedTrainerId(null);
-      setNewTrainerPayment(70);
     } catch (error) {
       console.error("Error adding trainer:", error);
       toast({ title: "Error", description: "Failed to add trainer.", variant: "destructive" });
@@ -924,7 +922,6 @@ export function AcademyEditDialog({
               setTrainerOpen(open);
               if (!open) {
                 setSelectedTrainerId(null);
-                setNewTrainerPayment(70);
               }
             }}>
               <PopoverTrigger asChild>
@@ -973,32 +970,14 @@ export function AcademyEditDialog({
                   </Command>
 
                   {selectedTrainerId && (
-                    <div className="space-y-3 pt-2 border-t">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <Label>Payment Percentage</Label>
-                          <span className="text-sm font-medium">{newTrainerPayment}%</span>
-                        </div>
-                        <Slider
-                          value={[newTrainerPayment]}
-                          onValueChange={(value) => setNewTrainerPayment(value[0])}
-                          min={0}
-                          max={100}
-                          step={5}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Trainer receives {newTrainerPayment}% of lesson payments
-                        </p>
-                      </div>
-                      <Button
-                        className="w-full"
-                        onClick={handleAddTrainer}
-                        disabled={addingTrainer}
-                      >
-                        {addingTrainer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Add Trainer
-                      </Button>
-                    </div>
+                    <Button
+                      className="w-full"
+                      onClick={handleAddTrainer}
+                      disabled={addingTrainer}
+                    >
+                      {addingTrainer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Add Trainer
+                    </Button>
                   )}
                 </div>
               </PopoverContent>
@@ -1021,7 +1000,6 @@ export function AcademyEditDialog({
                     <TableHead>Trainer</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Payment %</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1043,7 +1021,6 @@ export function AcademyEditDialog({
                           {trainer.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{trainer.payment_percentage}%</TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"
