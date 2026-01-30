@@ -18,6 +18,7 @@ import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
 import { Location } from '@/lib/locations';
+import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
 import {
   Pagination,
   PaginationContent,
@@ -29,6 +30,7 @@ import {
 } from '@/components/ui/pagination';
 
 const TRAINERS_PER_PAGE = 48;
+const MAX_FEATURED = 8;
 
 interface TrainerWithProfile {
   id: string;
@@ -40,6 +42,7 @@ interface TrainerWithProfile {
   is_verified: boolean;
   knltb_rating: number | null;
   trainer_rating_system: string | null;
+  subscription_status: string | null;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
@@ -53,7 +56,7 @@ interface TrainerWithProfile {
 type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
 
 export default function Trainers() {
-  const { t } = useTranslation('trainer');
+  const { t } = useTranslation(['trainer', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -404,6 +407,12 @@ export default function Trainers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainers, searchQuery, filters, sortBy, trainerLocationMap]);
 
+  // Featured trainers (paid/active subscription)
+  const featuredTrainers = useMemo(() => {
+    const featured = trainers.filter(t => t.subscription_status === 'active');
+    return shuffleArray(featured).slice(0, MAX_FEATURED);
+  }, [trainers]);
+
   // Pagination calculations
   const totalPages = Math.ceil(filteredAndSortedTrainers.length / TRAINERS_PER_PAGE);
   
@@ -482,6 +491,59 @@ export default function Trainers() {
             activeFilterCount={activeFilterCount}
           />
         </div>
+
+        {/* Featured Trainers Section */}
+        {!loading && featuredTrainers.length > 0 && !searchQuery && activeFilterCount === 0 && (
+          <FeaturedSection
+            title={t('common:featured.trainers')}
+            description={t('common:featured.trainersDescription')}
+            className="mb-8"
+          >
+            {featuredTrainers.map((trainer) => (
+              <Card 
+                key={trainer.id} 
+                className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[280px] lg:w-auto flex-shrink-0"
+                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                      <AvatarFallback className="text-sm">
+                        {getInitials(trainer.profile?.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-sm truncate">
+                          {trainer.profile?.full_name || 'Trainer'}
+                        </CardTitle>
+                      </div>
+                      {trainer.reviewCount > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                          <span className="font-medium text-xs">{trainer.averageRating.toFixed(1)}</span>
+                          <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2 pt-0">
+                  <FeaturedBadge />
+                  <div className="flex items-center justify-between text-xs">
+                    {trainer.hourly_rate && (
+                      <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
+                    )}
+                    {trainer.experience_years && (
+                      <span className="text-muted-foreground">{trainer.experience_years}y exp</span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </FeaturedSection>
+        )}
 
         {/* Search and Sort */}
         <div className="mb-6 space-y-4">

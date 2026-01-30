@@ -220,5 +220,15 @@
   "location": "Locatie",
   "trainer": "Trainer",
   "viewAcademy": "Bekijk Academy",
-  "academy": "Academy"
+  "academy": "Academy",
+  "featured": {
+    "title": "Uitgelicht",
+    "trainers": "Uitgelichte Trainers",
+    "locations": "Uitgelichte Clubs",
+    "academies": "Uitgelichte Academies",
+    "badge": "Uitgelicht",
+    "trainersDescription": "Premium trainers met geverifieerde profielen",
+    "locationsDescription": "Premium padelclubs",
+    "academiesDescription": "Professionele trainingsacademies"
+  }
 }

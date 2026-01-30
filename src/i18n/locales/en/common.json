@@ -220,5 +220,15 @@
   "location": "Location",
   "trainer": "Trainer",
   "viewAcademy": "View Academy",
-  "academy": "Academy"
+  "academy": "Academy",
+  "featured": {
+    "title": "Featured",
+    "trainers": "Featured Trainers",
+    "locations": "Featured Clubs",
+    "academies": "Featured Academies",
+    "badge": "Featured",
+    "trainersDescription": "Premium trainers with verified profiles",
+    "locationsDescription": "Premium padel clubs",
+    "academiesDescription": "Professional training academies"
+  }
 }
