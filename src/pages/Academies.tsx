@@ -126,22 +126,29 @@ export default function Academies() {
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
-                      <Avatar className="h-14 w-14 rounded-lg">
+                      <Avatar className="h-16 w-16 rounded-lg">
                         <AvatarImage src={academy.logo_url || ''} />
                         <AvatarFallback className="rounded-lg text-lg">{getInitials(academy.name || "")}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold truncate text-sm">{academy.name || ""}</h3>
+                          <h3 className="font-semibold truncate">{academy.name || ""}</h3>
                           {academy.is_verified && (
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
                         {academy.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
                             {academy.description}
                           </p>
                         )}
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          {academy.website_url && (
+                            <span className="truncate max-w-[150px]">
+                              {academy.website_url.replace(/^https?:\/\//, '').split('/')[0]}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </CardContent>
