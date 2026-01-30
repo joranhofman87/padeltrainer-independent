@@ -1,85 +1,104 @@
 
-# Plan: Improve LocationCard Layout
+# Plan: Create Full Location Edit Dialog for Admin
 
 ## Overview
 
-Based on the screenshot, the user wants to improve the LocationCard component with three changes:
+The current location edit dialog in the admin panel only shows basic fields (name, city, address, courts). The user wants the ability to edit ALL location fields including logo, description, contact info, and social links - similar to how the ClubEditDialog works.
 
-1. **Remove external link button** - The website link button guides traffic away from the platform
-2. **Move verified checkmark to upper right corner** - Position it above the text for better visibility
-3. **Show full title** - Remove truncation so the full location name is visible
+## Current State
 
-## Current Issues
+The inline dialog in `AdminLocations.tsx` (lines 328-444) only edits:
+- Name, City, Country
+- Street Address, Postal Code
+- Website URL, Slug
+- Indoor/Outdoor Courts
+- Active status
 
-Looking at the current `LocationCard.tsx`:
-- Line 59: Title has `line-clamp-1` which truncates long names
-- Lines 64-79: External link button is shown inline with the title
-- Lines 60-62: Verified checkmark is inline next to the title, competing for space
+**Missing fields from the Location type:**
+- `description` (text)
+- `logo_url` (image URL)
+- `phone`, `email` (contact info)
+- `facebook_url`, `instagram_url` (social links)
+- `google_maps_url`, `google_rating`, `google_review_count` (Google data)
+- `opening_hours` (text)
+- `latitude`, `longitude` (coordinates)
 
-## Proposed Changes
+## Solution
 
-### File: `src/components/locations/LocationCard.tsx`
+Create a new `LocationEditDialog` component following the same tabbed pattern as `ClubEditDialog`:
 
-**1. Remove the external link button (lines 64-79)**
-- Delete the entire `{location.website_url && (...)}` block
-- URL is still shown on the profile page, just not on the card
+| Tab | Fields |
+|-----|--------|
+| **Basic** | Name, City, Country, Street Address, Postal Code, Slug, Active |
+| **Details** | Description, Website URL, Courts (Indoor/Outdoor), Opening Hours |
+| **Contact** | Phone, Email |
+| **Media** | Logo URL (with preview) |
+| **Social & Maps** | Facebook, Instagram, Google Maps URL, Google Rating, Google Review Count |
+| **Location** | Latitude, Longitude |
 
-**2. Move verified checkmark to top-right corner**
-- Add `relative` class to the Card
-- Position the CheckCircle icon absolutely in the top-right corner
-- Remove it from inline with the title
+## File Changes
 
-**3. Allow full title to display**
-- Remove `line-clamp-1` from the CardTitle
-- Use `break-words` to handle very long names gracefully
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/admin/LocationEditDialog.tsx` | Create | New dialog component with all location fields in tabs |
+| `src/pages/admin/AdminLocations.tsx` | Modify | Replace inline dialog with new `LocationEditDialog` component |
+
+## Component Structure
+
+```typescript
+interface LocationEditDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  location: Location | null;  // null = add mode
+  onSuccess: () => void;
+}
+```
+
+**Tab Layout:**
+
+```text
++------------------------------------------------------------------+
+| Edit Location: T.P.V. Udenhout                                   |
++------------------------------------------------------------------+
+| [Basic] [Details] [Contact] [Media] [Social] [Coords]            |
++------------------------------------------------------------------+
+|                                                                  |
+| Basic Tab:                    Details Tab:                       |
+| - Name *                      - Description (textarea)           |
+| - City *                      - Website URL                      |
+| - Country                     - Indoor Courts                    |
+| - Street Address              - Outdoor Courts                   |
+| - Postal Code                 - Opening Hours (textarea)         |
+| - Slug                                                           |
+| - Active (switch)             Media Tab:                         |
+|                               - Logo URL + preview               |
+| Contact Tab:                                                     |
+| - Phone                       Social Tab:                        |
+| - Email                       - Facebook URL                     |
+|                               - Instagram URL                    |
+| Coords Tab:                   - Google Maps URL                  |
+| - Latitude                    - Google Rating                    |
+| - Longitude                   - Google Review Count              |
++------------------------------------------------------------------+
+|                                  [Cancel]  [Save]                |
++------------------------------------------------------------------+
+```
+
+## Implementation Details
+
+1. **Create LocationEditDialog.tsx**
+   - Follow ClubEditDialog pattern with Tabs component
+   - Include all Location fields organized by category
+   - Logo URL field with image preview
+   - Validation for required fields (name, city)
+   - Auto-generate slug from name + city if empty
+
+2. **Update AdminLocations.tsx**
+   - Import and use `LocationEditDialog`
+   - Replace inline Dialog with the new component
+   - Simplify `openEditDialog` and `openAddDialog` to just set state
+   - Move save logic to the dialog component
 
 ## Visual Result
 
-```text
-Before:                              After:
-+------------------------+           +------------------------+
-| [Logo] T.P.V... ✓ [→] |           | [Logo]              ✓  |
-| 📍 Address             |           | T.P.V. Udenhout        |
-| [badges]               |           | 📍 Address             |
-+------------------------+           | [badges]               |
-                                     +------------------------+
-
-- Title now fully visible
-- No external link button
-- Checkmark in corner, out of the way
-```
-
-## Code Changes
-
-```typescript
-// Updated structure:
-<Card className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50 relative">
-  {/* Verified badge in top-right corner */}
-  {isClaimed && (
-    <div className="absolute top-3 right-3">
-      <CheckCircle className="h-4 w-4 text-primary" aria-label={t('locations.verified')} />
-    </div>
-  )}
-  
-  <CardHeader className="pb-2">
-    <div className="flex items-start gap-3">
-      {isClaimed && (
-        <Avatar className="h-10 w-10 shrink-0">...</Avatar>
-      )}
-      <CardTitle className="text-lg break-words pr-6">{location.name}</CardTitle>
-    </div>
-  </CardHeader>
-  
-  <CardContent>
-    {/* Address and badges - unchanged */}
-  </CardContent>
-</Card>
-```
-
-## Summary
-
-| Change | Reason |
-|--------|--------|
-| Remove external link button | Keep traffic on platform; URL shown on profile page |
-| Move checkmark to top-right | Better visibility, doesn't compete with title |
-| Remove title truncation | Show full location name |
+The admin will have a comprehensive edit dialog with all location fields organized in tabs, matching the pattern already established for clubs and academies.
