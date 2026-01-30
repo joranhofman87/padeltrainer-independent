@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,7 @@ import {
   Trash2,
   Users,
   Building2,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -179,6 +180,12 @@ export function AcademyEditDialog({
   const [addingTrainer, setAddingTrainer] = useState(false);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string | null>(null);
   const [newTrainerPayment, setNewTrainerPayment] = useState(70);
+
+  // File upload refs
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -476,6 +483,86 @@ export function AcademyEditDialog({
     }
   };
 
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Please upload an image file.", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Error", description: "File size must be under 10MB.", variant: "destructive" });
+      return;
+    }
+
+    setBannerUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const filePath = `academies/${academy.id}/banner.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const newUrl = publicUrlData.publicUrl + "?t=" + Date.now();
+      setBannerUrl(newUrl);
+      toast({ title: "Banner uploaded", description: "Banner image uploaded successfully." });
+    } catch (error: any) {
+      console.error("Error uploading banner:", error);
+      toast({ title: "Error", description: error.message || "Failed to upload banner.", variant: "destructive" });
+    } finally {
+      setBannerUploading(false);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Please upload an image file.", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Error", description: "File size must be under 5MB.", variant: "destructive" });
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const filePath = `academies/${academy.id}/logo.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const newUrl = publicUrlData.publicUrl + "?t=" + Date.now();
+      setLogoUrl(newUrl);
+      toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -599,12 +686,36 @@ export function AcademyEditDialog({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="logoUrl">Logo URL</Label>
-                  <Input
-                    id="logoUrl"
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                  />
+                  <Label htmlFor="logoUrl">Logo</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="logoUrl"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="URL or upload"
+                      className="flex-1"
+                    />
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleLogoUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={logoUploading}
+                    >
+                      {logoUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                   {logoUrl && (
                     <img
                       src={logoUrl}
@@ -614,12 +725,36 @@ export function AcademyEditDialog({
                   )}
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="bannerUrl">Banner URL</Label>
-                  <Input
-                    id="bannerUrl"
-                    value={bannerUrl}
-                    onChange={(e) => setBannerUrl(e.target.value)}
-                  />
+                  <Label htmlFor="bannerUrl">Banner</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="bannerUrl"
+                      value={bannerUrl}
+                      onChange={(e) => setBannerUrl(e.target.value)}
+                      placeholder="URL or upload"
+                      className="flex-1"
+                    />
+                    <input
+                      ref={bannerInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBannerUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => bannerInputRef.current?.click()}
+                      disabled={bannerUploading}
+                    >
+                      {bannerUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                   {bannerUrl && (
                     <img
                       src={bannerUrl}
