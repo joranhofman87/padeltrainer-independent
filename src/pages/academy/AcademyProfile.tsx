@@ -1,21 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GraduationCap, Globe, Instagram, Facebook, Youtube, Linkedin } from 'lucide-react';
+import { GraduationCap, Globe, Instagram, Facebook, Youtube, Linkedin, Upload, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { updateAcademyProfile } from '@/lib/academy';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function AcademyProfile() {
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const { activeAcademy, refreshAcademies } = useAcademyContext();
   const [isLoading, setIsLoading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -78,6 +82,110 @@ export default function AcademyProfile() {
     setIsLoading(false);
   };
 
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeAcademy) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: t('common.error'),
+        description: t('profile.bannerInvalidType'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: t('common.error'),
+        description: t('profile.bannerTooLarge'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate dimensions
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    
+    img.onload = async () => {
+      URL.revokeObjectURL(objectUrl);
+      
+      const width = img.width;
+      const height = img.height;
+      const aspectRatio = width / height;
+
+      if (width < 800 || width > 2400) {
+        toast({
+          title: t('common.error'),
+          description: t('profile.bannerInvalidWidth'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (aspectRatio < 2.5 || aspectRatio > 5) {
+        toast({
+          title: t('common.error'),
+          description: t('profile.bannerInvalidRatio'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Upload the file
+      setBannerUploading(true);
+      try {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `academies/${activeAcademy.id}/banner.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+
+        // Update the academy profile with the new banner URL
+        const result = await updateAcademyProfile(activeAcademy.id, {
+          banner_url: publicUrlData.publicUrl + '?t=' + Date.now(),
+        });
+
+        if (result) {
+          await refreshAcademies();
+          toast({
+            title: t('profile.bannerUpdated'),
+            description: t('profile.bannerUpdatedDescription'),
+          });
+        }
+      } catch (error: any) {
+        toast({
+          title: t('common.error'),
+          description: error.message,
+          variant: 'destructive',
+        });
+      } finally {
+        setBannerUploading(false);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      toast({
+        title: t('common.error'),
+        description: t('profile.bannerInvalidType'),
+        variant: 'destructive',
+      });
+    };
+
+    img.src = objectUrl;
+  };
+
   if (!activeAcademy) {
     return null;
   }
@@ -85,6 +193,59 @@ export default function AcademyProfile() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Banner Upload */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              {t('profile.banner')}
+            </CardTitle>
+            <CardDescription>
+              {t('profile.bannerDescription')}
+              <br />
+              <span className="text-xs">{t('profile.bannerSizeHint')}</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeAcademy.banner_url ? (
+              <AspectRatio ratio={3 / 1} className="bg-muted rounded-lg overflow-hidden">
+                <img
+                  src={activeAcademy.banner_url}
+                  alt="Academy banner"
+                  className="object-cover w-full h-full"
+                />
+              </AspectRatio>
+            ) : (
+              <AspectRatio ratio={3 / 1} className="bg-muted rounded-lg flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <ImageIcon className="h-12 w-12 mx-auto mb-2" />
+                  <p className="text-sm">{t('profile.noBanner')}</p>
+                </div>
+              </AspectRatio>
+            )}
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleBannerUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => bannerInputRef.current?.click()}
+              disabled={bannerUploading}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {bannerUploading
+                ? t('common.saving')
+                : activeAcademy.banner_url
+                ? t('profile.changeBanner')
+                : t('profile.uploadBanner')}
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Basic Info */}
         <Card>
           <CardHeader>
