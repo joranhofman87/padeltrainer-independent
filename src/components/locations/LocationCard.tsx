@@ -1,7 +1,6 @@
-import { MapPin, ExternalLink, Users, CheckCircle, Home, Sun, Building2 } from 'lucide-react';
+import { MapPin, Users, CheckCircle, Home, Sun, Building2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -41,44 +40,26 @@ export function LocationCard({ location, trainerCount = 0, isClaimed = false, lo
 
   return (
     <Card 
-      className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+      className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50 relative"
       onClick={handleClick}
     >
+      {isClaimed && (
+        <div className="absolute top-3 right-3">
+          <CheckCircle className="h-4 w-4 text-primary" aria-label={t('locations.verified')} />
+        </div>
+      )}
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            {isClaimed && (
-              <Avatar className="h-10 w-10 shrink-0">
-                <AvatarImage src={logoUrl || undefined} alt={location.name} />
-                <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                  {logoUrl ? <Building2 className="h-5 w-5" /> : getInitials(location.name)}
-                </AvatarFallback>
-              </Avatar>
-            )}
-            <div className="flex items-center gap-2 min-w-0">
-              <CardTitle className="text-lg line-clamp-1">{location.name}</CardTitle>
-              {isClaimed && (
-              <CheckCircle className="h-4 w-4 text-primary shrink-0" aria-label={t('locations.verified')} />
-            )}
-          </div>
-          {location.website_url && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                const url = new URL(location.website_url!);
-                url.searchParams.set('ref', 'padeltrainerai');
-                window.open(url.toString(), '_blank');
-              }}
-              aria-label={t('locations.visitWebsite')}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-              )}
-            </div>
-          </div>
+        <div className="flex items-start gap-3">
+          {isClaimed && (
+            <Avatar className="h-10 w-10 shrink-0">
+              <AvatarImage src={logoUrl || undefined} alt={location.name} />
+              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                {logoUrl ? <Building2 className="h-5 w-5" /> : getInitials(location.name)}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          <CardTitle className="text-lg break-words pr-6">{location.name}</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
