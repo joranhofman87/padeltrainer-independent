@@ -83,6 +83,12 @@ export default function Locations() {
               featuredIds.add(cp.location_id);
             }
           });
+          // Also add logos from locations table for unclaimed locations
+          locationsData.forEach(loc => {
+            if (loc.logo_url && !logosMap[loc.id]) {
+              logosMap[loc.id] = loc.logo_url;
+            }
+          });
           setClubLogos(logosMap);
           setFeaturedLocationIds(featuredIds);
         }
