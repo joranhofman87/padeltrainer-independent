@@ -473,16 +473,13 @@ export default function Locations() {
               className="mb-8"
             >
               {featuredLocations.map(location => (
-                <div key={location.id} className="w-[280px] lg:w-auto flex-shrink-0 relative">
+                <div key={location.id} className="w-[280px] lg:w-auto flex-shrink-0">
                   <LocationCard
                     location={location}
                     trainerCount={trainerCounts[location.id] || 0}
                     isClaimed={claimedIds.has(location.id)}
                     logoUrl={clubLogos[location.id]}
                   />
-                  <div className="absolute top-2 right-2">
-                    <FeaturedBadge />
-                  </div>
                 </div>
               ))}
             </FeaturedSection>

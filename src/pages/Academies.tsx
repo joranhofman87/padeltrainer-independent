@@ -137,7 +137,11 @@ export default function Academies() {
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
-                        <FeaturedBadge />
+                        {academy.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {academy.description}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </CardContent>

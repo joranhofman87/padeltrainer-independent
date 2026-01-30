@@ -529,8 +529,7 @@ export default function Trainers() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  <FeaturedBadge />
+                <CardContent className="pt-0">
                   <div className="flex items-center justify-between text-xs">
                     {trainer.hourly_rate && (
                       <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
