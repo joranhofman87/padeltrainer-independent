@@ -22,6 +22,7 @@ import {
   Target, Sparkles, Linkedin, GraduationCap
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
+import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
@@ -726,6 +727,9 @@ export default function TrainerProfile() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Open Registrations */}
+            {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
 
             {/* Reviews Section */}
             {trainer && <TrainerReviews trainerId={trainer.id} />}

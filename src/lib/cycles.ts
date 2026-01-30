@@ -203,6 +203,53 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
   return (data || []) as Cycle[];
 }
 
+// Fetch all open cycles for a location (from trainers + academies at that location)
+export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
+  // Get trainers at this location
+  const { data: trainerLocations } = await supabase
+    .from('trainer_locations')
+    .select('trainer_id')
+    .eq('location_id', locationId);
+  
+  const trainerIds = trainerLocations?.map(t => t.trainer_id) || [];
+  
+  // Get academies at this location
+  const { data: academyLocations } = await supabase
+    .from('academy_locations')
+    .select('academy_profile_id')
+    .eq('location_id', locationId)
+    .eq('is_active', true);
+  
+  const academyIds = academyLocations?.map(a => a.academy_profile_id) || [];
+  
+  // Fetch cycles from both
+  const allCycles: Cycle[] = [];
+  
+  if (trainerIds.length > 0) {
+    const { data: trainerCycles } = await supabase
+      .from('cycles')
+      .select('*')
+      .eq('owner_type', 'trainer')
+      .in('owner_id', trainerIds)
+      .eq('status', 'open');
+    if (trainerCycles) allCycles.push(...(trainerCycles as Cycle[]));
+  }
+  
+  if (academyIds.length > 0) {
+    const { data: academyCycles } = await supabase
+      .from('cycles')
+      .select('*')
+      .eq('owner_type', 'academy')
+      .in('owner_id', academyIds)
+      .eq('status', 'open');
+    if (academyCycles) allCycles.push(...(academyCycles as Cycle[]));
+  }
+  
+  return allCycles.sort((a, b) => 
+    new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+  );
+}
+
 export async function getCycle(cycleId: string): Promise<Cycle | null> {
   const { data, error } = await supabase
     .from('cycles')

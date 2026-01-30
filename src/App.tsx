@@ -80,8 +80,6 @@ import ClubTrainers from "./pages/club/ClubTrainers";
 import ClubProfile from "./pages/club/ClubProfile";
 import ClubCalendar from "./pages/club/ClubCalendar";
 import ClubLessons from "./pages/club/ClubLessons";
-import ClubCycles from "./pages/club/ClubCycles";
-import ClubIntakeRequests from "./pages/club/ClubIntakeRequests";
 import ClubTournaments from "./pages/club/ClubTournaments";
 import ClubSettings from "./pages/club/ClubSettings";
 import ClubSubscription from "./pages/club/ClubSubscription";
@@ -205,8 +203,6 @@ const App = () => (
               <Route path="trainers" element={<ClubTrainers />} />
               <Route path="calendar" element={<ClubCalendar />} />
               <Route path="lessons" element={<ClubLessons />} />
-              <Route path="cycles" element={<ClubCycles />} />
-              <Route path="intake-requests" element={<ClubIntakeRequests />} />
               <Route path="tournaments" element={<ClubTournaments />} />
               <Route path="settings" element={<ClubSettings />} />
               <Route path="subscription" element={<ClubSubscription />} />

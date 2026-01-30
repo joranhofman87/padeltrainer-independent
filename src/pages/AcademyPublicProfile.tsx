@@ -35,6 +35,7 @@ import {
   recordAcademyProfileView,
   type AcademyProfile 
 } from '@/lib/academy';
+import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -385,6 +386,14 @@ export default function AcademyPublicProfile() {
             </div>
           </ProfileFullWidthSection>
         )}
+
+        {/* Full Width - Open Registrations */}
+        <ProfileFullWidthSection>
+          <AcademyOpenCycles 
+            academyId={academy.id!}
+            academyName={academy.name || 'Academy'}
+          />
+        </ProfileFullWidthSection>
 
         {/* Full Width - Locations Section */}
         {locations.length > 0 && (
