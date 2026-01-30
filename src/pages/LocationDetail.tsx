@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award } from 'lucide-react';
+import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
 import { ClubOpenCycles } from '@/components/club/ClubOpenCycles';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
@@ -18,6 +18,7 @@ import {
 import { SEO } from '@/components/SEO';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getLocationBySlug, getTrainersAtLocation, getClubProfileByLocationId, type Location } from '@/lib/locations';
+import { LocationCard } from '@/components/locations/LocationCard';
 import { isLocationClaimed, isUserClubManager } from '@/lib/club';
 import { getAcademiesAtLocation } from '@/lib/academy';
 import { recordClubProfileView } from '@/lib/clubProfileViews';
@@ -96,6 +97,10 @@ export default function LocationDetail() {
   const [isManager, setIsManager] = useState(false);
   const [showClaimDialog, setShowClaimDialog] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [similarLocations, setSimilarLocations] = useState<Location[]>([]);
+  const [similarTrainerCounts, setSimilarTrainerCounts] = useState<Record<string, number>>({});
+  const [similarClaimedIds, setSimilarClaimedIds] = useState<Set<string>>(new Set());
+  const [similarLogos, setSimilarLogos] = useState<Record<string, string>>({});
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
   const profileUrl = location ? `${window.location.origin}/${currentLang}/locations/${slug}` : '';
@@ -162,6 +167,48 @@ export default function LocationDetail() {
         // Fetch academies at this location
         const academiesData = await getAcademiesAtLocation(locationData.id);
         setAcademies(academiesData);
+
+        // Fetch similar locations from same city (exclude current location)
+        const { data: similar } = await supabase
+          .from('locations')
+          .select('*')
+          .eq('city', locationData.city)
+          .eq('is_active', true)
+          .neq('id', locationData.id)
+          .limit(6);
+
+        if (similar && similar.length > 0) {
+          setSimilarLocations(similar);
+          
+          // Fetch trainer counts for similar locations
+          const similarIds = similar.map(l => l.id);
+          const { data: trainerLocs } = await supabase
+            .from('trainer_locations')
+            .select('location_id')
+            .in('location_id', similarIds);
+          
+          // Count trainers per location
+          const counts: Record<string, number> = {};
+          trainerLocs?.forEach(tl => {
+            counts[tl.location_id] = (counts[tl.location_id] || 0) + 1;
+          });
+          setSimilarTrainerCounts(counts);
+          
+          // Fetch claimed status and logos for similar locations
+          const { data: clubProfiles } = await supabase
+            .from('club_profiles')
+            .select('location_id, logo_url')
+            .in('location_id', similarIds);
+          
+          const claimedSet = new Set<string>();
+          const logos: Record<string, string> = {};
+          clubProfiles?.forEach(cp => {
+            claimedSet.add(cp.location_id);
+            if (cp.logo_url) logos[cp.location_id] = cp.logo_url;
+          });
+          setSimilarClaimedIds(claimedSet);
+          setSimilarLogos(logos);
+        }
       } catch (error) {
         console.error('Error fetching location:', error);
       } finally {
@@ -232,20 +279,31 @@ export default function LocationDetail() {
   if (clubProfile?.social_youtube) socialLinks.push({ platform: 'youtube' as const, handle: clubProfile.social_youtube });
   if (clubProfile?.social_linkedin) socialLinks.push({ platform: 'linkedin' as const, handle: clubProfile.social_linkedin });
 
-  // Build quick stats
+  // Build quick stats - always show indoor/outdoor courts
   const quickStats = [];
-  if (location?.number_of_courts != null && location.number_of_courts > 0) {
-    quickStats.push({
-      icon: <LayoutGrid className="h-4 w-4" />,
-      label: location.number_of_courts === 1 ? t('common:locations.court') : t('common:locations.courts'),
-      value: location.number_of_courts,
-    });
-  }
+  
+  // Indoor courts - always show
+  quickStats.push({
+    icon: <Home className="h-4 w-4" />,
+    label: t('common:locations.indoor'),
+    value: location?.indoor_courts != null ? location.indoor_courts : '-',
+  });
+  
+  // Outdoor courts - always show
+  quickStats.push({
+    icon: <Sun className="h-4 w-4" />,
+    label: t('common:locations.outdoor'),
+    value: location?.outdoor_courts != null ? location.outdoor_courts : '-',
+  });
+  
+  // Trainers - always show
   quickStats.push({
     icon: <Users className="h-4 w-4" />,
     label: trainers.length === 1 ? t('common:locations.trainer') : t('common:locations.trainers'),
     value: trainers.length,
   });
+  
+  // Member since - only if claimed
   if (clubProfile?.claimed_at) {
     quickStats.push({
       icon: <Calendar className="h-4 w-4" />,
@@ -592,7 +650,33 @@ export default function LocationDetail() {
           </ProfileFullWidthSection>
         )}
 
-        {/* Claim Dialog */}
+        {/* Full Width - Similar Clubs Section */}
+        {similarLocations.length > 0 && (
+          <ProfileFullWidthSection>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <Building2 className="h-6 w-6 text-primary" />
+                {t('common:locations.similarClubs', { city: location.city })}
+              </h2>
+              <Badge variant="secondary" className="text-sm">
+                {similarLocations.length} {similarLocations.length === 1 ? t('common:locations.court') : t('common:locations.courts')}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {similarLocations.map(loc => (
+                <LocationCard 
+                  key={loc.id} 
+                  location={loc} 
+                  trainerCount={similarTrainerCounts[loc.id] || 0}
+                  isClaimed={similarClaimedIds.has(loc.id)}
+                  logoUrl={similarLogos[loc.id]}
+                />
+              ))}
+            </div>
+          </ProfileFullWidthSection>
+        )}
+
         {location && user && (
           <ClaimClubDialog
             open={showClaimDialog}
