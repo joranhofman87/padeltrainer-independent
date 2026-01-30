@@ -51,17 +51,17 @@ import {
   Pencil,
   Eye,
   ExternalLink,
-  Download,
   LogIn,
   ShieldCheck,
   Trash2,
+  Plus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AcademyEditDialog } from "@/components/admin/AcademyEditDialog";
+import { AddAcademyDialog } from "@/components/admin/AddAcademyDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
-import { scrapeAcademies } from "@/lib/admin";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -80,8 +80,7 @@ export default function AdminAcademies() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingAcademy, setEditingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [impersonatingAcademy, setImpersonatingAcademy] = useState<AcademyProfileAdmin | null>(null);
-  const [isScraping, setIsScraping] = useState(false);
-  const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [deletingAcademy, setDeletingAcademy] = useState<AcademyProfileAdmin | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -140,49 +139,6 @@ export default function AdminAcademies() {
     }
   };
 
-  const handleScrapeAcademies = async () => {
-    if (isScraping) return;
-    
-    setIsScraping(true);
-    setScrapeProgress("Starting scrape...");
-
-    try {
-      for (let page = 1; page <= 10; page++) {
-        setScrapeProgress(`Scraping page ${page}/10...`);
-        
-        const result = await scrapeAcademies({
-          batch_size: 10,
-          page_offset: page,
-          dry_run: false,
-        });
-
-        toast({
-          title: `Page ${page} complete`,
-          description: `Created: ${result.created}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`,
-        });
-
-        if (result.academies.length === 0) {
-          break;
-        }
-      }
-
-      toast({
-        title: "Scrape complete",
-        description: "Academy import finished successfully",
-      });
-      invalidateAcademies();
-    } catch (error) {
-      console.error("Scrape error:", error);
-      toast({
-        title: "Scrape failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setIsScraping(false);
-      setScrapeProgress(null);
-    }
-  };
 
   const handleBulkVerify = async () => {
     if (isVerifying) return;
@@ -326,7 +282,7 @@ export default function AdminAcademies() {
           <Button
             variant="outline"
             onClick={handleBulkVerify}
-            disabled={isVerifying || isScraping}
+            disabled={isVerifying}
           >
             {isVerifying ? (
               <>
@@ -340,22 +296,9 @@ export default function AdminAcademies() {
               </>
             )}
           </Button>
-          <Button
-            variant="outline"
-            onClick={handleScrapeAcademies}
-            disabled={isScraping || isVerifying}
-          >
-            {isScraping ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {scrapeProgress || "Scraping..."}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                Scrape from PadelGids
-              </>
-            )}
+          <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Academy
           </Button>
         </div>
       </div>
@@ -594,6 +537,12 @@ export default function AdminAcademies() {
           onSuccess={() => invalidateAcademies()}
         />
       )}
+
+      <AddAcademyDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        onSuccess={() => invalidateAcademies()}
+      />
 
       {impersonatingAcademy && impersonatingAcademy.owner_user_id && (
         <ImpersonateUserDialog
