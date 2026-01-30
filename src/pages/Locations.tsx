@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X, Map, List } from 'lucide-react';
+import { MapPin, Search, Loader2, Check, ChevronsUpDown, Home, X, Map, List, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -27,6 +27,9 @@ import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqu
 import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+
+const MAX_FEATURED = 8;
 
 export default function Locations() {
   const navigate = useNavigate();
@@ -35,6 +38,7 @@ export default function Locations() {
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
+  const [featuredLocationIds, setFeaturedLocationIds] = useState<Set<string>>(new Set());
   const [cities, setCities] = useState<string[]>([]);
   const [countries, setCountries] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,20 +67,24 @@ export default function Locations() {
         setCountries(countriesData);
         setClaimedIds(claimedData);
         
-        // Fetch club logos for claimed locations
+        // Fetch club profiles including subscription status
         const { data: clubProfiles } = await supabase
           .from('club_profiles_public')
-          .select('location_id, logo_url')
-          .not('logo_url', 'is', null);
+          .select('location_id, logo_url, subscription_status');
         
         if (clubProfiles) {
           const logosMap: Record<string, string> = {};
+          const featuredIds = new Set<string>();
           clubProfiles.forEach(cp => {
             if (cp.location_id && cp.logo_url) {
               logosMap[cp.location_id] = cp.logo_url;
             }
+            if (cp.location_id && cp.subscription_status === 'active') {
+              featuredIds.add(cp.location_id);
+            }
           });
           setClubLogos(logosMap);
+          setFeaturedLocationIds(featuredIds);
         }
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -111,6 +119,12 @@ export default function Locations() {
       return matchesSearch && matchesCity && matchesCountry && matchesTrainers && matchesIndoor;
     });
   }, [locations, searchQuery, selectedCity, selectedCountry, trainersAvailable, indoorCourtsOnly, trainerCounts]);
+
+  // Featured locations (clubs with active subscription)
+  const featuredLocations = useMemo(() => {
+    const featured = locations.filter(loc => featuredLocationIds.has(loc.id));
+    return shuffleArray(featured).slice(0, MAX_FEATURED);
+  }, [locations, featuredLocationIds]);
 
   const totalTrainers = Object.values(trainerCounts).reduce((a, b) => a + b, 0);
 
@@ -451,6 +465,29 @@ export default function Locations() {
 
         {/* Results */}
         <div className="container mx-auto px-4 py-8">
+          {/* Featured Locations Section */}
+          {!loading && featuredLocations.length > 0 && !hasActiveFilters && viewMode === 'grid' && (
+            <FeaturedSection
+              title={t('featured.locations')}
+              description={t('featured.locationsDescription')}
+              className="mb-8"
+            >
+              {featuredLocations.map(location => (
+                <div key={location.id} className="w-[280px] lg:w-auto flex-shrink-0 relative">
+                  <LocationCard
+                    location={location}
+                    trainerCount={trainerCounts[location.id] || 0}
+                    isClaimed={claimedIds.has(location.id)}
+                    logoUrl={clubLogos[location.id]}
+                  />
+                  <div className="absolute top-2 right-2">
+                    <FeaturedBadge />
+                  </div>
+                </div>
+              ))}
+            </FeaturedSection>
+          )}
+
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />

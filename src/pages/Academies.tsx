@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Building2, MapPin, Users, Search, CheckCircle } from 'lucide-react';
+import { Building2, MapPin, Users, Search, CheckCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,9 @@ import { SEO } from '@/components/SEO';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPublicAcademies, type AcademyProfile } from '@/lib/academy';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
+import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+
+const MAX_FEATURED = 8;
 
 export default function Academies() {
   const { t } = useTranslation(['academy', 'common']);
@@ -40,6 +43,12 @@ export default function Academies() {
     (academy.name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (academy.description?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  // Featured academies (paid/active subscription)
+  const featuredAcademies = useMemo(() => {
+    const featured = academies.filter(a => a.subscription_status === 'active');
+    return shuffleArray(featured).slice(0, MAX_FEATURED);
+  }, [academies]);
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -101,6 +110,41 @@ export default function Academies() {
               />
             </div>
           </div>
+
+          {/* Featured Academies Section */}
+          {!loading && featuredAcademies.length > 0 && !searchQuery && (
+            <FeaturedSection
+              title={t('common:featured.academies')}
+              description={t('common:featured.academiesDescription')}
+              className="mb-8 max-w-6xl mx-auto"
+            >
+              {featuredAcademies.map((academy) => (
+                <Card
+                  key={academy.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50 w-[280px] lg:w-auto flex-shrink-0"
+                  onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-14 w-14 rounded-lg">
+                        <AvatarImage src={academy.logo_url || ''} />
+                        <AvatarFallback className="rounded-lg text-lg">{getInitials(academy.name || "")}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold truncate text-sm">{academy.name || ""}</h3>
+                          {academy.is_verified && (
+                            <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                        <FeaturedBadge />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </FeaturedSection>
+          )}
 
           {/* Results */}
           {loading ? (
