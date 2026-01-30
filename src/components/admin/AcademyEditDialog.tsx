@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Table,
   TableBody,
   TableCell,
@@ -35,18 +43,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Slider } from "@/components/ui/slider";
 import {
   CalendarIcon,
+  Check,
+  ChevronsUpDown,
   Loader2,
   MapPin,
+  Plus,
+  Trash2,
   Users,
   Building2,
-  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getActiveLocations, type Location } from "@/lib/locations";
 
 interface AcademyEditData {
   id: string;
@@ -94,6 +107,13 @@ interface AcademyTrainer {
       email: string | null;
     } | null;
   };
+}
+
+interface AvailableTrainer {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
 }
 
 interface AcademyEditDialogProps {
@@ -146,11 +166,65 @@ export function AcademyEditDialog({
   const [trainers, setTrainers] = useState<AcademyTrainer[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
 
+  // Location picker state
+  const [allLocations, setAllLocations] = useState<Location[]>([]);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const [addingLocation, setAddingLocation] = useState(false);
+
+  // Trainer picker state
+  const [availableTrainers, setAvailableTrainers] = useState<AvailableTrainer[]>([]);
+  const [trainerOpen, setTrainerOpen] = useState(false);
+  const [trainerSearch, setTrainerSearch] = useState("");
+  const [addingTrainer, setAddingTrainer] = useState(false);
+  const [selectedTrainerId, setSelectedTrainerId] = useState<string | null>(null);
+  const [newTrainerPayment, setNewTrainerPayment] = useState(70);
+
   useEffect(() => {
     if (open) {
       loadRelatedData();
+      loadAllLocations();
+      loadAllTrainers();
     }
   }, [open, academy.id]);
+
+  const loadAllLocations = async () => {
+    try {
+      const data = await getActiveLocations();
+      setAllLocations(data);
+    } catch (error) {
+      console.error("Error loading locations:", error);
+    }
+  };
+
+  const loadAllTrainers = async () => {
+    try {
+      const { data: trainerProfiles } = await supabase
+        .from("trainer_profiles")
+        .select("id, user_id");
+
+      if (trainerProfiles && trainerProfiles.length > 0) {
+        const userIds = trainerProfiles.map(t => t.user_id);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, email")
+          .in("user_id", userIds);
+
+        const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+        
+        const enrichedTrainers: AvailableTrainer[] = trainerProfiles.map(t => ({
+          id: t.id,
+          user_id: t.user_id,
+          full_name: profileMap.get(t.user_id)?.full_name || null,
+          email: profileMap.get(t.user_id)?.email || null,
+        }));
+
+        setAvailableTrainers(enrichedTrainers);
+      }
+    } catch (error) {
+      console.error("Error loading trainers:", error);
+    }
+  };
 
   const loadRelatedData = async () => {
     setLoadingRelated(true);
@@ -217,6 +291,181 @@ export function AcademyEditDialog({
       console.error("Error loading related data:", error);
     } finally {
       setLoadingRelated(false);
+    }
+  };
+
+  // Filter locations not already linked
+  const filteredLocations = useMemo(() => {
+    const linkedIds = new Set(locations.map(l => l.location?.id));
+    return allLocations.filter(l => {
+      if (linkedIds.has(l.id)) return false;
+      if (locationSearch) {
+        return (
+          l.name.toLowerCase().includes(locationSearch.toLowerCase()) ||
+          l.city.toLowerCase().includes(locationSearch.toLowerCase())
+        );
+      }
+      return true;
+    });
+  }, [allLocations, locations, locationSearch]);
+
+  // Filter trainers not already linked
+  const filteredTrainers = useMemo(() => {
+    const linkedIds = new Set(trainers.map(t => t.trainer_profile?.id));
+    return availableTrainers.filter(t => {
+      if (linkedIds.has(t.id)) return false;
+      if (trainerSearch) {
+        return (
+          (t.full_name?.toLowerCase().includes(trainerSearch.toLowerCase())) ||
+          (t.email?.toLowerCase().includes(trainerSearch.toLowerCase()))
+        );
+      }
+      return true;
+    });
+  }, [availableTrainers, trainers, trainerSearch]);
+
+  // Group locations by city for the picker
+  const groupedLocations = useMemo(() => {
+    const groups: Record<string, Location[]> = {};
+    filteredLocations.forEach(location => {
+      if (!groups[location.city]) {
+        groups[location.city] = [];
+      }
+      groups[location.city].push(location);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredLocations]);
+
+  const handleAddLocation = async (locationId: string) => {
+    setAddingLocation(true);
+    try {
+      const { error } = await supabase.from("academy_locations").insert({
+        academy_profile_id: academy.id,
+        location_id: locationId,
+        is_active: true,
+        show_on_academy_page: true,
+        contract_type: "non_exclusive",
+      });
+
+      if (error) throw error;
+
+      toast({ title: "Location added", description: "Location linked to academy." });
+      await loadRelatedData();
+      setLocationOpen(false);
+    } catch (error) {
+      console.error("Error adding location:", error);
+      toast({ title: "Error", description: "Failed to add location.", variant: "destructive" });
+    } finally {
+      setAddingLocation(false);
+    }
+  };
+
+  const handleRemoveLocation = async (academyLocationId: string) => {
+    try {
+      const { error } = await supabase
+        .from("academy_locations")
+        .delete()
+        .eq("id", academyLocationId);
+
+      if (error) throw error;
+
+      toast({ title: "Location removed", description: "Location unlinked from academy." });
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error removing location:", error);
+      toast({ title: "Error", description: "Failed to remove location.", variant: "destructive" });
+    }
+  };
+
+  const handleToggleLocationActive = async (academyLocationId: string, isActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("academy_locations")
+        .update({ is_active: isActive })
+        .eq("id", academyLocationId);
+
+      if (error) throw error;
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error updating location:", error);
+      toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
+    }
+  };
+
+  const handleToggleLocationVisible = async (academyLocationId: string, visible: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("academy_locations")
+        .update({ show_on_academy_page: visible })
+        .eq("id", academyLocationId);
+
+      if (error) throw error;
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error updating location:", error);
+      toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
+    }
+  };
+
+  const handleAddTrainer = async () => {
+    if (!selectedTrainerId) return;
+    
+    setAddingTrainer(true);
+    try {
+      const { error } = await supabase.from("academy_trainers").insert({
+        academy_profile_id: academy.id,
+        trainer_profile_id: selectedTrainerId,
+        status: "active",
+        payment_percentage: newTrainerPayment,
+        show_on_academy_page: true,
+        joined_at: new Date().toISOString(),
+      });
+
+      if (error) throw error;
+
+      toast({ title: "Trainer added", description: "Trainer linked to academy." });
+      await loadRelatedData();
+      setTrainerOpen(false);
+      setSelectedTrainerId(null);
+      setNewTrainerPayment(70);
+    } catch (error) {
+      console.error("Error adding trainer:", error);
+      toast({ title: "Error", description: "Failed to add trainer.", variant: "destructive" });
+    } finally {
+      setAddingTrainer(false);
+    }
+  };
+
+  const handleRemoveTrainer = async (academyTrainerId: string) => {
+    try {
+      const { error } = await supabase
+        .from("academy_trainers")
+        .delete()
+        .eq("id", academyTrainerId);
+
+      if (error) throw error;
+
+      toast({ title: "Trainer removed", description: "Trainer unlinked from academy." });
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error removing trainer:", error);
+      toast({ title: "Error", description: "Failed to remove trainer.", variant: "destructive" });
+    }
+  };
+
+  const handleToggleTrainerStatus = async (academyTrainerId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "inactive" : "active";
+    try {
+      const { error } = await supabase
+        .from("academy_trainers")
+        .update({ status: newStatus })
+        .eq("id", academyTrainerId);
+
+      if (error) throw error;
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error updating trainer:", error);
+      toast({ title: "Error", description: "Failed to update trainer.", variant: "destructive" });
     }
   };
 
@@ -434,7 +683,50 @@ export function AcademyEditDialog({
             </div>
           </TabsContent>
 
-          <TabsContent value="locations" className="mt-4">
+          <TabsContent value="locations" className="mt-4 space-y-4">
+            {/* Add Location Button */}
+            <Popover open={locationOpen} onOpenChange={setLocationOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Location
+                  <ChevronsUpDown className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Search locations..."
+                    value={locationSearch}
+                    onValueChange={setLocationSearch}
+                  />
+                  <CommandList className="max-h-[300px]">
+                    <CommandEmpty>No locations found.</CommandEmpty>
+                    {groupedLocations.map(([city, cityLocations]) => (
+                      <CommandGroup key={city} heading={city}>
+                        {cityLocations.map(location => (
+                          <CommandItem
+                            key={location.id}
+                            value={`${location.name} ${location.city}`}
+                            onSelect={() => handleAddLocation(location.id)}
+                            disabled={addingLocation}
+                          >
+                            {addingLocation ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Plus className="mr-2 h-4 w-4" />
+                            )}
+                            <span className="font-medium">{location.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {/* Locations Table */}
             {loadingRelated ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -450,8 +742,9 @@ export function AcademyEditDialog({
                   <TableRow>
                     <TableHead>Location</TableHead>
                     <TableHead>City</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Active</TableHead>
                     <TableHead>Visible</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -462,12 +755,26 @@ export function AcademyEditDialog({
                       </TableCell>
                       <TableCell>{loc.location?.city || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={loc.is_active ? "default" : "secondary"}>
-                          {loc.is_active ? "Active" : "Inactive"}
-                        </Badge>
+                        <Switch
+                          checked={loc.is_active}
+                          onCheckedChange={(checked) => handleToggleLocationActive(loc.id, checked)}
+                        />
                       </TableCell>
                       <TableCell>
-                        {loc.show_on_academy_page ? "Yes" : "No"}
+                        <Switch
+                          checked={loc.show_on_academy_page}
+                          onCheckedChange={(checked) => handleToggleLocationVisible(loc.id, checked)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveLocation(loc.id)}
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -476,7 +783,93 @@ export function AcademyEditDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="trainers" className="mt-4">
+          <TabsContent value="trainers" className="mt-4 space-y-4">
+            {/* Add Trainer Button */}
+            <Popover open={trainerOpen} onOpenChange={(open) => {
+              setTrainerOpen(open);
+              if (!open) {
+                setSelectedTrainerId(null);
+                setNewTrainerPayment(70);
+              }
+            }}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Trainer
+                  <ChevronsUpDown className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <div className="p-4 space-y-4">
+                  <Command className="border rounded-md">
+                    <CommandInput
+                      placeholder="Search trainers..."
+                      value={trainerSearch}
+                      onValueChange={setTrainerSearch}
+                    />
+                    <CommandList className="max-h-[200px]">
+                      <CommandEmpty>No trainers found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredTrainers.map(trainer => (
+                          <CommandItem
+                            key={trainer.id}
+                            value={`${trainer.full_name} ${trainer.email}`}
+                            onSelect={() => setSelectedTrainerId(trainer.id)}
+                            className={cn(selectedTrainerId === trainer.id && "bg-primary/10")}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedTrainerId === trainer.id ? "opacity-100 text-primary" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex-1">
+                              <span className="font-medium">{trainer.full_name || "Unknown"}</span>
+                              {trainer.email && (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  {trainer.email}
+                                </span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+
+                  {selectedTrainerId && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <Label>Payment Percentage</Label>
+                          <span className="text-sm font-medium">{newTrainerPayment}%</span>
+                        </div>
+                        <Slider
+                          value={[newTrainerPayment]}
+                          onValueChange={(value) => setNewTrainerPayment(value[0])}
+                          min={0}
+                          max={100}
+                          step={5}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Trainer receives {newTrainerPayment}% of lesson payments
+                        </p>
+                      </div>
+                      <Button
+                        className="w-full"
+                        onClick={handleAddTrainer}
+                        disabled={addingTrainer}
+                      >
+                        {addingTrainer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Add Trainer
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Trainers Table */}
             {loadingRelated ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -494,6 +887,7 @@ export function AcademyEditDialog({
                     <TableHead>Email</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Payment %</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -507,18 +901,24 @@ export function AcademyEditDialog({
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={
-                            trainer.status === "active"
-                              ? "default"
-                              : trainer.status === "pending"
-                              ? "secondary"
-                              : "outline"
-                          }
+                          variant={trainer.status === "active" ? "default" : "secondary"}
+                          className="cursor-pointer"
+                          onClick={() => handleToggleTrainerStatus(trainer.id, trainer.status)}
                         >
                           {trainer.status}
                         </Badge>
                       </TableCell>
                       <TableCell>{trainer.payment_percentage}%</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveTrainer(trainer.id)}
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
