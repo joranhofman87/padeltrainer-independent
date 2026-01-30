@@ -13,6 +13,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
+import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -25,22 +26,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -75,20 +66,6 @@ export default function AdminLocations() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    street_address: '',
-    postal_code: '',
-    city: '',
-    country: 'NL',
-    website_url: '',
-    slug: '',
-    is_active: true,
-    number_of_courts: null as number | null,
-    indoor_courts: 0,
-    outdoor_courts: 0,
-  });
-  const [saving, setSaving] = useState(false);
 
   // Get verified location IDs from club_profiles
   const [verifiedLocationIds, setVerifiedLocationIds] = useState<Set<string>>(new Set());
@@ -173,107 +150,19 @@ export default function AdminLocations() {
     "name"
   );
 
-  const generateSlug = (name: string, city: string) => {
-    return `${name}-${city}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-  };
-
   const openAddDialog = () => {
     setEditingLocation(null);
-    setFormData({
-      name: '',
-      street_address: '',
-      postal_code: '',
-      city: '',
-      country: 'NL',
-      website_url: '',
-      slug: '',
-      is_active: true,
-      number_of_courts: null,
-      indoor_courts: 0,
-      outdoor_courts: 0,
-    });
     setDialogOpen(true);
   };
 
   const openEditDialog = (location: Location) => {
     setEditingLocation(location);
-    setFormData({
-      name: location.name,
-      street_address: location.street_address || '',
-      postal_code: location.postal_code || '',
-      city: location.city,
-      country: location.country,
-      website_url: location.website_url || '',
-      slug: location.slug,
-      is_active: location.is_active,
-      number_of_courts: location.number_of_courts,
-      indoor_courts: location.indoor_courts ?? 0,
-      outdoor_courts: location.outdoor_courts ?? 0,
-    });
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!formData.name || !formData.city) {
-      toast({
-        title: 'Validation Error',
-        description: 'Name and city are required',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const slug = formData.slug || generateSlug(formData.name, formData.city);
-      const locationData = {
-        ...formData,
-        slug,
-        street_address: formData.street_address || null,
-        postal_code: formData.postal_code || null,
-        website_url: formData.website_url || null,
-        number_of_courts: formData.number_of_courts ?? null,
-        indoor_courts: formData.indoor_courts ?? 0,
-        outdoor_courts: formData.outdoor_courts ?? 0,
-        description: null,
-        logo_url: null,
-        latitude: null,
-        longitude: null,
-        phone: null,
-        email: null,
-        facebook_url: null,
-        instagram_url: null,
-        google_maps_url: null,
-        google_rating: null,
-        google_review_count: null,
-        opening_hours: null,
-      };
-
-      if (editingLocation) {
-        await updateLocation(editingLocation.id, locationData);
-        toast({ title: 'Success', description: 'Location updated successfully' });
-      } else {
-        await createLocation(locationData);
-        toast({ title: 'Success', description: 'Location created successfully' });
-      }
-
-      const locationsData = await getAllLocations();
-      setLocations(locationsData);
-      setDialogOpen(false);
-    } catch (error: any) {
-      console.error('Error saving location:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to save location',
-        variant: 'destructive',
-      });
-    } finally {
-      setSaving(false);
-    }
+  const handleDialogSuccess = async () => {
+    const locationsData = await getAllLocations();
+    setLocations(locationsData);
   };
 
   const toggleActive = async (location: Location) => {
@@ -318,133 +207,20 @@ export default function AdminLocations() {
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={openAddDialog}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Location
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>{editingLocation ? 'Edit Location' : 'Add New Location'}</DialogTitle>
-                <DialogDescription>
-                  {editingLocation
-                    ? 'Update the location details below.'
-                    : 'Add a new padel venue to the platform.'}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Club name"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="city">City *</Label>
-                    <Input
-                      id="city"
-                      value={formData.city}
-                      onChange={e => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                      placeholder="City"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
-                    <Select
-                      value={formData.country}
-                      onValueChange={value => setFormData(prev => ({ ...prev, country: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NL">Netherlands</SelectItem>
-                        <SelectItem value="BE">Belgium</SelectItem>
-                        <SelectItem value="DE">Germany</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="street_address">Street Address</Label>
-                  <Input
-                    id="street_address"
-                    value={formData.street_address}
-                    onChange={e => setFormData(prev => ({ ...prev, street_address: e.target.value }))}
-                    placeholder="Street address"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postal_code">Postal Code</Label>
-                  <Input
-                    id="postal_code"
-                    value={formData.postal_code}
-                    onChange={e => setFormData(prev => ({ ...prev, postal_code: e.target.value }))}
-                    placeholder="Postal code"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website_url">Website URL</Label>
-                  <Input
-                    id="website_url"
-                    value={formData.website_url}
-                    onChange={e => setFormData(prev => ({ ...prev, website_url: e.target.value }))}
-                    placeholder="https://..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="slug">URL Slug</Label>
-                  <Input
-                    id="slug"
-                    value={formData.slug}
-                    onChange={e => setFormData(prev => ({ ...prev, slug: e.target.value }))}
-                    placeholder="Auto-generated if empty"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="indoor_courts">Indoor Courts</Label>
-                    <Input
-                      id="indoor_courts"
-                      type="number"
-                      min="0"
-                      value={formData.indoor_courts}
-                      onChange={e => setFormData(prev => ({ ...prev, indoor_courts: parseInt(e.target.value) || 0 }))}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="outdoor_courts">Outdoor Courts</Label>
-                    <Input
-                      id="outdoor_courts"
-                      type="number"
-                      min="0"
-                      value={formData.outdoor_courts}
-                      onChange={e => setFormData(prev => ({ ...prev, outdoor_courts: parseInt(e.target.value) || 0 }))}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {editingLocation ? 'Update' : 'Create'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Location
+          </Button>
         </div>
       </div>
+
+      {/* Location Edit Dialog */}
+      <LocationEditDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        location={editingLocation}
+        onSuccess={handleDialogSuccess}
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4">
