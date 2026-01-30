@@ -133,7 +133,7 @@ export default function Academies() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-semibold truncate">{academy.name || ""}</h3>
-                          {academy.is_verified && (
+                          {(academy.is_verified || academy.subscription_status === 'active') && (
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
@@ -208,7 +208,7 @@ export default function Academies() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-semibold truncate">{academy.name || ""}</h3>
-                          {academy.is_verified && (
+                          {(academy.is_verified || academy.subscription_status === 'active') && (
                             <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
