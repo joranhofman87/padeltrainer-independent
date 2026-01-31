@@ -1,72 +1,136 @@
 
-# Plan: Display Location Logo Even When Not Claimed
+# Plan: Add Trainer Creation to Admin Panel
 
-## Problem Identified
+## Summary
 
-The location "De Stouwe Indoor Tennis & Padel" has a `logo_url` stored in the `locations` table:
-- `logo_url: https://www.sportcentrumdestouwe.nl/wp-content/uploads/2021/07/De-Stouwe-Logo-diap.png`
+Add an "Add Trainer" button and dialog to the Admin Trainers page that allows administrators to create new trainer accounts directly. This will create a user account, assign the trainer role, and set up the trainer profile with configurable settings.
 
-However, this location is **not claimed** (no entry in `club_profiles`), so:
-1. The logo is not fetched (logos only come from `club_profiles_public`)
-2. The avatar is not displayed (only shows when `isClaimed` is true)
+## Implementation Approach
 
-## Solution
+### 1. Create Edge Function: `create-admin-trainer`
 
-Update the LocationCard to display logos from the `locations` table as well, even for unclaimed locations.
+**File:** `supabase/functions/create-admin-trainer/index.ts`
 
-## Technical Changes
+This edge function will:
+- Verify the caller is an admin user
+- Create a new user account with a temporary password (or link existing user)
+- Create the profile with the provided name
+- Assign the "trainer" role in `user_roles`
+- Create the `trainer_profiles` record with trial dates
+- Return the trainer ID and temporary password
 
-### File: `src/pages/Locations.tsx`
+```text
+Request Body:
+- email (required)
+- fullName (required)  
+- phone (optional)
+- subscriptionStatus: 'trial' | 'active' | 'inactive' (optional, default: 'trial')
+- isPublic: boolean (optional, default: false)
 
-Update the logo fetching logic to also include `logo_url` from the `locations` table itself:
-
-```tsx
-// After fetching club profiles, merge location logos as fallback
-if (clubProfiles) {
-  const logosMap: Record<string, string> = {};
-  // ... existing logic for club profile logos
-  
-  // Also add logos from locations table for unclaimed locations
-  locationsData.forEach(loc => {
-    if (loc.logo_url && !logosMap[loc.id]) {
-      logosMap[loc.id] = loc.logo_url;
-    }
-  });
-  setClubLogos(logosMap);
-}
+Response:
+- success: boolean
+- trainerId: string
+- temporaryPassword: string | null
+- isNewUser: boolean
 ```
 
-### File: `src/components/locations/LocationCard.tsx`
+### 2. Create Dialog Component: `AddTrainerDialog`
 
-Update the component to show the avatar/logo when a `logoUrl` is provided, not just when claimed:
+**File:** `src/components/admin/AddTrainerDialog.tsx`
 
-```tsx
-// Before (line 52-60):
-{isClaimed && (
-  <Avatar className="h-10 w-10 shrink-0">
-    <AvatarImage src={logoUrl || undefined} alt={location.name} />
-    <AvatarFallback>...</AvatarFallback>
-  </Avatar>
-)}
+Form fields:
+- Full Name (required)
+- Email (required)
+- Phone (optional)
+- Subscription Status dropdown (Trial / Active / Inactive)
+- Is Public toggle
 
-// After:
-{(isClaimed || logoUrl) && (
-  <Avatar className="h-10 w-10 shrink-0">
-    <AvatarImage src={logoUrl || undefined} alt={location.name} className="object-contain" />
-    <AvatarFallback className="bg-primary/10 text-primary text-xs">
-      {getInitials(location.name)}
-    </AvatarFallback>
-  </Avatar>
-)}
+After successful creation:
+- Show success toast with temporary password (if new user)
+- Provide copy button for the password
+- Refresh the trainers list
+
+### 3. Update Admin Trainers Page
+
+**File:** `src/pages/admin/AdminTrainers.tsx`
+
+Add:
+- "Add Trainer" button in the page header
+- Import and render `AddTrainerDialog`
+- State for dialog open/close
+
+## Visual Design
+
+The page header will look like this after the change:
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Trainer Management                         [+ Add Trainer]    │
+│  View and manage trainer subscriptions                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Note: Added `object-contain` to prevent logo distortion (per visual identity guidelines).
+The dialog will follow the same pattern as `AddAcademyDialog`:
 
-## Summary of Changes
+```text
+┌───────────────────────────────────────────────────┐
+│  Add Trainer                               [X]    │
+│  Create a new trainer account                     │
+├───────────────────────────────────────────────────┤
+│                                                   │
+│  Full Name *                                      │
+│  [________________________________]               │
+│                                                   │
+│  Email *                                          │
+│  [________________________________]               │
+│                                                   │
+│  Phone                                            │
+│  [________________________________]               │
+│                                                   │
+│  Subscription Status                              │
+│  [Trial                        ▼]                 │
+│                                                   │
+│  Public Profile                    [  ]           │
+│  Visible in the trainer directory                 │
+│                                                   │
+├───────────────────────────────────────────────────┤
+│                    [Cancel]  [Create Trainer]     │
+└───────────────────────────────────────────────────┘
+```
+
+## Technical Details
+
+### Edge Function Logic
+
+The edge function will mirror the `create-club-trainer` function but with admin-level permissions:
+
+1. **Auth Check**: Verify caller is admin via `is_admin()` database function
+2. **User Creation**: 
+   - Check if email exists → reuse existing user
+   - If new → create user with `auth.admin.createUser()` and temporary password
+3. **Profile Setup**:
+   - Update `profiles` table with name/phone
+   - Insert into `user_roles` with role = 'trainer'
+   - Insert into `trainer_profiles` with trial dates and subscription status
+4. **Return**: Trainer ID, temp password (if new), and success status
+
+### Password Handling
+
+When a new trainer is created, the dialog will:
+1. Show the temporary password in a highlighted box
+2. Provide a "Copy Password" button
+3. Display instructions to share the password securely
+
+## File Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/Locations.tsx` | Include `logo_url` from locations table as fallback |
-| `src/components/locations/LocationCard.tsx` | Show avatar when logoUrl exists (not just when claimed) |
+| `supabase/functions/create-admin-trainer/index.ts` | New edge function for admin trainer creation |
+| `src/components/admin/AddTrainerDialog.tsx` | New dialog component with form |
+| `src/pages/admin/AdminTrainers.tsx` | Add button and dialog integration |
 
-This ensures locations with logos in the `locations` table (from bulk import) display their logos on the card, even if the club hasn't claimed the profile yet.
+## Security Considerations
+
+- Edge function validates admin status server-side using `is_admin()` RPC
+- Temporary passwords are generated with sufficient entropy (12 chars, mixed case + numbers + symbols)
+- Password is only shown once in the UI and must be copied immediately
