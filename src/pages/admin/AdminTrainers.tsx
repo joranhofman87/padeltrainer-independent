@@ -35,10 +35,12 @@ import {
   EyeOff,
   ExternalLink,
   LogIn,
+  Plus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TrainerSubscriptionEditDialog } from "@/components/admin/TrainerSubscriptionEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
+import { AddTrainerDialog } from "@/components/admin/AddTrainerDialog";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
 
@@ -56,6 +58,7 @@ export default function AdminTrainers() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editingTrainer, setEditingTrainer] = useState<TrainerProfileAdmin | null>(null);
   const [impersonatingTrainer, setImpersonatingTrainer] = useState<TrainerProfileAdmin | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const getSubscriptionStatus = (trainer: TrainerProfileAdmin) => {
     if (trainer.subscription_status === "active") return "active";
@@ -127,6 +130,10 @@ export default function AdminTrainers() {
             View and manage trainer subscriptions
           </p>
         </div>
+        <Button onClick={() => setAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Trainer
+        </Button>
       </div>
 
       {/* Filters */}
@@ -316,6 +323,12 @@ export default function AdminTrainers() {
           targetUserEmail={impersonatingTrainer.profile?.email}
         />
       )}
+
+      <AddTrainerDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSuccess={() => invalidateTrainers()}
+      />
     </div>
   );
 }
