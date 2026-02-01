@@ -1,326 +1,149 @@
 
-# Academy Owner as Trainer + Data Consistency Fix
+# Fix: KNLTB Rating Data Consistency Between Admin and Academy Views
 
-## Overview
+## Problem Summary
 
-This plan addresses two related issues:
+Tygho has a KNLTB rating that shows correctly in the admin panel but not in the academy trainer edit dialog. This is because:
 
-1. **Academy owners who are also trainers should appear on `/academy/trainers`** - Currently, when an academy owner like Rene is also a trainer, they don't automatically appear in the trainers list because they're not in the `academy_trainers` table.
+| Location | Data Source | Fields Used |
+|----------|------------|-------------|
+| **Admin Panel** | `profiles` table | `skill_rating`, `rating_system`, `rating_member_id` |
+| **Academy Edit Dialog** | `trainer_profiles` table | `knltb_rating`, `trainer_rating_system` (legacy fields) |
 
-2. **Edit dialog not showing existing data** - The `EditAcademyTrainerDialog` fetches data correctly, but the `getAcademyTrainersWithProfiles` function is missing the `slug` field, and the trainers list doesn't include all needed trainer profile fields.
+**Database Evidence:**
+- `profiles.skill_rating = 0.9`
+- `profiles.rating_system = 'knltb'`
+- `trainer_profiles.knltb_rating = NULL` (not used)
 
----
-
-## Problem Analysis
-
-### Issue 1: Academy Owner Not Shown as Trainer
-
-**Current State:**
-- Rene is an academy manager (owner) with `user_id: 48f0e4c9-...`
-- Rene has a trainer profile with `trainer_profile_id: c0497580-...`
-- Rene is **NOT** in `academy_trainers` table for his academy
-- Therefore, he doesn't show on `/academy/trainers`
-
-**Comparison with Bram:**
-- Bram is also an academy owner AND trainer
-- Bram IS in `academy_trainers` table for his academy
-- Therefore, Bram appears on his academy's trainers page
-
-### Issue 2: Missing Data in Trainer List
-
-**Current `getAcademyTrainersWithProfiles` query:**
-```sql
-SELECT *, trainer_profiles(id, user_id, hourly_rate, experience_years, 
-                           specializations, certifications, is_verified)
-FROM academy_trainers
-```
-
-**Missing fields:** `slug` (needed for profile links)
+The rating data lives in the `profiles` table, but the Academy trainer edit dialog reads from `trainer_profiles`.
 
 ---
 
 ## Solution
 
-### Part 1: Add "Add Yourself as Trainer" Feature
+Update the `EditAcademyTrainerDialog` to read and write rating data from the `profiles` table instead of `trainer_profiles`.
 
-Since academy managers who are also trainers may want to be listed on their academy page, provide a way to add themselves.
+## Files to Modify
 
-**Approach: Auto-suggest when academy manager has a trainer profile**
-
-When the page loads, check if the current user:
-1. Is an academy manager
-2. Has a trainer profile
-3. Is NOT already in `academy_trainers` for this academy
-
-If all conditions are met, show a prompt/card to add themselves.
-
-#### UI Addition in `AcademyTrainers.tsx`
-
-Add a banner or card above the trainers list:
-
-```text
-+----------------------------------------------------------+
-| 👋 You're also a trainer!                                |
-|                                                          |
-| Would you like to add yourself to your academy's         |
-| trainer roster?                                          |
-|                                                          |
-|                        [Add Myself as Trainer]           |
-+----------------------------------------------------------+
-```
-
-#### New Helper Function in `src/lib/academy.ts`
-
-```typescript
-// Check if current user can add themselves as a trainer
-export async function canUserAddSelfAsTrainer(
-  userId: string, 
-  academyProfileId: string
-): Promise<{ canAdd: boolean; trainerProfileId?: string }>;
-
-// Add academy manager as a trainer
-export async function addSelfAsAcademyTrainer(
-  academyProfileId: string, 
-  trainerProfileId: string, 
-  userId: string
-): Promise<boolean>;
-```
-
-### Part 2: Fix Data Fetching
-
-#### Update `getAcademyTrainersWithProfiles` Query
-
-Add missing `slug` field to the trainer_profiles select:
-
-```typescript
-const { data, error } = await supabase
-  .from('academy_trainers')
-  .select(`
-    *,
-    trainer_profile:trainer_profiles(
-      id,
-      user_id,
-      slug,  // ADD THIS
-      hourly_rate,
-      experience_years,
-      specializations,
-      certifications,
-      is_verified
-    )
-  `)
-  .eq('academy_profile_id', academyProfileId);
-```
-
-This ensures the "View Profile" button in `AcademyTrainers.tsx` can correctly link to `/trainer/{slug}`.
-
-### Part 3: Ensure Edit Dialog Shows Correct Data
-
-The `EditAcademyTrainerDialog` already fetches data correctly when opened (it queries `profiles` and `trainer_profiles` directly by ID). The issue is that the data is fetched properly - we just need to verify it works.
-
-However, I'll verify that the `trainerId` and `userId` props being passed are correct.
-
----
-
-## File Changes
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/lib/academy.ts` | Modify | Add `slug` to trainer query; add `canUserAddSelfAsTrainer` and `addSelfAsAcademyTrainer` functions |
-| `src/pages/academy/AcademyTrainers.tsx` | Modify | Add "Add yourself as trainer" banner/button for eligible managers |
-| `src/i18n/locales/en/academy.json` | Modify | Add translation keys for new UI |
-| `src/i18n/locales/nl/academy.json` | Modify | Add Dutch translations |
+| File | Change |
+|------|--------|
+| `src/components/academy/EditAcademyTrainerDialog.tsx` | Read/write rating from `profiles` table instead of `trainer_profiles` |
+| `src/lib/academy.ts` | Include rating fields when fetching profiles for trainers list |
 
 ---
 
 ## Implementation Details
 
-### 1. New Helper Functions (`src/lib/academy.ts`)
+### 1. Update EditAcademyTrainerDialog.tsx
 
+**Current data model (incorrect):**
 ```typescript
-// Check if current user can add themselves as a trainer
-export async function canUserAddSelfAsTrainer(
-  userId: string, 
-  academyProfileId: string
-): Promise<{ canAdd: boolean; trainerProfileId?: string; trainerName?: string }> {
-  // Check if user has a trainer profile
-  const { data: trainerProfile } = await supabase
-    .from('trainer_profiles')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!trainerProfile) {
-    return { canAdd: false };
-  }
-
-  // Check if already in academy_trainers
-  const { data: existing } = await supabase
-    .from('academy_trainers')
-    .select('id')
-    .eq('academy_profile_id', academyProfileId)
-    .eq('trainer_profile_id', trainerProfile.id)
-    .maybeSingle();
-
-  if (existing) {
-    return { canAdd: false };
-  }
-
-  // Get user's name for display
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('user_id', userId)
-    .single();
-
-  return { 
-    canAdd: true, 
-    trainerProfileId: trainerProfile.id,
-    trainerName: profile?.full_name 
-  };
-}
-
-// Add the current user as an academy trainer
-export async function addSelfAsAcademyTrainer(
-  academyProfileId: string, 
-  trainerProfileId: string, 
-  userId: string
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('academy_trainers')
-    .insert({
-      academy_profile_id: academyProfileId,
-      trainer_profile_id: trainerProfileId,
-      status: 'active',
-      invited_by: userId,
-      joined_at: new Date().toISOString(),
-      show_on_academy_page: true,
-    });
-
-  if (error) {
-    console.error('Error adding self as trainer:', error);
-    return false;
-  }
-
-  return true;
+interface TrainerProfileData {
+  knltb_rating: number | null;          // Wrong source
+  trainer_rating_system: string;        // Wrong source
+  ...
 }
 ```
 
-### 2. Updated Trainer Query (`src/lib/academy.ts`)
-
+**Fixed data model:**
 ```typescript
-// Line ~714 - Add slug to the select
-.select(`
-  *,
-  trainer_profile:trainer_profiles(
-    id,
-    user_id,
-    slug,
-    hourly_rate,
-    experience_years,
-    specializations,
-    certifications,
-    is_verified
-  )
-`)
+interface ProfileData {
+  full_name: string;
+  phone: string;
+  bio: string;
+  avatar_url: string | null;
+  skill_rating: number | null;          // Add rating fields
+  rating_system: string | null;
+  rating_member_id: string | null;
+}
 ```
 
-### 3. UI Component (`AcademyTrainers.tsx`)
-
-Add state and check on load:
-
+**Current fetch (incorrect):**
 ```typescript
-const [canAddSelf, setCanAddSelf] = useState<{
-  canAdd: boolean;
-  trainerProfileId?: string;
-  trainerName?: string;
-}>({ canAdd: false });
-
-// In fetchData, also check if user can add themselves
-if (user) {
-  const selfCheck = await canUserAddSelfAsTrainer(user.id, activeAcademy.id);
-  setCanAddSelf(selfCheck);
-}
-
-// Render banner above trainers list
-{canAddSelf.canAdd && (
-  <Card className="mb-6 border-primary/20 bg-primary/5">
-    <CardContent className="py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Users className="h-5 w-5 text-primary" />
-          <div>
-            <p className="font-medium">{t('trainers.addSelfTitle')}</p>
-            <p className="text-sm text-muted-foreground">
-              {t('trainers.addSelfDescription')}
-            </p>
-          </div>
-        </div>
-        <Button onClick={handleAddSelf}>
-          {t('trainers.addMyselfAsTrainer')}
-        </Button>
-      </div>
-    </CardContent>
-  </Card>
-)}
+// Fetching from trainer_profiles
+const { data: trainer } = await supabase
+  .from('trainer_profiles')
+  .select('..., knltb_rating, trainer_rating_system, ...')
 ```
 
-### 4. Translation Keys
-
-```json
-{
-  "trainers": {
-    "addSelfTitle": "You're also a trainer!",
-    "addSelfDescription": "Add yourself to your academy's trainer roster to appear on the public page.",
-    "addMyselfAsTrainer": "Add Myself as Trainer",
-    "addedSelf": "You've been added as a trainer"
-  }
-}
+**Fixed fetch:**
+```typescript
+// Fetch rating from profiles table
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
+  .eq('user_id', userId)
+  .single();
 ```
+
+**Current save (incorrect):**
+```typescript
+// Saving to trainer_profiles
+await supabase
+  .from('trainer_profiles')
+  .update({ knltb_rating: ..., trainer_rating_system: ... })
+```
+
+**Fixed save:**
+```typescript
+// Save rating to profiles table
+await supabase
+  .from('profiles')
+  .update({ 
+    skill_rating: profileData.skill_rating,
+    rating_system: profileData.rating_system,
+    rating_member_id: profileData.rating_member_id,
+    ...
+  })
+```
+
+### 2. Update getAcademyTrainersWithProfiles (academy.ts)
+
+**Current query (missing rating fields):**
+```typescript
+const { data: profiles } = await supabase
+  .from('profiles_public')
+  .select('user_id, full_name, avatar_url')  // Missing rating fields
+  .in('user_id', userIds);
+```
+
+**Fixed query:**
+```typescript
+const { data: profiles } = await supabase
+  .from('profiles_public')
+  .select('user_id, full_name, avatar_url, skill_rating, rating_system')
+  .in('user_id', userIds);
+```
+
+This allows the trainer cards to optionally display ratings in the future.
 
 ---
 
-## Visual Flow
+## Data Flow After Fix
 
 ```text
-Academy Trainers Page (for manager who is also a trainer):
-
-+----------------------------------------------------------+
-| 👥 You're also a trainer!                                |
-| Add yourself to your academy's trainer roster to appear  |
-| on the public page.                                      |
-|                        [Add Myself as Trainer]           |
-+----------------------------------------------------------+
-
-+----------------------------------------------------------+
-| Trainers                    [Create Trainer] [Invite]    |
-+----------------------------------------------------------+
-| [Active Trainers (2)]  [Pending Invitations (0)]         |
-+----------------------------------------------------------+
-|  +---------------+  +---------------+                    |
-|  | [Avatar]      |  | [Avatar]      |                    |
-|  | Trainer 1     |  | Trainer 2     |                    |
-|  | €50/hour      |  | €45/hour      |                    |
-|  | [Edit] [View] |  | [Edit] [View] |                    |
-|  +---------------+  +---------------+                    |
-+----------------------------------------------------------+
++------------------+     reads/writes     +------------------+
+|   Admin Panel    | <------------------> |   profiles       |
+| (skill_rating)   |                      | - skill_rating   |
++------------------+                      | - rating_system  |
+                                          | - rating_member_id|
++------------------+     reads/writes     +------------------+
+| Academy Trainer  | <------------------> |                  |
+| Edit Dialog      |                      |                  |
++------------------+                      +------------------+
 ```
 
-After clicking "Add Myself as Trainer":
-- Banner disappears
-- User appears in the trainers grid
-- Can edit their own profile visibility and details
+Both views now read/write from the same source (profiles table).
 
 ---
 
-## Summary
+## Summary of Changes
 
-1. **Add `slug` field** to `getAcademyTrainersWithProfiles` query
-2. **Add `canUserAddSelfAsTrainer`** function to check if manager can add themselves
-3. **Add `addSelfAsAcademyTrainer`** function to insert the record
-4. **Update `AcademyTrainers.tsx`** with banner UI for eligible managers
-5. **Add translation keys** for the new UI elements
+1. **EditAcademyTrainerDialog.tsx**:
+   - Move rating fields (`skill_rating`, `rating_system`, `rating_member_id`) to `ProfileData` interface
+   - Remove `knltb_rating` and `trainer_rating_system` from `TrainerProfileData`
+   - Update `fetchData()` to read rating from profiles query
+   - Update `handleSubmit()` to save rating to profiles table
 
-This ensures:
-- Academy owners who are trainers can easily add themselves to the trainer roster
-- All trainer data is properly fetched including the slug for profile links
-- The edit dialog continues to work correctly with full data
+2. **academy.ts**:
+   - Add `skill_rating, rating_system` to the profiles_public select in `getAcademyTrainersWithProfiles`
