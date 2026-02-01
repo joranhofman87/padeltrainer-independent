@@ -289,18 +289,35 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="anonymous">Post as anonymous</Label>
-                <p className="text-xs text-muted-foreground">
-                  Hide admin identity on the review
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="anonymous">Post as anonymous</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Hide reviewer identity on the review
+                  </p>
+                </div>
+                <Switch
+                  id="anonymous"
+                  checked={isAnonymous}
+                  onCheckedChange={setIsAnonymous}
+                />
               </div>
-              <Switch
-                id="anonymous"
-                checked={isAnonymous}
-                onCheckedChange={setIsAnonymous}
-              />
+
+              {!isAnonymous && (
+                <div className="space-y-2">
+                  <Label htmlFor="reviewerName">Reviewer name</Label>
+                  <Input
+                    id="reviewerName"
+                    placeholder="Enter reviewer name..."
+                    value={reviewerName}
+                    onChange={(e) => setReviewerName(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This name will be displayed on the review
+                  </p>
+                </div>
+              )}
             </div>
 
             <Button
