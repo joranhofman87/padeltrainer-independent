@@ -39,7 +39,7 @@ import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
-import { getMarketingUrl } from '@/lib/domains';
+import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
 
 interface TrainerData {
   id: string;
@@ -181,16 +181,63 @@ export default function AcademyPublicProfile() {
     { label: academy?.name || '' },
   ];
 
-  const structuredData = academy ? {
-    "@context": "https://schema.org",
-    "@type": "EducationalOrganization",
-    "name": academy.name,
-    "description": academy.description,
-    "url": profileUrl,
-    "logo": academy.logo_url,
-    "numberOfEmployees": trainers.length,
-    ...(academy.website_url && { "sameAs": [academy.website_url] })
-  } : undefined;
+  const structuredData = academy ? [
+    // BreadcrumbList schema
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": currentLang === 'en' ? "Home" : "Home",
+          "item": `${MARKETING_DOMAIN}/${currentLang}`
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": currentLang === 'en' ? "Academies" : "Academies",
+          "item": `${MARKETING_DOMAIN}/${currentLang}/academies`
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": academy.name
+        }
+      ]
+    },
+    // EducationalOrganization schema (enhanced)
+    {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": academy.name,
+      "description": academy.description,
+      "url": profileUrl,
+      "logo": academy.logo_url,
+      "image": academy.banner_url || academy.logo_url,
+      "numberOfEmployees": trainers.length,
+      ...(academy.website_url && { "sameAs": [
+        academy.website_url,
+        ...(academy.social_instagram ? [`https://instagram.com/${academy.social_instagram.replace('@', '')}`] : []),
+        ...(academy.social_facebook ? [academy.social_facebook] : []),
+        ...(academy.social_linkedin ? [academy.social_linkedin] : []),
+      ]}),
+      ...(locations.length > 0 && {
+        "areaServed": {
+          "@type": "GeoCircle",
+          "geoMidpoint": {
+            "@type": "GeoCoordinates",
+            "addressCountry": "NL"
+          }
+        }
+      }),
+      "member": trainers.slice(0, 5).map(t => ({
+        "@type": "Person",
+        "name": t.profile?.full_name,
+        "jobTitle": "Padel Trainer"
+      }))
+    }
+  ] : undefined;
 
   if (loading) {
     return (
@@ -215,8 +262,12 @@ export default function AcademyPublicProfile() {
   return (
     <>
       <SEO
-        title={`${academy.name} - Padel Training Academy`}
-        description={academy.description || `${academy.name} - Professional padel training academy with ${trainers.length} certified trainers at ${locations.length} locations.`}
+        title={`${academy.name} - Padel Academy${locations[0]?.location?.city ? ` in ${locations[0].location.city}` : ''}`}
+        description={
+          currentLang === 'en'
+            ? `${academy.name} - Professional padel training academy with ${trainers.length} certified trainer${trainers.length !== 1 ? 's' : ''} at ${locations.length} location${locations.length !== 1 ? 's' : ''} in the Netherlands.`
+            : academy.description || `${academy.name} - Professionele padel academie met ${trainers.length} trainer${trainers.length !== 1 ? 's' : ''} op ${locations.length} locatie${locations.length !== 1 ? 's' : ''}.`
+        }
         url={`/academies/${slug}`}
         image={academy.logo_url || academy.banner_url || undefined}
         structuredData={structuredData}
@@ -236,6 +287,7 @@ export default function AcademyPublicProfile() {
         <ProfileHeroCard
           name={academy.name}
           avatarUrl={academy.logo_url}
+          avatarAlt={`${academy.name} logo`}
           isVerified={academy.is_verified}
           socialLinks={socialLinks}
           statsSlot={
@@ -299,7 +351,7 @@ export default function AcademyPublicProfile() {
             {/* About Card */}
             <Card>
               <CardHeader>
-                <CardTitle>{t('profile.about')}</CardTitle>
+                <h2 className="text-2xl font-semibold leading-none tracking-tight">{t('profile.about')}</h2>
               </CardHeader>
               <CardContent>
                 {academy.description ? (
