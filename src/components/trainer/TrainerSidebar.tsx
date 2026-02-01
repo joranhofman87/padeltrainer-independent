@@ -29,6 +29,7 @@ import {
 import {
   LayoutDashboard,
   Users,
+  User,
   FileText,
   Calendar,
   Clock,
@@ -183,6 +184,20 @@ export function TrainerSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
+              {/* My Profile - First item */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
+                  <NavLink
+                    to="/trainer/profile"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <User className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.myProfile")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               {/* Dashboard */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
