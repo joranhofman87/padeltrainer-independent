@@ -27,6 +27,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { CalendarIcon, Loader2, Upload } from "lucide-react";
+import { AdminTrainerReviewsTab } from "./AdminTrainerReviewsTab";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -302,10 +303,11 @@ export function TrainerEditDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="social">Social</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -615,6 +617,14 @@ export function TrainerEditDialog({
                 />
               </div>
             </div>
+          </TabsContent>
+
+          {/* Reviews Tab */}
+          <TabsContent value="reviews" className="mt-4">
+            <AdminTrainerReviewsTab 
+              trainerId={trainer.id} 
+              trainerName={fullName || "this trainer"} 
+            />
           </TabsContent>
 
           {/* Settings Tab */}
