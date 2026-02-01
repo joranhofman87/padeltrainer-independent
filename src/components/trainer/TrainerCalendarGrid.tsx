@@ -264,16 +264,16 @@ export function TrainerCalendarGrid({
                 })}
               </div>
             ))}
-          </div>
 
-          {/* Empty State */}
-          {slots.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
-                {t("calendar.noSlotsThisWeek")}
+            {/* Empty State */}
+            {slots.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
+                  {t("calendar.noSlotsThisWeek")}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </>
