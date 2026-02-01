@@ -1,136 +1,72 @@
 
-# Plan: Add Trainer Creation to Admin Panel
 
-## Summary
+# Plan: Reset Admin Password via Backend
 
-Add an "Add Trainer" button and dialog to the Admin Trainers page that allows administrators to create new trainer accounts directly. This will create a user account, assign the trainer role, and set up the trainer profile with configurable settings.
+## Problem
 
-## Implementation Approach
+The admin user (`info@padeltrainer.ai`) password is unknown, and the email reset flow isn't working. The existing `admin-reset-password` edge function requires admin authentication and blocks resetting other admin passwords.
 
-### 1. Create Edge Function: `create-admin-trainer`
+## Solution
 
-**File:** `supabase/functions/create-admin-trainer/index.ts`
+I'll create a temporary edge function that can reset the admin password using the service role key, bypassing the authentication requirement. After the password is reset, you should delete or disable this function for security.
 
-This edge function will:
-- Verify the caller is an admin user
-- Create a new user account with a temporary password (or link existing user)
-- Create the profile with the provided name
-- Assign the "trainer" role in `user_roles`
-- Create the `trainer_profiles` record with trial dates
-- Return the trainer ID and temporary password
+## Implementation
 
-```text
-Request Body:
-- email (required)
-- fullName (required)  
-- phone (optional)
-- subscriptionStatus: 'trial' | 'active' | 'inactive' (optional, default: 'trial')
-- isPublic: boolean (optional, default: false)
+### New Edge Function: `bootstrap-admin-password`
 
-Response:
-- success: boolean
-- trainerId: string
-- temporaryPassword: string | null
-- isNewUser: boolean
+**File:** `supabase/functions/bootstrap-admin-password/index.ts`
+
+This function will:
+1. Accept a secret key (must match a secret we set) to prevent unauthorized use
+2. Look up the admin user by email
+3. Reset their password to a new value you provide
+4. Return success
+
+```typescript
+// Simplified logic:
+// 1. Verify bootstrap secret matches environment variable
+// 2. Find user by email
+// 3. Use auth.admin.updateUserById to set new password
+// 4. Return success
 ```
 
-### 2. Create Dialog Component: `AddTrainerDialog`
+### Configuration
 
-**File:** `src/components/admin/AddTrainerDialog.tsx`
-
-Form fields:
-- Full Name (required)
-- Email (required)
-- Phone (optional)
-- Subscription Status dropdown (Trial / Active / Inactive)
-- Is Public toggle
-
-After successful creation:
-- Show success toast with temporary password (if new user)
-- Provide copy button for the password
-- Refresh the trainers list
-
-### 3. Update Admin Trainers Page
-
-**File:** `src/pages/admin/AdminTrainers.tsx`
-
-Add:
-- "Add Trainer" button in the page header
-- Import and render `AddTrainerDialog`
-- State for dialog open/close
-
-## Visual Design
-
-The page header will look like this after the change:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Trainer Management                         [+ Add Trainer]    │
-│  View and manage trainer subscriptions                         │
-└─────────────────────────────────────────────────────────────────┘
+**File:** `supabase/config.toml` (add entry)
+```toml
+[functions.bootstrap-admin-password]
+verify_jwt = false
 ```
 
-The dialog will follow the same pattern as `AddAcademyDialog`:
+### Security Measures
 
-```text
-┌───────────────────────────────────────────────────┐
-│  Add Trainer                               [X]    │
-│  Create a new trainer account                     │
-├───────────────────────────────────────────────────┤
-│                                                   │
-│  Full Name *                                      │
-│  [________________________________]               │
-│                                                   │
-│  Email *                                          │
-│  [________________________________]               │
-│                                                   │
-│  Phone                                            │
-│  [________________________________]               │
-│                                                   │
-│  Subscription Status                              │
-│  [Trial                        ▼]                 │
-│                                                   │
-│  Public Profile                    [  ]           │
-│  Visible in the trainer directory                 │
-│                                                   │
-├───────────────────────────────────────────────────┤
-│                    [Cancel]  [Create Trainer]     │
-└───────────────────────────────────────────────────┘
+- Requires a `BOOTSTRAP_SECRET` that only you know
+- Function should be deleted after use
+- Logs the action for audit purposes
+
+## Usage After Implementation
+
+You'll call the function directly with:
+```bash
+curl -X POST "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/bootstrap-admin-password" \
+  -H "Content-Type: application/json" \
+  -d '{"secret": "YOUR_BOOTSTRAP_SECRET", "email": "info@padeltrainer.ai", "new_password": "YourNewSecurePassword123!"}'
 ```
 
-## Technical Details
+Or I can test it for you using the edge function testing tool after deployment.
 
-### Edge Function Logic
-
-The edge function will mirror the `create-club-trainer` function but with admin-level permissions:
-
-1. **Auth Check**: Verify caller is admin via `is_admin()` database function
-2. **User Creation**: 
-   - Check if email exists → reuse existing user
-   - If new → create user with `auth.admin.createUser()` and temporary password
-3. **Profile Setup**:
-   - Update `profiles` table with name/phone
-   - Insert into `user_roles` with role = 'trainer'
-   - Insert into `trainer_profiles` with trial dates and subscription status
-4. **Return**: Trainer ID, temp password (if new), and success status
-
-### Password Handling
-
-When a new trainer is created, the dialog will:
-1. Show the temporary password in a highlighted box
-2. Provide a "Copy Password" button
-3. Display instructions to share the password securely
-
-## File Changes
+## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/create-admin-trainer/index.ts` | New edge function for admin trainer creation |
-| `src/components/admin/AddTrainerDialog.tsx` | New dialog component with form |
-| `src/pages/admin/AdminTrainers.tsx` | Add button and dialog integration |
+| `supabase/functions/bootstrap-admin-password/index.ts` | New temporary edge function |
+| `supabase/config.toml` | Add function config with `verify_jwt = false` |
 
-## Security Considerations
+## Post-Reset Cleanup
 
-- Edge function validates admin status server-side using `is_admin()` RPC
-- Temporary passwords are generated with sufficient entropy (12 chars, mixed case + numbers + symbols)
-- Password is only shown once in the UI and must be copied immediately
+After successfully resetting the password:
+1. Delete `supabase/functions/bootstrap-admin-password/index.ts`
+2. Remove entry from `supabase/config.toml`
+
+This ensures no security vulnerability remains.
+
