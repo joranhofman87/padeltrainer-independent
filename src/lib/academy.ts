@@ -800,11 +800,11 @@ export async function getAcademyTrainersWithProfiles(academyProfileId: string): 
 
   if (!data || data.length === 0) return [];
 
-  // Batch fetch profiles
+  // Batch fetch profiles with rating data
   const userIds = data.map((t: any) => t.trainer_profile?.user_id).filter(Boolean);
   const { data: profiles } = await supabase
     .from('profiles_public')
-    .select('user_id, full_name, avatar_url')
+    .select('user_id, full_name, avatar_url, skill_rating, rating_system')
     .in('user_id', userIds);
 
   const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
