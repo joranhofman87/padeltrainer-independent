@@ -2434,6 +2434,7 @@ export type Database = {
           is_public: boolean
           player_id: string
           rating: number
+          reviewer_name: string | null
           trainer_id: string
           updated_at: string
         }
@@ -2446,6 +2447,7 @@ export type Database = {
           is_public?: boolean
           player_id: string
           rating: number
+          reviewer_name?: string | null
           trainer_id: string
           updated_at?: string
         }
@@ -2458,6 +2460,7 @@ export type Database = {
           is_public?: boolean
           player_id?: string
           rating?: number
+          reviewer_name?: string | null
           trainer_id?: string
           updated_at?: string
         }
