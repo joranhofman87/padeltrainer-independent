@@ -121,3 +121,29 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
   if (error || !data) return false;
   return data.length > 0;
 }
+
+export async function bulkCleanupUsers(): Promise<{
+  success: boolean;
+  message: string;
+  deleted?: string[];
+  errors?: string[];
+}> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await supabase.functions.invoke("bulk-cleanup-users", {
+    body: { confirm: true },
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Failed to cleanup users");
+  }
+
+  return response.data;
+}
