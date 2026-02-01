@@ -1,83 +1,72 @@
 
-# Fix Magic Link Impersonation - Explicit Token Exchange
+# Fix: Respect Manual Subscription Status Set by Admin
 
-## Problem Analysis
-The magic link impersonation flow is failing because:
+## Problem
+Rene's trainer profile was manually set to `subscription_status = 'active'` via the admin panel. However, the trial expired banner still shows because:
 
-1. When an admin clicks "Login as User", the edge function generates a magic link URL pointing to Supabase's auth server
-2. Supabase verifies the token and redirects to `/auth#access_token=...&refresh_token=...&type=bearer`
-3. The current code calls `getSession()` which reads from localStorage (the admin's old session), not from the URL hash
-4. The Supabase client's auto-detection isn't triggering because the page loads with an existing session in localStorage
+1. The `check-trainer-subscription` edge function determines `isSubscribed` by querying **Stripe** for active subscriptions
+2. Since Rene doesn't have an actual Stripe subscription, the function returns `subscribed: false`
+3. The TrainerDashboard shows the trial banner when `subscription.isSubscribed` is `false`
 
-## Root Cause
-The current implementation assumes `getSession()` will process URL hash tokens, but it doesn't. The Supabase client's `detectSessionInUrl` feature works by detecting the hash and triggering an internal token exchange, but this can conflict with existing sessions in localStorage.
+**Database shows:**
+- `subscription_status: active`
+- `trial_ends_at: null`
+- `is_public: true`
+
+**But the edge function ignores `subscription_status` and only checks Stripe.**
 
 ## Solution
-Explicitly extract tokens from the URL hash and call `supabase.auth.setSession()` to override any existing session. This is the recommended approach from Supabase documentation for handling magic links in SPAs.
+Update the `check-trainer-subscription` edge function to respect the database `subscription_status` field when no Stripe subscription exists. This allows admins to manually grant access.
 
-### Changes to Auth.tsx
-
-Replace the current passive token detection with active token extraction and session setting:
-
-```typescript
-useEffect(() => {
-  const hashParams = new URLSearchParams(window.location.hash.substring(1));
-  const accessToken = hashParams.get('access_token');
-  const refreshToken = hashParams.get('refresh_token');
-  
-  if (accessToken && refreshToken) {
-    setIsProcessingMagicLink(true);
-    // Explicitly set the session with tokens from URL hash
-    supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    }).then(({ data, error }) => {
-      if (error) {
-        console.error('Failed to set session from magic link:', error);
-        toast({
-          title: 'Login failed',
-          description: 'The login link may have expired. Please try again.',
-          variant: 'destructive',
-        });
-      }
-      // Clear the hash from URL for cleaner UX
-      window.history.replaceState(null, '', window.location.pathname);
-      setIsProcessingMagicLink(false);
-    });
-  }
-}, []);
+### Logic Change
+```text
+1. Fetch trainer profile from database (already done)
+2. Query Stripe for active subscription
+3. If Stripe has active subscription → use Stripe data
+4. ELSE IF database subscription_status = 'active' → mark as subscribed (admin override)
+5. ELSE → use trial/default logic
 ```
-
-## Technical Details
-
-| Step | Current Behavior | Fixed Behavior |
-|------|-----------------|----------------|
-| URL Hash Detection | Calls `getSession()` which reads localStorage | Parses hash for `access_token` and `refresh_token` |
-| Session Setting | Relies on implicit auto-detection | Explicitly calls `setSession()` with tokens |
-| Error Handling | None | Shows toast if session setting fails |
-| Session Override | May not override existing localStorage session | Explicitly sets new session, overriding any existing |
 
 ## Files to Change
 
 | File | Changes |
 |------|---------|
-| `src/pages/Auth.tsx` | Update magic link detection useEffect to explicitly extract tokens and call `setSession()` instead of just `getSession()` |
+| `supabase/functions/check-trainer-subscription/index.ts` | Add fallback check for database `subscription_status = 'active'` when no Stripe subscription found |
 
-## Flow After Fix
+## Implementation Details
 
-```text
-1. Admin clicks "Login as User"
-2. Edge function generates magic link → opens in new tab
-3. Supabase auth server verifies token → redirects to /auth#access_token=...
-4. Auth.tsx detects hash tokens → calls setSession() with extracted tokens
-5. New session established → onAuthStateChange fires → user redirected to dashboard
-6. URL hash cleared for clean UX
+In the edge function, after checking Stripe subscriptions:
+
+```typescript
+const hasActiveSub = subscriptions.data.length > 0;
+let productId: string | null = null;
+let tier = 'trial';
+let subscriptionEnd: string | null = null;
+
+// NEW: Check for admin-granted subscription status
+const hasAdminGrantedAccess = trainerProfile?.subscription_status === 'active';
+
+if (hasActiveSub) {
+  // Existing Stripe logic
+  const subscription = subscriptions.data[0];
+  subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
+  productId = subscription.items.data[0].price.product as string;
+  tier = await getTierFromDB(supabaseClient, productId);
+} else if (hasAdminGrantedAccess) {
+  // Admin manually set status to active - grant access without Stripe
+  tier = 'professional'; // Default tier for admin-granted subscriptions
+  logStep("Admin-granted subscription detected", { subscription_status: trainerProfile.subscription_status });
+}
+
+return new Response(JSON.stringify({
+  subscribed: hasActiveSub || hasAdminGrantedAccess,  // ← Key change
+  tier,
+  // ... rest unchanged
+}));
 ```
 
-## Alternative Approaches Considered
-
-1. **Enable `detectSessionInUrl` explicitly** - Already enabled by default, issue is with existing sessions
-2. **Use PKCE flow instead of magic link** - More complex, requires code exchange
-3. **Sign out before processing magic link** - Could work but poor UX if something fails
-
-The explicit `setSession()` approach is cleanest and matches Supabase's recommended pattern for React Native and other SPAs.
+## Testing
+After implementation:
+1. Refresh Rene's dashboard
+2. The trial expired banner should no longer appear
+3. The subscription page should show "Current Plan: professional" (or similar)
