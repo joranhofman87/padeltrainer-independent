@@ -1928,6 +1928,143 @@ export type Database = {
         }
         Relationships: []
       }
+      onboarding_email_logs: {
+        Row: {
+          email: string
+          id: string
+          queue_id: string | null
+          sent_at: string
+          status: string
+          subject: string
+          template_id: string
+          user_id: string
+        }
+        Insert: {
+          email: string
+          id?: string
+          queue_id?: string | null
+          sent_at?: string
+          status: string
+          subject: string
+          template_id: string
+          user_id: string
+        }
+        Update: {
+          email?: string
+          id?: string
+          queue_id?: string | null
+          sent_at?: string
+          status?: string
+          subject?: string
+          template_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_email_logs_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_email_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_email_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_email_queue: {
+        Row: {
+          created_at: string
+          email: string
+          error_message: string | null
+          id: string
+          scheduled_for: string
+          sent_at: string | null
+          status: string
+          template_id: string
+          user_id: string
+          user_name: string
+          user_type: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          error_message?: string | null
+          id?: string
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string
+          template_id: string
+          user_id: string
+          user_name: string
+          user_type: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          error_message?: string | null
+          id?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string
+          template_id?: string
+          user_id?: string
+          user_name?: string
+          user_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_email_queue_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_email_templates: {
+        Row: {
+          body_html: string
+          created_at: string
+          delay_days: number
+          id: string
+          is_active: boolean
+          name: string
+          subject: string
+          trigger_type: string
+          updated_at: string
+          user_type: string
+        }
+        Insert: {
+          body_html: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          subject: string
+          trigger_type: string
+          updated_at?: string
+          user_type: string
+        }
+        Update: {
+          body_html?: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          subject?: string
+          trigger_type?: string
+          updated_at?: string
+          user_type?: string
+        }
+        Relationships: []
+      }
       player_locations: {
         Row: {
           created_at: string
@@ -3356,6 +3493,16 @@ export type Database = {
       }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
+      queue_onboarding_emails: {
+        Args: {
+          p_email: string
+          p_trigger_type: string
+          p_user_id: string
+          p_user_name: string
+          p_user_type: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role:
