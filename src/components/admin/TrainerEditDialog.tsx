@@ -205,35 +205,21 @@ export function TrainerEditDialog({
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      // Update profiles table (user info)
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
+      // Update profile via edge function (has service role access)
+      const { error: profileError } = await supabase.functions.invoke("update-user", {
+        body: {
+          target_user_id: trainer.user_id,
+          email: email && email !== trainer.email ? email.trim().toLowerCase() : undefined,
           full_name: fullName || null,
           phone: phone || null,
           bio: bio || null,
           avatar_url: avatarUrl || null,
-        })
-        .eq("user_id", trainer.user_id);
+        },
+      });
 
-      if (profileError) throw profileError;
-
-      // Update email via edge function if changed
-      if (email && email !== trainer.email) {
-        const { error: emailError } = await supabase.functions.invoke("update-user", {
-          body: {
-            target_user_id: trainer.user_id,
-            email: email.trim().toLowerCase(),
-          },
-        });
-        if (emailError) {
-          console.error("Error updating email:", emailError);
-          toast({
-            title: "Warning",
-            description: "Profile updated but email change failed. You may need admin privileges.",
-            variant: "destructive",
-          });
-        }
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+        throw new Error("Failed to update profile");
       }
 
       // Update trainer_profiles table
