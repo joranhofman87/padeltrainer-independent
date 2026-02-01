@@ -107,6 +107,10 @@ export interface TrainerProfileAdmin {
   avatar_url: string | null;
   phone: string | null;
   bio: string | null;
+  // Rating fields
+  skill_rating: number | null;
+  rating_system: string | null;
+  rating_member_id: string | null;
   // Trainer specific fields
   hourly_rate: number | null;
   experience_years: number | null;
@@ -157,7 +161,7 @@ export function useAdminTrainers() {
       const userIds = trainers.map((t) => t.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("user_id, full_name, email, avatar_url, phone, bio")
+        .select("user_id, full_name, email, avatar_url, phone, bio, skill_rating, rating_system, rating_member_id")
         .in("user_id", userIds);
 
       if (profilesError) throw profilesError;
@@ -177,6 +181,9 @@ export function useAdminTrainers() {
           avatar_url: profile?.avatar_url || null,
           phone: profile?.phone || null,
           bio: profile?.bio || null,
+          skill_rating: profile?.skill_rating || null,
+          rating_system: profile?.rating_system || null,
+          rating_member_id: profile?.rating_member_id || null,
           // Legacy profile object
           profile: profile ? {
             full_name: profile.full_name,
