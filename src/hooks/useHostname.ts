@@ -19,7 +19,7 @@ export function useHostname() {
   
   // Development: allow override via query param or default to marketing
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  const isLovablePreview = hostname.includes('.lovable.app');
+  const isLovablePreview = hostname.includes('.lovable.app') || hostname.includes('.lovableproject.com');
   const searchParams = new URLSearchParams(window.location.search);
   const forceApp = searchParams.get('app') === 'true';
   
@@ -47,7 +47,7 @@ export function getHostnameInfo() {
                             hostname === 'www.padeltrainer.ai';
   
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  const isLovablePreview = hostname.includes('.lovable.app');
+  const isLovablePreview = hostname.includes('.lovable.app') || hostname.includes('.lovableproject.com');
   const searchParams = new URLSearchParams(window.location.search);
   const forceApp = searchParams.get('app') === 'true';
   
