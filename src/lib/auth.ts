@@ -34,43 +34,49 @@ export interface TrainerProfile {
 }
 
 export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: getAuthRedirectUrl(),
-      data: {
-        full_name: fullName,
-        phone: phone,
+  // Use custom edge function to create user with Admin API
+  // This bypasses Supabase's automatic email and sends our branded email instead
+  try {
+    const { data: response, error: invokeError } = await supabase.functions.invoke('signup-user', {
+      body: {
+        email,
+        password,
+        fullName,
+        phone,
+        redirectTo: getAuthRedirectUrl('/auth'),
       },
-    },
-  });
-  
-  // Update profile with phone number after signup
-  if (data.user && phone) {
-    await supabase
-      .from('profiles')
-      .update({ phone })
-      .eq('user_id', data.user.id);
-  }
-  
-  // Send custom verification email via our edge function (branded from padeltrainer.ai)
-  if (data.user && !error) {
-    try {
-      await supabase.functions.invoke('send-auth-email', {
-        body: {
-          type: 'email_verification',
-          email,
-          redirectTo: getAuthRedirectUrl('/auth'),
-        },
-      });
-    } catch (emailError) {
-      console.error('Failed to send custom verification email:', emailError);
-      // Don't fail signup if email fails - Supabase will send default email as fallback
+    });
+
+    if (invokeError) {
+      console.error('Signup function error:', invokeError);
+      return { 
+        data: { user: null, session: null }, 
+        error: { message: invokeError.message || 'Failed to create account', name: 'SignupError' } as any 
+      };
     }
+
+    if (response?.error) {
+      return { 
+        data: { user: null, session: null }, 
+        error: { message: response.error, name: 'SignupError' } as any 
+      };
+    }
+
+    // User created successfully, return user data (no session yet - needs email verification)
+    return { 
+      data: { 
+        user: response?.user || null, 
+        session: null // No session until email is verified
+      }, 
+      error: null 
+    };
+  } catch (err: any) {
+    console.error('Signup error:', err);
+    return { 
+      data: { user: null, session: null }, 
+      error: { message: err.message || 'Failed to create account', name: 'SignupError' } as any 
+    };
   }
-  
-  return { data, error };
 }
 
 export async function signInWithEmail(email: string, password: string) {
