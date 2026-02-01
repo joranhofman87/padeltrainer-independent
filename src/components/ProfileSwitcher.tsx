@@ -37,6 +37,8 @@ interface ProfileSwitcherProps {
   onClubChange?: (club: ClubWithLocation) => void;
   /** Callback when academy is changed (only used in academy context) */
   onAcademyChange?: (academy: AcademyWithRole) => void;
+  /** Whether the sidebar is collapsed (icon-only mode) */
+  collapsed?: boolean;
 }
 
 export function ProfileSwitcher({ 
@@ -45,6 +47,7 @@ export function ProfileSwitcher({
   activeAcademyId,
   onClubChange,
   onAcademyChange,
+  collapsed = false,
 }: ProfileSwitcherProps) {
   const { t } = useTranslation('common');
   const navigate = useNavigate();
@@ -149,17 +152,24 @@ export function ProfileSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="flex items-center gap-2 h-auto py-1.5 px-2">
+        <Button 
+          variant="ghost" 
+          className={collapsed ? "h-9 w-9 p-0" : "flex items-center gap-2 h-auto py-1.5 px-2 w-full justify-start"}
+        >
           <Avatar className="h-7 w-7">
             <AvatarImage src={displayAvatar || undefined} />
             <AvatarFallback className="text-xs bg-primary/10 text-primary">
               {initials}
             </AvatarFallback>
           </Avatar>
-          <span className="font-medium text-sm hidden sm:inline max-w-[120px] truncate">
-            {displayName}
-          </span>
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          {!collapsed && (
+            <>
+              <span className="font-medium text-sm max-w-[120px] truncate">
+                {displayName}
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground ml-auto" />
+            </>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

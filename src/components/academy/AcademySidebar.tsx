@@ -395,6 +395,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
             context="academy" 
             activeAcademyId={academy?.id}
             onAcademyChange={onAcademyChange}
+            collapsed={collapsed}
           />
           
           {/* View Public Profile */}

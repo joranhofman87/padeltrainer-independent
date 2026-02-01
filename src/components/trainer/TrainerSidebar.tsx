@@ -485,7 +485,7 @@ export function TrainerSidebar() {
           collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
         )}>
           {/* Profile Switcher for clubs/academies */}
-          <ProfileSwitcher context="trainer" />
+          <ProfileSwitcher context="trainer" collapsed={collapsed} />
           
           {/* View Public Profile */}
           {trainerProfileId && (
