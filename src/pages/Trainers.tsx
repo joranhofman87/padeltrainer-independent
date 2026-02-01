@@ -10,7 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight } from 'lucide-react';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getBatchTrainerRatings } from '@/lib/reviews';
@@ -30,7 +31,7 @@ import {
 } from '@/components/ui/pagination';
 
 const TRAINERS_PER_PAGE = 48;
-const MAX_FEATURED = 8;
+const MAX_FEATURED = 6;
 
 interface TrainerWithProfile {
   id: string;
@@ -67,6 +68,7 @@ export default function Trainers() {
   const [allCertifications, setAllCertifications] = useState<string[]>([]);
   const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
   const [ratingSystems, setRatingSystems] = useState<RatingSystem[]>([]);
+  const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
@@ -495,102 +497,122 @@ export default function Trainers() {
 
         {/* Featured Trainers Section */}
         {!loading && featuredTrainers.length > 0 && !searchQuery && activeFilterCount === 0 && (
-          <FeaturedSection
-            title={t('common:featured.trainers')}
-            description={t('common:featured.trainersDescription')}
-            className="mb-8"
-          >
-            {featuredTrainers.map((trainer) => (
-              <Card 
-                key={trainer.id} 
-                className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[280px] lg:w-auto flex-shrink-0"
-                onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="h-14 w-14">
-                      <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                      <AvatarFallback className="text-lg">
-                        {getInitials(trainer.profile?.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <CardTitle className="text-base truncate">
-                          {trainer.profile?.full_name || 'Trainer'}
-                        </CardTitle>
-                        {trainer.is_verified && (
-                          <Badge variant="secondary" className="shrink-0 text-xs">
-                            Verified
-                          </Badge>
-                        )}
-                        <div className="ml-auto">
-                          <FollowButton trainerProfileId={trainer.id} />
-                        </div>
-                      </div>
-                      {trainer.profile?.location && (
-                        <CardDescription className="flex items-center gap-1 mt-1 text-xs">
-                          <MapPin className="h-3 w-3" />
-                          {trainer.profile.location}
-                        </CardDescription>
-                      )}
-                      {trainer.reviewCount > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({trainer.reviewCount})
-                          </span>
-                        </div>
-                      )}
-                    </div>
+          <Collapsible open={featuredOpen} onOpenChange={setFeaturedOpen} className="mb-8">
+            <section className="py-6 px-4 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 rounded-xl border border-primary/10">
+              <CollapsibleTrigger asChild>
+                <button className="w-full flex items-center justify-between gap-2 cursor-pointer group">
+                  <div className="flex items-center gap-2">
+                    <Star className="h-5 w-5 text-primary fill-primary/50" />
+                    <h2 className="text-lg font-semibold">{t('common:featured.trainers')}</h2>
+                    <span className="text-sm text-muted-foreground">
+                      ({featuredTrainers.length})
+                    </span>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-0">
-                  {trainer.profile?.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {trainer.profile.bio}
-                    </p>
-                  )}
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">
-                        €{trainer.hourly_rate}/hr
-                      </span>
-                    )}
-                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                      {trainer.knltb_rating && trainer.trainer_rating_system && (
-                        <span className="font-medium text-foreground">
-                          {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
-                        </span>
-                      )}
-                      {trainer.experience_years && (
-                        <span>
-                          {trainer.experience_years}y exp
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${featuredOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent>
+                <p className="text-sm text-muted-foreground mt-2 mb-4">
+                  {t('common:featured.trainersDescription')}
+                </p>
+                <div className="overflow-x-auto pb-2 -mx-4 px-4">
+                  <div className="flex gap-6 min-w-max lg:grid lg:grid-cols-3 lg:min-w-0">
+                    {featuredTrainers.map((trainer) => (
+                      <Card 
+                        key={trainer.id} 
+                        className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[280px] lg:w-auto flex-shrink-0"
+                        onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start gap-4">
+                            <Avatar className="h-14 w-14">
+                              <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                              <AvatarFallback className="text-lg">
+                                {getInitials(trainer.profile?.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <CardTitle className="text-base truncate">
+                                  {trainer.profile?.full_name || 'Trainer'}
+                                </CardTitle>
+                                {trainer.is_verified && (
+                                  <Badge variant="secondary" className="shrink-0 text-xs">
+                                    Verified
+                                  </Badge>
+                                )}
+                                <div className="ml-auto">
+                                  <FollowButton trainerProfileId={trainer.id} />
+                                </div>
+                              </div>
+                              {trainer.profile?.location && (
+                                <CardDescription className="flex items-center gap-1 mt-1 text-xs">
+                                  <MapPin className="h-3 w-3" />
+                                  {trainer.profile.location}
+                                </CardDescription>
+                              )}
+                              {trainer.reviewCount > 0 && (
+                                <div className="flex items-center gap-1 mt-1">
+                                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                  <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    ({trainer.reviewCount})
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3 pt-0">
+                          {trainer.profile?.bio && (
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {trainer.profile.bio}
+                            </p>
+                          )}
+                          
+                          <div className="flex items-center justify-between text-sm">
+                            {trainer.hourly_rate && (
+                              <span className="font-semibold text-primary">
+                                €{trainer.hourly_rate}/hr
+                              </span>
+                            )}
+                            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                              {trainer.knltb_rating && trainer.trainer_rating_system && (
+                                <span className="font-medium text-foreground">
+                                  {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
+                                </span>
+                              )}
+                              {trainer.experience_years && (
+                                <span>
+                                  {trainer.experience_years}y exp
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                  {trainer.specializations && trainer.specializations.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {trainer.specializations.slice(0, 2).map((spec, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          {spec}
-                        </Badge>
-                      ))}
-                      {trainer.specializations.length > 2 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{trainer.specializations.length - 2}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </FeaturedSection>
+                          {trainer.specializations && trainer.specializations.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {trainer.specializations.slice(0, 2).map((spec, i) => (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {spec}
+                                </Badge>
+                              ))}
+                              {trainer.specializations.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{trainer.specializations.length - 2}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </section>
+          </Collapsible>
         )}
 
         {/* Search and Sort */}
