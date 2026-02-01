@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown, MessageSquare, CalendarCheck, Clock } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
@@ -53,6 +53,7 @@ interface TrainerWithProfile {
   } | null;
   averageRating: number;
   reviewCount: number;
+  hasAvailability: boolean;
 }
 
 type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
@@ -292,6 +293,20 @@ export default function Trainers() {
     // Batch fetch ratings for all trainers (single query instead of N+1)
     const ratingsMap = await getBatchTrainerRatings(trainerIds);
 
+    // Fetch availability data to check which trainers have upcoming open slots
+    const availabilityNow = new Date().toISOString();
+    const { data: availabilityData } = await supabase
+      .from('availability_slots')
+      .select('trainer_id')
+      .in('trainer_id', trainerIds)
+      .gt('start_time', availabilityNow)
+      .is('lesson_id', null);
+
+    // Build a Set of trainer IDs with availability
+    const trainersWithAvailability = new Set(
+      availabilityData?.map(a => a.trainer_id) || []
+    );
+
     const trainersWithRatings = trainerProfiles.map(trainer => {
       const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
       return {
@@ -299,6 +314,7 @@ export default function Trainers() {
         profile: profiles.find(p => p.user_id === trainer.user_id) || null,
         averageRating: ratings.average,
         reviewCount: ratings.count,
+        hasAvailability: trainersWithAvailability.has(trainer.id),
       };
     });
 
@@ -552,15 +568,29 @@ export default function Trainers() {
                                   {trainer.profile.location}
                                 </CardDescription>
                               )}
-                              {trainer.reviewCount > 0 && (
-                                <div className="flex items-center gap-1 mt-1">
+                              {/* Always-visible Info Row */}
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
                                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                  <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    ({trainer.reviewCount})
+                                  <span className={trainer.reviewCount > 0 ? 'font-medium text-foreground' : ''}>
+                                    {trainer.reviewCount > 0 ? trainer.averageRating.toFixed(1) : '-'}
                                   </span>
                                 </div>
-                              )}
+                                <div className="flex items-center gap-1">
+                                  <MessageSquare className="h-3 w-3" />
+                                  <span>{trainer.reviewCount > 0 ? trainer.reviewCount : '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <CalendarCheck className="h-3 w-3" />
+                                  <span className={trainer.hasAvailability ? 'text-green-600 font-medium' : ''}>
+                                    {trainer.hasAvailability ? 'Yes' : 'No'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{trainer.experience_years ? `${trainer.experience_years}y` : '-'}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </CardHeader>
@@ -581,11 +611,6 @@ export default function Trainers() {
                               {trainer.knltb_rating && trainer.trainer_rating_system && (
                                 <span className="font-medium text-foreground">
                                   {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
-                                </span>
-                              )}
-                              {trainer.experience_years && (
-                                <span>
-                                  {trainer.experience_years}y exp
                                 </span>
                               )}
                             </div>
@@ -710,15 +735,29 @@ export default function Trainers() {
                           {trainer.profile.location}
                         </CardDescription>
                       )}
-                      {trainer.reviewCount > 0 && (
-                        <div className="flex items-center gap-1 mt-1">
+                      {/* Always-visible Info Row */}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
                           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({trainer.reviewCount})
+                          <span className={trainer.reviewCount > 0 ? 'font-medium text-foreground' : ''}>
+                            {trainer.reviewCount > 0 ? trainer.averageRating.toFixed(1) : '-'}
                           </span>
                         </div>
-                      )}
+                        <div className="flex items-center gap-1">
+                          <MessageSquare className="h-3 w-3" />
+                          <span>{trainer.reviewCount > 0 ? trainer.reviewCount : '-'}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <CalendarCheck className="h-3 w-3" />
+                          <span className={trainer.hasAvailability ? 'text-green-600 font-medium' : ''}>
+                            {trainer.hasAvailability ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{trainer.experience_years ? `${trainer.experience_years}y` : '-'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -739,11 +778,6 @@ export default function Trainers() {
                       {trainer.knltb_rating && trainer.trainer_rating_system && (
                         <span className="font-medium text-foreground">
                           {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
-                        </span>
-                      )}
-                      {trainer.experience_years && (
-                        <span>
-                          {trainer.experience_years}y exp
                         </span>
                       )}
                     </div>
