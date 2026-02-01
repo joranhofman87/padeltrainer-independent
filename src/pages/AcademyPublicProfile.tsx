@@ -39,6 +39,7 @@ import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
+import { getMarketingUrl } from '@/lib/domains';
 
 interface TrainerData {
   id: string;
@@ -88,7 +89,7 @@ export default function AcademyPublicProfile() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const profileUrl = `${window.location.origin}/${currentLang}/academies/${slug}`;
+  const profileUrl = getMarketingUrl(`academies/${slug}`, currentLang);
 
   useEffect(() => {
     async function fetchData() {

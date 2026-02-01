@@ -29,6 +29,7 @@ import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { getTrainerAcademy, type AcademyProfile } from '@/lib/academy';
 import { toast } from 'sonner';
+import { getMarketingUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
 import {
   ProfileLayout,
@@ -118,7 +119,7 @@ export default function TrainerProfile() {
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
-  const profileUrl = `${window.location.origin}/${currentLang}/trainer/${trainerId}`;
+  const profileUrl = getMarketingUrl(`trainer/${trainerId}`, currentLang);
   const trainerName = profile?.full_name || 'Trainer';
 
   const handleCopyLink = async () => {

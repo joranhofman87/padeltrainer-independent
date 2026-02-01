@@ -15,6 +15,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
+import { getMarketingUrl } from '@/lib/domains';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -206,11 +207,11 @@ export default function ClubLayout() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'en';
-                      window.open(`${window.location.origin}/${lang}/locations/${activeClub.location.slug}`, '_blank');
-                    }}
-                  >
+                  onClick={() => {
+                    const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'nl';
+                    window.open(getMarketingUrl(`locations/${activeClub.location.slug}`, lang), '_blank');
+                  }}
+                >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     {t('dashboard.viewPublicProfile')}
                   </Button>

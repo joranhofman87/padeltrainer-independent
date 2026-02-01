@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { inviteAcademyTrainer } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
+import { getAppUrl } from '@/lib/domains';
 
 interface InviteAcademyTrainerDialogProps {
   academyProfileId: string;
@@ -63,7 +64,7 @@ export function InviteAcademyTrainerDialog({
       }
 
       // Send invitation email
-      const inviteLink = `${window.location.origin}/academy/invitation/${result.invitation?.token}`;
+      const inviteLink = getAppUrl(`/academy/invitation/${result.invitation?.token}`);
       await sendEmail('academy_trainer_invitation', email, {
         academyName,
         inviterName,

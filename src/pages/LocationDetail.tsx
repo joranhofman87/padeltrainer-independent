@@ -38,6 +38,7 @@ import {
   ProfileHeroCard,
   ProfileQuickStatsCard,
 } from '@/components/profiles';
+import { getMarketingUrl } from '@/lib/domains';
 
 interface TrainerWithProfile {
   id: string;
@@ -103,7 +104,7 @@ export default function LocationDetail() {
   const [similarLogos, setSimilarLogos] = useState<Record<string, string>>({});
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
-  const profileUrl = location ? `${window.location.origin}/${currentLang}/locations/${slug}` : '';
+  const profileUrl = location ? getMarketingUrl(`locations/${slug}`, currentLang) : '';
 
   useEffect(() => {
     async function fetchData() {

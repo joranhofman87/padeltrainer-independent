@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { inviteClubTrainer } from '@/lib/club';
 import { sendEmail } from '@/lib/email';
+import { getAppUrl } from '@/lib/domains';
 
 interface InviteClubTrainerDialogProps {
   clubProfileId: string;
@@ -60,7 +61,7 @@ export function InviteClubTrainerDialog({
       }
 
       // Send invitation email
-      const inviteLink = `${window.location.origin}/club/invitation/${result.invitation?.token}`;
+      const inviteLink = getAppUrl(`/club/invitation/${result.invitation?.token}`);
       await sendEmail('club_trainer_invitation', email, {
         clubName,
         locationName,
