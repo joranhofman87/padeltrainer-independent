@@ -27,7 +27,8 @@ export default function PlayerLayout() {
         navigate('/auth');
       } else if (!role) {
         navigate('/select-role');
-      } else if (role !== 'player') {
+      } else if (role !== 'player' && role !== 'admin') {
+        // Allow admins to access player dashboard (they may also be players)
         navigate('/trainer');
       }
     }
