@@ -888,13 +888,12 @@ export default function EditProfile() {
                       <div className="space-y-2">
                         <Label htmlFor="trainer_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
                         <Select
-                          value={trainerData.trainer_rating_system}
+                          value={formData.rating_system}
                           onValueChange={(value) => {
-                            const system = ratingSystems.find(s => s.code === value);
-                            setTrainerData({ 
-                              ...trainerData, 
-                              trainer_rating_system: value,
-                              knltb_rating: null, // Reset rating when system changes
+                            setFormData({ 
+                              ...formData, 
+                              rating_system: value,
+                              skill_rating: '', // Reset rating when system changes
                             });
                           }}
                           disabled={loadingRatingSystems}
@@ -914,27 +913,26 @@ export default function EditProfile() {
                       <div className="space-y-2">
                         <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">Rating</Label>
                         {(() => {
-                          const trainerRatingSystem = ratingSystems.find(s => s.code === trainerData.trainer_rating_system);
                           return (
                             <>
                               <Input
                                 id="trainer_rating"
                                 type="number"
-                                step={trainerRatingSystem?.step || 0.1}
-                                min={trainerRatingSystem?.min_rating || 0.1}
-                                max={trainerRatingSystem?.max_rating || 10}
-                                value={trainerData.knltb_rating || ''}
-                                onChange={(e) => setTrainerData({ 
-                                  ...trainerData, 
-                                  knltb_rating: e.target.value ? parseFloat(e.target.value) : null 
+                                step={currentRatingSystem?.step || 0.1}
+                                min={currentRatingSystem?.min_rating || 0.1}
+                                max={currentRatingSystem?.max_rating || 10}
+                                value={formData.skill_rating}
+                                onChange={(e) => setFormData({ 
+                                  ...formData, 
+                                  skill_rating: e.target.value 
                                 })}
-                                placeholder={trainerRatingSystem?.max_rating?.toString() || ''}
-                                disabled={!trainerRatingSystem}
+                                placeholder={currentRatingSystem?.max_rating?.toString() || ''}
+                                disabled={!currentRatingSystem}
                               />
-                              {trainerRatingSystem && (
+                              {currentRatingSystem && (
                                 <p className="text-xs text-muted-foreground">
-                                  {trainerRatingSystem.min_rating} - {trainerRatingSystem.max_rating}
-                                  {trainerRatingSystem.lower_is_better && ' (lower is better)'}
+                                  {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
+                                  {currentRatingSystem.lower_is_better && ' (lower is better)'}
                                 </p>
                               )}
                             </>
