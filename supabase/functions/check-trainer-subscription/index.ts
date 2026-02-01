@@ -79,10 +79,30 @@ serve(async (req) => {
     const now = new Date();
     const isInTrial = trialEndsAt ? new Date(trialEndsAt) > now : false;
 
+    // Check for admin-granted subscription status FIRST
+    const hasAdminGrantedAccess = trainerProfile?.subscription_status === 'active';
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
 
     if (customers.data.length === 0) {
+      // Even without Stripe, respect admin-granted access
+      if (hasAdminGrantedAccess) {
+        logStep("No Stripe customer, but admin-granted access detected");
+        return new Response(JSON.stringify({ 
+          subscribed: true,
+          tier: 'professional',
+          product_id: null,
+          subscription_end: null,
+          trial_ends_at: trialEndsAt,
+          is_trial: false,
+          is_public: isPublic,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       logStep("No customer found, returning trial tier");
       return new Response(JSON.stringify({ 
         subscribed: false,
@@ -112,8 +132,6 @@ serve(async (req) => {
     let tier = 'trial';
     let subscriptionEnd: string | null = null;
 
-    // Check for admin-granted subscription status
-    const hasAdminGrantedAccess = trainerProfile?.subscription_status === 'active';
 
     if (hasActiveSub) {
       const subscription = subscriptions.data[0];
