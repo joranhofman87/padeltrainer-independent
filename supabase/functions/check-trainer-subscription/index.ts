@@ -112,6 +112,9 @@ serve(async (req) => {
     let tier = 'trial';
     let subscriptionEnd: string | null = null;
 
+    // Check for admin-granted subscription status
+    const hasAdminGrantedAccess = trainerProfile?.subscription_status === 'active';
+
     if (hasActiveSub) {
       const subscription = subscriptions.data[0];
       subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
@@ -120,17 +123,21 @@ serve(async (req) => {
       // Get tier from database instead of hardcoded map
       tier = await getTierFromDB(supabaseClient, productId);
       logStep("Active subscription found", { subscriptionId: subscription.id, productId, tier, endDate: subscriptionEnd });
+    } else if (hasAdminGrantedAccess) {
+      // Admin manually set status to active - grant access without Stripe
+      tier = 'professional';
+      logStep("Admin-granted subscription detected", { subscription_status: trainerProfile.subscription_status });
     } else {
       logStep("No active subscription found");
     }
 
     return new Response(JSON.stringify({
-      subscribed: hasActiveSub,
+      subscribed: hasActiveSub || hasAdminGrantedAccess,
       tier,
       product_id: productId,
       subscription_end: subscriptionEnd,
       trial_ends_at: trialEndsAt,
-      is_trial: isInTrial && !hasActiveSub,
+      is_trial: isInTrial && !hasActiveSub && !hasAdminGrantedAccess,
       is_public: isPublic,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
