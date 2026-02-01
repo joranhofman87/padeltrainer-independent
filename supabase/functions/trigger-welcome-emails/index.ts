@@ -62,64 +62,29 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if this is a test email request
-    let testMode = false;
-    let testTemplateId: string | null = null;
-    let testEmail: string | null = null;
-
-    if (req.method === "POST") {
-      try {
-        const body = await req.json();
-        testMode = body.test_mode === true;
-        testTemplateId = body.template_id;
-        testEmail = body.test_email;
-      } catch {
-        // Not a JSON body, proceed with normal processing
-      }
-    }
-
-    if (testMode && testTemplateId && testEmail) {
-      // Send a test email
-      const { data: template, error: templateError } = await supabase
-        .from("onboarding_email_templates")
-        .select("*")
-        .eq("id", testTemplateId)
-        .single();
-
-      if (templateError || !template) {
-        return new Response(
-          JSON.stringify({ error: "Template not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const testData = {
-        user_name: "Test User",
-        user_email: testEmail,
-        user_type: capitalizeFirst(template.user_type),
-        signup_date: new Date().toLocaleDateString(),
-        plan_name: "Pro Plan",
-      };
-
-      const subject = replaceVariables(template.subject, testData);
-      const body = replaceVariables(template.body_html, testData);
-
-      const emailResult = await resend.emails.send({
-        from: "PadelTrainer <noreply@padeltrainer.ai>",
-        to: [testEmail],
-        subject: `[TEST] ${subject}`,
-        html: body,
-      });
-
-      console.log("Test email sent:", emailResult);
-
+    // Get user_id from the authenticated request
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: true, emailId: emailResult.data?.id }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Normal processing: fetch pending emails that are due
+    // Verify the JWT and get user
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Processing welcome emails for user: ${user.id}`);
+
+    // Fetch all awaiting_confirmation emails for this user
     const { data: pendingEmails, error: fetchError } = await supabase
       .from("onboarding_email_queue")
       .select(`
@@ -132,24 +97,23 @@ const handler = async (req: Request): Promise<Response> => {
         scheduled_for,
         template:onboarding_email_templates(id, subject, body_html)
       `)
-      .eq("status", "pending")
-      .lte("scheduled_for", new Date().toISOString())
-      .limit(50);
+      .eq("status", "awaiting_confirmation")
+      .eq("user_id", user.id);
 
     if (fetchError) {
-      console.error("Error fetching pending emails:", fetchError);
+      console.error("Error fetching awaiting emails:", fetchError);
       throw fetchError;
     }
 
     if (!pendingEmails || pendingEmails.length === 0) {
-      console.log("No pending emails to process");
+      console.log("No awaiting_confirmation emails found for user");
       return new Response(
-        JSON.stringify({ processed: 0, message: "No pending emails" }),
+        JSON.stringify({ processed: 0, message: "No pending welcome emails" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Processing ${pendingEmails.length} pending emails`);
+    console.log(`Found ${pendingEmails.length} welcome emails to send`);
 
     let successCount = 0;
     let failCount = 0;
@@ -158,6 +122,7 @@ const handler = async (req: Request): Promise<Response> => {
       // Handle the template which comes as an array from the join
       const rawTemplate = Array.isArray(rawItem.template) ? rawItem.template[0] : rawItem.template;
       const queueItem = { ...rawItem, template: rawTemplate } as QueuedEmail;
+
       if (!queueItem.template) {
         console.error(`Template not found for queue item ${queueItem.id}`);
         await supabase
@@ -175,8 +140,8 @@ const handler = async (req: Request): Promise<Response> => {
         user_name: queueItem.user_name,
         user_email: queueItem.email,
         user_type: capitalizeFirst(queueItem.user_type),
-        signup_date: new Date(queueItem.scheduled_for).toLocaleDateString(),
-        plan_name: "Pro Plan", // Could be enhanced to fetch actual plan
+        signup_date: new Date().toLocaleDateString(),
+        plan_name: "Pro Plan",
       };
 
       const subject = replaceVariables(queueItem.template.subject, variableData);
@@ -190,7 +155,7 @@ const handler = async (req: Request): Promise<Response> => {
           html: body,
         });
 
-        console.log(`Email sent to ${queueItem.email}:`, emailResult);
+        console.log(`Welcome email sent to ${queueItem.email}:`, emailResult);
 
         // Update queue status to sent
         await supabase
@@ -213,11 +178,10 @@ const handler = async (req: Request): Promise<Response> => {
 
         successCount++;
       } catch (emailError: unknown) {
-        console.error(`Failed to send email to ${queueItem.email}:`, emailError);
+        console.error(`Failed to send welcome email to ${queueItem.email}:`, emailError);
 
         const errorMessage = emailError instanceof Error ? emailError.message : "Unknown error";
 
-        // Update queue status to failed
         await supabase
           .from("onboarding_email_queue")
           .update({
@@ -226,7 +190,6 @@ const handler = async (req: Request): Promise<Response> => {
           })
           .eq("id", queueItem.id);
 
-        // Log the failed attempt
         await supabase.from("onboarding_email_logs").insert({
           template_id: queueItem.template_id,
           queue_id: queueItem.id,
@@ -249,7 +212,7 @@ const handler = async (req: Request): Promise<Response> => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
-    console.error("Error in process-onboarding-emails:", error);
+    console.error("Error in trigger-welcome-emails:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: errorMessage }),

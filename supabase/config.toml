@@ -82,3 +82,9 @@ verify_jwt = false
 
 [functions.send-auth-email]
 verify_jwt = false
+
+[functions.trigger-welcome-emails]
+verify_jwt = false
+
+[functions.process-onboarding-emails]
+verify_jwt = false
