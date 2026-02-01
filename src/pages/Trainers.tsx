@@ -43,8 +43,6 @@ interface TrainerWithProfile {
   certifications: string[] | null;
   specializations: string[] | null;
   is_verified: boolean;
-  knltb_rating: number | null;
-  trainer_rating_system: string | null;
   subscription_status: string | null;
   profile: {
     full_name: string | null;
@@ -237,7 +235,7 @@ export default function Trainers() {
     const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, trainer_rating_system, is_public, subscription_status, trial_ends_at')
+      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true)
       .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
     
@@ -380,12 +378,12 @@ export default function Trainers() {
       const matchesCertifications = filters.certifications.length === 0 ||
         filters.certifications.some(c => trainer.certifications?.includes(c));
       
-      // Trainer rating system filter
+      // Trainer rating system filter (now uses profile.rating_system and profile.skill_rating)
       let matchesTrainerRating = true;
       if (filters.ratingSystem && filters.minTrainerRating > 0) {
         // Only apply if trainer uses the selected rating system
-        if (trainer.trainer_rating_system === filters.ratingSystem) {
-          const trainerRating = trainer.knltb_rating || 0;
+        if (trainer.profile?.rating_system === filters.ratingSystem) {
+          const trainerRating = trainer.profile?.skill_rating || 0;
           const ratingSystemDef = ratingSystems.find(rs => rs.code === filters.ratingSystem);
           if (ratingSystemDef?.lower_is_better) {
             // Lower is better (e.g., KNLTB): trainer rating should be <= filter value
@@ -399,7 +397,7 @@ export default function Trainers() {
         }
       } else if (filters.ratingSystem && !filters.minTrainerRating) {
         // Just filter by system, any rating
-        matchesTrainerRating = trainer.trainer_rating_system === filters.ratingSystem;
+        matchesTrainerRating = trainer.profile?.rating_system === filters.ratingSystem;
       }
       
       // Verified filter

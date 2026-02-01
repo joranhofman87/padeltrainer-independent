@@ -28,12 +28,13 @@ interface TrainerWithProfile {
   certifications: string[] | null;
   specializations: string[] | null;
   is_verified: boolean;
-  knltb_rating: number | null;
   profile: {
     full_name: string | null;
     avatar_url: string | null;
     bio: string | null;
     location: string | null;
+    skill_rating: number | null;
+    rating_system: string | null;
   } | null;
   averageRating: number;
   reviewCount: number;
@@ -92,7 +93,7 @@ export default function TrainersCity() {
     const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, is_public, subscription_status, trial_ends_at')
+      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true)
       .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
 
@@ -106,7 +107,7 @@ export default function TrainersCity() {
     const userIds = trainerProfiles.map(t => t.user_id);
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles_public')
-      .select('user_id, full_name, avatar_url, bio, location')
+      .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
       .in('user_id', userIds);
 
     if (profilesError) {
@@ -377,9 +378,9 @@ export default function TrainersCity() {
                       </span>
                     )}
                     <div className="flex items-center gap-3 text-muted-foreground">
-                      {trainer.knltb_rating && (
+                      {trainer.profile?.skill_rating && trainer.profile?.rating_system && (
                         <span className="font-medium text-foreground">
-                          KNLTB {trainer.knltb_rating}
+                          {trainer.profile.rating_system.toUpperCase()} {trainer.profile.skill_rating}
                         </span>
                       )}
                       {trainer.experience_years && (

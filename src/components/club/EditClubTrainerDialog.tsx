@@ -37,8 +37,6 @@ interface TrainerProfileData {
   experience_years: number | null;
   certifications: string[];
   specializations: string[];
-  knltb_rating: number | null;
-  trainer_rating_system: string;
   coaching_method: string;
   favourite_quote: string;
   video_url: string;
@@ -55,6 +53,9 @@ interface ProfileData {
   phone: string;
   bio: string;
   avatar_url: string | null;
+  skill_rating: number | null;
+  rating_system: string | null;
+  rating_member_id: string | null;
 }
 
 export function EditClubTrainerDialog({
@@ -76,6 +77,9 @@ export function EditClubTrainerDialog({
     phone: '',
     bio: '',
     avatar_url: null,
+    skill_rating: null,
+    rating_system: null,
+    rating_member_id: null,
   });
 
   const [trainerData, setTrainerData] = useState<TrainerProfileData>({
@@ -83,8 +87,6 @@ export function EditClubTrainerDialog({
     experience_years: null,
     certifications: [],
     specializations: [],
-    knltb_rating: null,
-    trainer_rating_system: 'knltb',
     coaching_method: '',
     favourite_quote: '',
     video_url: '',
@@ -119,7 +121,7 @@ export function EditClubTrainerDialog({
       // Fetch profile data
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, phone, bio, avatar_url')
+        .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
         .eq('user_id', userId)
         .single();
 
@@ -129,13 +131,16 @@ export function EditClubTrainerDialog({
           phone: profile.phone || '',
           bio: profile.bio || '',
           avatar_url: profile.avatar_url,
+          skill_rating: profile.skill_rating,
+          rating_system: profile.rating_system,
+          rating_member_id: profile.rating_member_id,
         });
       }
 
       // Fetch trainer profile data
       const { data: trainer } = await supabase
         .from('trainer_profiles')
-        .select('hourly_rate, experience_years, certifications, specializations, knltb_rating, trainer_rating_system, coaching_method, favourite_quote, video_url, social_instagram, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
+        .select('hourly_rate, experience_years, certifications, specializations, coaching_method, favourite_quote, video_url, social_instagram, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
         .eq('id', trainerId)
         .single();
 
@@ -145,8 +150,6 @@ export function EditClubTrainerDialog({
           experience_years: trainer.experience_years,
           certifications: trainer.certifications || [],
           specializations: trainer.specializations || [],
-          knltb_rating: trainer.knltb_rating,
-          trainer_rating_system: trainer.trainer_rating_system || 'knltb',
           coaching_method: trainer.coaching_method || '',
           favourite_quote: trainer.favourite_quote || '',
           video_url: trainer.video_url || '',
@@ -235,13 +238,16 @@ export function EditClubTrainerDialog({
     setSaving(true);
 
     try {
-      // Update profile
+      // Update profile (including rating fields)
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: profileData.full_name,
           phone: profileData.phone,
           bio: profileData.bio,
+          skill_rating: profileData.skill_rating,
+          rating_system: profileData.rating_system,
+          rating_member_id: profileData.rating_member_id,
         })
         .eq('user_id', userId);
 
@@ -255,8 +261,6 @@ export function EditClubTrainerDialog({
           experience_years: trainerData.experience_years,
           certifications: trainerData.certifications,
           specializations: trainerData.specializations,
-          knltb_rating: trainerData.knltb_rating,
-          trainer_rating_system: trainerData.trainer_rating_system,
           coaching_method: trainerData.coaching_method || null,
           favourite_quote: trainerData.favourite_quote || null,
           video_url: trainerData.video_url || null,
@@ -438,8 +442,8 @@ export function EditClubTrainerDialog({
                 <div className="space-y-2">
                   <Label htmlFor="edit-rating_system">{t('editTrainer.ratingSystem', 'Rating System')}</Label>
                   <Select
-                    value={trainerData.trainer_rating_system}
-                    onValueChange={(value) => setTrainerData({ ...trainerData, trainer_rating_system: value })}
+                    value={profileData.rating_system || ''}
+                    onValueChange={(value) => setProfileData({ ...profileData, rating_system: value })}
                   >
                     <SelectTrigger id="edit-rating_system">
                       <SelectValue placeholder="Select rating system" />
@@ -466,8 +470,8 @@ export function EditClubTrainerDialog({
                     id="edit-rating"
                     type="number"
                     step="0.1"
-                    value={trainerData.knltb_rating ?? ''}
-                    onChange={(e) => setTrainerData({ ...trainerData, knltb_rating: e.target.value ? parseFloat(e.target.value) : null })}
+                    value={profileData.skill_rating ?? ''}
+                    onChange={(e) => setProfileData({ ...profileData, skill_rating: e.target.value ? parseFloat(e.target.value) : null })}
                     placeholder="8.0"
                   />
                 </div>
