@@ -64,7 +64,7 @@ serve(async (req) => {
       if (subscriptions.data.length > 0) {
         logStep("User already has an active subscription");
         // Redirect to customer portal instead
-        const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
+        const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
         const portalSession = await stripe.billingPortal.sessions.create({
           customer: customerId,
           return_url: `${origin}/subscription`,
@@ -76,7 +76,7 @@ serve(async (req) => {
       }
     }
 
-    const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
+    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,

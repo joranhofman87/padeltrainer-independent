@@ -51,7 +51,7 @@ serve(async (req) => {
     logStep("Trainer profile found", { trainerId: trainerProfile.id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
+    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
     // Check if trainer already has a Stripe account
     const { data: existingAccount } = await supabaseClient
