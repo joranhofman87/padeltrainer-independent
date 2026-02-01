@@ -69,7 +69,11 @@
     "remove": "Remove",
     "removeTitle": "Remove Trainer",
     "removeDescription": "Are you sure you want to remove this trainer from your academy? They will no longer be affiliated with your academy.",
-    "removed": "Trainer removed"
+    "removed": "Trainer removed",
+    "addSelfTitle": "You're also a trainer!",
+    "addSelfDescription": "Add yourself to your academy's trainer roster to appear on the public page.",
+    "addMyselfAsTrainer": "Add Myself as Trainer",
+    "addedSelf": "You've been added as a trainer"
   },
   "trainerInvitation": {
     "title": "Academy Invitation",

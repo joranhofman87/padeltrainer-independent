@@ -707,6 +707,73 @@ export async function respondToAcademyTrainerInvitation(
   return { success: true };
 }
 
+// Check if current user can add themselves as a trainer to their academy
+export async function canUserAddSelfAsTrainer(
+  userId: string,
+  academyProfileId: string
+): Promise<{ canAdd: boolean; trainerProfileId?: string; trainerName?: string }> {
+  // Check if user has a trainer profile
+  const { data: trainerProfile } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!trainerProfile) {
+    return { canAdd: false };
+  }
+
+  // Check if already in academy_trainers
+  const { data: existing } = await supabase
+    .from('academy_trainers')
+    .select('id')
+    .eq('academy_profile_id', academyProfileId)
+    .eq('trainer_profile_id', trainerProfile.id)
+    .maybeSingle();
+
+  if (existing) {
+    return { canAdd: false };
+  }
+
+  // Get user's name for display
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('user_id', userId)
+    .single();
+
+  return {
+    canAdd: true,
+    trainerProfileId: trainerProfile.id,
+    trainerName: profile?.full_name || undefined,
+  };
+}
+
+// Add the current user as an academy trainer
+export async function addSelfAsAcademyTrainer(
+  academyProfileId: string,
+  trainerProfileId: string,
+  userId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('academy_trainers')
+    .insert({
+      academy_profile_id: academyProfileId,
+      trainer_profile_id: trainerProfileId,
+      status: 'active',
+      invited_by: userId,
+      joined_at: new Date().toISOString(),
+      show_on_academy_page: true,
+    });
+
+  if (error) {
+    console.error('Error adding self as trainer:', error);
+    return false;
+  }
+
+  return true;
+}
+
 // Get all trainers for academy (including invited)
 export async function getAcademyTrainersWithProfiles(academyProfileId: string): Promise<any[]> {
   const { data, error } = await supabase
@@ -716,6 +783,7 @@ export async function getAcademyTrainersWithProfiles(academyProfileId: string): 
       trainer_profile:trainer_profiles(
         id,
         user_id,
+        slug,
         hourly_rate,
         experience_years,
         specializations,

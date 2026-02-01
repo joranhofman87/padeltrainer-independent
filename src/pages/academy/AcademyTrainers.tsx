@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, Calendar, ExternalLink, Eye, EyeOff, Trash2, Clock } from 'lucide-react';
+import { Users, Calendar, ExternalLink, Eye, EyeOff, Trash2, Clock, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,8 @@ import {
   updateAcademyTrainerVisibility,
   removeAcademyTrainer,
   cancelAcademyInvitation,
+  canUserAddSelfAsTrainer,
+  addSelfAsAcademyTrainer,
 } from '@/lib/academy';
 import { InviteAcademyTrainerDialog } from '@/components/academy/InviteAcademyTrainerDialog';
 import { CreateAcademyTrainerDialog } from '@/components/academy/CreateAcademyTrainerDialog';
@@ -48,6 +50,12 @@ export default function AcademyTrainers() {
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
+  const [canAddSelf, setCanAddSelf] = useState<{
+    canAdd: boolean;
+    trainerProfileId?: string;
+    trainerName?: string;
+  }>({ canAdd: false });
+  const [addingSelf, setAddingSelf] = useState(false);
 
   const fetchData = async () => {
     if (!activeAcademy) return;
@@ -59,11 +67,37 @@ export default function AcademyTrainers() {
       ]);
       setTrainers(trainersData);
       setPendingInvitations(invitationsData);
+
+      // Check if current user can add themselves as a trainer
+      if (user) {
+        const selfCheck = await canUserAddSelfAsTrainer(user.id, activeAcademy.id);
+        setCanAddSelf(selfCheck);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddSelf = async () => {
+    if (!activeAcademy || !user || !canAddSelf.trainerProfileId) return;
+
+    setAddingSelf(true);
+    const success = await addSelfAsAcademyTrainer(
+      activeAcademy.id,
+      canAddSelf.trainerProfileId,
+      user.id
+    );
+
+    if (success) {
+      toast.success(t('trainers.addedSelf'));
+      setCanAddSelf({ canAdd: false });
+      fetchData();
+    } else {
+      toast.error(t('common.error'));
+    }
+    setAddingSelf(false);
   };
 
   useEffect(() => {
@@ -160,6 +194,30 @@ export default function AcademyTrainers() {
           </div>
         )}
       </div>
+
+      {/* Add yourself as trainer banner */}
+      {canAddSelf.canAdd && (
+        <Card className="mb-6 border-primary/20 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <UserPlus className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">{t('trainers.addSelfTitle')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('trainers.addSelfDescription')}
+                  </p>
+                </div>
+              </div>
+              <Button onClick={handleAddSelf} disabled={addingSelf}>
+                {addingSelf ? t('common.saving') : t('trainers.addMyselfAsTrainer')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="active" className="space-y-4">
         <TabsList>
