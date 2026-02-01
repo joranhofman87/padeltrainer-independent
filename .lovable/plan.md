@@ -1,278 +1,266 @@
 
 
-# Update Trainer Dashboard: Remove Obsolete Cards & Embed Full Calendar
+# Add Academy Support to ProfileSwitcher
 
 ## Overview
-Simplify the trainer dashboard by removing the redundant quick action cards and replacing the mini-calendar widget with the full-featured calendar from `/trainer/calendar`. This makes the agenda and slot creation the central focus for trainers.
+Extend the ProfileSwitcher component to support Academy manager switching, following the same pattern used for Clubs. This allows users like Rene who are both trainers and academy managers to easily switch between their roles from anywhere in the app.
 
 ## Changes Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/pages/TrainerDashboard.tsx` | Modify | Remove quick action cards; embed full calendar with all dialogs |
-| `src/components/trainer/DashboardCalendar.tsx` | Delete | No longer needed (replaced by inline full calendar) |
-
-## Current Dashboard Structure
-
-```text
-+-----------------------------------+
-| Trial Banner (conditional)        |
-+-----------------------------------+
-| Setup Checklist (conditional)     |
-+-----------------------------------+
-| Stats Cards (5 cards row)         |  <- KEEP
-+-----------------------------------+
-| Quick Action Cards (5 cards)      |  <- REMOVE
-| - My Lessons                      |
-| - My Calendar                     |
-| - Bookings                        |
-| - My Profile                      |
-| - Registration Cycles             |
-+-----------------------------------+
-| DashboardCalendar (mini widget)   |  <- REPLACE
-+-----------------------------------+
-```
-
-## New Dashboard Structure
-
-```text
-+-----------------------------------+
-| Trial Banner (conditional)        |
-+-----------------------------------+
-| Setup Checklist (conditional)     |
-+-----------------------------------+
-| Stats Cards (5 cards row)         |
-+-----------------------------------+
-| Full Calendar Section             |
-| +-------------------------------+ |
-| | Action Bar                    | |
-| | [+Slot] [Duplicate] [Cyclus]  | |
-| +-------------------------------+ |
-| | Controls Card                 | |
-| | Nav | Date Range | View Toggle| |
-| | Legend (available/pending/etc)| |
-| +-------------------------------+ |
-| | Calendar Grid Card            | |
-| | TrainerCalendarGrid component | |
-| +-------------------------------+ |
-+-----------------------------------+
-| All Dialogs (same as calendar pg) |
-+-----------------------------------+
-```
+| `src/hooks/useAuth.tsx` | Modify | Add `isAcademyManager` flag and academy manager check |
+| `src/components/ProfileSwitcher.tsx` | Modify | Add academy context, fetch academies, render academy section |
+| `src/i18n/locales/en/common.json` | Modify | Add `myAcademies` and `academyDashboard` translations |
+| `src/i18n/locales/nl/common.json` | Modify | Add Dutch translations |
 
 ## Implementation Details
 
-### 1. Remove Quick Action Cards
+### 1. Update useAuth Hook
 
-Delete lines 396-491 (the entire `grid md:grid-cols-2 lg:grid-cols-5` block with 5 navigation cards):
-- My Lessons
-- My Calendar  
-- Bookings
-- My Profile
-- Registration Cycles
-
-These are now accessible from the sidebar.
-
-### 2. Replace DashboardCalendar with Full Calendar
-
-Import and integrate the same components used in `TrainerCalendar.tsx`:
+Add `isAcademyManager` state and fetch academy manager status alongside club manager status:
 
 ```tsx
-// New imports
-import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
-import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
-import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
-import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
-import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
-import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
-import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
+// Add import
+import { isUserAcademyManager } from '@/lib/academy';
+
+// Add to AuthContextType interface
+interface AuthContextType {
+  // ... existing fields
+  isAcademyManager: boolean;
+}
+
+// Add state
+const [isAcademyManager, setIsAcademyManager] = useState(false);
+
+// Update fetchUserData to include academy check
+const fetchUserData = async (userId: string) => {
+  const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
+    getUserRoles(userId),
+    getProfile(userId),
+    isUserClubManager(userId),
+    isUserAcademyManager(userId),  // NEW
+  ]);
+  
+  // ... existing role logic
+  setIsAcademyManager(academyManagerStatus);
+};
+
+// Update context provider value
+<AuthContext.Provider value={{ 
+  // ... existing
+  isAcademyManager,
+}}>
 ```
 
-### 3. Add Calendar State Management
+### 2. Update ProfileSwitcher Component
 
-Add all the calendar-related state variables:
+#### Add Academy Context Support
 
 ```tsx
-// View and navigation
-const [view, setView] = useState<"day" | "week" | "month">("week");
-const [currentDate, setCurrentDate] = useState(new Date());
-const [calendarSlots, setCalendarSlots] = useState<SlotWithBookings[]>([]);
-const [calendarLoading, setCalendarLoading] = useState(true);
-const [lessons, setLessons] = useState<Lesson[]>([]);
-const [settings, setSettings] = useState<ScheduleSettings>({...});
+// Update imports
+import { GraduationCap } from 'lucide-react';
+import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 
-// Dialog states
-const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
-const [addSlotOpen, setAddSlotOpen] = useState(false);
-const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
-const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
-const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
-const [editBookingOpen, setEditBookingOpen] = useState(false);
-// ... selected slot, booking to edit, etc.
+// Update props interface
+interface ProfileSwitcherProps {
+  context?: 'club' | 'trainer' | 'player' | 'academy';  // Add 'academy'
+  activeClubId?: string;
+  activeAcademyId?: string;  // NEW
+  onClubChange?: (club: ClubWithLocation) => void;
+  onAcademyChange?: (academy: AcademyWithRole) => void;  // NEW
+}
+
+// Add academy type
+interface AcademyWithRole extends AcademyProfile {
+  role: string;
+}
 ```
 
-### 4. Calendar Data Fetching
-
-Add `fetchCalendarSlots()` function that:
-- Fetches slots with lessons, bookings, player info, and location names
-- Calculates date range based on view (day/week/month)
-- Transforms data to `SlotWithBookings[]` format
-
-### 5. Calendar UI Section
-
-Replace the `<DashboardCalendar>` component with:
+#### Fetch Academies
 
 ```tsx
-{/* Calendar Section */}
-<div className="space-y-4">
-  {/* Action Buttons */}
-  <div className="flex flex-wrap items-center gap-2">
-    <Button variant="outline" size="sm" onClick={() => setAddSlotOpen(true)}>
-      <Plus className="h-4 w-4 mr-2" />
-      {t("calendar.addSlot")}
-    </Button>
-    <Button variant="outline" size="sm" onClick={() => setDuplicateCyclusOpen(true)}>
-      <Copy className="h-4 w-4 mr-2" />
-      {t("calendar.duplicateCyclus")}
-    </Button>
-    <Button size="sm" onClick={() => setBulkCreateOpen(true)}>
-      <Repeat className="h-4 w-4 mr-2" />
-      {t("calendar.createCyclus")}
-    </Button>
-  </div>
+const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
 
-  {/* Controls Card */}
-  <Card>
-    <CardContent className="p-4">
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        {/* Date Navigation */}
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={navigatePrevious}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium">
-            {getDateRangeLabel()}
-          </div>
-          <Button variant="outline" size="icon" onClick={navigateNext}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={goToToday}>
-            {t("calendar.today")}
-          </Button>
-        </div>
+useEffect(() => {
+  async function fetchData() {
+    if (!user) return;
+    
+    try {
+      const [userClubs, userAcademies] = await Promise.all([
+        getUserClubProfiles(user.id),
+        getUserAcademyProfiles(user.id),
+      ]);
+      setClubs(userClubs);
+      setAcademies(userAcademies);
+    } catch (error) {
+      console.error('Error fetching profiles:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-        {/* View Toggle */}
-        <div className="flex items-center gap-1">
-          <Button variant={view === "day" ? "default" : "outline"} size="sm" onClick={() => setView("day")}>
-            {t("calendar.dayView")}
-          </Button>
-          <Button variant={view === "week" ? "default" : "outline"} size="sm" onClick={() => setView("week")}>
-            {t("calendar.weekView")}
-          </Button>
-          <Button variant={view === "month" ? "default" : "outline"} size="sm" onClick={() => setView("month")}>
-            {t("calendar.monthView")}
-          </Button>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-muted border" />
-          <span className="text-sm">{t("calendar.available")}: {freeSlots}</span>
-        </div>
-        {/* ... pending, booked stats */}
-      </div>
-    </CardContent>
-  </Card>
-
-  {/* Calendar Grid */}
-  <Card>
-    <CardContent className="p-4">
-      {calendarLoading ? (
-        <Skeleton className="h-[500px] w-full" />
-      ) : (
-        <TrainerCalendarGrid
-          slots={calendarSlots}
-          currentDate={currentDate}
-          view={view}
-          onCellClick={handleCellClick}
-          onBookForPlayer={handleBookForPlayer}
-          onDuplicateCyclus={handleDuplicateCyclus}
-          onDeleteSlot={handleDeleteSlot}
-          onEditBooking={handleEditBooking}
-          onToggleMarkedFull={handleToggleMarkedFull}
-          onNavigatePrevious={navigatePrevious}
-          onNavigateNext={navigateNext}
-        />
-      )}
-    </CardContent>
-  </Card>
-</div>
-
-{/* All Dialog Components */}
-<SlotTypeChoiceDialog ... />
-<AddSlotDialog ... />
-<BulkCreateSheet ... />
-<BookForPlayerDialog ... />
-<DuplicateCyclusDialog ... />
-<DeleteSlotDialog ... />
-<EditBookingDialog ... />
+  fetchData();
+}, [user]);
 ```
 
-### 6. Add Handler Functions
+#### Update Show Switcher Logic
 
-Copy all handler functions from `TrainerCalendar.tsx`:
-- `handleCellClick` - Opens slot type choice dialog
-- `handleChooseSingleSlot` / `handleChooseCyclus`
-- `handleBookForPlayer` - Book a player into a slot
-- `handleDuplicateCyclus` - Duplicate an existing cyclus
-- `handleDeleteSlot` - Delete a slot
-- `handleEditBooking` - Edit a booking
-- `handleToggleMarkedFull` - Mark slot as private/full
-- `navigatePrevious` / `navigateNext` / `goToToday`
-- `getDateRangeLabel`
+```tsx
+const hasMultipleAcademies = academies.length > 1;
+const hasMultipleOrganizations = clubs.length > 0 || academies.length > 0;
 
-### 7. Clean Up DashboardCalendar
+// Show switcher if user has multiple roles, clubs, or academies
+const showSwitcher = 
+  (isTrainer && (isClubManager || isAcademyManager)) ||
+  hasMultipleClubs ||
+  hasMultipleAcademies ||
+  (isClubManager && isAcademyManager);
+```
 
-Delete `src/components/trainer/DashboardCalendar.tsx` as it's no longer used.
+#### Add Academy Section to Dropdown
 
-## Data Flow
+```tsx
+{/* Academies Section */}
+{academies.length > 0 && (
+  <>
+    {(clubs.length > 0 || (isTrainer && context !== 'trainer')) && (
+      <DropdownMenuSeparator />
+    )}
+    <DropdownMenuLabel className="flex items-center gap-2">
+      <GraduationCap className="h-4 w-4" />
+      {t('myAcademies')}
+    </DropdownMenuLabel>
+    {academies.map((academy) => (
+      <DropdownMenuItem
+        key={academy.id}
+        onClick={() => handleAcademySelect(academy)}
+        className="flex items-center gap-2 cursor-pointer"
+      >
+        <Avatar className="h-6 w-6">
+          <AvatarImage src={academy.logo_url || undefined} />
+          <AvatarFallback className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            {academy.name?.substring(0, 2).toUpperCase() || 'AC'}
+          </AvatarFallback>
+        </Avatar>
+        <span className="flex-1 truncate">{academy.name}</span>
+        {context === 'academy' && academy.id === activeAcademyId && (
+          <Check className="h-4 w-4 text-primary" />
+        )}
+      </DropdownMenuItem>
+    ))}
+  </>
+)}
+```
+
+#### Add Handler Functions
+
+```tsx
+const handleSwitchToAcademy = (academy?: AcademyWithRole) => {
+  if (context === 'academy' && academy && onAcademyChange) {
+    onAcademyChange(academy);
+  } else {
+    navigate('/academy');
+  }
+};
+
+const handleAcademySelect = (academy: AcademyWithRole) => {
+  if (context === 'academy' && onAcademyChange) {
+    onAcademyChange(academy);
+  } else {
+    navigate('/academy');
+  }
+};
+```
+
+#### Update Display Logic for Academy Context
+
+```tsx
+const displayName = context === 'trainer' 
+  ? profile?.full_name || t('trainerDashboard')
+  : context === 'player'
+  ? profile?.full_name || t('playerDashboard')
+  : context === 'academy'
+  ? activeAcademy?.name || t('academyDashboard')
+  : activeClub?.location?.name || t('clubDashboard');
+
+const displayAvatar = context === 'trainer' || context === 'player'
+  ? profile?.avatar_url
+  : context === 'academy'
+  ? activeAcademy?.logo_url
+  : activeClub?.logo_url;
+
+const initials = context === 'trainer'
+  ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'TR'
+  : context === 'player'
+  ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'PL'
+  : context === 'academy'
+  ? activeAcademy?.name?.substring(0, 2).toUpperCase() || 'AC'
+  : activeClub?.location?.name?.substring(0, 2).toUpperCase() || 'CL';
+```
+
+### 3. Add Translation Keys
+
+**English (`en/common.json`):**
+```json
+{
+  "myAcademies": "My Academies",
+  "academyDashboard": "Academy Dashboard"
+}
+```
+
+**Dutch (`nl/common.json`):**
+```json
+{
+  "myAcademies": "Mijn Academies",
+  "academyDashboard": "Academy Dashboard"
+}
+```
+
+## Visual Structure
 
 ```text
-User loads /trainer (Dashboard)
-    |
-    v
-fetchStats() + fetchSetupStatus() + fetchCalendarSlots()
-    |
-    v
-Render: Stats Cards + Full Calendar
-    |
-    +---> Click cell -> SlotTypeChoiceDialog
-    |         |
-    |         +---> Single Slot -> AddSlotDialog
-    |         +---> Cyclus -> BulkCreateSheet
-    |
-    +---> Click slot -> CalendarSlotCard actions
-              |
-              +---> Book player -> BookForPlayerDialog
-              +---> Edit booking -> EditBookingDialog
-              +---> Delete slot -> DeleteSlotDialog
-              +---> Duplicate cyclus -> DuplicateCyclusDialog
+ProfileSwitcher Dropdown Menu:
++----------------------------------+
+| 🔄 Switch Role                   |  <- Shows when in club/academy context
++----------------------------------+
+| 👤 Trainer Dashboard             |  <- For trainers to switch back
++----------------------------------+
+| 🏢 My Clubs                      |
+| ├─ 🏠 Club Name 1        ✓      |
+| └─ 🏠 Club Name 2               |
++----------------------------------+
+| 🎓 My Academies          ← NEW  |
+| ├─ 📚 Academy Name 1     ✓ NEW  |
+| └─ 📚 Academy Name 2       NEW  |
++----------------------------------+
 ```
 
-## File Impact
+## Context Flow
 
-- **Modified**: `src/pages/TrainerDashboard.tsx` (major refactor)
-- **Deleted**: `src/components/trainer/DashboardCalendar.tsx`
+```text
+context: 'trainer'
+├── Shows: "Switch Role" to Club (if club manager)
+├── Shows: "My Clubs" section with all clubs
+└── Shows: "My Academies" section with all academies ← NEW
+
+context: 'club'  
+├── Shows: "Switch Role" to Trainer (if trainer)
+├── Shows: "My Clubs" with active club highlighted
+└── Shows: "My Academies" section ← NEW
+
+context: 'academy' ← NEW
+├── Shows: "Switch Role" to Trainer (if trainer)
+├── Shows: "My Clubs" section
+└── Shows: "My Academies" with active academy highlighted
+```
 
 ## Result
 
 After implementation:
-- Dashboard is cleaner with just stats + full calendar
-- All calendar functionality available directly on dashboard
-- Trainers can add slots, create cycluses, manage bookings without leaving dashboard
-- Sidebar handles all other navigation needs
+- Rene (and other academy managers) will see their academies in the ProfileSwitcher
+- One-click navigation to `/academy` dashboard from any context
+- Support for users managing multiple academies
+- Consistent UI pattern with clubs (avatar, name, checkmark for active)
+- `isAcademyManager` available in useAuth for other components to use
 
