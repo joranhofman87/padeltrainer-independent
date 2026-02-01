@@ -1,5 +1,9 @@
 # PadelTrainer.ai Robots.txt
 
+# ==========================================
+# Marketing Site: padeltrainer.ai
+# ==========================================
+
 User-agent: Googlebot
 Allow: /
 
@@ -26,6 +30,39 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# ==========================================
+# App Subdomain: app.padeltrainer.ai
+# Disallow indexing of authenticated routes
+# ==========================================
+
+# Note: These rules apply when robots.txt is served from app.padeltrainer.ai
+# The subdomain will serve the same codebase, and these rules help prevent
+# search engines from indexing authenticated/private pages.
+
+# Private/authenticated routes that should not be indexed:
+Disallow: /auth
+Disallow: /signup/
+Disallow: /onboarding/
+Disallow: /player/
+Disallow: /trainer/
+Disallow: /club/
+Disallow: /academy/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /profile/
+Disallow: /lessons
+Disallow: /availability
+Disallow: /schedule
+Disallow: /bookings
+Disallow: /trainer-bookings
+Disallow: /booking-success
+Disallow: /earnings
+Disallow: /subscription
+Disallow: /analytics
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /select-role
 
 # Sitemap location (static file, regenerate with: bun run scripts/generate-sitemap.ts)
 Sitemap: https://padeltrainer.ai/sitemap.xml

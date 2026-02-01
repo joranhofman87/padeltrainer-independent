@@ -1,6 +1,7 @@
 import { Helmet } from 'react-helmet-async';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
+import { MARKETING_DOMAIN, APP_DOMAIN, isInDevelopment } from '@/lib/domains';
 
 interface SEOProps {
   title: string;
@@ -8,8 +9,10 @@ interface SEOProps {
   image?: string;
   url?: string;
   type?: 'website' | 'article' | 'place';
-  structuredData?: object;
+  structuredData?: object | object[];
   noIndex?: boolean;
+  /** Set to true for app pages (served from app.padeltrainer.ai) */
+  isAppPage?: boolean;
 }
 
 export function SEO({ 
@@ -19,32 +22,46 @@ export function SEO({
   url, 
   type = 'website',
   structuredData,
-  noIndex = false 
+  noIndex = false,
+  isAppPage = false
 }: SEOProps) {
   const { lang } = useParams<{ lang: string }>();
+  const location = useLocation();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
   
   const fullTitle = `${title} | PadelTrainer.ai`;
-  const baseUrl = 'https://padeltrainer.ai';
+  
+  // Determine base URL based on page type
+  const baseUrl = isAppPage ? APP_DOMAIN : MARKETING_DOMAIN;
   
   // Get the path without language prefix for hreflang generation
   const pathWithoutLang = url?.replace(/^\/(en|nl)/, '') || '';
-  // Ensure canonical URL includes the current language prefix
-  const fullUrl = url ? `${baseUrl}/${currentLang}${pathWithoutLang}` : `${baseUrl}/${currentLang}`;
-  const defaultImage = `${baseUrl}/og-image.png`;
+  
+  // For app pages, use the path directly without language prefix
+  // For marketing pages, include the language prefix
+  const fullUrl = isAppPage 
+    ? `${baseUrl}${location.pathname}` 
+    : url 
+      ? `${baseUrl}/${currentLang}${pathWithoutLang}` 
+      : `${baseUrl}/${currentLang}`;
+  
+  const defaultImage = `${MARKETING_DOMAIN}/og-image.png`;
 
-  // Generate alternate URLs for each language
-  const alternateUrls = SUPPORTED_LANGUAGES.map(langCode => ({
+  // Generate alternate URLs for each language (only for marketing pages)
+  const alternateUrls = isAppPage ? [] : SUPPORTED_LANGUAGES.map(langCode => ({
     lang: langCode,
     url: `${baseUrl}/${langCode}${pathWithoutLang}`
   }));
+
+  // App pages should not be indexed
+  const shouldNoIndex = noIndex || isAppPage;
 
   return (
     <Helmet>
       {/* Basic Meta Tags */}
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
-      {noIndex && <meta name="robots" content="noindex, nofollow" />}
+      {shouldNoIndex && <meta name="robots" content="noindex, nofollow" />}
       
       {/* Language */}
       <html lang={currentLang} />
@@ -52,8 +69,8 @@ export function SEO({
       {/* Canonical URL */}
       <link rel="canonical" href={fullUrl} />
       
-      {/* Hreflang tags for multilingual SEO */}
-      {alternateUrls.map(({ lang: langCode, url: altUrl }) => (
+      {/* Hreflang tags for multilingual SEO (marketing pages only) */}
+      {!isAppPage && alternateUrls.map(({ lang: langCode, url: altUrl }) => (
         <link 
           key={langCode}
           rel="alternate" 
@@ -62,11 +79,13 @@ export function SEO({
         />
       ))}
       {/* x-default points to Dutch as the primary/default language */}
-      <link 
-        rel="alternate" 
-        hrefLang="x-default" 
-        href={`${baseUrl}/nl${pathWithoutLang}`} 
-      />
+      {!isAppPage && (
+        <link 
+          rel="alternate" 
+          hrefLang="x-default" 
+          href={`${MARKETING_DOMAIN}/nl${pathWithoutLang}`} 
+        />
+      )}
       
       {/* Open Graph */}
       <meta property="og:title" content={fullTitle} />
@@ -87,7 +106,7 @@ export function SEO({
       {/* Structured Data */}
       {structuredData && (
         <script type="application/ld+json">
-          {JSON.stringify(structuredData)}
+          {JSON.stringify(Array.isArray(structuredData) ? structuredData : [structuredData])}
         </script>
       )}
     </Helmet>
