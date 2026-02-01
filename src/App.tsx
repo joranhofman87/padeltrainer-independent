@@ -8,6 +8,7 @@ import { ThemeProvider } from "next-themes";
 import { CookieConsentProvider } from "@/contexts/CookieConsentContext";
 import { CookieConsentBanner } from "@/components/CookieConsentBanner";
 import { DomainRouter } from "@/components/DomainRouter";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import "@/i18n";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <ScrollToTop />
             <AuthProvider>
               <DomainRouter />
               <CookieConsentBanner />
