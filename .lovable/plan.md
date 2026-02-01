@@ -1,125 +1,103 @@
 
+# Fix KNLTB Rating Display on Trainer Cards
 
-# Enhanced Trainer Cards - Always Show Key Info with Icons
+## Problem Identified
+Trainer KNLTB ratings exist but aren't showing because:
+1. **Data location mismatch**: Ratings are stored in `profiles.skill_rating` but code looks for `trainer_profiles.knltb_rating`
+2. **Not fetched**: The query to `profiles_public` doesn't include `skill_rating` or `rating_system` fields
+3. **Display condition**: Code checks `trainer.knltb_rating` which is NULL for all trainers
 
-## Overview
-Update trainer cards on the `/trainers` overview page to always display key information fields with their icons, showing a dash (`-`) when data is missing. This provides visual consistency and makes it easier to troubleshoot/compare trainers.
+## Current Data
 
-## Fields to Always Display
-1. **Rating** - Star icon with rating value (or `-` if none)
-2. **Reviews** - Review count in parentheses (or `-` if none)
-3. **Available Lessons** - Calendar/check icon showing Yes/No
-4. **Years of Experience** - Clock icon with years (or `-` if none)
+| Trainer | profiles.skill_rating | trainer_profiles.knltb_rating |
+|---------|----------------------|------------------------------|
+| Nikki van der Linden | 4.2 | NULL |
+| Patrick Bernardus | 4.6 | NULL |
+| Tygho Schoonus | 0.9 | NULL |
+| Sep van den Berg | 3.7 | NULL |
+| Max Ebbers | 5.1 | NULL |
 
-## Current State
-- **Location**: `src/pages/Trainers.tsx`
-- **Rating/Reviews**: Only shown when `reviewCount > 0` (lines 713-721, 555-563)
-- **Experience**: Only shown when `experience_years` exists (lines 744-748, 586-590)
-- **Availability**: Not currently tracked/displayed
+## Solution
 
-## Implementation
-
-### Step 1: Extend TrainerWithProfile Interface
-Add `hasAvailability` field to track if trainer has upcoming slots:
-
-```typescript
-interface TrainerWithProfile {
-  // ... existing fields
-  hasAvailability: boolean;  // NEW
-}
-```
-
-### Step 2: Fetch Availability Data
-Query availability_slots to check which trainers have future slots:
+### Step 1: Update Profile Interface
+Extend the `profile` object in `TrainerWithProfile` to include rating fields:
 
 ```typescript
-// In fetchTrainers(), after fetching trainer profiles:
-const now = new Date().toISOString();
-const { data: availabilityData } = await supabase
-  .from('availability_slots')
-  .select('trainer_id')
-  .in('trainer_id', trainerIds)
-  .gt('start_time', now)
-  .is('lesson_id', null);  // Only open slots
-
-// Build a Set of trainer IDs with availability
-const trainersWithAvailability = new Set(
-  availabilityData?.map(a => a.trainer_id) || []
-);
+profile: {
+  full_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
+  skill_rating: number | null;    // NEW
+  rating_system: string | null;   // NEW
+} | null;
 ```
 
-### Step 3: Update Card Layout
-Replace conditional rendering with always-visible info row:
+### Step 2: Fetch Rating Data from profiles_public
+Update the query at line 251 to include the rating fields:
+
+```typescript
+const { data: profiles } = await supabase
+  .from('profiles_public')
+  .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
+  .in('user_id', userIds);
+```
+
+### Step 3: Update Card Display (Featured Section)
+Replace lines 611-616 to show the profile rating:
 
 ```tsx
-{/* Always-visible Info Row */}
-<div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-  {/* Rating & Reviews */}
-  <div className="flex items-center gap-1">
-    <Star className="h-3.5 w-3.5 text-yellow-400" />
-    <span className={trainer.reviewCount > 0 ? 'font-medium text-foreground' : ''}>
-      {trainer.reviewCount > 0 ? trainer.averageRating.toFixed(1) : '-'}
+<div className="flex items-center gap-2 text-muted-foreground text-xs">
+  {trainer.profile?.skill_rating && trainer.profile?.rating_system && (
+    <span className="font-medium text-foreground">
+      {ratingSystems.find(rs => rs.code === trainer.profile?.rating_system)?.name || 
+        trainer.profile.rating_system.toUpperCase()} {trainer.profile.skill_rating}
     </span>
-  </div>
-  
-  {/* Review Count */}
-  <div className="flex items-center gap-1">
-    <MessageSquare className="h-3.5 w-3.5" />
-    <span>{trainer.reviewCount > 0 ? trainer.reviewCount : '-'}</span>
-  </div>
-  
-  {/* Availability */}
-  <div className="flex items-center gap-1">
-    <CalendarCheck className="h-3.5 w-3.5" />
-    <span className={trainer.hasAvailability ? 'text-green-600 font-medium' : ''}>
-      {trainer.hasAvailability ? 'Yes' : 'No'}
-    </span>
-  </div>
-  
-  {/* Experience */}
-  <div className="flex items-center gap-1">
-    <Clock className="h-3.5 w-3.5" />
-    <span>{trainer.experience_years ? `${trainer.experience_years}y` : '-'}</span>
-  </div>
+  )}
 </div>
 ```
 
-### Step 4: Add New Icon Imports
-```typescript
-import { 
-  Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown,
-  MessageSquare, CalendarCheck, Clock  // NEW
-} from 'lucide-react';
+### Step 4: Update Card Display (Main Grid)
+Same change for lines 778-783.
+
+### Step 5: Show Rating Icon in Info Row (Optional Enhancement)
+Add the KNLTB/skill rating to the always-visible info row alongside the review rating:
+
+```tsx
+{/* In the info row, add after experience */}
+<div className="flex items-center gap-1">
+  <Trophy className="h-3 w-3" />  {/* or another suitable icon */}
+  <span className={trainer.profile?.skill_rating ? 'font-medium text-foreground' : ''}>
+    {trainer.profile?.skill_rating 
+      ? `${trainer.profile.skill_rating.toFixed(1)}`
+      : '-'}
+  </span>
+</div>
 ```
 
-## Visual Design
+## Visual Result
 
 ```text
-┌──────────────────────────────────────┐
-│  [Avatar]  Trainer Name              │
-│            📍 Amsterdam              │
-│                                      │
-│  ⭐ 4.5   💬 12   📅 Yes   🕐 5y    │  ← Always visible row
-│                                      │
-│  €45/hr          KNLTB 7.5           │
-│                                      │
-│  [Specialization badges...]          │
-└──────────────────────────────────────┘
-
-When data is missing:
-│  ⭐ -    💬 -    📅 No    🕐 -      │
+┌──────────────────────────────────────────────────────────────────┐
+│  [Avatar]  Nikki van der Linden                                  │
+│            📍 Amsterdam                                          │
+│                                                                  │
+│  ⭐ 4.8   💬 12   📅 Yes   🕐 5y   🏆 4.2                        │
+│                                                                  │
+│  €45/hr                    KNLTB 4.2                             │
+│                                                                  │
+│  [Specialization badges...]                                      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Files Changed
 
 | File | Action | Changes |
 |------|--------|---------|
-| `src/pages/Trainers.tsx` | Edit | Add hasAvailability to interface, fetch availability, update both card sections (featured + grid) |
+| `src/pages/Trainers.tsx` | Edit | Add rating fields to profile query, update interface, display skill_rating from profile |
 
 ## Technical Notes
 
-1. **Single Query for Availability**: We'll use a single query with `SELECT DISTINCT trainer_id` to efficiently check which trainers have open slots
-2. **Both Card Sections**: Must update both the Featured Trainers section (lines ~555-610) AND the regular grid (lines ~713-765)
-3. **Consistent Styling**: Missing data shown with `-` and muted styling; available data uses appropriate color highlights
-4. **Performance**: The availability query is efficient as it only needs to check existence, not count slots
-
+1. **Backward compatible**: Keep checking `trainer.knltb_rating` as fallback in case some trainers have it set directly
+2. **Both card sections**: Must update Featured (line 611) and Grid (line 778) sections
+3. **Profile rating vs Trainer rating**: The profile holds the player's skill rating; the trainer_profiles could optionally hold a separate "trainer credential rating" if needed in future
