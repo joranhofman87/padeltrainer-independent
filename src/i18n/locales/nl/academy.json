@@ -64,7 +64,11 @@
     "remove": "Verwijderen",
     "removeTitle": "Trainer Verwijderen",
     "removeDescription": "Weet je zeker dat je deze trainer wilt verwijderen uit je academy? Ze zijn dan niet meer aangesloten bij je academy.",
-    "removed": "Trainer verwijderd"
+    "removed": "Trainer verwijderd",
+    "addSelfTitle": "Je bent ook trainer!",
+    "addSelfDescription": "Voeg jezelf toe aan je academy's trainerslijst om op de publieke pagina te verschijnen.",
+    "addMyselfAsTrainer": "Voeg Mezelf Toe als Trainer",
+    "addedSelf": "Je bent toegevoegd als trainer"
   },
   "trainerInvitation": {
     "title": "Academy Uitnodiging",
