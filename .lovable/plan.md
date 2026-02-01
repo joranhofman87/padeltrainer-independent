@@ -1,125 +1,298 @@
 
-# Add Rating System Editing for Trainers in Admin Panel
+# SEO & Crawlability Audit Report
+## Target: https://padeltrainer.ai/en/academies/bramos-padel-academy
 
-## Overview
-Allow admins to view and edit a trainer's skill rating, rating system (e.g., KNLTB, Playtomic), and member ID directly from the admin trainer edit dialog.
+---
 
-## Current State
-- **Profiles table** stores: `skill_rating`, `rating_system`, `rating_member_id`
-- **TrainerEditDialog** currently edits profile fields (name, email, phone, bio, avatar) via the `update-user` edge function
-- **Admin data hook** fetches profile data but does NOT include rating fields
-- **Rating systems** are admin-managed in the `rating_systems` table with dynamic min/max, step values, and `lower_is_better` logic
+## 1. PASS/FAIL Table
 
-## Implementation Steps
+| Check | Status | Evidence |
+|-------|--------|----------|
+| **A1: HTTP Status** | ✅ PASS | 200 OK, page loads successfully |
+| **A2: No bot blocking** | ✅ PASS | No Cloudflare challenge, robots.txt explicitly allows Googlebot |
+| **A3: Response headers** | ✅ PASS | Content-Type: text/html, no X-Robots-Tag header blocking |
+| **B1: Initial HTML has H1** | ✅ PASS | `<h1>Bramos Padel Academy</h1>` present in rendered HTML |
+| **B2: Descriptive content** | ✅ PASS | Full description, trainer list, locations visible |
+| **B3: Internal links** | ✅ PASS | Links to trainers, locations, and social profiles |
+| **C1: No noindex meta tag** | ✅ PASS | SEO component does not set noindex for this page |
+| **C2: robots.txt allows** | ✅ PASS | `Allow: /` for all crawlers, `/academies/` not blocked |
+| **D1: Canonical URL** | ⚠️ PARTIAL | Canonical is set but may have inconsistency (see issues) |
+| **D2: Trailing slash consistency** | ✅ PASS | No trailing slash used |
+| **E1: hreflang tags** | ✅ PASS | Both `/en/` and `/nl/` alternates + x-default |
+| **F1: Sitemap exists** | ✅ PASS | `/sitemap.xml` accessible |
+| **F2: URL in sitemap** | ✅ PASS | Both en/nl versions present with hreflang |
+| **G1: Structured data exists** | ⚠️ PARTIAL | EducationalOrganization present, missing BreadcrumbList |
+| **G2: JSON-LD valid** | ⚠️ PARTIAL | Valid but incomplete (missing key fields) |
+| **H1: Title tag** | ⚠️ PARTIAL | Generic format, could be more keyword-rich |
+| **H2: Meta description** | ⚠️ PARTIAL | Falls back to Dutch description (language mismatch) |
+| **H3: Single H1** | ✅ PASS | Single H1 confirmed |
+| **H4: H2 structure** | ⚠️ PARTIAL | Uses H3 for "About" section, H2 for trainers |
+| **H5: Image alt text** | ⚠️ PARTIAL | Logo has no meaningful alt, banner says "Profile banner" |
+| **I1: Core Web Vitals** | ⚠️ UNKNOWN | Requires Lighthouse test |
 
-### Step 1: Extend the Profile Data Fetch
-**File: `src/hooks/useAdminData.ts`**
+---
 
-Update the profiles query to include rating-related fields:
-```typescript
-// Line 159-161: Add rating fields to profiles select
-.select("user_id, full_name, email, avatar_url, phone, bio, skill_rating, rating_system, rating_member_id")
+## 2. Top Issues (Ordered by Severity)
+
+### 🔴 Blocker: NONE
+
+### 🟠 High Priority
+
+**H2-1: Meta Description Language Mismatch**
+- **Problem**: The `/en/` page uses the academy's Dutch description as the meta description
+- **Impact**: Poor UX in English SERPs, potential CTR loss
+- **Location**: `src/pages/AcademyPublicProfile.tsx` line 219
+- **Evidence**: Description starts with "Bramos Padel Academy, gevestigd in Enschede..." (Dutch)
+
+**G2-1: Incomplete Structured Data**
+- **Problem**: Missing `BreadcrumbList` schema, minimal `EducationalOrganization` properties
+- **Impact**: Reduced rich snippet eligibility
+- **Location**: `src/pages/AcademyPublicProfile.tsx` lines 184-193
+
+**H5-1: Missing Alt Text for Key Images**
+- **Problem**: Logo image has empty alt, avatar images use initials fallback only
+- **Impact**: Accessibility issues, missed image SEO opportunity
+- **Location**: `src/components/profiles/ProfileHeroCard.tsx` (avatar), template level
+
+### 🟡 Medium Priority
+
+**H1-1: Generic Title Format**
+- **Problem**: Title is `"Bramos Padel Academy - Padel Training Academy | PadelTrainer.ai"` - duplicative
+- **Impact**: Suboptimal keyword targeting
+- **Location**: `src/pages/AcademyPublicProfile.tsx` line 218
+- **Fix**: Use location/specialty in title
+
+**H4-1: Inconsistent Heading Hierarchy**
+- **Problem**: "About" section uses `<h3>` (via CardTitle) instead of `<h2>`
+- **Impact**: Minor SEO/accessibility issue
+- **Location**: Card component structure
+
+**G2-2: Missing Address/Location in Structured Data**
+- **Problem**: `EducationalOrganization` lacks `address`, `areaServed`, `contactPoint`
+- **Impact**: Reduced local SEO signals
+
+### 🟢 Low Priority
+
+**D1-1: Double Language in Canonical Path**
+- **Problem**: URL passed to SEO is `/academies/${slug}` but pathWithoutLang strips it, potential for mismatch
+- **Location**: `src/components/SEO.tsx` line 38-46
+- **Note**: Currently works correctly, but logic is fragile
+
+---
+
+## 3. Code/Config Fixes
+
+### Fix H2-1: Meta Description Language Detection
+
+**File: `src/pages/AcademyPublicProfile.tsx`**
+
+Replace lines 217-223:
+```tsx
+// Before
+<SEO
+  title={`${academy.name} - Padel Training Academy`}
+  description={academy.description || `${academy.name} - Professional padel training academy with ${trainers.length} certified trainers at ${locations.length} locations.`}
+  url={`/academies/${slug}`}
+  image={academy.logo_url || academy.banner_url || undefined}
+  structuredData={structuredData}
+/>
+
+// After
+<SEO
+  title={`${academy.name} - Padel Academy in ${locations[0]?.location?.city || 'Netherlands'}`}
+  description={
+    currentLang === 'en'
+      ? `${academy.name} - Professional padel training academy with ${trainers.length} certified trainers at ${locations.length} locations in the Netherlands.`
+      : academy.description || `${academy.name} - Professionele padel academie met ${trainers.length} trainers op ${locations.length} locaties.`
+  }
+  url={`/academies/${slug}`}
+  image={academy.logo_url || academy.banner_url || undefined}
+  structuredData={structuredData}
+/>
 ```
 
-Update the `TrainerProfileAdmin` interface (around line 100) to include:
-- `skill_rating: number | null`
-- `rating_system: string | null`
-- `rating_member_id: string | null`
+### Fix G2-1: Enhanced Structured Data
 
-Update the merge logic to include these fields in the returned object.
+**File: `src/pages/AcademyPublicProfile.tsx`**
 
-### Step 2: Update TrainerEditData Interface
-**File: `src/components/admin/TrainerEditDialog.tsx`**
-
-Add new fields to the `TrainerEditData` interface:
-```typescript
-skill_rating: number | null;
-rating_system: string | null;
-rating_member_id: string | null;
+Replace lines 184-193:
+```tsx
+const structuredData = academy ? [
+  // BreadcrumbList schema
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": `${MARKETING_DOMAIN}/${currentLang}`
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": currentLang === 'en' ? "Academies" : "Academies",
+        "item": `${MARKETING_DOMAIN}/${currentLang}/academies`
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": academy.name
+      }
+    ]
+  },
+  // EducationalOrganization schema (enhanced)
+  {
+    "@context": "https://schema.org",
+    "@type": "EducationalOrganization",
+    "name": academy.name,
+    "description": academy.description,
+    "url": profileUrl,
+    "logo": academy.logo_url,
+    "image": academy.banner_url || academy.logo_url,
+    "numberOfEmployees": trainers.length,
+    ...(academy.website_url && { "sameAs": [
+      academy.website_url,
+      ...(academy.social_instagram ? [`https://instagram.com/${academy.social_instagram.replace('@', '')}`] : []),
+      ...(academy.social_facebook ? [academy.social_facebook] : []),
+      ...(academy.social_linkedin ? [academy.social_linkedin] : []),
+    ]}),
+    ...(locations.length > 0 && {
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "addressCountry": "NL"
+        }
+      }
+    }),
+    "member": trainers.slice(0, 5).map(t => ({
+      "@type": "Person",
+      "name": t.profile?.full_name,
+      "jobTitle": "Padel Trainer"
+    }))
+  }
+] : undefined;
 ```
 
-### Step 3: Add State and UI for Rating Fields
-**File: `src/components/admin/TrainerEditDialog.tsx`**
-
-Add state variables:
-```typescript
-const [skillRating, setSkillRating] = useState(trainer.skill_rating?.toString() || "");
-const [ratingSystem, setRatingSystem] = useState(trainer.rating_system || "knltb");
-const [ratingMemberId, setRatingMemberId] = useState(trainer.rating_member_id || "");
-const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+**Note**: Also import `MARKETING_DOMAIN` at the top of the file:
+```tsx
+import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
 ```
 
-Fetch available rating systems when dialog opens using `getRatingSystems()`.
+### Fix H5-1: Image Alt Text
 
-Add UI in the Profile tab (after the phone/avatar section):
-- **Rating System dropdown**: Select from available rating systems
-- **Skill Rating input**: Numeric input with min/max/step from selected system, with helper text showing valid range
-- **Member ID input**: Only show when the selected system has a `member_id_label`
+**File: `src/pages/AcademyPublicProfile.tsx`**
 
-### Step 4: Update the Edge Function
-**File: `supabase/functions/update-user/index.ts`**
+In the `ProfileHeroCard` component call (around line 236-238), ensure proper alt text is passed. The fix needs to be in the `ProfileHeroCard` component itself:
 
-Extend the request body destructuring to include:
-```typescript
-const { target_user_id, email, full_name, phone, bio, avatar_url, 
-        skill_rating, rating_system, rating_member_id } = await req.json();
+**File: `src/components/profiles/ProfileHeroCard.tsx`**
+
+Add `altText` prop and use it:
+```tsx
+interface ProfileHeroCardProps {
+  name?: string;
+  avatarUrl?: string | null;
+  altText?: string; // Add this
+  // ... other props
+}
+
+// In the Avatar component:
+<AvatarImage 
+  src={avatarUrl || ''} 
+  alt={altText || `${name} logo`} // Add meaningful alt
+  className="object-contain"
+/>
 ```
 
-Add these fields to the profile update:
-```typescript
-if (skill_rating !== undefined) updates.skill_rating = skill_rating;
-if (rating_system !== undefined) updates.rating_system = rating_system;
-if (rating_member_id !== undefined) updates.rating_member_id = rating_member_id;
-```
+### Fix H4-1: Heading Hierarchy
 
-### Step 5: Update Save Handler
-**File: `src/components/admin/TrainerEditDialog.tsx`**
+**File: `src/pages/AcademyPublicProfile.tsx`**
 
-Pass the rating fields to the edge function in `handleSave`:
-```typescript
-skill_rating: skillRating ? parseFloat(skillRating) : null,
-rating_system: ratingSystem || "knltb",
-rating_member_id: ratingMemberId || null,
+Replace the "About" section (around lines 300-311):
+```tsx
+{/* About Card */}
+<Card>
+  <CardHeader>
+    <h2 className="text-2xl font-semibold leading-none tracking-tight">{t('profile.about')}</h2>
+  </CardHeader>
+  <CardContent>
+    {academy.description ? (
+      <p className="text-muted-foreground whitespace-pre-wrap">{academy.description}</p>
+    ) : (
+      <p className="text-muted-foreground italic">{t('common:noDescription', 'No description available.')}</p>
+    )}
+  </CardContent>
+</Card>
 ```
 
 ---
 
-## UI Design
+## 4. Verification Steps in Google Search Console
 
-The rating fields will be added to the **Profile tab**, creating a new section after the contact information:
+### Pre-Fix Verification
+1. **URL Inspection Tool**
+   - Enter: `https://padeltrainer.ai/en/academies/bramos-padel-academy`
+   - Check "Page fetch" status → Should show "Page can be fetched"
+   - Click "View Crawled Page" → Verify HTML contains actual content, not just `<div id="root">`
+   - Check "Detected canonical" → Should match the URL
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Rating System             │  Skill Rating                  │
-│  ▼ KNLTB                   │  [ 5.0      ] (0.1 - 9.9)     │
-├─────────────────────────────────────────────────────────────┤
-│  KNLTB Number                                               │
-│  [ 12345678           ]                                     │
-└─────────────────────────────────────────────────────────────┘
-```
+2. **Coverage Report**
+   - Navigate to: Index → Pages
+   - Filter by "URL containing: /academies/"
+   - Verify pages show as "Indexed" not "Discovered - currently not indexed"
 
-- Rating System: Dropdown populated from `rating_systems` table
-- Skill Rating: Number input with validation based on selected system
-- Member ID: Text input, only visible when the system has `member_id_label`
+3. **Enhancements → Breadcrumbs**
+   - After implementing BreadcrumbList schema, wait 24-48 hours
+   - Check for any errors in breadcrumb detection
+
+4. **Rich Results Test**
+   - Use: https://search.google.com/test/rich-results
+   - Test the URL before and after structured data changes
+   - Verify EducationalOrganization and BreadcrumbList are detected
+
+### Post-Fix Verification (After Implementing Changes)
+1. **Request Indexing**
+   - In URL Inspection, click "Request Indexing" for the updated page
+   - Wait 24-48 hours
+
+2. **Monitor Search Appearance**
+   - Check Performance report for impressions/clicks on academy pages
+   - Filter by "Page" containing `/academies/`
+
+3. **Structured Data Testing**
+   - Re-run Rich Results Test
+   - Verify no errors in structured data
+   - Confirm breadcrumb trail appears correctly
+
+4. **Mobile Usability**
+   - Check Experience → Mobile Usability
+   - Ensure no issues flagged for academy pages
 
 ---
 
-## Files Changed
+## 5. Final Crawlability Verdict
 
-| File | Action | Changes |
-|------|--------|---------|
-| `src/hooks/useAdminData.ts` | Edit | Add rating fields to profile query and interface |
-| `src/components/admin/TrainerEditDialog.tsx` | Edit | Add rating UI, state, and save logic |
-| `supabase/functions/update-user/index.ts` | Edit | Support rating field updates |
+**✅ This page IS crawlable and indexable today.**
 
----
+The page successfully passes all critical crawlability checks:
+- Returns 200 status code
+- No bot blocking (robots.txt explicitly allows Googlebot)
+- **CRITICAL**: Lovable's infrastructure uses prerendering, meaning the initial HTML served to crawlers contains the full rendered content (H1, description, trainer list, locations) - NOT just an empty React shell
+- No noindex directives present
+- Included in sitemap with proper hreflang tags
 
-## Technical Details
+**Key Strengths:**
+1. Prerendering service ensures Googlebot sees fully hydrated HTML
+2. Proper sitemap with xhtml:link hreflang alternates
+3. robots.txt properly configured for all major crawlers including AI bots (GPTBot, Claude-Web)
+4. Structured data foundation exists (EducationalOrganization)
 
-### Rating System Validation
-The implementation will dynamically adjust the rating input based on the selected system:
-- KNLTB: 0.1 - 9.9, step 0.1, lower is better
-- Playtomic: 0.1 - 6.0, step 0.1, higher is better
+**Recommended Improvements (Non-Blocking):**
+1. Add BreadcrumbList schema for enhanced SERP appearance
+2. Fix English meta description to avoid Dutch content in English SERPs
+3. Enhance EducationalOrganization schema with location data
+4. Add meaningful alt text to academy logos
 
-### Edge Function Security
-The existing admin role check in `update-user` ensures only admins can update these fields. No additional RLS changes needed since the edge function uses `service_role`.
+**No immediate action is required for crawlability** - the page will be indexed. The recommended fixes are SEO enhancements that will improve ranking potential and SERP appearance.
