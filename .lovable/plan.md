@@ -1,125 +1,130 @@
 
+# Send Onboarding Emails After Email Confirmation
 
-# Add WYSIWYG Editor for Onboarding Emails
+## Problem
 
-## Overview
-Replace the raw HTML textarea with a user-friendly rich text editor so admins can compose emails visually without needing to know HTML. The editor will provide a toolbar with formatting options like bold, italic, headings, links, and lists.
+Currently, onboarding emails with `delay_days = 0` are queued immediately when a user signs up. However, for users who need to verify their email first, it makes more sense to send the welcome email **after** they confirm their email address - when they first successfully log in.
+
+## Current Flow
+
+```text
+User Signs Up
+    |
+    v
+Profile Created -> Trigger queues emails
+    |
+    v
+User receives verification email
+    |
+    v
+User clicks verification link
+    |
+    v
+User logs in (welcome email was already sent at signup)
+```
+
+## Proposed Flow
+
+```text
+User Signs Up
+    |
+    v
+Profile Created -> Trigger queues emails with delay_days = 0 set to "awaiting_confirmation"
+    |
+    v
+User receives verification email
+    |
+    v
+User clicks verification link -> Auth callback triggers immediate email sending
+    |
+    v
+User logged in + welcome email sent
+```
 
 ## Solution
 
-We'll integrate **TipTap** - a modern, lightweight WYSIWYG editor built on top of ProseMirror that works perfectly with React and has excellent shadcn/ui compatibility.
+We'll modify the system to detect email confirmation and send day-0 emails at that point.
 
-### User Experience
+### Changes Required
 
-**Before (Current)**:
-- Plain textarea requiring HTML code
-- Users must write `<h1>Welkom</h1>` manually
-- Confusing for non-technical users
+**1. Database: Add status for waiting confirmation**
+- Add a new status `awaiting_confirmation` to the email queue
+- Modify the queue function to use this status for delay_days = 0 emails
 
-**After (New)**:
-- Visual editor with familiar toolbar (like Word/Google Docs)
-- Click "Bold" button to make text bold
-- Click to insert links, headings, bullet lists
-- Template variables can be inserted via button clicks
-- Live preview of how the email will look
+**2. Modify Queue Function**
+- For `delay_days = 0` templates: queue with status `awaiting_confirmation`
+- For `delay_days > 0` templates: continue using `pending` status with future scheduled_for date
 
-### Editor Toolbar Features
-- **Text Formatting**: Bold, Italic, Underline
-- **Headings**: H1, H2, H3
-- **Lists**: Bullet list, Numbered list
-- **Links**: Add/edit hyperlinks
-- **Alignment**: Left, Center, Right
-- **Variable Insertion**: Click to insert `{{user_name}}`, etc.
+**3. Create new Edge Function: `trigger-welcome-emails`**
+- Called when user confirms their email
+- Finds all `awaiting_confirmation` emails for that user
+- Sends them immediately via Resend
+- Updates status to `sent`
 
-## Technical Implementation
+**4. Frontend: Detect email confirmation**
+- In `useAuth.tsx`, detect when a user's email gets confirmed
+- Call the `trigger-welcome-emails` edge function
 
-### Dependencies to Add
-```json
-{
-  "@tiptap/react": "^2.x",
-  "@tiptap/starter-kit": "^2.x",
-  "@tiptap/extension-link": "^2.x",
-  "@tiptap/extension-underline": "^2.x",
-  "@tiptap/extension-text-align": "^2.x",
-  "@tiptap/extension-placeholder": "^2.x"
-}
+### Database Migration
+
+```sql
+-- Update the queue_onboarding_emails function to use awaiting_confirmation for 0-day emails
+CREATE OR REPLACE FUNCTION public.queue_onboarding_emails(
+  p_user_id uuid, 
+  p_email text, 
+  p_user_name text, 
+  p_user_type text, 
+  p_trigger_type text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  INSERT INTO onboarding_email_queue (template_id, user_id, email, user_name, user_type, scheduled_for, status)
+  SELECT 
+    t.id,
+    p_user_id,
+    p_email,
+    p_user_name,
+    p_user_type,
+    now() + (t.delay_days || ' days')::interval,
+    CASE WHEN t.delay_days = 0 THEN 'awaiting_confirmation' ELSE 'pending' END
+  FROM onboarding_email_templates t
+  WHERE t.user_type = p_user_type
+    AND t.trigger_type = p_trigger_type
+    AND t.is_active = true;
+END;
+$function$;
 ```
 
-### Files to Create/Modify
-
-**1. New Component: `src/components/ui/rich-text-editor.tsx`**
-A reusable WYSIWYG editor component built with TipTap that:
-- Accepts HTML content and outputs HTML
-- Provides a formatting toolbar
-- Integrates with shadcn/ui styling
-- Supports dark mode
-
-**2. Modify: `src/components/admin/OnboardingEmailDialog.tsx`**
-- Replace the `<Textarea>` with the new `<RichTextEditor>`
-- Add variable insertion buttons that insert text at cursor position
-- Update label from "Body (HTML)" to "Email Content"
-
-**3. Update: `src/i18n/locales/en/admin.json` and `nl/admin.json`**
-- Add new translation keys for editor toolbar buttons
-- Update body field label
-
-### Component Architecture
-
-```text
-OnboardingEmailDialog
-    |
-    +-- Form Fields (name, type, etc.)
-    |
-    +-- RichTextEditor
-    |       |
-    |       +-- Toolbar (Bold, Italic, Headings, etc.)
-    |       |
-    |       +-- Editor Content Area (WYSIWYG)
-    |
-    +-- Variable Insertion Buttons
-```
-
-### Key Implementation Details
-
-**RichTextEditor Component**:
-```typescript
-// Simplified structure
-interface RichTextEditorProps {
-  value: string;           // HTML content
-  onChange: (html: string) => void;
-  placeholder?: string;
-  className?: string;
-}
-
-// Uses TipTap's useEditor hook
-const editor = useEditor({
-  extensions: [StarterKit, Link, Underline, TextAlign, Placeholder],
-  content: value,
-  onUpdate: ({ editor }) => onChange(editor.getHTML()),
-});
-```
-
-**Variable Insertion**:
-The template variable badges will include an "Insert" action that uses the editor's `insertContent` method to add variables at the cursor position:
+### New Edge Function: `trigger-welcome-emails`
 
 ```typescript
-const insertVariable = (variable: string) => {
-  editor?.commands.insertContent(variable);
-};
+// supabase/functions/trigger-welcome-emails/index.ts
+// - Accepts user_id from authenticated request
+// - Finds all awaiting_confirmation emails for that user
+// - Sends them via Resend
+// - Updates status to sent
 ```
 
-### Styling
-- Editor container styled to match existing form inputs
-- Toolbar uses shadcn/ui Toggle components
-- Proper focus states and borders
-- Dark mode compatible using CSS variables
+### Frontend Changes
 
-## Files Summary
+**Modify `useAuth.tsx`:**
+- Detect the `USER_UPDATED` or `SIGNED_IN` auth event where `email_confirmed_at` becomes set
+- Call the `trigger-welcome-emails` edge function when this happens
+
+### Files Summary
 
 | Action | File |
 |--------|------|
-| Create | `src/components/ui/rich-text-editor.tsx` |
-| Modify | `src/components/admin/OnboardingEmailDialog.tsx` |
-| Modify | `src/i18n/locales/en/admin.json` |
-| Modify | `src/i18n/locales/nl/admin.json` |
+| Migrate | Database function `queue_onboarding_emails` |
+| Create | `supabase/functions/trigger-welcome-emails/index.ts` |
+| Modify | `supabase/config.toml` (register new function) |
+| Modify | `src/hooks/useAuth.tsx` (detect email confirmation) |
+| Update | `supabase/functions/process-onboarding-emails/index.ts` (update sender domain) |
 
+### Additional Fix
+
+The `process-onboarding-emails` function still uses `noreply@padeltrainer.nl` - this will be updated to `noreply@padeltrainer.ai`.
