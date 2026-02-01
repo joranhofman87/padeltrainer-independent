@@ -36,6 +36,8 @@ interface NavGroup {
 
 const standaloneItems: NavItem[] = [
   { key: "dashboard", path: "/academy", icon: LayoutDashboard },
+  { key: "calendar", path: "/academy/calendar", icon: Calendar },
+  { key: "cycles", path: "/academy/cycles", icon: CalendarDays },
 ];
 
 const groupedItems: NavGroup[] = [
@@ -45,14 +47,6 @@ const groupedItems: NavGroup[] = [
     items: [
       { key: "trainers", path: "/academy/trainers", icon: Users },
       { key: "players", path: "/academy/players", icon: Users },
-    ],
-  },
-  {
-    key: "schedule",
-    icon: Calendar,
-    items: [
-      { key: "calendar", path: "/academy/calendar", icon: Calendar },
-      { key: "cycles", path: "/academy/cycles", icon: CalendarDays },
     ],
   },
   {
@@ -78,24 +72,51 @@ export function AcademyNavigation() {
 
   return (
     <nav className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-hide">
-      {/* Dashboard - standalone */}
-      <Button
-        variant={isActive("/academy") ? "secondary" : "ghost"}
-        size="sm"
-        onClick={() => navigate("/academy")}
-        className={cn(
-          "flex items-center gap-2 whitespace-nowrap",
-          isActive("/academy") && "bg-secondary"
-        )}
-      >
-        <LayoutDashboard className="h-4 w-4" />
-        <span className="hidden sm:inline">{t("nav.dashboard")}</span>
-      </Button>
+      {/* Standalone items */}
+      {standaloneItems.map((item) => {
+        const ItemIcon = item.icon;
+        return (
+          <Button
+            key={item.key}
+            variant={isActive(item.path) ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => navigate(item.path)}
+            className={cn(
+              "flex items-center gap-2 whitespace-nowrap",
+              isActive(item.path) && "bg-secondary"
+            )}
+          >
+            <ItemIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">{t(`nav.${item.key}`)}</span>
+          </Button>
+        );
+      })}
 
-      {/* Grouped dropdowns */}
+      {/* Grouped dropdowns - only show dropdown if more than 1 item */}
       {groupedItems.map((group) => {
         const GroupIcon = group.icon;
         const groupIsActive = isGroupActive(group.items);
+
+        // If only one item, render as standalone button
+        if (group.items.length === 1) {
+          const item = group.items[0];
+          const ItemIcon = item.icon;
+          return (
+            <Button
+              key={group.key}
+              variant={isActive(item.path) ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => navigate(item.path)}
+              className={cn(
+                "flex items-center gap-2 whitespace-nowrap",
+                isActive(item.path) && "bg-secondary"
+              )}
+            >
+              <ItemIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{t(`nav.${item.key}`)}</span>
+            </Button>
+          );
+        }
 
         return (
           <DropdownMenu key={group.key}>
