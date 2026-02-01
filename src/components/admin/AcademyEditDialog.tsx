@@ -55,6 +55,7 @@ import {
   Users,
   Building2,
   Upload,
+  UserCog,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -117,6 +118,24 @@ interface AvailableTrainer {
   email: string | null;
 }
 
+interface AcademyManager {
+  id: string;
+  user_id: string;
+  role: string;
+  profile: {
+    full_name: string | null;
+    email: string | null;
+    avatar_url: string | null;
+  } | null;
+}
+
+interface AvailableUser {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+}
+
 interface AcademyEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -165,6 +184,7 @@ export function AcademyEditDialog({
   // Related data
   const [locations, setLocations] = useState<AcademyLocation[]>([]);
   const [trainers, setTrainers] = useState<AcademyTrainer[]>([]);
+  const [managers, setManagers] = useState<AcademyManager[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
 
   // Location picker state
@@ -180,6 +200,14 @@ export function AcademyEditDialog({
   const [addingTrainer, setAddingTrainer] = useState(false);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string | null>(null);
 
+  // Manager picker state
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [managerSearch, setManagerSearch] = useState("");
+  const [addingManager, setAddingManager] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedManagerRole, setSelectedManagerRole] = useState<string>("manager");
+
   // File upload refs
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -191,6 +219,7 @@ export function AcademyEditDialog({
       loadRelatedData();
       loadAllLocations();
       loadAllTrainers();
+      loadAllUsers();
     }
   }, [open, academy.id]);
 
@@ -229,6 +258,21 @@ export function AcademyEditDialog({
       }
     } catch (error) {
       console.error("Error loading trainers:", error);
+    }
+  };
+
+  const loadAllUsers = async () => {
+    try {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, user_id, full_name, email")
+        .order("full_name", { ascending: true });
+
+      if (profiles) {
+        setAvailableUsers(profiles as AvailableUser[]);
+      }
+    } catch (error) {
+      console.error("Error loading users:", error);
     }
   };
 
@@ -293,6 +337,35 @@ export function AcademyEditDialog({
           setTrainers(trainerData as unknown as AcademyTrainer[]);
         }
       }
+
+      // Load managers
+      const { data: managerData } = await supabase
+        .from("academy_managers")
+        .select("id, user_id, role")
+        .eq("academy_profile_id", academy.id);
+
+      if (managerData && managerData.length > 0) {
+        const managerUserIds = managerData.map(m => m.user_id);
+        const { data: managerProfiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, email, avatar_url")
+          .in("user_id", managerUserIds);
+
+        const profileMap = new Map(
+          managerProfiles?.map((p) => [p.user_id, p]) || []
+        );
+
+        const enrichedManagers: AcademyManager[] = managerData.map(m => ({
+          id: m.id,
+          user_id: m.user_id,
+          role: m.role,
+          profile: profileMap.get(m.user_id) || null,
+        }));
+
+        setManagers(enrichedManagers);
+      } else {
+        setManagers([]);
+      }
     } catch (error) {
       console.error("Error loading related data:", error);
     } finally {
@@ -329,6 +402,21 @@ export function AcademyEditDialog({
       return true;
     });
   }, [availableTrainers, trainers, trainerSearch]);
+
+  // Filter users not already managers
+  const filteredUsers = useMemo(() => {
+    const managerUserIds = new Set(managers.map(m => m.user_id));
+    return availableUsers.filter(u => {
+      if (managerUserIds.has(u.user_id)) return false;
+      if (managerSearch) {
+        return (
+          (u.full_name?.toLowerCase().includes(managerSearch.toLowerCase())) ||
+          (u.email?.toLowerCase().includes(managerSearch.toLowerCase()))
+        );
+      }
+      return true;
+    });
+  }, [availableUsers, managers, managerSearch]);
 
   // Group locations by city for the picker
   const groupedLocations = useMemo(() => {
@@ -471,6 +559,82 @@ export function AcademyEditDialog({
     } catch (error) {
       console.error("Error updating trainer:", error);
       toast({ title: "Error", description: "Failed to update trainer.", variant: "destructive" });
+    }
+  };
+
+  const handleAddManager = async () => {
+    if (!selectedUserId) return;
+    
+    setAddingManager(true);
+    try {
+      // First, insert into academy_managers
+      const { error: managerError } = await supabase.from("academy_managers").insert({
+        academy_profile_id: academy.id,
+        user_id: selectedUserId,
+        role: selectedManagerRole,
+      });
+
+      if (managerError) throw managerError;
+
+      // Also ensure the user has the 'academy' role in user_roles
+      const { data: existingRole } = await supabase
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", selectedUserId)
+        .eq("role", "academy")
+        .single();
+
+      if (!existingRole) {
+        await supabase.from("user_roles").insert({
+          user_id: selectedUserId,
+          role: "academy",
+        });
+      }
+
+      toast({ title: "Manager added", description: "User added as academy manager." });
+      await loadRelatedData();
+      setManagerOpen(false);
+      setSelectedUserId(null);
+      setSelectedManagerRole("manager");
+    } catch (error) {
+      console.error("Error adding manager:", error);
+      toast({ title: "Error", description: "Failed to add manager.", variant: "destructive" });
+    } finally {
+      setAddingManager(false);
+    }
+  };
+
+  const handleUpdateManagerRole = async (managerId: string, newRole: string) => {
+    try {
+      const { error } = await supabase
+        .from("academy_managers")
+        .update({ role: newRole })
+        .eq("id", managerId);
+
+      if (error) throw error;
+      
+      toast({ title: "Role updated", description: `Manager role changed to ${newRole}.` });
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error updating manager role:", error);
+      toast({ title: "Error", description: "Failed to update role.", variant: "destructive" });
+    }
+  };
+
+  const handleRemoveManager = async (managerId: string) => {
+    try {
+      const { error } = await supabase
+        .from("academy_managers")
+        .delete()
+        .eq("id", managerId);
+
+      if (error) throw error;
+
+      toast({ title: "Manager removed", description: "User removed as academy manager." });
+      await loadRelatedData();
+    } catch (error) {
+      console.error("Error removing manager:", error);
+      toast({ title: "Error", description: "Failed to remove manager.", variant: "destructive" });
     }
   };
 
@@ -619,7 +783,7 @@ export function AcademyEditDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="locations">
               <MapPin className="h-4 w-4 mr-1" />
@@ -628,6 +792,10 @@ export function AcademyEditDialog({
             <TabsTrigger value="trainers">
               <Users className="h-4 w-4 mr-1" />
               Trainers ({trainers.length})
+            </TabsTrigger>
+            <TabsTrigger value="managers">
+              <UserCog className="h-4 w-4 mr-1" />
+              Managers ({managers.length})
             </TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -1026,6 +1194,149 @@ export function AcademyEditDialog({
                           variant="ghost"
                           size="icon"
                           onClick={() => handleRemoveTrainer(trainer.id)}
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+
+          <TabsContent value="managers" className="mt-4 space-y-4">
+            {/* Add Manager Button */}
+            <Popover open={managerOpen} onOpenChange={(open) => {
+              setManagerOpen(open);
+              if (!open) {
+                setSelectedUserId(null);
+                setSelectedManagerRole("manager");
+              }
+            }}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Manager
+                  <ChevronsUpDown className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <div className="p-4 space-y-4">
+                  <Command className="border rounded-md">
+                    <CommandInput
+                      placeholder="Search users..."
+                      value={managerSearch}
+                      onValueChange={setManagerSearch}
+                    />
+                    <CommandList className="max-h-[200px]">
+                      <CommandEmpty>No users found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredUsers.slice(0, 50).map(user => (
+                          <CommandItem
+                            key={user.id}
+                            value={`${user.full_name} ${user.email}`}
+                            onSelect={() => setSelectedUserId(user.user_id)}
+                            className={cn(selectedUserId === user.user_id && "bg-primary/10")}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedUserId === user.user_id ? "opacity-100 text-primary" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex-1">
+                              <span className="font-medium">{user.full_name || "Unknown"}</span>
+                              {user.email && (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  {user.email}
+                                </span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+
+                  {selectedUserId && (
+                    <div className="space-y-2">
+                      <Label>Role</Label>
+                      <Select value={selectedManagerRole} onValueChange={setSelectedManagerRole}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="owner">Owner</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {selectedUserId && (
+                    <Button
+                      className="w-full"
+                      onClick={handleAddManager}
+                      disabled={addingManager}
+                    >
+                      {addingManager && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Add {selectedManagerRole === "owner" ? "Owner" : "Manager"}
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Managers Table */}
+            {loadingRelated ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : managers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <UserCog className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No managers assigned to this academy</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {managers.map((manager) => (
+                    <TableRow key={manager.id}>
+                      <TableCell className="font-medium">
+                        {manager.profile?.full_name || "Unknown"}
+                      </TableCell>
+                      <TableCell>
+                        {manager.profile?.email || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Select 
+                          value={manager.role} 
+                          onValueChange={(newRole) => handleUpdateManagerRole(manager.id, newRole)}
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="owner">Owner</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveManager(manager.id)}
                           className="h-8 w-8 text-destructive hover:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />
