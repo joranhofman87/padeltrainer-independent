@@ -1,58 +1,68 @@
 
 
-# Fix: Trainer Rating Display Using Wrong Data Source
+# Hide "Trainer Preference" Toggle for Individual Trainers
 
-## Problem Summary
-The admin panel saves trainer ratings to the `profiles` table (`skill_rating`, `rating_system`, `rating_member_id`), but the trainer's EditProfile page reads from the `trainer_profiles` table (`knltb_rating`, `trainer_rating_system`). These are two separate fields.
+## Problem
+When a trainer creates a cycle, they see the "Allow trainer preference" toggle. This doesn't make sense because:
+- There's only one trainer (themselves)
+- Players can't choose between trainers when there's only one option
 
-**Database values for Rene:**
-| Table | Field | Value |
-|-------|-------|-------|
-| profiles | skill_rating | 1.0 |
-| profiles | rating_system | knltb |
-| trainer_profiles | knltb_rating | NULL |
-| trainer_profiles | trainer_rating_system | knltb |
-
-The admin correctly set `profiles.skill_rating = 1.0`, but the trainer sees `trainer_profiles.knltb_rating = NULL`.
+This option is only relevant when an **academy** creates a cycle, since academies have multiple trainers.
 
 ## Solution
-Update the trainer's EditProfile page to use the shared `formData` (from the `profiles` table) instead of `trainerData` for the rating section. This aligns with the existing architecture where ratings live in the `profiles` table for both players and trainers.
+Conditionally render the "show_preferred_trainer" field only when `ownerType === 'academy'`.
 
 ## Files to Change
 
-| File | Changes |
-|------|---------|
-| `src/pages/EditProfile.tsx` | Change Trainer Details rating section to use `formData.skill_rating` and `formData.rating_system` instead of `trainerData.knltb_rating` and `trainerData.trainer_rating_system` |
+| File | Change |
+|------|--------|
+| `src/components/cycles/CycleForm.tsx` | Wrap the `show_preferred_trainer` FormField in a condition that only renders for academy-owned cycles |
 
 ## Implementation Details
 
-In the "Your Padel Rating" section within Trainer Details (lines 885-943):
+In `CycleForm.tsx`, wrap lines 318-337 with a condition:
 
-1. Change the rating system Select from:
-   - `value={trainerData.trainer_rating_system}` 
-   - to `value={formData.rating_system}`
-
-2. Change the rating Input from:
-   - `value={trainerData.knltb_rating || ''}`
-   - to `value={formData.skill_rating}`
-
-3. Update the onChange handlers to modify `formData` instead of `trainerData`
-
-4. Use `currentRatingSystem` (already computed from `formData.rating_system`) for the constraints
-
-This ensures both admin and trainer are reading from and writing to the same `profiles` table fields.
-
-## Before/After
-
-**Before:**
-```text
-Admin saves → profiles.skill_rating = 1.0
-Trainer sees ← trainer_profiles.knltb_rating = NULL
+```tsx
+{ownerType === 'academy' && (
+  <FormField
+    control={form.control}
+    name="show_preferred_trainer"
+    render={({ field }) => (
+      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+        <div className="space-y-0.5">
+          <FormLabel>{t('form.showPreferredTrainer')}</FormLabel>
+          <FormDescription className="text-xs">
+            {t('form.showPreferredTrainerHelp')}
+          </FormDescription>
+        </div>
+        <FormControl>
+          <Switch
+            checked={field.value}
+            onCheckedChange={field.onChange}
+          />
+        </FormControl>
+      </FormItem>
+    )}
+  />
+)}
 ```
 
-**After:**
-```text
-Admin saves → profiles.skill_rating = 1.0
-Trainer sees ← profiles.skill_rating = 1.0
+## Additional Consideration
+For trainer-owned cycles, we should also default `show_preferred_trainer` to `false` (since it won't be shown and shouldn't be enabled). The current default is `true`, which would still be saved even though the toggle isn't visible.
+
+Update the `defaultValues` to:
+```tsx
+show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
 ```
+
+This ensures:
+- Academy cycles: Default to showing trainer preference (true)
+- Trainer cycles: Default to not showing trainer preference (false)
+
+## Result
+| Owner Type | Trainer Preference Toggle |
+|------------|---------------------------|
+| `trainer`  | Hidden, defaults to false |
+| `academy`  | Visible, defaults to true |
+| `club`     | Hidden, defaults to false |
 
