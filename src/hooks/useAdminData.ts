@@ -297,6 +297,7 @@ export function useAdminAcademies() {
     enabled: isAdmin === true,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
+    placeholderData: (previousData) => previousData,
   });
 }
 

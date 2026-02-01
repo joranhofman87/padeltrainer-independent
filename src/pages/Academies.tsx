@@ -24,18 +24,23 @@ export default function Academies() {
   const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAcademies = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await getPublicAcademies();
+      setAcademies(data);
+    } catch (error) {
+      console.error('Error fetching academies:', error);
+      setError('Failed to load academies. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchAcademies() {
-      try {
-        const data = await getPublicAcademies();
-        setAcademies(data);
-      } catch (error) {
-        console.error('Error fetching academies:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchAcademies();
   }, []);
 
@@ -174,6 +179,15 @@ export default function Academies() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          ) : error ? (
+            <div className="text-center py-16">
+              <Building2 className="h-16 w-16 mx-auto text-destructive mb-4" />
+              <h3 className="text-lg font-semibold mb-2">{t('common:errorLoadingAcademies', 'Error loading academies')}</h3>
+              <p className="text-muted-foreground mb-6">{error}</p>
+              <Button onClick={fetchAcademies}>
+                {t('common:tryAgain', 'Try Again')}
+              </Button>
             </div>
           ) : filteredAcademies.length === 0 ? (
             <div className="text-center py-16">
