@@ -10,10 +10,8 @@ import {
   addDays,
   isToday,
   isBefore,
-  setHours,
-  setMinutes,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar, Plus, Repeat, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Plus, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,8 +26,9 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
-import { getAcademyTrainers, getAcademyLocations } from "@/lib/academy";
+import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
 import { supabase } from "@/integrations/supabase/client";
+import CycleForm from "@/components/cycles/CycleForm";
 
 interface AcademySlot {
   id: string;
@@ -83,6 +82,9 @@ export default function AcademyCalendar() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
+  
+  // Cycle dialog state
+  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
 
   useEffect(() => {
     if (activeAcademy) {
@@ -100,27 +102,16 @@ export default function AcademyCalendar() {
     if (!activeAcademy) return;
 
     try {
-      // Load trainers
-      const academyTrainers = await getAcademyTrainers(activeAcademy.id);
-      const trainerList: Trainer[] = [];
-      
-      for (const t of academyTrainers) {
-        const trainer = t.trainer_profile as any;
-        if (!trainer) continue;
-        
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("full_name, avatar_url")
-          .eq("user_id", trainer.user_id)
-          .single();
-        
-        trainerList.push({
-          id: trainer.id,
-          name: profile?.full_name || "Unknown",
-          avatar: profile?.avatar_url || null,
-          user_id: trainer.user_id,
-        });
-      }
+      // Load trainers using the helper that uses profiles_public view
+      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+      const trainerList: Trainer[] = academyTrainers
+        .filter((t: any) => t.status === 'active' && t.trainer_profile)
+        .map((t: any) => ({
+          id: t.trainer_profile.id,
+          name: t.profile?.full_name || "Unknown",
+          avatar: t.profile?.avatar_url || null,
+          user_id: t.trainer_profile.user_id,
+        }));
       
       setTrainers(trainerList);
       
@@ -158,8 +149,10 @@ export default function AcademyCalendar() {
       const rangeEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
       
       // Get trainer IDs for this academy
-      const academyTrainers = await getAcademyTrainers(activeAcademy.id);
-      const trainerIds = academyTrainers.map((at: any) => at.trainer_profile?.id).filter(Boolean);
+      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+      const trainerIds = academyTrainers
+        .filter((at: any) => at.status === 'active' && at.trainer_profile)
+        .map((at: any) => at.trainer_profile.id);
       
       if (trainerIds.length === 0) {
         setSlots([]);
@@ -384,37 +377,49 @@ export default function AcademyCalendar() {
     <div className="container mx-auto px-4 py-8">
       <Card className="overflow-hidden">
         <CardHeader className="pb-2">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            {/* Navigation controls */}
-            <div className="flex items-center gap-2">
-              {/* Mobile: Day navigation */}
-              <div className="flex items-center gap-1 sm:hidden">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
-                  {t("calendar.today", "Today")}
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+          <div className="flex flex-col gap-4">
+            {/* Top row: Navigation + Action buttons */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* Navigation controls */}
+              <div className="flex items-center gap-2">
+                {/* Mobile: Day navigation */}
+                <div className="flex items-center gap-1 sm:hidden">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
+                    {t("calendar.today", "Today")}
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Desktop: Week navigation */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={goToToday}>
+                    {t("calendar.today", "Today")}
+                  </Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="text-sm font-medium hidden sm:block ml-4">{getDateRangeLabel()}</div>
               </div>
-              {/* Desktop: Week navigation */}
-              <div className="hidden sm:flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={goToToday}>
-                  {t("calendar.today", "Today")}
-                </Button>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="text-sm font-medium hidden sm:block ml-4">{getDateRangeLabel()}</div>
+              
+              {/* Action button */}
+              <Button 
+                onClick={() => setShowCreateCycleDialog(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                {t("calendar.addCycle", "Add Cycle")}
+              </Button>
             </div>
             
-            {/* Filters */}
+            {/* Filters row */}
             <div className="flex items-center gap-2 flex-wrap">
               <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                 <SelectTrigger className="w-[160px] h-8">
@@ -612,6 +617,20 @@ export default function AcademyCalendar() {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Create Cycle Dialog */}
+      {activeAcademy && (
+        <CycleForm
+          open={showCreateCycleDialog}
+          onOpenChange={setShowCreateCycleDialog}
+          ownerType="academy"
+          ownerId={activeAcademy.id}
+          trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+          onSuccess={() => {
+            setShowCreateCycleDialog(false);
+          }}
+        />
+      )}
     </div>
   );
 }
