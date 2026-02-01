@@ -1808,6 +1808,83 @@ export type Database = {
           },
         ]
       }
+      location_requests: {
+        Row: {
+          city: string
+          context_id: string | null
+          country: string
+          created_at: string
+          created_location_id: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          postal_code: string | null
+          rejection_reason: string | null
+          request_context: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          street_address: string | null
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          city: string
+          context_id?: string | null
+          country?: string
+          created_at?: string
+          created_location_id?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          rejection_reason?: string | null
+          request_context?: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          street_address?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          city?: string
+          context_id?: string | null
+          country?: string
+          created_at?: string
+          created_location_id?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          rejection_reason?: string | null
+          request_context?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          street_address?: string | null
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "location_requests_created_location_id_fkey"
+            columns: ["created_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           city: string
