@@ -92,21 +92,6 @@ export function useAdminUsers() {
   });
 }
 
-interface TrainerProfileRow {
-  id: string;
-  user_id: string;
-  subscription_status: string | null;
-  trial_ends_at: string | null;
-  trial_started_at: string | null;
-  is_public: boolean;
-  created_at: string;
-  profile: {
-    full_name: string | null;
-    email: string | null;
-    avatar_url: string | null;
-  }[];
-}
-
 export interface TrainerProfileAdmin {
   id: string;
   user_id: string;
@@ -114,7 +99,31 @@ export interface TrainerProfileAdmin {
   trial_ends_at: string | null;
   trial_started_at: string | null;
   is_public: boolean;
+  is_verified: boolean | null;
   created_at: string;
+  // Profile fields
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  phone: string | null;
+  bio: string | null;
+  // Trainer specific fields
+  hourly_rate: number | null;
+  experience_years: number | null;
+  coaching_method: string | null;
+  favourite_quote: string | null;
+  video_url: string | null;
+  website_url: string | null;
+  social_instagram: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
+  business_name: string | null;
+  business_address: string | null;
+  kvk_number: string | null;
+  btw_number: string | null;
+  iban: string | null;
+  // Legacy profile object for backward compatibility
   profile: {
     full_name: string | null;
     email: string | null;
@@ -128,10 +137,17 @@ export function useAdminTrainers() {
   return useQuery({
     queryKey: ["admin", "trainers"],
     queryFn: async (): Promise<TrainerProfileAdmin[]> => {
-      // Fetch trainer profiles
+      // Fetch trainer profiles with all fields
       const { data: trainers, error: trainersError } = await supabase
         .from("trainer_profiles")
-        .select("id, user_id, subscription_status, trial_ends_at, trial_started_at, is_public, created_at")
+        .select(`
+          id, user_id, subscription_status, trial_ends_at, trial_started_at, 
+          is_public, is_verified, created_at,
+          hourly_rate, experience_years, coaching_method, favourite_quote,
+          video_url, website_url, social_instagram, social_tiktok, 
+          social_youtube, social_linkedin, business_name, business_address,
+          kvk_number, btw_number, iban
+        `)
         .order("created_at", { ascending: false });
 
       if (trainersError) throw trainersError;
@@ -141,21 +157,34 @@ export function useAdminTrainers() {
       const userIds = trainers.map((t) => t.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("user_id, full_name, email, avatar_url")
+        .select("user_id, full_name, email, avatar_url, phone, bio")
         .in("user_id", userIds);
 
       if (profilesError) throw profilesError;
 
       // Create lookup map for profiles
       const profilesMap = new Map(
-        (profiles || []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email, avatar_url: p.avatar_url }])
+        (profiles || []).map((p) => [p.user_id, p])
       );
 
       // Merge trainers with profiles
-      return trainers.map((t) => ({
-        ...t,
-        profile: profilesMap.get(t.user_id) || null,
-      }));
+      return trainers.map((t) => {
+        const profile = profilesMap.get(t.user_id);
+        return {
+          ...t,
+          full_name: profile?.full_name || null,
+          email: profile?.email || null,
+          avatar_url: profile?.avatar_url || null,
+          phone: profile?.phone || null,
+          bio: profile?.bio || null,
+          // Legacy profile object
+          profile: profile ? {
+            full_name: profile.full_name,
+            email: profile.email,
+            avatar_url: profile.avatar_url,
+          } : null,
+        };
+      });
     },
     enabled: isAdmin === true,
     staleTime: STALE_TIME,
