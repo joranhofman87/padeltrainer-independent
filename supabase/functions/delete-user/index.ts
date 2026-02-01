@@ -106,46 +106,28 @@ Deno.serve(async (req) => {
       .delete()
       .eq("user_id", target_user_id);
 
-    // 3. Get club profiles created by this user and delete them
-    const { data: userClubProfiles } = await supabaseAdmin
+    // 3. Preserve club profiles created by this user - just remove the creator reference
+    // This keeps the club data (logo, banner, description) intact
+    await supabaseAdmin
       .from("club_profiles")
-      .select("id")
+      .update({ created_by: null })
       .eq("created_by", target_user_id);
 
-    if (userClubProfiles && userClubProfiles.length > 0) {
-      const clubIds = userClubProfiles.map((c) => c.id);
-      
-      // Delete club-related data first
-      await supabaseAdmin
-        .from("club_trainer_invitations")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_players")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_stripe_accounts")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_managers")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      // Delete the club profiles
-      await supabaseAdmin
-        .from("club_profiles")
-        .delete()
-        .in("id", clubIds);
-    }
-
-    // 4. Delete remaining club manager associations (where user was manager but not creator)
+    // Remove user from club_managers where they are a member (but preserve the club itself)
     await supabaseAdmin
       .from("club_managers")
+      .delete()
+      .eq("user_id", target_user_id);
+
+    // 3b. Preserve academy profiles created by this user - just remove the creator reference
+    await supabaseAdmin
+      .from("academy_profiles")
+      .update({ created_by: null })
+      .eq("created_by", target_user_id);
+
+    // Remove user from academy_managers where they are a member (but preserve the academy itself)
+    await supabaseAdmin
+      .from("academy_managers")
       .delete()
       .eq("user_id", target_user_id);
 
