@@ -122,6 +122,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
+    // Track if we've already triggered welcome emails for this session
+    let hasTriggeredWelcomeEmails = false;
+
     // Set up auth state listener FIRST
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -133,6 +136,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTimeout(() => {
             fetchUserData(session.user.id);
           }, 0);
+
+          // Trigger welcome emails when user signs in with confirmed email
+          // This handles the case where user just confirmed their email
+          if (
+            !hasTriggeredWelcomeEmails &&
+            session.user.email_confirmed_at &&
+            (event === 'SIGNED_IN' || event === 'USER_UPDATED')
+          ) {
+            hasTriggeredWelcomeEmails = true;
+            // Fire and forget - don't block auth flow
+            supabase.functions.invoke('trigger-welcome-emails', {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            }).then(({ error }) => {
+              if (error) {
+                console.error('Failed to trigger welcome emails:', error);
+              }
+            });
+          }
         } else {
           setProfile(null);
           setRole(null);
