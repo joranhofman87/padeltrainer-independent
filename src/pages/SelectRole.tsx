@@ -1,13 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { setUserRole, UserRole } from '@/lib/auth';
+import { setUserRole, signOut, UserRole } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect } from 'react';
-import { Users, GraduationCap, Check } from 'lucide-react';
+import { Users, GraduationCap, Check, LogOut } from 'lucide-react';
 
 export default function SelectRole() {
   const { t } = useTranslation('common');
@@ -63,6 +62,19 @@ export default function SelectRole() {
     setIsLoading(false);
   };
 
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        title: t('toasts.errorTitle'),
+        description: error.message,
+        variant: 'destructive',
+      });
+    } else {
+      navigate('/auth');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -72,7 +84,15 @@ export default function SelectRole() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4 relative">
+      {/* Sign out button in top-right corner */}
+      <div className="absolute top-4 right-4">
+        <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-muted-foreground">
+          <LogOut className="h-4 w-4 mr-2" />
+          Sign out
+        </Button>
+      </div>
+      
       <div className="w-full max-w-2xl space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-2xl sm:text-3xl font-bold">Welcome to PadelTrainer<span className="text-primary">.ai</span></h1>
