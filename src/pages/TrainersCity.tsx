@@ -22,6 +22,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 interface TrainerWithProfile {
   id: string;
   user_id: string;
+  slug: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
@@ -91,7 +92,7 @@ export default function TrainersCity() {
     const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, is_public, subscription_status, trial_ends_at')
+      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true)
       .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
 
@@ -320,7 +321,7 @@ export default function TrainersCity() {
               <Card
                 key={trainer.id}
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+                onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-4">

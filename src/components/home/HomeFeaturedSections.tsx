@@ -20,6 +20,7 @@ const MAX_FEATURED = 8;
 interface TrainerWithProfile {
   id: string;
   user_id: string;
+  slug: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   is_verified: boolean;
@@ -54,7 +55,7 @@ export function HomeFeaturedSections() {
         const [trainersResult, academiesData, locationsData, claimedData] = await Promise.all([
           supabase
             .from('trainer_profiles_safe')
-            .select('id, user_id, hourly_rate, experience_years, is_verified, subscription_status')
+            .select('id, user_id, slug, hourly_rate, experience_years, is_verified, subscription_status')
             .eq('is_public', true)
             .eq('subscription_status', 'active'),
           getPublicAcademies(),
@@ -203,7 +204,7 @@ export function HomeFeaturedSections() {
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
-                      onClick={() => window.location.href = localizePath(`/trainer/${trainer.user_id}`)}
+                      onClick={() => window.location.href = localizePath(`/trainer/${trainer.slug || trainer.id}`)}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-start gap-3">

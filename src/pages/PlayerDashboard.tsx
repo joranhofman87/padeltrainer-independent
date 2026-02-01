@@ -16,7 +16,8 @@ import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 
 interface FollowedTrainer {
   id: string;
-  trainer_user_id: string;
+  trainer_id: string;
+  trainer_slug: string | null;
   full_name: string | null;
   avatar_url: string | null;
 }
@@ -91,7 +92,7 @@ export default function PlayerDashboard() {
       const trainerIds = follows.map(f => f.trainer_id);
       const { data: trainers } = await supabase
         .from('trainer_profiles')
-        .select('id, user_id')
+        .select('id, user_id, slug')
         .in('id', trainerIds);
 
       if (!trainers) {
@@ -114,7 +115,8 @@ export default function PlayerDashboard() {
         const p = trainer ? profileMap.get(trainer.user_id) : null;
         return {
           id: f.id,
-          trainer_user_id: trainer?.user_id || '',
+          trainer_id: trainer?.id || '',
+          trainer_slug: trainer?.slug || null,
           full_name: p?.full_name || null,
           avatar_url: p?.avatar_url || null,
         };
@@ -438,7 +440,7 @@ export default function PlayerDashboard() {
                   <div
                     key={trainer.id}
                     className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
                   >
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={trainer.avatar_url || undefined} />

@@ -27,6 +27,7 @@ interface TrainerWithProfile {
   trainer_profiles: {
     id: string;
     user_id: string;
+    slug: string | null;
     hourly_rate: number | null;
     experience_years: number | null;
     specializations: string[] | null;
@@ -236,7 +237,7 @@ export default function ClubTrainers() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_id}`))}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles?.slug || trainer.trainer_id}`))}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       {t('trainers.viewProfile', 'Profile')}

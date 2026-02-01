@@ -35,6 +35,7 @@ const MAX_FEATURED = 8;
 interface TrainerWithProfile {
   id: string;
   user_id: string;
+  slug: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
@@ -230,7 +231,7 @@ export default function Trainers() {
     const now = new Date().toISOString();
     const { data: trainerProfiles, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, trainer_rating_system, is_public, subscription_status, trial_ends_at')
+      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, knltb_rating, trainer_rating_system, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true)
       .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
     
@@ -503,7 +504,7 @@ export default function Trainers() {
               <Card 
                 key={trainer.id} 
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[280px] lg:w-auto flex-shrink-0"
-                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+                onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-4">
@@ -657,7 +658,7 @@ export default function Trainers() {
               <Card 
                 key={trainer.id} 
                 className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50"
-                onClick={() => navigate(localizePath(`/trainer/${trainer.user_id}`))}
+                onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-4">
