@@ -19,6 +19,7 @@ import {
   Zap
 } from 'lucide-react';
 import { usePlatformStats } from '@/hooks/usePlatformStats';
+import { HomeFeaturedSections } from '@/components/home/HomeFeaturedSections';
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -361,6 +362,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Featured Sections */}
+      <HomeFeaturedSections />
 
       {/* CTA Section */}
       <section className="py-20 bg-accent text-accent-foreground">
