@@ -1,130 +1,231 @@
 
-# Send Onboarding Emails After Email Confirmation
+# Subdomain Split: Marketing Website vs App
 
-## Problem
+## Overview
 
-Currently, onboarding emails with `delay_days = 0` are queued immediately when a user signs up. However, for users who need to verify their email first, it makes more sense to send the welcome email **after** they confirm their email address - when they first successfully log in.
+This plan implements hostname-based routing to serve different experiences:
+- **padeltrainer.ai** - Marketing website (home, pricing, trainers, locations, blog, etc.)
+- **app.padeltrainer.ai** - Application (auth, dashboards, admin, player, trainer, club, academy)
 
-## Current Flow
+Both will run from the same codebase with hostname detection at the router level.
 
-```text
-User Signs Up
-    |
-    v
-Profile Created -> Trigger queues emails
-    |
-    v
-User receives verification email
-    |
-    v
-User clicks verification link
-    |
-    v
-User logs in (welcome email was already sent at signup)
-```
+---
 
-## Proposed Flow
+## Architecture
 
 ```text
-User Signs Up
-    |
-    v
-Profile Created -> Trigger queues emails with delay_days = 0 set to "awaiting_confirmation"
-    |
-    v
-User receives verification email
-    |
-    v
-User clicks verification link -> Auth callback triggers immediate email sending
-    |
-    v
-User logged in + welcome email sent
++---------------------------+     +---------------------------+
+|    padeltrainer.ai        |     |   app.padeltrainer.ai     |
++---------------------------+     +---------------------------+
+|                           |     |                           |
+| /:lang/                   |     | /auth                     |
+| /:lang/pricing            |     | /signup/*                 |
+| /:lang/about              |     | /onboarding/*             |
+| /:lang/trainers           |     | /player/*                 |
+| /:lang/trainers/:city     |     | /trainer/*                |
+| /:lang/trainer/:id        |     | /club/*                   |
+| /:lang/locations          |     | /academy/*                |
+| /:lang/locations/:slug    |     | /admin/*                  |
+| /:lang/academies          |     | /settings/*               |
+| /:lang/academies/:slug    |     | ...                       |
+| /:lang/book/:trainerId    |     |                           |
+| /:lang/blog               |     |                           |
+| /:lang/privacy            |     |                           |
+| /:lang/terms              |     |                           |
+| /:lang/partner            |     |                           |
+|                           |     |                           |
++---------------------------+     +---------------------------+
+              |                               |
+              +---------------+---------------+
+                              |
+                    Single Codebase
+                    (Hostname Detection)
 ```
 
-## Solution
+---
 
-We'll modify the system to detect email confirmation and send day-0 emails at that point.
+## Implementation Steps
 
-### Changes Required
+### 1. Create Hostname Detection Hook
 
-**1. Database: Add status for waiting confirmation**
-- Add a new status `awaiting_confirmation` to the email queue
-- Modify the queue function to use this status for delay_days = 0 emails
+Create a new hook that detects whether we're on the marketing site or app subdomain:
 
-**2. Modify Queue Function**
-- For `delay_days = 0` templates: queue with status `awaiting_confirmation`
-- For `delay_days > 0` templates: continue using `pending` status with future scheduled_for date
+**File: `src/hooks/useHostname.ts`**
 
-**3. Create new Edge Function: `trigger-welcome-emails`**
-- Called when user confirms their email
-- Finds all `awaiting_confirmation` emails for that user
-- Sends them immediately via Resend
-- Updates status to `sent`
+This hook will:
+- Detect `app.padeltrainer.ai` vs `padeltrainer.ai`
+- Allow localhost development with query parameter override (`?app=true`)
+- Expose `isAppDomain` and `isMarketingDomain` flags
 
-**4. Frontend: Detect email confirmation**
-- In `useAuth.tsx`, detect when a user's email gets confirmed
-- Call the `trigger-welcome-emails` edge function
+### 2. Create Domain-Aware Router Component
 
-### Database Migration
+Create a wrapper component that conditionally renders routes based on hostname:
 
-```sql
--- Update the queue_onboarding_emails function to use awaiting_confirmation for 0-day emails
-CREATE OR REPLACE FUNCTION public.queue_onboarding_emails(
-  p_user_id uuid, 
-  p_email text, 
-  p_user_name text, 
-  p_user_type text, 
-  p_trigger_type text
-)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-BEGIN
-  INSERT INTO onboarding_email_queue (template_id, user_id, email, user_name, user_type, scheduled_for, status)
-  SELECT 
-    t.id,
-    p_user_id,
-    p_email,
-    p_user_name,
-    p_user_type,
-    now() + (t.delay_days || ' days')::interval,
-    CASE WHEN t.delay_days = 0 THEN 'awaiting_confirmation' ELSE 'pending' END
-  FROM onboarding_email_templates t
-  WHERE t.user_type = p_user_type
-    AND t.trigger_type = p_trigger_type
-    AND t.is_active = true;
-END;
-$function$;
+**File: `src/components/DomainRouter.tsx`**
+
+This component will:
+- Use the hostname hook to determine which routes to render
+- For marketing domain: render only public/marketing routes
+- For app domain: render only authenticated/app routes
+- Handle cross-domain redirects (e.g., login button on marketing site links to `app.padeltrainer.ai/auth`)
+
+### 3. Update App.tsx
+
+Modify the main App component to use the new DomainRouter:
+
+- Wrap routes in a domain-aware conditional
+- Marketing routes: `/`, `/:lang/*` (home, pricing, trainers, locations, etc.)
+- App routes: `/auth`, `/signup/*`, `/player/*`, `/trainer/*`, `/club/*`, `/admin/*`, etc.
+
+### 4. Update Cross-Domain Links
+
+Update link components and navigation to use absolute URLs when crossing domains:
+
+**Files to modify:**
+- `src/components/marketing/MarketingLayout.tsx` - "Sign In" and "Get Started" buttons
+- `src/pages/marketing/Home.tsx` - CTAs linking to signup
+- Other marketing pages with auth links
+
+**Pattern:**
+```typescript
+// Instead of: <Link to="/auth">
+// Use: <a href="https://app.padeltrainer.ai/auth">
 ```
 
-### New Edge Function: `trigger-welcome-emails`
+### 5. Update Auth Redirect URLs
+
+Update OAuth and email verification callbacks to use the app subdomain:
+
+**Files to modify:**
+- `src/lib/auth.ts` - Update `window.location.origin` references to use app domain
+- Edge functions that send emails with links
+
+### 6. Update SEO Configuration
+
+Update the SEO component to handle both domains correctly:
+
+**File: `src/components/SEO.tsx`**
+
+- Marketing pages use `https://padeltrainer.ai` as base URL
+- App pages use `https://app.padeltrainer.ai` (with noindex for private pages)
+
+### 7. Update Sitemap & robots.txt
+
+**File: `supabase/functions/sitemap/index.ts`**
+
+Keep sitemap pointing to marketing domain (padeltrainer.ai) - app pages should not be in sitemap.
+
+**File: `public/robots.txt`**
+
+Add rules for app subdomain to disallow indexing of authenticated routes.
+
+### 8. Handle 404s per Domain
+
+Update the NotFound page to redirect appropriately:
+- Marketing 404 stays on marketing domain
+- App 404 stays on app domain
+
+---
+
+## Technical Details
+
+### Hostname Detection Logic
 
 ```typescript
-// supabase/functions/trigger-welcome-emails/index.ts
-// - Accepts user_id from authenticated request
-// - Finds all awaiting_confirmation emails for that user
-// - Sends them via Resend
-// - Updates status to sent
+// src/hooks/useHostname.ts
+export function useHostname() {
+  const hostname = window.location.hostname;
+  
+  // Production detection
+  const isAppDomain = hostname === 'app.padeltrainer.ai';
+  const isMarketingDomain = hostname === 'padeltrainer.ai' || 
+                            hostname === 'www.padeltrainer.ai';
+  
+  // Development: allow override via query param or default to marketing
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  const searchParams = new URLSearchParams(window.location.search);
+  const forceApp = searchParams.get('app') === 'true';
+  
+  return {
+    isAppDomain: isAppDomain || (isLocalhost && forceApp),
+    isMarketingDomain: isMarketingDomain || (isLocalhost && !forceApp),
+    hostname,
+  };
+}
 ```
 
-### Frontend Changes
+### Cross-Domain Link Helper
 
-**Modify `useAuth.tsx`:**
-- Detect the `USER_UPDATED` or `SIGNED_IN` auth event where `email_confirmed_at` becomes set
-- Call the `trigger-welcome-emails` edge function when this happens
+```typescript
+// src/lib/domains.ts
+const APP_DOMAIN = 'https://app.padeltrainer.ai';
+const MARKETING_DOMAIN = 'https://padeltrainer.ai';
 
-### Files Summary
+export function getAppUrl(path: string): string {
+  return `${APP_DOMAIN}${path}`;
+}
+
+export function getMarketingUrl(path: string, lang: string = 'nl'): string {
+  return `${MARKETING_DOMAIN}/${lang}${path}`;
+}
+```
+
+---
+
+## Cookie & Auth Considerations
+
+### Session Sharing
+
+Supabase auth cookies are scoped to the domain. For seamless auth across subdomains:
+- Supabase is already configured to use the root domain for cookies
+- No additional configuration needed - sessions work across subdomains
+
+### Redirect Flow
+
+When a user clicks "Sign In" on marketing site:
+1. User is redirected to `app.padeltrainer.ai/auth`
+2. User logs in
+3. User is redirected to their dashboard on app subdomain
+4. If user goes back to marketing site, they're still logged in (shared session)
+
+---
+
+## Domain Setup in Lovable
+
+After implementation, you'll need to configure both domains in Lovable:
+
+1. **Primary domain**: `padeltrainer.ai` (marketing)
+2. **Add subdomain**: `app.padeltrainer.ai` (app)
+
+Both domains will serve the same project, but the routing logic will differentiate the experience.
+
+---
+
+## Files Summary
 
 | Action | File |
 |--------|------|
-| Migrate | Database function `queue_onboarding_emails` |
-| Create | `supabase/functions/trigger-welcome-emails/index.ts` |
-| Modify | `supabase/config.toml` (register new function) |
-| Modify | `src/hooks/useAuth.tsx` (detect email confirmation) |
-| Update | `supabase/functions/process-onboarding-emails/index.ts` (update sender domain) |
+| Create | `src/hooks/useHostname.ts` |
+| Create | `src/lib/domains.ts` |
+| Create | `src/components/DomainRouter.tsx` |
+| Modify | `src/App.tsx` |
+| Modify | `src/components/marketing/MarketingLayout.tsx` |
+| Modify | `src/pages/marketing/Home.tsx` |
+| Modify | `src/pages/marketing/Pricing.tsx` |
+| Modify | `src/pages/marketing/About.tsx` |
+| Modify | `src/pages/marketing/Partner.tsx` |
+| Modify | `src/lib/auth.ts` |
+| Modify | `src/components/SEO.tsx` |
+| Modify | `src/pages/NotFound.tsx` |
+| Modify | `public/robots.txt` |
+| Modify | Various edge functions with redirect URLs |
 
-### Additional Fix
+---
 
-The `process-onboarding-emails` function still uses `noreply@padeltrainer.nl` - this will be updated to `noreply@padeltrainer.ai`.
+## Migration Steps
+
+1. Implement hostname detection and routing changes
+2. Test locally with `?app=true` query parameter
+3. Connect `app.padeltrainer.ai` subdomain in Lovable settings
+4. Verify both domains work correctly
+5. Update DNS if needed (A record for app subdomain pointing to Lovable)
