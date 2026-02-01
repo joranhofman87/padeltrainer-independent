@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthRedirectUrl } from "@/lib/domains";
 
 export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
 
@@ -37,7 +38,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
     email,
     password,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: getAuthRedirectUrl(),
       data: {
         full_name: fullName,
         phone: phone,
@@ -60,7 +61,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         body: {
           type: 'email_verification',
           email,
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: getAuthRedirectUrl('/auth'),
         },
       });
     } catch (emailError) {
@@ -84,7 +85,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${window.location.origin}/auth`,
+      redirectTo: getAuthRedirectUrl('/auth'),
     },
   });
   return { data, error };
@@ -188,7 +189,7 @@ export async function sendPasswordResetEmail(email: string) {
       body: {
         type: 'password_reset',
         email,
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: getAuthRedirectUrl('/reset-password'),
       },
     });
     
@@ -201,7 +202,7 @@ export async function sendPasswordResetEmail(email: string) {
     console.error('Failed to send password reset email:', error);
     // Fallback to Supabase default if custom email fails
     const { data, error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: getAuthRedirectUrl('/reset-password'),
     });
     return { data, error: supabaseError };
   }

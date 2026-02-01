@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
+import { getAppUrl, isInDevelopment } from '@/lib/domains';
 
 interface MarketingLayoutProps {
   children: React.ReactNode;
@@ -76,10 +77,18 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <LanguageSwitcher />
               <ThemeToggle />
               <Button variant="ghost" asChild>
-                <Link to="/auth">{t('nav.signIn')}</Link>
+                {isInDevelopment() ? (
+                  <Link to="/auth">{t('nav.signIn')}</Link>
+                ) : (
+                  <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                )}
               </Button>
               <Button asChild className="bg-primary hover:bg-primary/90">
-                <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                {isInDevelopment() ? (
+                  <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                ) : (
+                  <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                )}
               </Button>
             </div>
 
@@ -122,10 +131,18 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <ThemeToggle />
                   </div>
                   <Button variant="ghost" asChild>
-                    <Link to="/auth">{t('nav.signIn')}</Link>
+                    {isInDevelopment() ? (
+                      <Link to="/auth">{t('nav.signIn')}</Link>
+                    ) : (
+                      <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                    )}
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                    {isInDevelopment() ? (
+                      <Link to="/signup/player">{t('nav.getStarted')}</Link>
+                    ) : (
+                      <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                    )}
                   </Button>
                 </div>
               </nav>
@@ -161,7 +178,13 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/academies" className="hover:text-primary transition-colors">{t('footer.academies', 'Academies')}</LocalizedLink></li>
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
-                <li><Link to="/signup/club" className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link></li>
+                <li>
+                  {isInDevelopment() ? (
+                    <Link to="/signup/club" className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link>
+                  ) : (
+                    <a href={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</a>
+                  )}
+                </li>
               </ul>
             </div>
 
