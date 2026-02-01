@@ -53,13 +53,14 @@ interface TrainerWithProfile {
     specializations: string[] | null;
     certifications: string[] | null;
     is_verified: boolean | null;
-    knltb_rating: number | null;
   };
   profile?: {
     full_name: string | null;
     avatar_url: string | null;
     bio: string | null;
     location: string | null;
+    skill_rating: number | null;
+    rating_system: string | null;
   };
   avgRating?: number;
 }
@@ -136,7 +137,7 @@ export default function LocationDetail() {
         const userIds = trainersData.map(t => t.trainer_profiles.user_id);
         const { data: profiles } = await supabase
           .from('profiles_public')
-          .select('user_id, full_name, avatar_url, bio, location')
+          .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
           .in('user_id', userIds);
 
         const trainerIds = trainersData.map(t => t.trainer_id);
