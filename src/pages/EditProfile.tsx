@@ -814,7 +814,7 @@ export default function EditProfile() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">Level range:</span>
                             <span className="font-medium">
-                              {minVal} - {maxVal} ({preferredSystem.name})
+                              {minVal.toFixed(1)} - {maxVal.toFixed(1)} ({preferredSystem.name})
                             </span>
                           </div>
                           <div className="px-2">
@@ -826,8 +826,8 @@ export default function EditProfile() {
                               onValueChange={([min, max]) => {
                                 setTrainerData({
                                   ...trainerData,
-                                  preferred_min_rating: min,
-                                  preferred_max_rating: max,
+                                  preferred_min_rating: Math.round(min * 10) / 10,
+                                  preferred_max_rating: Math.round(max * 10) / 10,
                                 });
                               }}
                             />
