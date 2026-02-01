@@ -1,94 +1,106 @@
 
 
-# Fix Mispositioned "No Slots Planned" Message
+# Add ProfileSwitcher to TrainerSidebar
 
-## Problem
-The "Geen slots gepland deze week" (No slots planned this week) empty state message is incorrectly positioned. It overlaps with the calendar header row (day columns) instead of being properly centered within the calendar grid area.
+## Overview
+Add the ProfileSwitcher component to the TrainerSidebar footer. The ProfileSwitcher already supports both clubs AND academies - it fetches both and displays them in separate sections. The issue is simply that TrainerSidebar doesn't include this component yet.
 
-## Root Cause
-In `TrainerCalendarGrid.tsx` lines 269-276, the empty state uses `absolute inset-0` positioning, but:
-1. It's a child of the `min-w-[800px]` container, not the `relative` Time Grid div
-2. There's no `relative` positioning on the parent container
-3. The `inset-0` causes it to position relative to the nearest positioned ancestor, which may be further up the DOM
+## What Will Show for Rene
 
-## Solution
-Move the empty state message to be positioned relative to the Time Grid container, and adjust the positioning so it appears centered within the time slot area (below the header row).
+Once ProfileSwitcher is added to TrainerSidebar, if Rene is:
+- **Academy Manager only** → Shows "My Academies" section
+- **Club Manager only** → Shows "My Clubs" section  
+- **Both Academy + Club Manager** → Shows both sections:
+
+```
++----------------------------------+
+| 🏢 My Clubs                      |
+| └─ 🏠 Club Name                  |
++----------------------------------+
+| 🎓 My Academies                  |
+| └─ 📚 RL Padel Performance       |
++----------------------------------+
+```
 
 ## Changes Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/trainer/TrainerCalendarGrid.tsx` | Modify | Fix empty state positioning to be relative to the time grid |
+| `src/components/trainer/TrainerSidebar.tsx` | Modify | Add ProfileSwitcher to sidebar footer |
+| `src/components/academy/AcademyLayout.tsx` | Modify | Add `context="academy"` prop to existing ProfileSwitcher |
 
 ## Implementation Details
 
-### Current Code (lines 210-277):
+### 1. TrainerSidebar - Add ProfileSwitcher
 
 ```tsx
-{/* Time Grid */}
-<div className="relative">
-  {HOURS.map((hour) => (
-    // ... hour rows
-  ))}
-</div>
+// Add import at top
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 
-{/* Empty State - WRONG: outside relative container */}
-{slots.length === 0 && (
-  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-    <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
-      {t("calendar.noSlotsThisWeek")}
+// In SidebarFooter, add ProfileSwitcher before the View Profile button
+<SidebarFooter className="border-t">
+  <div className={cn(
+    "flex p-2",
+    collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
+  )}>
+    {/* NEW: Profile Switcher for clubs/academies */}
+    <ProfileSwitcher context="trainer" />
+    
+    {/* Existing: View Public Profile button */}
+    {trainerProfileId && (
+      <Button variant="outline" ...>
+        ...
+      </Button>
+    )}
+    
+    {/* Existing: Theme toggle and logout */}
+    <div className={cn(...)}>
+      <ThemeToggle />
+      <Button variant="ghost" onClick={handleLogout}>
+        <LogOut className="h-4 w-4" />
+        ...
+      </Button>
     </div>
   </div>
-)}
+</SidebarFooter>
 ```
 
-### Fixed Code:
+### 2. AcademyLayout - Fix ProfileSwitcher props
 
 ```tsx
-{/* Time Grid */}
-<div className="relative">
-  {HOURS.map((hour) => (
-    // ... hour rows
-  ))}
-  
-  {/* Empty State - CORRECT: inside relative container */}
-  {slots.length === 0 && (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
-        {t("calendar.noSlotsThisWeek")}
-      </div>
-    </div>
-  )}
-</div>
+// Line 163: Add context prop
+<ProfileSwitcher 
+  context="academy"
+  activeAcademyId={activeAcademy?.id} 
+/>
 ```
 
-## Visual Before vs After
+## Visual Result
 
-**Before (broken):**
+**TrainerSidebar Footer (Rene's view):**
 ```
 +----------------------------------+
-| [Header Row with Days]           |
-|   Mon  T[MESSAGE OVERLAPS]  Thu  |  ← Message overlaps header
-|    26   27     28           29   |
+| [ProfileSwitcher ▼]              |  <- Click to see clubs + academies
+| [View Public Profile 🔗]         |
+| [🌓] [Logout 🚪]                 |
 +----------------------------------+
-| 08:00 |    |    |    |    |      |
-| 09:00 |    |    |    |    |      |
 ```
 
-**After (fixed):**
+**ProfileSwitcher Dropdown (if both club + academy manager):**
 ```
 +----------------------------------+
-| [Header Row with Days]           |
-|   Mon   Tue   Wed   Thu   Fri    |
-|    26    27    28    29    30    |
+| 🏢 My Clubs                      |
+| └─ 🏠 Club ABC                   |
 +----------------------------------+
-| 08:00 |    |    |    |    |      |
-| 09:00 |  [No slots this week]    |  ← Message centered in grid
-| 10:00 |    |    |    |    |      |
+| 🎓 My Academies                  |
+| └─ 📚 RL Padel Performance       |
++----------------------------------+
 ```
 
-## File Changes
-
-**`src/components/trainer/TrainerCalendarGrid.tsx`**
-- Move the empty state `{slots.length === 0 && ...}` block (lines 269-276) to be **inside** the Time Grid `<div className="relative">` container (before its closing `</div>` at line 267)
+## Result
+- Rene (and any trainer) will see ProfileSwitcher in the sidebar footer
+- If they manage clubs → shows "My Clubs"
+- If they manage academies → shows "My Academies"  
+- If they manage both → shows both sections
+- Clicking navigates to the respective `/club` or `/academy` dashboard
 
