@@ -1,56 +1,58 @@
 
 
-# Fix Level Range Display - Round to 1 Decimal Place
+# Fix: Trainer Rating Display Using Wrong Data Source
 
-## Problem
-The trainer level range slider in the Edit Profile page shows values with multiple decimal places (e.g., `4.877`) instead of clean single decimal values (e.g., `4.9`).
+## Problem Summary
+The admin panel saves trainer ratings to the `profiles` table (`skill_rating`, `rating_system`, `rating_member_id`), but the trainer's EditProfile page reads from the `trainer_profiles` table (`knltb_rating`, `trainer_rating_system`). These are two separate fields.
 
-This occurs because:
-1. The slider uses `step={preferredSystem.step}` (typically `0.1`)
-2. JavaScript floating-point arithmetic can introduce precision errors
-3. The display simply outputs the raw value without formatting
+**Database values for Rene:**
+| Table | Field | Value |
+|-------|-------|-------|
+| profiles | skill_rating | 1.0 |
+| profiles | rating_system | knltb |
+| trainer_profiles | knltb_rating | NULL |
+| trainer_profiles | trainer_rating_system | knltb |
+
+The admin correctly set `profiles.skill_rating = 1.0`, but the trainer sees `trainer_profiles.knltb_rating = NULL`.
 
 ## Solution
-Format the displayed values to show only 1 decimal place using `toFixed(1)`.
+Update the trainer's EditProfile page to use the shared `formData` (from the `profiles` table) instead of `trainerData` for the rating section. This aligns with the existing architecture where ratings live in the `profiles` table for both players and trainers.
 
 ## Files to Change
 
 | File | Changes |
 |------|---------|
-| `src/pages/EditProfile.tsx` | Format `minVal` and `maxVal` in the level range display to 1 decimal place |
+| `src/pages/EditProfile.tsx` | Change Trainer Details rating section to use `formData.skill_rating` and `formData.rating_system` instead of `trainerData.knltb_rating` and `trainerData.trainer_rating_system` |
 
 ## Implementation Details
 
-In `EditProfile.tsx` at lines 814-817, change the level range display from:
+In the "Your Padel Rating" section within Trainer Details (lines 885-943):
 
-```tsx
-<span className="font-medium">
-  {minVal} - {maxVal} ({preferredSystem.name})
-</span>
+1. Change the rating system Select from:
+   - `value={trainerData.trainer_rating_system}` 
+   - to `value={formData.rating_system}`
+
+2. Change the rating Input from:
+   - `value={trainerData.knltb_rating || ''}`
+   - to `value={formData.skill_rating}`
+
+3. Update the onChange handlers to modify `formData` instead of `trainerData`
+
+4. Use `currentRatingSystem` (already computed from `formData.rating_system`) for the constraints
+
+This ensures both admin and trainer are reading from and writing to the same `profiles` table fields.
+
+## Before/After
+
+**Before:**
+```text
+Admin saves → profiles.skill_rating = 1.0
+Trainer sees ← trainer_profiles.knltb_rating = NULL
 ```
 
-To:
-
-```tsx
-<span className="font-medium">
-  {minVal.toFixed(1)} - {maxVal.toFixed(1)} ({preferredSystem.name})
-</span>
+**After:**
+```text
+Admin saves → profiles.skill_rating = 1.0
+Trainer sees ← profiles.skill_rating = 1.0
 ```
-
-## Additional Consideration
-To ensure the actual stored values are also rounded (not just the display), the slider's `onValueChange` handler should also round the values:
-
-```tsx
-onValueChange={([min, max]) => {
-  setTrainerData({
-    ...trainerData,
-    preferred_min_rating: Math.round(min * 10) / 10,
-    preferred_max_rating: Math.round(max * 10) / 10,
-  });
-}}
-```
-
-This ensures both:
-1. ✅ Display shows clean values like `0.1 - 4.9`
-2. ✅ Database stores clean values without floating-point artifacts
 
