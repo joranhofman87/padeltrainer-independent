@@ -29,6 +29,7 @@ import {
 } from '@/lib/academy';
 import { AddAcademyLocationDialog } from '@/components/academy/AddAcademyLocationDialog';
 import { EditAcademyLocationDialog } from '@/components/academy/EditAcademyLocationDialog';
+import { RequestLocationDialog } from '@/components/academy/RequestLocationDialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -109,11 +110,16 @@ export default function AcademyLocations() {
           <p className="text-muted-foreground">{t('locations.description')}</p>
         </div>
         {activeAcademy && (
-          <AddAcademyLocationDialog
-            academyProfileId={activeAcademy.id}
-            existingLocationIds={locations.map((l) => l.location_id)}
-            onLocationAdded={fetchLocations}
-          />
+          <div className="flex items-center gap-2">
+            <AddAcademyLocationDialog
+              academyProfileId={activeAcademy.id}
+              existingLocationIds={locations.map((l) => l.location_id)}
+              onLocationAdded={fetchLocations}
+            />
+            <RequestLocationDialog
+              academyProfileId={activeAcademy.id}
+            />
+          </div>
         )}
       </div>
 
