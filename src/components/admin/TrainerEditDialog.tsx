@@ -31,6 +31,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getRatingSystems, type RatingSystemConfig } from "@/lib/ratingSystems";
 
 export interface TrainerEditData {
   id: string;
@@ -41,6 +42,10 @@ export interface TrainerEditData {
   avatar_url: string | null;
   bio: string | null;
   phone: string | null;
+  // Rating info (from profiles table)
+  skill_rating: number | null;
+  rating_system: string | null;
+  rating_member_id: string | null;
   // Trainer profile info
   hourly_rate: number | null;
   experience_years: number | null;
@@ -92,6 +97,12 @@ export function TrainerEditDialog({
   const [bio, setBio] = useState(trainer.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(trainer.avatar_url || "");
 
+  // Rating state
+  const [skillRating, setSkillRating] = useState(trainer.skill_rating?.toString() || "");
+  const [ratingSystem, setRatingSystem] = useState(trainer.rating_system || "knltb");
+  const [ratingMemberId, setRatingMemberId] = useState(trainer.rating_member_id || "");
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+
   // Trainer profile state
   const [hourlyRate, setHourlyRate] = useState(trainer.hourly_rate?.toString() || "");
   const [experienceYears, setExperienceYears] = useState(trainer.experience_years?.toString() || "");
@@ -125,6 +136,11 @@ export function TrainerEditDialog({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
+  // Fetch rating systems
+  useEffect(() => {
+    getRatingSystems().then(setRatingSystems);
+  }, []);
+
   // Reset state when trainer changes
   useEffect(() => {
     if (open) {
@@ -133,6 +149,9 @@ export function TrainerEditDialog({
       setPhone(trainer.phone || "");
       setBio(trainer.bio || "");
       setAvatarUrl(trainer.avatar_url || "");
+      setSkillRating(trainer.skill_rating?.toString() || "");
+      setRatingSystem(trainer.rating_system || "knltb");
+      setRatingMemberId(trainer.rating_member_id || "");
       setHourlyRate(trainer.hourly_rate?.toString() || "");
       setExperienceYears(trainer.experience_years?.toString() || "");
       setCoachingMethod(trainer.coaching_method || "");
@@ -214,6 +233,9 @@ export function TrainerEditDialog({
           phone: phone || null,
           bio: bio || null,
           avatar_url: avatarUrl || null,
+          skill_rating: skillRating ? parseFloat(skillRating) : null,
+          rating_system: ratingSystem || "knltb",
+          rating_member_id: ratingMemberId || null,
         },
       });
 
@@ -368,6 +390,66 @@ export function TrainerEditDialog({
                   onChange={(e) => setBio(e.target.value)}
                   rows={3}
                 />
+              </div>
+
+              {/* Rating Section */}
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium mb-3">Player Rating</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="ratingSystem">Rating System</Label>
+                    <Select value={ratingSystem} onValueChange={setRatingSystem}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select system" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ratingSystems.map((sys) => (
+                          <SelectItem key={sys.code} value={sys.code}>
+                            {sys.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="skillRating">Skill Rating</Label>
+                    <Input
+                      id="skillRating"
+                      type="number"
+                      value={skillRating}
+                      onChange={(e) => setSkillRating(e.target.value)}
+                      placeholder={(() => {
+                        const sys = ratingSystems.find(s => s.code === ratingSystem);
+                        return sys ? `${sys.min_rating} - ${sys.max_rating}` : "e.g. 5.0";
+                      })()}
+                      step={ratingSystems.find(s => s.code === ratingSystem)?.step || 0.1}
+                      min={ratingSystems.find(s => s.code === ratingSystem)?.min_rating}
+                      max={ratingSystems.find(s => s.code === ratingSystem)?.max_rating}
+                    />
+                    {(() => {
+                      const sys = ratingSystems.find(s => s.code === ratingSystem);
+                      return sys && (
+                        <p className="text-xs text-muted-foreground">
+                          Range: {sys.min_rating} - {sys.max_rating} ({sys.lower_is_better ? "lower is better" : "higher is better"})
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+                {(() => {
+                  const sys = ratingSystems.find(s => s.code === ratingSystem);
+                  return sys?.member_id_label && (
+                    <div className="grid gap-2 mt-4">
+                      <Label htmlFor="ratingMemberId">{sys.member_id_label}</Label>
+                      <Input
+                        id="ratingMemberId"
+                        value={ratingMemberId}
+                        onChange={(e) => setRatingMemberId(e.target.value)}
+                        placeholder={sys.member_id_placeholder || ""}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
