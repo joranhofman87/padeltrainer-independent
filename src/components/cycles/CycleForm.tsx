@@ -88,7 +88,7 @@ export default function CycleForm({
       end_date: cycle ? new Date(cycle.end_date) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
-      show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? true,
+      show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
       applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
     },
@@ -315,26 +315,28 @@ export default function CycleForm({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="show_preferred_trainer"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>{t('form.showPreferredTrainer')}</FormLabel>
-                    <FormDescription className="text-xs">
-                      {t('form.showPreferredTrainerHelp')}
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+            {ownerType === 'academy' && (
+              <FormField
+                control={form.control}
+                name="show_preferred_trainer"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>{t('form.showPreferredTrainer')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.showPreferredTrainerHelp')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
