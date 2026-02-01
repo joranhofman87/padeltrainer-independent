@@ -266,7 +266,7 @@ export default function AcademyTrainers() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profile?.id}`))}
+                          onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`))}
                         >
                           <ExternalLink className="h-4 w-4 mr-2" />
                           {t('trainers.viewProfile', 'Profile')}

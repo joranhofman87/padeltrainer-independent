@@ -2769,6 +2769,7 @@ export type Database = {
           schedule_weeks_ahead: number
           slot_duration_minutes: number
           slot_gap_minutes: number
+          slug: string | null
           social_instagram: string | null
           social_linkedin: string | null
           social_tiktok: string | null
@@ -2810,6 +2811,7 @@ export type Database = {
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
+          slug?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
@@ -2851,6 +2853,7 @@ export type Database = {
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
           slot_gap_minutes?: number
+          slug?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
@@ -3367,6 +3370,7 @@ export type Database = {
           require_booking_approval: boolean | null
           schedule_weeks_ahead: number | null
           slot_duration_minutes: number | null
+          slug: string | null
           social_instagram: string | null
           social_linkedin: string | null
           social_tiktok: string | null
@@ -3398,6 +3402,7 @@ export type Database = {
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number | null
           slot_duration_minutes?: number | null
+          slug?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
@@ -3429,6 +3434,7 @@ export type Database = {
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number | null
           slot_duration_minutes?: number | null
+          slug?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
@@ -3459,6 +3465,7 @@ export type Database = {
         Args: { city: string; name: string }
         Returns: string
       }
+      generate_trainer_slug: { Args: { full_name: string }; Returns: string }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {

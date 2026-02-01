@@ -16,6 +16,7 @@ interface FollowedTrainer {
   trainer_id: string;
   notify_new_availability: boolean;
   trainer_user_id: string;
+  trainer_slug: string | null;
   full_name: string | null;
   avatar_url: string | null;
   location: string | null;
@@ -65,7 +66,7 @@ export default function FollowingList() {
       const trainerIds = follows.map((f) => f.trainer_id);
       const { data: trainers } = await supabase
         .from('trainer_profiles')
-        .select('id, user_id, hourly_rate')
+        .select('id, user_id, slug, hourly_rate')
         .in('id', trainerIds);
 
       if (!trainers) {
@@ -92,6 +93,7 @@ export default function FollowingList() {
           trainer_id: f.trainer_id,
           notify_new_availability: f.notify_new_availability,
           trainer_user_id: trainer?.user_id || '',
+          trainer_slug: trainer?.slug || null,
           full_name: profile?.full_name || null,
           avatar_url: profile?.avatar_url || null,
           location: profile?.location || null,
@@ -203,7 +205,7 @@ export default function FollowingList() {
                   <div className="flex items-center gap-4">
                     <Avatar
                       className="h-14 w-14 cursor-pointer"
-                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
+                    onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
                     >
                       <AvatarImage src={trainer.avatar_url || undefined} />
                       <AvatarFallback>{getInitials(trainer.full_name)}</AvatarFallback>
@@ -211,7 +213,7 @@ export default function FollowingList() {
 
                     <div
                       className="flex-1 cursor-pointer"
-                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_user_id}`))}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
                     >
                       <h3 className="font-semibold">{trainer.full_name || 'Trainer'}</h3>
                       {trainer.location && (

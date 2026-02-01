@@ -111,6 +111,7 @@ export async function getTrainersAtLocation(locationId: string) {
       trainer_profiles!inner (
         id,
         user_id,
+        slug,
         hourly_rate,
         experience_years,
         specializations,

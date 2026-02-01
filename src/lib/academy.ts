@@ -845,6 +845,7 @@ export async function getPublicAcademyTrainers(academyProfileId: string): Promis
       trainer_profile:trainer_profiles_safe(
         id,
         user_id,
+        slug,
         hourly_rate,
         experience_years,
         specializations,

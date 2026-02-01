@@ -47,6 +47,7 @@ interface TrainerData {
   trainer_profile: {
     id: string;
     user_id: string;
+    slug: string | null;
     hourly_rate: number | null;
     experience_years: number | null;
     is_verified: boolean;
@@ -337,7 +338,7 @@ export default function AcademyPublicProfile() {
                 <Card
                   key={trainer.id}
                   className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-                  onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profile?.id}`))}
+                  onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`))}
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">

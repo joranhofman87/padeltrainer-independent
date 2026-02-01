@@ -47,6 +47,7 @@ interface TrainerWithProfile {
   trainer_profiles: {
     id: string;
     user_id: string;
+    slug: string | null;
     hourly_rate: number | null;
     experience_years: number | null;
     specializations: string[] | null;
@@ -556,7 +557,7 @@ export default function LocationDetail() {
                     <Card
                       key={trainer.id}
                       className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.slug || trainer.trainer_profiles.id}`))}
                     >
                       <CardHeader className="pb-2">
                         <div className="flex items-start gap-4">
@@ -624,7 +625,7 @@ export default function LocationDetail() {
                             variant="default"
                             size="sm"
                             className="flex-1"
-                            onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.user_id}`))}
+                            onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profiles.slug || trainer.trainer_profiles.id}`))}
                           >
                             {t('common:viewProfile')}
                           </Button>

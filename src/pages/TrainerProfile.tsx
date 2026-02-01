@@ -45,6 +45,7 @@ import {
 interface TrainerData {
   id: string;
   user_id: string;
+  slug: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
@@ -119,7 +120,9 @@ export default function TrainerProfile() {
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
 
-  const profileUrl = getMarketingUrl(`trainer/${trainerId}`, currentLang);
+  // Use slug for URLs if available, else fallback to trainerId from params
+  const trainerSlug = trainer?.slug || trainerId;
+  const profileUrl = getMarketingUrl(`trainer/${trainerSlug}`, currentLang);
   const trainerName = profile?.full_name || 'Trainer';
 
   const handleCopyLink = async () => {
@@ -170,12 +173,25 @@ export default function TrainerProfile() {
   const fetchTrainerProfile = async () => {
     setLoading(true);
     
-    // First, fetch the trainer profile by ID
-    const trainerResult = await supabase
-      .from('trainer_profiles_safe')
-      .select('*')
-      .eq('id', trainerId)
-      .maybeSingle();
+    // Fetch trainer profile by slug (preferred) or ID (fallback for legacy URLs)
+    const isUUID = trainerId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId);
+    
+    let trainerResult;
+    if (isUUID) {
+      // Legacy UUID-based URL
+      trainerResult = await supabase
+        .from('trainer_profiles_safe')
+        .select('*')
+        .eq('id', trainerId)
+        .maybeSingle();
+    } else {
+      // SEO-friendly slug URL
+      trainerResult = await supabase
+        .from('trainer_profiles_safe')
+        .select('*')
+        .eq('slug', trainerId)
+        .maybeSingle();
+    }
 
     if (trainerResult.error || !trainerResult.data) {
       console.error('Error fetching trainer:', trainerResult.error);
@@ -341,7 +357,7 @@ export default function TrainerProfile() {
     "name": profile.full_name,
     "jobTitle": "Padel Trainer",
     "image": profile.avatar_url,
-    "url": `https://padeltrainer.ai/trainer/${trainerId}`,
+    "url": `https://padeltrainer.ai/trainer/${trainerSlug}`,
     "address": profile.location ? {
       "@type": "PostalAddress",
       "addressLocality": profile.location
@@ -362,7 +378,7 @@ export default function TrainerProfile() {
       <SEO
         title={profile.full_name || 'Padel Trainer'}
         description={profile.bio || `Book padel lessons with ${profile.full_name || 'this trainer'} in ${profile.location || 'the Netherlands'}. ${trainer.experience_years ? `${trainer.experience_years} years of experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`}
-        url={`/trainer/${trainerId}`}
+        url={`/trainer/${trainerSlug}`}
         image={profile.avatar_url || undefined}
         structuredData={structuredData}
       />
