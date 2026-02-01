@@ -79,3 +79,6 @@ verify_jwt = false
 
 [functions.bulk-cleanup-users]
 verify_jwt = false
+
+[functions.send-auth-email]
+verify_jwt = false

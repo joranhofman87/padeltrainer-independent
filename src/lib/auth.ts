@@ -53,6 +53,22 @@ export async function signUpWithEmail(email: string, password: string, fullName:
       .eq('user_id', data.user.id);
   }
   
+  // Send custom verification email via our edge function (branded from padeltrainer.ai)
+  if (data.user && !error) {
+    try {
+      await supabase.functions.invoke('send-auth-email', {
+        body: {
+          type: 'email_verification',
+          email,
+          redirectTo: `${window.location.origin}/auth`,
+        },
+      });
+    } catch (emailError) {
+      console.error('Failed to send custom verification email:', emailError);
+      // Don't fail signup if email fails - Supabase will send default email as fallback
+    }
+  }
+  
   return { data, error };
 }
 
@@ -166,10 +182,29 @@ export async function getTrainerProfile(userId: string): Promise<TrainerProfile 
 }
 
 export async function sendPasswordResetEmail(email: string) {
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
-  return { data, error };
+  // Use custom edge function to send branded password reset email from padeltrainer.ai
+  try {
+    const { data, error } = await supabase.functions.invoke('send-auth-email', {
+      body: {
+        type: 'password_reset',
+        email,
+        redirectTo: `${window.location.origin}/reset-password`,
+      },
+    });
+    
+    if (error) {
+      throw error;
+    }
+    
+    return { data, error: null };
+  } catch (error: any) {
+    console.error('Failed to send password reset email:', error);
+    // Fallback to Supabase default if custom email fails
+    const { data, error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    return { data, error: supabaseError };
+  }
 }
 
 export async function updatePassword(newPassword: string) {
