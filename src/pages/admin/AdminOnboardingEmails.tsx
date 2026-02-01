@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Pencil, Trash2, Eye, Mail, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -50,11 +57,25 @@ export default function AdminOnboardingEmails() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userTypeFilter, setUserTypeFilter] = useState<string>("all");
+  const [activeFilter, setActiveFilter] = useState<string>("all");
   const [selectedTemplate, setSelectedTemplate] = useState<OnboardingEmailTemplate | null>(null);
 
   const { data: templates, isLoading: templatesLoading } = useOnboardingTemplates();
   const { data: queue, isLoading: queueLoading } = useEmailQueue();
   const { data: logs, isLoading: logsLoading } = useEmailLogs();
+
+  const filteredTemplates = useMemo(() => {
+    if (!templates) return [];
+    return templates.filter((template) => {
+      const matchesUserType = userTypeFilter === "all" || template.user_type === userTypeFilter;
+      const matchesActive =
+        activeFilter === "all" ||
+        (activeFilter === "active" && template.is_active) ||
+        (activeFilter === "inactive" && !template.is_active);
+      return matchesUserType && matchesActive;
+    });
+  }, [templates, userTypeFilter, activeFilter]);
 
   const createMutation = useCreateTemplate();
   const updateMutation = useUpdateTemplate();
@@ -203,8 +224,36 @@ export default function AdminOnboardingEmails() {
         <TabsContent value="templates">
           <Card>
             <CardHeader>
-              <CardTitle>{t("onboardingEmails.templatesTitle")}</CardTitle>
-              <CardDescription>{t("onboardingEmails.templatesDescription")}</CardDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>{t("onboardingEmails.templatesTitle")}</CardTitle>
+                  <CardDescription>{t("onboardingEmails.templatesDescription")}</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={userTypeFilter} onValueChange={setUserTypeFilter}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder={t("onboardingEmails.filterUserType")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("onboardingEmails.allUserTypes")}</SelectItem>
+                      <SelectItem value="player">{t("onboardingEmails.userTypes.player")}</SelectItem>
+                      <SelectItem value="trainer">{t("onboardingEmails.userTypes.trainer")}</SelectItem>
+                      <SelectItem value="club">{t("onboardingEmails.userTypes.club")}</SelectItem>
+                      <SelectItem value="academy">{t("onboardingEmails.userTypes.academy")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={activeFilter} onValueChange={setActiveFilter}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder={t("onboardingEmails.filterStatus")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("onboardingEmails.allStatuses")}</SelectItem>
+                      <SelectItem value="active">{t("onboardingEmails.activeOnly")}</SelectItem>
+                      <SelectItem value="inactive">{t("onboardingEmails.inactiveOnly")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {templatesLoading ? (
@@ -213,7 +262,7 @@ export default function AdminOnboardingEmails() {
                     <Skeleton key={i} className="h-16 w-full" />
                   ))}
                 </div>
-              ) : templates?.length === 0 ? (
+              ) : filteredTemplates.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   {t("onboardingEmails.noTemplates")}
                 </div>
@@ -230,7 +279,7 @@ export default function AdminOnboardingEmails() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {templates?.map((template) => (
+                    {filteredTemplates.map((template) => (
                       <TableRow key={template.id}>
                         <TableCell className="font-medium">{template.name}</TableCell>
                         <TableCell>{getUserTypeBadge(template.user_type)}</TableCell>

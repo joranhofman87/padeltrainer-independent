@@ -101,6 +101,12 @@
     "title": "Onboarding Emails",
     "description": "Manage automated email sequences for new users",
     "addTemplate": "Add Template",
+    "filterUserType": "User Type",
+    "allUserTypes": "All Types",
+    "filterStatus": "Status",
+    "allStatuses": "All",
+    "activeOnly": "Active",
+    "inactiveOnly": "Inactive",
     "tabs": {
       "templates": "Templates",
       "queue": "Queue",
