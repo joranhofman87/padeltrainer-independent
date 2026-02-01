@@ -1,266 +1,94 @@
 
 
-# Add Academy Support to ProfileSwitcher
+# Fix Mispositioned "No Slots Planned" Message
 
-## Overview
-Extend the ProfileSwitcher component to support Academy manager switching, following the same pattern used for Clubs. This allows users like Rene who are both trainers and academy managers to easily switch between their roles from anywhere in the app.
+## Problem
+The "Geen slots gepland deze week" (No slots planned this week) empty state message is incorrectly positioned. It overlaps with the calendar header row (day columns) instead of being properly centered within the calendar grid area.
+
+## Root Cause
+In `TrainerCalendarGrid.tsx` lines 269-276, the empty state uses `absolute inset-0` positioning, but:
+1. It's a child of the `min-w-[800px]` container, not the `relative` Time Grid div
+2. There's no `relative` positioning on the parent container
+3. The `inset-0` causes it to position relative to the nearest positioned ancestor, which may be further up the DOM
+
+## Solution
+Move the empty state message to be positioned relative to the Time Grid container, and adjust the positioning so it appears centered within the time slot area (below the header row).
 
 ## Changes Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/hooks/useAuth.tsx` | Modify | Add `isAcademyManager` flag and academy manager check |
-| `src/components/ProfileSwitcher.tsx` | Modify | Add academy context, fetch academies, render academy section |
-| `src/i18n/locales/en/common.json` | Modify | Add `myAcademies` and `academyDashboard` translations |
-| `src/i18n/locales/nl/common.json` | Modify | Add Dutch translations |
+| `src/components/trainer/TrainerCalendarGrid.tsx` | Modify | Fix empty state positioning to be relative to the time grid |
 
 ## Implementation Details
 
-### 1. Update useAuth Hook
-
-Add `isAcademyManager` state and fetch academy manager status alongside club manager status:
+### Current Code (lines 210-277):
 
 ```tsx
-// Add import
-import { isUserAcademyManager } from '@/lib/academy';
+{/* Time Grid */}
+<div className="relative">
+  {HOURS.map((hour) => (
+    // ... hour rows
+  ))}
+</div>
 
-// Add to AuthContextType interface
-interface AuthContextType {
-  // ... existing fields
-  isAcademyManager: boolean;
-}
-
-// Add state
-const [isAcademyManager, setIsAcademyManager] = useState(false);
-
-// Update fetchUserData to include academy check
-const fetchUserData = async (userId: string) => {
-  const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
-    getUserRoles(userId),
-    getProfile(userId),
-    isUserClubManager(userId),
-    isUserAcademyManager(userId),  // NEW
-  ]);
-  
-  // ... existing role logic
-  setIsAcademyManager(academyManagerStatus);
-};
-
-// Update context provider value
-<AuthContext.Provider value={{ 
-  // ... existing
-  isAcademyManager,
-}}>
-```
-
-### 2. Update ProfileSwitcher Component
-
-#### Add Academy Context Support
-
-```tsx
-// Update imports
-import { GraduationCap } from 'lucide-react';
-import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
-
-// Update props interface
-interface ProfileSwitcherProps {
-  context?: 'club' | 'trainer' | 'player' | 'academy';  // Add 'academy'
-  activeClubId?: string;
-  activeAcademyId?: string;  // NEW
-  onClubChange?: (club: ClubWithLocation) => void;
-  onAcademyChange?: (academy: AcademyWithRole) => void;  // NEW
-}
-
-// Add academy type
-interface AcademyWithRole extends AcademyProfile {
-  role: string;
-}
-```
-
-#### Fetch Academies
-
-```tsx
-const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
-
-useEffect(() => {
-  async function fetchData() {
-    if (!user) return;
-    
-    try {
-      const [userClubs, userAcademies] = await Promise.all([
-        getUserClubProfiles(user.id),
-        getUserAcademyProfiles(user.id),
-      ]);
-      setClubs(userClubs);
-      setAcademies(userAcademies);
-    } catch (error) {
-      console.error('Error fetching profiles:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  fetchData();
-}, [user]);
-```
-
-#### Update Show Switcher Logic
-
-```tsx
-const hasMultipleAcademies = academies.length > 1;
-const hasMultipleOrganizations = clubs.length > 0 || academies.length > 0;
-
-// Show switcher if user has multiple roles, clubs, or academies
-const showSwitcher = 
-  (isTrainer && (isClubManager || isAcademyManager)) ||
-  hasMultipleClubs ||
-  hasMultipleAcademies ||
-  (isClubManager && isAcademyManager);
-```
-
-#### Add Academy Section to Dropdown
-
-```tsx
-{/* Academies Section */}
-{academies.length > 0 && (
-  <>
-    {(clubs.length > 0 || (isTrainer && context !== 'trainer')) && (
-      <DropdownMenuSeparator />
-    )}
-    <DropdownMenuLabel className="flex items-center gap-2">
-      <GraduationCap className="h-4 w-4" />
-      {t('myAcademies')}
-    </DropdownMenuLabel>
-    {academies.map((academy) => (
-      <DropdownMenuItem
-        key={academy.id}
-        onClick={() => handleAcademySelect(academy)}
-        className="flex items-center gap-2 cursor-pointer"
-      >
-        <Avatar className="h-6 w-6">
-          <AvatarImage src={academy.logo_url || undefined} />
-          <AvatarFallback className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-            {academy.name?.substring(0, 2).toUpperCase() || 'AC'}
-          </AvatarFallback>
-        </Avatar>
-        <span className="flex-1 truncate">{academy.name}</span>
-        {context === 'academy' && academy.id === activeAcademyId && (
-          <Check className="h-4 w-4 text-primary" />
-        )}
-      </DropdownMenuItem>
-    ))}
-  </>
+{/* Empty State - WRONG: outside relative container */}
+{slots.length === 0 && (
+  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
+      {t("calendar.noSlotsThisWeek")}
+    </div>
+  </div>
 )}
 ```
 
-#### Add Handler Functions
+### Fixed Code:
 
 ```tsx
-const handleSwitchToAcademy = (academy?: AcademyWithRole) => {
-  if (context === 'academy' && academy && onAcademyChange) {
-    onAcademyChange(academy);
-  } else {
-    navigate('/academy');
-  }
-};
-
-const handleAcademySelect = (academy: AcademyWithRole) => {
-  if (context === 'academy' && onAcademyChange) {
-    onAcademyChange(academy);
-  } else {
-    navigate('/academy');
-  }
-};
+{/* Time Grid */}
+<div className="relative">
+  {HOURS.map((hour) => (
+    // ... hour rows
+  ))}
+  
+  {/* Empty State - CORRECT: inside relative container */}
+  {slots.length === 0 && (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="text-center text-muted-foreground p-8 bg-background/80 rounded-lg">
+        {t("calendar.noSlotsThisWeek")}
+      </div>
+    </div>
+  )}
+</div>
 ```
 
-#### Update Display Logic for Academy Context
+## Visual Before vs After
 
-```tsx
-const displayName = context === 'trainer' 
-  ? profile?.full_name || t('trainerDashboard')
-  : context === 'player'
-  ? profile?.full_name || t('playerDashboard')
-  : context === 'academy'
-  ? activeAcademy?.name || t('academyDashboard')
-  : activeClub?.location?.name || t('clubDashboard');
-
-const displayAvatar = context === 'trainer' || context === 'player'
-  ? profile?.avatar_url
-  : context === 'academy'
-  ? activeAcademy?.logo_url
-  : activeClub?.logo_url;
-
-const initials = context === 'trainer'
-  ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'TR'
-  : context === 'player'
-  ? profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'PL'
-  : context === 'academy'
-  ? activeAcademy?.name?.substring(0, 2).toUpperCase() || 'AC'
-  : activeClub?.location?.name?.substring(0, 2).toUpperCase() || 'CL';
+**Before (broken):**
 ```
-
-### 3. Add Translation Keys
-
-**English (`en/common.json`):**
-```json
-{
-  "myAcademies": "My Academies",
-  "academyDashboard": "Academy Dashboard"
-}
-```
-
-**Dutch (`nl/common.json`):**
-```json
-{
-  "myAcademies": "Mijn Academies",
-  "academyDashboard": "Academy Dashboard"
-}
-```
-
-## Visual Structure
-
-```text
-ProfileSwitcher Dropdown Menu:
 +----------------------------------+
-| 🔄 Switch Role                   |  <- Shows when in club/academy context
+| [Header Row with Days]           |
+|   Mon  T[MESSAGE OVERLAPS]  Thu  |  ← Message overlaps header
+|    26   27     28           29   |
 +----------------------------------+
-| 👤 Trainer Dashboard             |  <- For trainers to switch back
-+----------------------------------+
-| 🏢 My Clubs                      |
-| ├─ 🏠 Club Name 1        ✓      |
-| └─ 🏠 Club Name 2               |
-+----------------------------------+
-| 🎓 My Academies          ← NEW  |
-| ├─ 📚 Academy Name 1     ✓ NEW  |
-| └─ 📚 Academy Name 2       NEW  |
-+----------------------------------+
+| 08:00 |    |    |    |    |      |
+| 09:00 |    |    |    |    |      |
 ```
 
-## Context Flow
-
-```text
-context: 'trainer'
-├── Shows: "Switch Role" to Club (if club manager)
-├── Shows: "My Clubs" section with all clubs
-└── Shows: "My Academies" section with all academies ← NEW
-
-context: 'club'  
-├── Shows: "Switch Role" to Trainer (if trainer)
-├── Shows: "My Clubs" with active club highlighted
-└── Shows: "My Academies" section ← NEW
-
-context: 'academy' ← NEW
-├── Shows: "Switch Role" to Trainer (if trainer)
-├── Shows: "My Clubs" section
-└── Shows: "My Academies" with active academy highlighted
+**After (fixed):**
+```
++----------------------------------+
+| [Header Row with Days]           |
+|   Mon   Tue   Wed   Thu   Fri    |
+|    26    27    28    29    30    |
++----------------------------------+
+| 08:00 |    |    |    |    |      |
+| 09:00 |  [No slots this week]    |  ← Message centered in grid
+| 10:00 |    |    |    |    |      |
 ```
 
-## Result
+## File Changes
 
-After implementation:
-- Rene (and other academy managers) will see their academies in the ProfileSwitcher
-- One-click navigation to `/academy` dashboard from any context
-- Support for users managing multiple academies
-- Consistent UI pattern with clubs (avatar, name, checkmark for active)
-- `isAcademyManager` available in useAuth for other components to use
+**`src/components/trainer/TrainerCalendarGrid.tsx`**
+- Move the empty state `{slots.length === 0 && ...}` block (lines 269-276) to be **inside** the Time Grid `<div className="relative">` container (before its closing `</div>` at line 267)
 
