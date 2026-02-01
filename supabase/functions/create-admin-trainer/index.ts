@@ -59,8 +59,20 @@ Deno.serve(async (req) => {
       isPublic = false 
     } = await req.json();
 
-    if (!email || !fullName) {
+    // Trim and normalize email
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail || !fullName) {
       return new Response(JSON.stringify({ error: "Email and full name are required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Validate email format before sending to Supabase
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return new Response(JSON.stringify({ error: "Invalid email format. Please use a valid email address (e.g., name@example.com)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -71,7 +83,7 @@ Deno.serve(async (req) => {
 
     // Check if user with this email already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.email === email);
+    const existingUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === normalizedEmail);
 
     let trainerId: string;
     let temporaryPassword: string | null = null;
@@ -129,7 +141,7 @@ Deno.serve(async (req) => {
       isNewUser = true;
 
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: normalizedEmail,
         password: temporaryPassword,
         email_confirm: true,
         user_metadata: { full_name: fullName },
