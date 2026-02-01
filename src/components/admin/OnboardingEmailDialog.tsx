@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -26,7 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Info, Copy } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   type OnboardingEmailTemplate,
@@ -34,6 +33,7 @@ import {
   type TriggerType,
   TEMPLATE_VARIABLES,
 } from "@/lib/onboardingEmails";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 
 interface OnboardingEmailDialogProps {
   open: boolean;
@@ -103,15 +103,11 @@ export function OnboardingEmailDialog({
       trigger_type: triggerType,
       delay_days: delayDays,
       subject: subject.trim(),
-      body_html: bodyHtml.trim(),
+      body_html: bodyHtml,
       is_active: isActive,
     });
   };
 
-  const copyVariable = (variable: string) => {
-    navigator.clipboard.writeText(variable);
-    toast.success(t("onboardingEmails.variableCopied"));
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -206,40 +202,42 @@ export function OnboardingEmailDialog({
             />
           </div>
 
-          {/* Template Variables */}
+          {/* Body Content with WYSIWYG Editor */}
+          <div className="space-y-2">
+            <Label>{t("onboardingEmails.bodyLabel")}</Label>
+            <RichTextEditor
+              value={bodyHtml}
+              onChange={setBodyHtml}
+              placeholder={t("onboardingEmails.bodyHtmlPlaceholder")}
+            />
+          </div>
+
+          {/* Template Variables - Insert into Editor */}
           <div className="space-y-2">
             <Label>{t("onboardingEmails.availableVariables")}</Label>
+            <p className="text-xs text-muted-foreground">
+              {t("onboardingEmails.variablesHelp")}
+            </p>
             <div className="flex flex-wrap gap-2">
               {TEMPLATE_VARIABLES.map((variable) => (
                 <Tooltip key={variable.key}>
                   <TooltipTrigger asChild>
                     <Badge
-                      variant="secondary"
-                      className="cursor-pointer hover:bg-secondary/80"
-                      onClick={() => copyVariable(variable.key)}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => {
+                        setBodyHtml((prev) => prev + variable.key);
+                        toast.success(t("onboardingEmails.variableInserted"));
+                      }}
                     >
+                      <Plus className="h-3 w-3 mr-1" />
                       {variable.key}
-                      <Copy className="h-3 w-3 ml-1" />
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>{variable.description}</TooltipContent>
                 </Tooltip>
               ))}
             </div>
-          </div>
-
-          {/* Body HTML */}
-          <div className="space-y-2">
-            <Label htmlFor="bodyHtml">{t("onboardingEmails.bodyHtml")}</Label>
-            <Textarea
-              id="bodyHtml"
-              value={bodyHtml}
-              onChange={(e) => setBodyHtml(e.target.value)}
-              placeholder={t("onboardingEmails.bodyHtmlPlaceholder")}
-              rows={10}
-              className="font-mono text-sm"
-              required
-            />
           </div>
 
           {/* Active Toggle */}
