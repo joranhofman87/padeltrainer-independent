@@ -1,47 +1,62 @@
 
-# Fix Admin Trainer Subscription Updates Not Saving
+# Improve Trainer Card Layout
 
-## Problem
-When an admin changes a trainer's subscription status via the "Edit Trainer" dialog, the change appears to save (success toast shows) but doesn't actually persist to the database.
+## Overview
+Refine the trainer card design to address two visual inconsistencies:
+1. Replace the full "Verified" badge with a subtle green checkmark icon (matching the pattern used on profile pages)
+2. Move the KNLTB/rating system information to the top header area of the card to prevent height variations
 
-## Root Cause
-**Missing RLS policy**: There is no Row-Level Security (RLS) policy allowing admins to UPDATE records in the `trainer_profiles` table.
+## Current Issues
 
-Current UPDATE policies on `trainer_profiles`:
-- "Trainers can update their own trainer profile" - only allows trainers to update their own record
-- "Club managers can update trainer profiles at their locations" - only for club-associated trainers
+### Issue 1: Verified Badge
+Currently using a full `<Badge>Verified</Badge>` which takes up horizontal space and competes with the trainer name. The standard pattern (used on profile pages) is a simple green checkmark icon with a tooltip.
 
-The admin SELECT policy exists (`Admins can view all trainer profiles`), but no corresponding UPDATE policy.
-
-## Why the Toast Shows Success
-The save process has two parts:
-1. Edge function call to `update-user` → This succeeds (updates `profiles` table)
-2. Direct Supabase update to `trainer_profiles` → Silently affects 0 rows due to RLS
-
-The code doesn't check how many rows were actually affected, so it shows success even when the trainer profile update fails.
+### Issue 2: KNLTB Rating Position
+The rating (e.g., "KNLTB 1") is positioned at the bottom of the card content area. When some trainers have it and others don't, or when combined with varying bio lengths, the cards become inconsistent in height.
 
 ## Solution
 
-### Step 1: Add Missing RLS Policy
-Create an RLS policy to allow admins to update trainer profiles:
-
-```sql
-CREATE POLICY "Admins can update any trainer profile"
-ON trainer_profiles FOR UPDATE
-USING (is_admin(auth.uid()));
+### Change 1: Verified Icon
+Replace the Badge with a green CheckCircle icon with tooltip:
+```text
+Before: [Avatar] Trainer Name [Verified Badge] [Follow]
+After:  [Avatar] Trainer Name [✓ icon] [Follow]
 ```
 
-### Step 2: (Optional) Add Error Detection
-Improve the TrainerEditDialog to verify the update actually worked by checking the response or re-fetching the data.
+The icon will:
+- Use the same green CheckCircle icon from lucide-react
+- Include a tooltip showing "Verified profile" on hover
+- Be compact and non-intrusive
+
+### Change 2: Move Rating to Header
+Place the KNLTB rating inline with the metrics row (Rating, Reviews, Availability, Experience):
+```text
+Before:
+  [Star] 5.0  [Comment] 1  [Calendar] No  [Clock] 12y
+  ... bio text ...
+  €50/hr                                    KNLTB 1
+
+After:
+  [Star] 5.0  [Comment] 1  [Calendar] No  [Clock] 12y  KNLTB 1
+  ... bio text ...
+  €50/hr
+```
+
+This keeps all metric information together and ensures consistent card heights.
 
 ## Files Changed
 
-| File | Action | Changes |
-|------|--------|---------|
-| Database migration | Create | Add RLS policy for admin UPDATE on trainer_profiles |
+| File | Changes |
+|------|---------|
+| `src/pages/Trainers.tsx` | 1. Import CheckCircle, Tooltip components. 2. Replace Badge with icon+tooltip for verified. 3. Move rating system display to the info metrics row. Apply to both Featured section and main grid cards. |
+
+## Visual Reference
+The verified icon will match the existing pattern in `ProfileHeroCard.tsx`:
+- Green CheckCircle icon (h-4 w-4 for cards, smaller than h-5 w-5 on profiles)
+- Tooltip with "Verified profile" text
+- Positioned immediately after the trainer name
 
 ## Technical Notes
-
-1. The `is_admin()` helper function already exists and is used by other admin policies
-2. This follows the same pattern as other admin tables (e.g., `club_profiles` has "Admins can update any club profile")
-3. No code changes required in `TrainerEditDialog.tsx` - the fix is purely at the database level
+- Both the Featured section (lines ~560-640) and main grid (lines ~706-806) need updating
+- The TooltipProvider should wrap the icon for hover functionality
+- Rating display will join the existing flex row containing Star, MessageSquare, CalendarCheck, and Clock icons
