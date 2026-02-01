@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Pencil, Trash2, Eye, Mail } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Mail, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -76,6 +76,19 @@ export default function AdminOnboardingEmails() {
   const handlePreview = (template: OnboardingEmailTemplate) => {
     setSelectedTemplate(template);
     setPreviewOpen(true);
+  };
+
+  const handleDuplicate = (template: OnboardingEmailTemplate) => {
+    const duplicatedData = {
+      name: `${template.name} (${t("onboardingEmails.copy")})`,
+      user_type: template.user_type,
+      trigger_type: template.trigger_type,
+      delay_days: template.delay_days,
+      subject: template.subject,
+      body_html: template.body_html,
+      is_active: false, // Start as inactive
+    };
+    createMutation.mutate(duplicatedData);
   };
 
   const handleDelete = (template: OnboardingEmailTemplate) => {
@@ -240,13 +253,24 @@ export default function AdminOnboardingEmails() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handlePreview(template)}
+                              title={t("onboardingEmails.preview")}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => handleDuplicate(template)}
+                              disabled={createMutation.isPending}
+                              title={t("onboardingEmails.duplicate")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => handleEdit(template)}
+                              title={t("onboardingEmails.edit")}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -254,6 +278,7 @@ export default function AdminOnboardingEmails() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleDelete(template)}
+                              title={t("onboardingEmails.delete")}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
