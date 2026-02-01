@@ -1,49 +1,36 @@
 
+# Add Logout Button to Select Role Page
 
-# Clean Up Test Users - Execution Plan
+## Problem
+Users with old or orphaned profiles (accounts that exist but have no role assigned) get stuck on the `/select-role` page with no way to sign out. This is frustrating because they can't start fresh or switch accounts.
 
-## Current Situation
-- **23 non-admin test accounts** need to be deleted
-- **2 admin accounts** will be preserved:
-  - `info@padeltrainer.ai` (user_id: `256b0ed5-1563-4eb5-899b-df559c5e9090`)
-  - `joranhofman87@gmail.com` (user_id: `9bcc1c6f-7978-49bb-aa06-6f1be4135fc7`)
+## Solution
+Add a subtle logout button to the Select Role page that allows users to sign out and return to the auth page.
 
-## Implementation Approach
+## Implementation
 
-I'll create a **bulk cleanup edge function** that will:
-1. Get all non-admin user IDs
-2. For each user, perform the same cascaded cleanup as the existing `delete-user` function
-3. Delete the auth users via admin API
+### File to Modify
+- `src/pages/SelectRole.tsx`
 
-### New Edge Function: `bulk-cleanup-users`
+### Changes
+1. **Import the LogOut icon** from lucide-react (already using other icons from this library)
+2. **Import the signOut function** from `@/lib/auth`
+3. **Add a handleSignOut function** that calls signOut and navigates to `/auth`
+4. **Add a logout button** in the top-right corner of the page (similar pattern used in PlayerLayout and other layouts)
 
-This function will:
-- Require admin authentication
-- Accept a confirmation parameter to prevent accidental execution
-- Clean up all related data in the correct order (respecting foreign keys)
-- Delete users from auth system
-- Return a summary of deleted accounts
+### UI Design
+- Position: Fixed in top-right corner or as a subtle link below the main content
+- Style: Ghost button with LogOut icon to match the app's design language
+- Text: "Sign out" or just icon with tooltip
 
-### Cleanup Order (per user)
-1. Calendar events
-2. Notification preferences  
-3. Club-related data (invitations, players, stripe accounts, managers, profiles)
-4. Trainer-related data (locations, followers, profile views, slots, lessons, guest players, invoices, profiles)
-5. Player-related data (locations, rating history, followers, anonymize bookings/reviews)
-6. User roles
-7. Profiles
-8. Auth user
-
-### Files to Create/Modify
-- **Create**: `supabase/functions/bulk-cleanup-users/index.ts`
-
-### How to Execute
-After I create the function, you can call it via:
-```
-POST /functions/v1/bulk-cleanup-users
-Authorization: Bearer <your-admin-token>
-Body: { "confirm": true }
+### Code Changes Summary
+```text
+1. Add imports: LogOut icon, signOut function
+2. Add handleSignOut async function  
+3. Add Button in top-right corner:
+   - Ghost variant
+   - LogOut icon
+   - "Sign out" text or tooltip
 ```
 
-Or I can call it for you using the edge function testing tool.
-
+This is a simple, low-risk change that follows the existing patterns in the codebase (e.g., PlayerLayout has the same logout pattern).
