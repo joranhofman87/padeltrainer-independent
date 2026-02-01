@@ -9,16 +9,36 @@ import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+  const [isProcessingMagicLink, setIsProcessingMagicLink] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
+
+  // Detect and handle magic link tokens in URL hash (for impersonation)
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    
+    if (accessToken) {
+      setIsProcessingMagicLink(true);
+      // Magic link detected - force Supabase to process the hash tokens
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          // Clear the hash from URL for cleaner UX
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        setIsProcessingMagicLink(false);
+      });
+    }
+  }, []);
 
   // Handle email confirmation redirect and errors
   useEffect(() => {
@@ -114,7 +134,7 @@ export default function Auth() {
     }
   };
 
-  if (loading) {
+  if (loading || isProcessingMagicLink) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
