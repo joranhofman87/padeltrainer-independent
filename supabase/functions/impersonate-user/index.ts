@@ -85,11 +85,17 @@ Deno.serve(async (req) => {
     }
 
     // Generate a magic link for the target user
+    // Redirect to /auth so the session is properly established
+    const origin = req.headers.get("origin") || supabaseUrl;
+    const redirectUrl = origin.includes("lovable.app") || origin.includes("lovableproject.com") || origin.includes("localhost")
+      ? `${origin}/auth`
+      : `${origin}/auth`;
+    
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email: targetUser.email,
       options: {
-        redirectTo: `${req.headers.get("origin") || supabaseUrl}`,
+        redirectTo: redirectUrl,
       },
     });
 
