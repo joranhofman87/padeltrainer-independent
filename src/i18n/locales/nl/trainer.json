@@ -3,20 +3,21 @@
   "nav": {
     "dashboard": "Dashboard",
     "schedule": "Rooster",
-    "calendar": "Kalender",
+    "calendar": "Mijn Agenda",
     "openSlots": "Open Plekken",
     "players": "Spelers",
-    "myPlayers": "Mijn Spelers",
+    "myPlayers": "Alle Spelers",
     "intakeRequests": "Intake Aanvragen",
     "registration": "Registratie",
     "cycles": "Cycli",
-    "cyclus": "Cyclus Bouwer",
+    "cyclus": "Cyclus Aanmaken",
     "business": "Bedrijf",
     "earnings": "Inkomsten",
     "subscription": "Abonnement",
     "analytics": "Statistieken",
     "settings": "Instellingen",
-    "viewPublicProfile": "Bekijk Publiek Profiel"
+    "viewPublicProfile": "Bekijk Publiek Profiel",
+    "myClubs": "Mijn Clubs"
   },
   "profile": {
     "shareProfile": "Profiel Delen",
