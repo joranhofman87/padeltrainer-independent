@@ -1,118 +1,86 @@
 
 
-# Legacy Rating Fields Cleanup Plan
+# Academy Calendar Fixes Plan
 
-## Overview
+## Issues Identified
 
-The rating system has been migrated to use the `profiles` table (`skill_rating`, `rating_system`, `rating_member_id`) instead of legacy fields in `trainer_profiles` (`knltb_rating`, `trainer_rating_system`). This cleanup removes all legacy references from the codebase.
-
----
-
-## Scope of Changes
-
-| File | Legacy Fields Used | Action |
-|------|-------------------|--------|
-| `src/pages/EditProfile.tsx` | `knltb_rating`, `trainer_rating_system` in interface/fetch/save | Remove from TrainerProfileData, stop fetching/saving |
-| `src/components/club/EditClubTrainerDialog.tsx` | Same pattern | Update to use profiles table like academy dialog |
-| `src/pages/Trainers.tsx` | Uses for filtering | Update filter logic to use `profile.skill_rating` + `profile.rating_system` |
-| `src/pages/TrainersCity.tsx` | Displays `knltb_rating` | Update to use `profile.skill_rating` + `profile.rating_system` |
-| `src/pages/LocationDetail.tsx` | In Trainer interface | Update interface, already joins with profiles |
-
----
-
-## Detailed Changes
-
-### 1. EditProfile.tsx (Trainer's own profile page)
-
-**Current (legacy):**
-- Interface has `knltb_rating`, `trainer_rating_system`
-- Fetches from `trainer_profiles` table
-- Saves to `trainer_profiles` table
-
-**After cleanup:**
-- Remove these fields from `TrainerProfileData` interface
-- Remove from `fetchTrainerProfile()` select query
-- Remove from `handleSubmit()` update query
-- Rating is already correctly handled via `formData.skill_rating`, `formData.rating_system` → saved to `profiles` table
-
-### 2. EditClubTrainerDialog.tsx (Club editing a trainer)
-
-**Current (legacy):**
-- Same pattern as EditProfile - reads/writes rating to trainer_profiles
-
-**After cleanup:**
-- Add `skill_rating`, `rating_system`, `rating_member_id` to ProfileData interface
-- Read from profiles table
-- Save to profiles table
-- Remove legacy fields from TrainerProfileData
-- Match the pattern already used in `EditAcademyTrainerDialog`
-
-### 3. Trainers.tsx (Public trainer listing with filters)
-
-**Current (legacy):**
+### 1. Trainer Names Showing as "Unknown"
+The current code in `loadAcademyData()` queries the private `profiles` table directly:
 ```typescript
-interface Trainer {
-  knltb_rating: number | null;
-  trainer_rating_system: string | null;
-  profile: {
-    skill_rating: number | null;  // Already has correct field!
-    rating_system: string | null; // Already has correct field!
-  }
-}
+const { data: profile } = await supabase
+  .from("profiles")  // <-- Private table with RLS restrictions
+  .select("full_name, avatar_url")
+  .eq("user_id", trainer.user_id)
 ```
 
-The page fetches from `trainer_profiles_safe` but also joins with `profiles_public` which has the correct data.
+The RLS policy on `profiles` only allows:
+- Admins to view all profiles
+- Users to view their own profile
+- Service role to view all
 
-**After cleanup:**
-- Remove `knltb_rating`, `trainer_rating_system` from interface
-- Update filter logic to use `trainer.profile?.skill_rating` and `trainer.profile?.rating_system`
-- Remove legacy fields from the select query
+Academy managers don't have permission to read other users' profiles, so the query fails silently and returns `null`, resulting in "Unknown" names.
 
-### 4. TrainersCity.tsx (City-specific trainer listing)
-
-**Current (legacy):**
-- Displays `trainer.knltb_rating` directly in UI
-- Interface has `knltb_rating` but no `trainer_rating_system`
-
-**After cleanup:**
-- Update interface to get rating from profile
-- Update display to show `profile.skill_rating` with proper rating system label
-- Join with profiles_public to get rating data
-
-### 5. LocationDetail.tsx (Location page showing trainers)
-
-**Current (legacy):**
-- Trainer interface has `knltb_rating`
-
-**After cleanup:**
-- Remove `knltb_rating` from interface
-- Rating data should come from joined profiles
+### 2. Missing Action Buttons
+The Club calendar has "Add Slot" and "Create Cyclus" buttons (lines 362-370 in ClubCalendar.tsx), but the Academy calendar is missing these controls.
 
 ---
 
-## Database Note
+## Solution
 
-The `trainer_profiles_safe` view still includes `knltb_rating` and `trainer_rating_system` columns. These can remain in the view for now (backward compatibility) - the columns exist in the table but are no longer used. A future migration could remove them from the table entirely, but that's a separate concern from this code cleanup.
+### Fix 1: Use `profiles_public` View Instead of `profiles` Table
+
+Replace the manual trainer fetching logic in `loadAcademyData()` with the existing `getAcademyTrainersWithProfiles()` function from `src/lib/academy.ts`, which correctly uses the `profiles_public` view.
+
+```text
+Current (broken):
+  for (const t of academyTrainers) {
+    const { data: profile } = await supabase.from("profiles")...
+  }
+
+After fix:
+  const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+  // This function uses profiles_public internally
+```
+
+### Fix 2: Add Action Buttons
+
+Add buttons above the calendar matching the Club calendar pattern:
+- **Add Cycle** button (orange, primary action) - Opens the CycleForm dialog
+- The filters stay as-is but are repositioned to be grouped with the buttons
 
 ---
 
-## Summary of File Changes
+## Technical Changes
 
-| File | Changes |
-|------|---------|
-| `src/pages/EditProfile.tsx` | Remove `knltb_rating`, `trainer_rating_system` from interface, fetch, and save |
-| `src/components/club/EditClubTrainerDialog.tsx` | Add rating fields to ProfileData, read/write to profiles table, remove from TrainerProfileData |
-| `src/pages/Trainers.tsx` | Update interface and filter logic to use `profile.skill_rating`/`profile.rating_system` |
-| `src/pages/TrainersCity.tsx` | Update interface and display to use profile rating fields |
-| `src/pages/LocationDetail.tsx` | Remove `knltb_rating` from interface |
+### File: `src/pages/academy/AcademyCalendar.tsx`
+
+1. **Import changes**:
+   - Add import for `getAcademyTrainersWithProfiles` from `@/lib/academy`
+   - Add import for `CycleForm` from `@/components/cycles/CycleForm`
+
+2. **State additions**:
+   - `showCreateCycleDialog` (boolean) - Controls CycleForm visibility
+   - `trainerOptions` (array) - Trainer ID/name pairs for CycleForm
+
+3. **Update `loadAcademyData()` function**:
+   - Replace manual profile fetching with `getAcademyTrainersWithProfiles()`
+   - This ensures proper use of `profiles_public` view
+   - Build trainer list from the correctly-fetched data
+
+4. **Add UI elements in CardHeader**:
+   - Add "Add Cycle" button (orange styling matching Club calendar's "Create Cyclus")
+   - Button opens CycleForm dialog
+
+5. **Add CycleForm dialog**:
+   - Include the CycleForm component at the end of the component
+   - Pass `ownerType="academy"`, `ownerId={activeAcademy.id}`, and trainer options
 
 ---
 
 ## Result
 
-After cleanup:
-- All rating data flows through `profiles` table
-- `skill_rating`, `rating_system`, `rating_member_id` are the canonical fields
-- Admin, Academy, Club, and Trainer views all read/write from the same source
-- Legacy `knltb_rating` and `trainer_rating_system` fields in `trainer_profiles` table become unused
+After these changes:
+- Trainer dropdown will show actual names (e.g., "Rene Lindenbergh" instead of "Unknown")
+- Academy managers can create new training cycles directly from the calendar view
+- UI matches the Club calendar pattern for consistency
 
