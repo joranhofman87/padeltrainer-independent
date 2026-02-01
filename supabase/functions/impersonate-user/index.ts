@@ -43,9 +43,9 @@ Deno.serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", adminUser.id)
-      .single();
+      .eq("role", "admin");
 
-    if (roleError || roleData?.role !== "admin") {
+    if (roleError || !roleData || roleData.length === 0) {
       return new Response(
         JSON.stringify({ error: "Unauthorized - admin access required" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
