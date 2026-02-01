@@ -77,10 +77,23 @@ export function AddTrainerDialog({
       return;
     }
 
-    if (!email.trim()) {
+    const trimmedEmail = email.trim().toLowerCase();
+    
+    if (!trimmedEmail) {
       toast({
         title: "Email required",
         description: "Please enter the trainer's email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address (e.g., name@example.com).",
         variant: "destructive",
       });
       return;
@@ -90,7 +103,7 @@ export function AddTrainerDialog({
     try {
       const { data, error } = await supabase.functions.invoke("create-admin-trainer", {
         body: {
-          email: email.trim(),
+          email: trimmedEmail,
           fullName: fullName.trim(),
           phone: phone.trim() || null,
           subscriptionStatus,
