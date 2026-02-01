@@ -1,68 +1,95 @@
 
 
-# Hide "Trainer Preference" Toggle for Individual Trainers
+# Fix Admin-Granted Subscription Not Being Recognized
 
 ## Problem
-When a trainer creates a cycle, they see the "Allow trainer preference" toggle. This doesn't make sense because:
-- There's only one trainer (themselves)
-- Players can't choose between trainers when there's only one option
+When an admin manually sets a trainer's `subscription_status` to `active`, the trainer dashboard still shows "Trial ended" with a CTA to subscribe.
 
-This option is only relevant when an **academy** creates a cycle, since academies have multiple trainers.
+**Root cause confirmed from logs:**
+```
+[CHECK-TRAINER-SUBSCRIPTION] User authenticated - {"email":"joranhofman87+rene@gmail.com"}
+[CHECK-TRAINER-SUBSCRIPTION] No customer found, returning trial tier
+```
 
-## Solution
-Conditionally render the "show_preferred_trainer" field only when `ownerType === 'academy'`.
+The edge function checks for a Stripe customer first, and if none is found, it returns `subscribed: false` **before** ever checking for admin-granted access.
 
-## Files to Change
+## Current Logic Flow (Buggy)
+
+```text
+1. Authenticate user ✓
+2. Fetch trainer profile (gets subscription_status = 'active') ✓
+3. Look for Stripe customer → NOT FOUND
+4. Return { subscribed: false } ← BUG: Exits before checking admin override!
+```
+
+## Fixed Logic Flow
+
+```text
+1. Authenticate user
+2. Fetch trainer profile (gets subscription_status = 'active')
+3. Check for admin-granted access FIRST → hasAdminGrantedAccess = true
+4. Look for Stripe customer → NOT FOUND
+5. Return { subscribed: true } because admin granted access
+```
+
+## File to Change
 
 | File | Change |
 |------|--------|
-| `src/components/cycles/CycleForm.tsx` | Wrap the `show_preferred_trainer` FormField in a condition that only renders for academy-owned cycles |
+| `supabase/functions/check-trainer-subscription/index.ts` | Move admin-granted check before the "no customer" early return |
 
 ## Implementation Details
 
-In `CycleForm.tsx`, wrap lines 318-337 with a condition:
+In the edge function, the current problematic block is:
 
-```tsx
-{ownerType === 'academy' && (
-  <FormField
-    control={form.control}
-    name="show_preferred_trainer"
-    render={({ field }) => (
-      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-        <div className="space-y-0.5">
-          <FormLabel>{t('form.showPreferredTrainer')}</FormLabel>
-          <FormDescription className="text-xs">
-            {t('form.showPreferredTrainerHelp')}
-          </FormDescription>
-        </div>
-        <FormControl>
-          <Switch
-            checked={field.value}
-            onCheckedChange={field.onChange}
-          />
-        </FormControl>
-      </FormItem>
-    )}
-  />
-)}
+```typescript
+// Lines 85-99 - Early return WITHOUT checking admin override
+if (customers.data.length === 0) {
+  logStep("No customer found, returning trial tier");
+  return new Response(JSON.stringify({ 
+    subscribed: false,  // ← Always returns false, ignoring admin override
+    tier: 'trial',
+    // ...
+  }));
+}
 ```
 
-## Additional Consideration
-For trainer-owned cycles, we should also default `show_preferred_trainer` to `false` (since it won't be shown and shouldn't be enabled). The current default is `true`, which would still be saved even though the toggle isn't visible.
+**Fix:** Check for admin-granted access BEFORE the early return:
 
-Update the `defaultValues` to:
-```tsx
-show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+```typescript
+// Check for admin-granted subscription status FIRST
+const hasAdminGrantedAccess = trainerProfile?.subscription_status === 'active';
+
+if (customers.data.length === 0) {
+  // Even without Stripe, respect admin-granted access
+  if (hasAdminGrantedAccess) {
+    logStep("No Stripe customer, but admin-granted access detected");
+    return new Response(JSON.stringify({ 
+      subscribed: true,
+      tier: 'professional',
+      product_id: null,
+      subscription_end: null,
+      trial_ends_at: trialEndsAt,
+      is_trial: false,
+      is_public: isPublic,
+    }), { ... });
+  }
+  
+  logStep("No customer found, returning trial tier");
+  return new Response(JSON.stringify({ 
+    subscribed: false,
+    // ...
+  }));
+}
 ```
 
-This ensures:
-- Academy cycles: Default to showing trainer preference (true)
-- Trainer cycles: Default to not showing trainer preference (false)
+## Expected Result After Fix
 
-## Result
-| Owner Type | Trainer Preference Toggle |
-|------------|---------------------------|
-| `trainer`  | Hidden, defaults to false |
-| `academy`  | Visible, defaults to true |
-| `club`     | Hidden, defaults to false |
+**For Rene (admin-granted subscription):**
+
+| Before | After |
+|--------|-------|
+| `subscribed: false` | `subscribed: true` |
+| `tier: 'trial'` | `tier: 'professional'` |
+| Shows "Trial ended" banner | No trial banner |
 
