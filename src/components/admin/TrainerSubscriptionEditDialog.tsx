@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +62,13 @@ export function TrainerSubscriptionEditDialog({
     currentData.trial_ends_at ? new Date(currentData.trial_ends_at) : undefined
   );
   const [isPublic, setIsPublic] = useState(currentData.is_public);
+
+  // Reset state when currentData changes (different trainer selected)
+  useEffect(() => {
+    setStatus(currentData.subscription_status || "trial");
+    setTrialEndsAt(currentData.trial_ends_at ? new Date(currentData.trial_ends_at) : undefined);
+    setIsPublic(currentData.is_public);
+  }, [currentData, trainerId]);
 
   const handleStatusChange = (newStatus: string) => {
     setStatus(newStatus);
