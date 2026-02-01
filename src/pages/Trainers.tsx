@@ -10,12 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown, MessageSquare, CalendarCheck, Clock } from 'lucide-react';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp, ChevronRight, ChevronDown, MessageSquare, CalendarCheck, Clock, CheckCircle, Trophy } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS, RatingSystem } from '@/components/trainers/TrainerFilters';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { SEO } from '@/components/SEO';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
 import { Location } from '@/lib/locations';
@@ -556,9 +557,16 @@ export default function Trainers() {
                                   {trainer.profile?.full_name || 'Trainer'}
                                 </CardTitle>
                                 {trainer.is_verified && (
-                                  <Badge variant="secondary" className="shrink-0 text-xs">
-                                    Verified
-                                  </Badge>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{t('common:verifiedProfile', 'Verified profile')}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 )}
                                 <div className="ml-auto">
                                   <FollowButton trainerProfileId={trainer.id} />
@@ -571,7 +579,7 @@ export default function Trainers() {
                                 </CardDescription>
                               )}
                               {/* Always-visible Info Row */}
-                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                                   <span className={trainer.reviewCount > 0 ? 'font-medium text-foreground' : ''}>
@@ -592,6 +600,15 @@ export default function Trainers() {
                                   <Clock className="h-3 w-3" />
                                   <span>{trainer.experience_years ? `${trainer.experience_years}y` : '-'}</span>
                                 </div>
+                                {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
+                                  <div className="flex items-center gap-1">
+                                    <Trophy className="h-3 w-3" />
+                                    <span className="font-medium text-foreground">
+                                      {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
+                                        (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -603,21 +620,13 @@ export default function Trainers() {
                             </p>
                           )}
                           
-                          <div className="flex items-center justify-between text-sm">
-                            {trainer.hourly_rate && (
+                          {trainer.hourly_rate && (
+                            <div className="text-sm">
                               <span className="font-semibold text-primary">
                                 €{trainer.hourly_rate}/hr
                               </span>
-                            )}
-                            <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                              {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
-                                <span className="font-medium text-foreground">
-                                  {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
-                                    (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
-                                </span>
-                              )}
                             </div>
-                          </div>
+                          )}
 
                           {trainer.specializations && trainer.specializations.length > 0 && (
                             <div className="flex flex-wrap gap-1">
@@ -724,9 +733,16 @@ export default function Trainers() {
                           {trainer.profile?.full_name || 'Trainer'}
                         </CardTitle>
                         {trainer.is_verified && (
-                          <Badge variant="secondary" className="shrink-0 text-xs">
-                            Verified
-                          </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{t('common:verifiedProfile', 'Verified profile')}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                         <div className="ml-auto">
                           <FollowButton trainerProfileId={trainer.id} />
@@ -739,7 +755,7 @@ export default function Trainers() {
                         </CardDescription>
                       )}
                       {/* Always-visible Info Row */}
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                         <div className="flex items-center gap-1">
                           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                           <span className={trainer.reviewCount > 0 ? 'font-medium text-foreground' : ''}>
@@ -760,6 +776,15 @@ export default function Trainers() {
                           <Clock className="h-3 w-3" />
                           <span>{trainer.experience_years ? `${trainer.experience_years}y` : '-'}</span>
                         </div>
+                        {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
+                          <div className="flex items-center gap-1">
+                            <Trophy className="h-3 w-3" />
+                            <span className="font-medium text-foreground">
+                              {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
+                                (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -771,21 +796,13 @@ export default function Trainers() {
                     </p>
                   )}
                   
-                  <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
+                  {trainer.hourly_rate && (
+                    <div className="text-sm">
                       <span className="font-semibold text-primary">
                         €{trainer.hourly_rate}/hr
                       </span>
-                    )}
-                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                      {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
-                        <span className="font-medium text-foreground">
-                          {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
-                            (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
-                        </span>
-                      )}
                     </div>
-                  </div>
+                  )}
 
                   {trainer.specializations && trainer.specializations.length > 0 && (
                     <div className="flex flex-wrap gap-1">
