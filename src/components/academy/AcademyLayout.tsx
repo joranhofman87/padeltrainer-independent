@@ -160,7 +160,7 @@ export default function AcademyLayout() {
             <div className="flex items-center gap-2">
               <LanguageSwitcher />
               <ThemeToggle />
-              <ProfileSwitcher />
+              <ProfileSwitcher context="academy" activeAcademyId={activeAcademy?.id} onAcademyChange={handleAcademyChange} />
               <Button variant="ghost" size="icon" onClick={() => navigate('/academy/settings')}>
                 <Settings className="h-5 w-5" />
               </Button>
