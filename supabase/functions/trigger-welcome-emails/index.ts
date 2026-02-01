@@ -65,22 +65,28 @@ const handler = async (req: Request): Promise<Response> => {
     // Get user_id from the authenticated request
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
+      // No auth header - silently return success since this is fire-and-forget
+      console.log("No authorization header, skipping welcome emails");
       return new Response(
-        JSON.stringify({ error: "Missing authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ processed: 0, message: "No authorization" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Verify the JWT and get user
+    // Verify the JWT using getClaims (faster than getUser)
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
 
-    if (authError || !user) {
+    if (claimsError || !claimsData?.claims?.sub) {
+      // Token invalid/expired - silently return success since this is fire-and-forget
+      console.log("Token validation failed, skipping welcome emails:", claimsError?.message);
       return new Response(
-        JSON.stringify({ error: "Invalid or expired token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ processed: 0, message: "Token validation failed" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const user = { id: claimsData.claims.sub as string };
 
     console.log(`Processing welcome emails for user: ${user.id}`);
 
