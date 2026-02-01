@@ -1,6 +1,7 @@
 {
   "badge": "Trainer",
   "nav": {
+    "myProfile": "My Profile",
     "dashboard": "Dashboard",
     "schedule": "Schedule",
     "calendar": "My Calendar",
