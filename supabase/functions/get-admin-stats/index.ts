@@ -54,10 +54,11 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
-      .single();
+      .eq("role", "admin")
+      .maybeSingle();
 
-    if (!roleData || roleData.role !== "admin") {
-      logStep("Access denied - not admin", { role: roleData?.role });
+    if (!roleData) {
+      logStep("Access denied - not admin", { userId: user.id });
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
