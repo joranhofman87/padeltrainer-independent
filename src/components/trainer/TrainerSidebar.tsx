@@ -48,6 +48,7 @@ import { getTrainerAcademy } from "@/lib/academy";
 import { getTrainerClubs, TrainerClub } from "@/lib/trainer";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export function TrainerSidebar() {
   const { t, i18n } = useTranslation("trainer");
@@ -139,8 +140,14 @@ export function TrainerSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
-        <div className="flex items-center justify-between px-2 py-2">
-          <div className="flex items-center gap-2">
+        <div className={cn(
+          "flex px-2 py-2",
+          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
+        )}>
+          <div className={cn(
+            "flex items-center",
+            collapsed ? "justify-center" : "gap-2"
+          )}>
             <Avatar className="h-8 w-8">
               <AvatarImage src={profile?.avatar_url || undefined} />
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
@@ -159,18 +166,16 @@ export function TrainerSidebar() {
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={toggleSidebar}
-          >
-            {collapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
+          {!collapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={toggleSidebar}
+            >
               <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
       </SidebarHeader>
 
@@ -450,43 +455,36 @@ export function TrainerSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t">
-        <div className="flex flex-col gap-2 p-2">
+        <div className={cn(
+          "flex p-2",
+          collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
+        )}>
           {/* View Public Profile */}
-          {trainerProfileId && !collapsed && (
+          {trainerProfileId && (
             <Button
               variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={handleViewPublicProfile}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              {t("nav.viewPublicProfile")}
-            </Button>
-          )}
-          {trainerProfileId && collapsed && (
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
+              size={collapsed ? "icon" : "sm"}
+              className={collapsed ? "h-8 w-8" : "w-full justify-start"}
               onClick={handleViewPublicProfile}
             >
               <ExternalLink className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">{t("nav.viewPublicProfile")}</span>}
             </Button>
           )}
           
-          <div className="flex items-center justify-between">
+          <div className={cn(
+            "flex",
+            collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
+          )}>
             <ThemeToggle />
-            {!collapsed && (
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            )}
-            {collapsed && (
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-            )}
+            <Button 
+              variant="ghost" 
+              size={collapsed ? "icon" : "sm"} 
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Logout</span>}
+            </Button>
           </div>
         </div>
       </SidebarFooter>

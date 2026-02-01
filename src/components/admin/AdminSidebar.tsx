@@ -1,4 +1,5 @@
 import { NavLink } from "@/components/NavLink";
+import { cn } from "@/lib/utils";
 import { usePendingClaimsCount } from "@/hooks/useAdminData";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -90,7 +91,10 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
-        <div className="flex items-center justify-between px-2 py-2">
+        <div className={cn(
+          "flex px-2 py-2",
+          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
+        )}>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <ShieldCheck className="h-4 w-4" />
@@ -99,18 +103,16 @@ export function AdminSidebar() {
               <span className="font-semibold">Admin Panel</span>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={toggleSidebar}
-          >
-            {collapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
+          {!collapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={toggleSidebar}
+            >
               <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
       </SidebarHeader>
 
@@ -256,19 +258,19 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t">
-        <div className="flex items-center justify-between p-2">
+        <div className={cn(
+          "flex p-2",
+          collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
+        )}>
           <ThemeToggle />
-          {!collapsed && (
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          )}
-          {collapsed && (
-            <Button variant="ghost" size="icon" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-            </Button>
-          )}
+          <Button 
+            variant="ghost" 
+            size={collapsed ? "icon" : "sm"} 
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4" />
+            {!collapsed && <span className="ml-2">Logout</span>}
+          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
