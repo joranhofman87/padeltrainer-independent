@@ -156,6 +156,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
           comment: comment || null,
           is_public: true,
           is_anonymous: isAnonymous,
+          reviewer_name: !isAnonymous && reviewerName ? reviewerName : null,
         })
         .select()
         .single();
@@ -363,7 +364,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
                       <p className="text-sm font-medium mb-1">
                         {review.is_anonymous
                           ? "Anonymous"
-                          : review.profiles?.full_name || "Player"}
+                          : (review as any).reviewer_name || review.profiles?.full_name || "Player"}
                       </p>
 
                       {review.tags && review.tags.length > 0 && (
