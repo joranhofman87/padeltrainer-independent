@@ -253,17 +253,21 @@ export default function AdminTrainers() {
                   >
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarImage src={trainer.avatar_url || undefined} />
-                          <AvatarFallback>
+                        <Avatar className="h-10 w-10 shrink-0">
+                          <AvatarImage 
+                            src={trainer.avatar_url || undefined} 
+                            alt={trainer.full_name || "Trainer"}
+                            className="object-cover"
+                          />
+                          <AvatarFallback className="text-sm font-medium">
                             {trainer.full_name?.[0]?.toUpperCase() || "T"}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <div className="font-medium">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
                             {trainer.full_name || "Unknown"}
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground truncate">
                             {trainer.email || "No email"}
                           </div>
                         </div>
