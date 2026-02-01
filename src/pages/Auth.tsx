@@ -26,19 +26,29 @@ export default function Auth() {
   useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
     
-    if (accessToken) {
+    if (accessToken && refreshToken) {
       setIsProcessingMagicLink(true);
-      // Magic link detected - force Supabase to process the hash tokens
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          // Clear the hash from URL for cleaner UX
-          window.history.replaceState(null, '', window.location.pathname);
+      // Explicitly set the session with tokens from URL hash - this overrides any existing session
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to set session from magic link:', error);
+          toast({
+            title: t('signIn.error', 'Login failed'),
+            description: t('verification.linkExpired', 'The login link may have expired. Please try again.'),
+            variant: 'destructive',
+          });
         }
+        // Clear the hash from URL for cleaner UX
+        window.history.replaceState(null, '', window.location.pathname);
         setIsProcessingMagicLink(false);
       });
     }
-  }, []);
+  }, [toast, t]);
 
   // Handle email confirmation redirect and errors
   useEffect(() => {
