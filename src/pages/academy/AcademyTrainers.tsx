@@ -33,6 +33,8 @@ import {
   cancelAcademyInvitation,
 } from '@/lib/academy';
 import { InviteAcademyTrainerDialog } from '@/components/academy/InviteAcademyTrainerDialog';
+import { CreateAcademyTrainerDialog } from '@/components/academy/CreateAcademyTrainerDialog';
+import { EditAcademyTrainerDialog } from '@/components/academy/EditAcademyTrainerDialog';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -143,13 +145,19 @@ export default function AcademyTrainers() {
           <p className="text-muted-foreground">{t('trainers.description')}</p>
         </div>
         {activeAcademy && user && profile && (
-          <InviteAcademyTrainerDialog
-            academyProfileId={activeAcademy.id}
-            academyName={activeAcademy.name}
-            inviterId={user.id}
-            inviterName={profile.full_name || 'Academy Manager'}
-            onInviteSent={fetchData}
-          />
+          <div className="flex items-center gap-2">
+            <CreateAcademyTrainerDialog
+              academyProfileId={activeAcademy.id}
+              onTrainerCreated={fetchData}
+            />
+            <InviteAcademyTrainerDialog
+              academyProfileId={activeAcademy.id}
+              academyName={activeAcademy.name}
+              inviterId={user.id}
+              inviterName={profile.full_name || 'Academy Manager'}
+              onInviteSent={fetchData}
+            />
+          </div>
         )}
       </div>
 
@@ -263,6 +271,14 @@ export default function AcademyTrainers() {
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-2">
+                        {trainer.trainer_profile?.user_id && (
+                          <EditAcademyTrainerDialog
+                            trainerId={trainer.trainer_profile.id}
+                            userId={trainer.trainer_profile.user_id}
+                            trainerName={trainer.profile?.full_name || 'Trainer'}
+                            onTrainerUpdated={fetchData}
+                          />
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
