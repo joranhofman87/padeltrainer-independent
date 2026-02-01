@@ -55,7 +55,8 @@ export function isInDevelopment(): boolean {
   const hostname = window.location.hostname;
   return hostname === 'localhost' || 
          hostname === '127.0.0.1' || 
-         hostname.includes('.lovable.app');
+         hostname.includes('.lovable.app') ||
+         hostname.includes('.lovableproject.com');
 }
 
 /**
