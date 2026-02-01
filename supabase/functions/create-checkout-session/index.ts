@@ -232,7 +232,7 @@ serve(async (req) => {
       });
     }
 
-    const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
+    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
     // Create checkout session with DIRECT CHARGE on connected account
     // This places liability with the recipient (connected account pays Stripe fees)

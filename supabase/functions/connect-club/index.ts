@@ -133,7 +133,7 @@ serve(async (req) => {
     }
 
     // Create onboarding link
-    const origin = req.headers.get("origin") || "https://ppkbhdiiqdusdeatgdft-preview.lovable.app";
+    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
       refresh_url: `${origin}/club/settings?stripe_refresh=true`,
