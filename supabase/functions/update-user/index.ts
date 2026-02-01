@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     }
 
     // Get the request body
-    const { target_user_id, email, full_name } = await req.json();
+    const { target_user_id, email, full_name, phone, bio, avatar_url } = await req.json();
 
     if (!target_user_id) {
       return new Response(
@@ -94,10 +94,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update profile
-    const updates: Record<string, string> = {};
-    if (email) updates.email = email;
+    // Update profile - support all profile fields
+    const updates: Record<string, string | null> = {};
+    if (email !== undefined) updates.email = email;
     if (full_name !== undefined) updates.full_name = full_name;
+    if (phone !== undefined) updates.phone = phone;
+    if (bio !== undefined) updates.bio = bio;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url;
 
     if (Object.keys(updates).length > 0) {
       const { error: profileError } = await supabaseAdmin
