@@ -17,6 +17,7 @@ interface SocialLink {
 interface ProfileHeroCardProps {
   name: string;
   avatarUrl?: string | null;
+  avatarAlt?: string; // For SEO-friendly alt text
   location?: string | null;
   isVerified?: boolean;
   hourlyRate?: number | null;
@@ -35,6 +36,7 @@ interface ProfileHeroCardProps {
 export function ProfileHeroCard({
   name,
   avatarUrl,
+  avatarAlt,
   location,
   isVerified,
   hourlyRate,
@@ -101,7 +103,10 @@ export function ProfileHeroCard({
             {/* Avatar with video play button */}
             <div className="relative mx-auto lg:mx-0">
               <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl">
-                <AvatarImage src={avatarUrl || undefined} />
+                <AvatarImage 
+                  src={avatarUrl || undefined} 
+                  alt={avatarAlt || `${name} profile photo`}
+                />
                 <AvatarFallback className="text-4xl bg-primary text-primary-foreground">
                   {getInitials(name)}
                 </AvatarFallback>
