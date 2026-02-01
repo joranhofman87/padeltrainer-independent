@@ -50,6 +50,8 @@ interface TrainerWithProfile {
     avatar_url: string | null;
     bio: string | null;
     location: string | null;
+    skill_rating: number | null;
+    rating_system: string | null;
   } | null;
   averageRating: number;
   reviewCount: number;
@@ -248,7 +250,7 @@ export default function Trainers() {
     const userIds = trainerProfiles.map(t => t.user_id);
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles_public')
-      .select('user_id, full_name, avatar_url, bio, location')
+      .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
       .in('user_id', userIds);
 
     if (profilesError) {
@@ -608,9 +610,10 @@ export default function Trainers() {
                               </span>
                             )}
                             <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                              {trainer.knltb_rating && trainer.trainer_rating_system && (
+                              {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
                                 <span className="font-medium text-foreground">
-                                  {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
+                                  {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
+                                    (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
                                 </span>
                               )}
                             </div>
@@ -775,9 +778,10 @@ export default function Trainers() {
                       </span>
                     )}
                     <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                      {trainer.knltb_rating && trainer.trainer_rating_system && (
+                      {(trainer.profile?.skill_rating || trainer.knltb_rating) && (trainer.profile?.rating_system || trainer.trainer_rating_system) && (
                         <span className="font-medium text-foreground">
-                          {ratingSystems.find(rs => rs.code === trainer.trainer_rating_system)?.name || trainer.trainer_rating_system.toUpperCase()} {trainer.knltb_rating}
+                          {ratingSystems.find(rs => rs.code === (trainer.profile?.rating_system || trainer.trainer_rating_system))?.name || 
+                            (trainer.profile?.rating_system || trainer.trainer_rating_system)?.toUpperCase()} {trainer.profile?.skill_rating || trainer.knltb_rating}
                         </span>
                       )}
                     </div>
