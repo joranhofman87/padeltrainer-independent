@@ -40,6 +40,7 @@ import {
   LogOut,
   ExternalLink,
   PanelLeftClose,
+  PanelLeft,
   GraduationCap,
   CheckCircle,
 } from "lucide-react";
@@ -155,7 +156,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
               </div>
             )}
           </div>
-          {!collapsed && (
+          {!collapsed ? (
             <Button
               variant="ghost"
               size="icon"
@@ -163,6 +164,15 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
               onClick={toggleSidebar}
             >
               <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={toggleSidebar}
+            >
+              <PanelLeft className="h-4 w-4" />
             </Button>
           )}
         </div>
