@@ -3,22 +3,36 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Users, DollarSign, Settings, LogOut, BarChart3, Clock, ClipboardList, Check, ChevronDown, ChevronUp, ArrowRight, Bell, Eye, UserCircle, Building2, CalendarDays, AlertTriangle } from 'lucide-react';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { ProfileSwitcher } from '@/components/ProfileSwitcher';
+import { 
+  Calendar, Users, DollarSign, Clock, Check, ChevronDown, ChevronUp, 
+  ArrowRight, Bell, Eye, Building2, CalendarDays, AlertTriangle,
+  ChevronLeft, ChevronRight, LayoutGrid, Plus, Repeat, Copy
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfMonth, endOfMonth } from 'date-fns';
+import { 
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek, addWeeks, subWeeks,
+  addMonths, subMonths, addDays, subDays, format
+} from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { DashboardCalendar } from '@/components/trainer/DashboardCalendar';
 import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
 import { getTrialDaysRemaining } from '@/lib/subscription';
+
+// Calendar components
+import { TrainerCalendarGrid } from '@/components/trainer/TrainerCalendarGrid';
+import { SlotWithBookings, BookedPlayer } from '@/components/trainer/CalendarSlotCard';
+import { AddSlotDialog, BulkCreateSheet } from '@/components/trainer/AddSlotDialog';
+import { SlotTypeChoiceDialog } from '@/components/trainer/SlotTypeChoiceDialog';
+import { BookForPlayerDialog } from '@/components/trainer/BookForPlayerDialog';
+import { DuplicateCyclusDialog } from '@/components/trainer/DuplicateCyclusDialog';
+import { DeleteSlotDialog } from '@/components/trainer/DeleteSlotDialog';
+import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 
 interface DashboardStats {
   totalStudents: number;
@@ -35,6 +49,18 @@ interface SetupStatus {
   stripeComplete: boolean;
   hasPlayers: boolean;
   clubPaymentInfo?: ClubPaymentInfo;
+}
+
+interface Lesson {
+  id: string;
+  title: string;
+  price: number;
+  location: string | null;
+}
+
+interface ScheduleSettings {
+  slot_duration_minutes: number;
+  schedule_weeks_ahead: number;
 }
 
 export default function TrainerDashboard() {
@@ -65,22 +91,384 @@ export default function TrainerDashboard() {
     return stored !== null ? stored === 'true' : true;
   });
 
-  // Auth is now handled by TrainerLayout
+  // Calendar state
+  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [calendarSlots, setCalendarSlots] = useState<SlotWithBookings[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [settings, setSettings] = useState<ScheduleSettings>({
+    slot_duration_minutes: 60,
+    schedule_weeks_ahead: 4,
+  });
+
+  // Dialog states
+  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
+  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
+  const [editBookingOpen, setEditBookingOpen] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
+  const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
+  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
+  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
+  const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
+  const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
 
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchStats();
       fetchSetupStatus();
+      fetchTrainerData();
     }
   }, [user, role]);
+
+  useEffect(() => {
+    if (trainerId) {
+      fetchCalendarSlots();
+    }
+  }, [trainerId, currentDate, view]);
 
   useEffect(() => {
     localStorage.setItem('trainer_setup_expanded', String(isSetupExpanded));
   }, [isSetupExpanded]);
 
+  const fetchTrainerData = async () => {
+    try {
+      const { data: trainerProfile } = await supabase
+        .from("trainer_profiles")
+        .select("id, slot_duration_minutes, schedule_weeks_ahead")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
+      if (!trainerProfile) return;
+
+      setTrainerId(trainerProfile.id);
+      setSettings({
+        slot_duration_minutes: trainerProfile.slot_duration_minutes || 60,
+        schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
+      });
+
+      // Fetch lessons with more details
+      const { data: lessonData } = await supabase
+        .from("lessons")
+        .select("id, title, price, location")
+        .eq("trainer_id", trainerProfile.id)
+        .eq("is_active", true);
+
+      setLessons(lessonData || []);
+    } catch (error) {
+      console.error("Error fetching trainer data:", error);
+    }
+  };
+
+  const fetchCalendarSlots = async () => {
+    if (!trainerId) return;
+    
+    setCalendarLoading(true);
+    try {
+      // Calculate date range
+      let rangeStart: Date;
+      let rangeEnd: Date;
+
+      if (view === "day") {
+        rangeStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 0, 0, 0);
+        rangeEnd = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59);
+      } else if (view === "week") {
+        rangeStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+        rangeEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+      } else {
+        rangeStart = startOfMonth(currentDate);
+        rangeEnd = endOfMonth(currentDate);
+        rangeStart = startOfWeek(rangeStart, { weekStartsOn: 1 });
+        rangeEnd = endOfWeek(rangeEnd, { weekStartsOn: 1 });
+      }
+
+      // Fetch availability slots with lessons
+      const { data: availabilitySlots, error: slotsError } = await supabase
+        .from("availability_slots")
+        .select(`
+          id,
+          start_time,
+          end_time,
+          lesson_id,
+          cyclus_id,
+          cyclus_name,
+          is_marked_full,
+          location_id,
+          locations:location_id (
+            name
+          ),
+          lessons:lesson_id (
+            title,
+            max_participants,
+            price
+          )
+        `)
+        .eq("trainer_id", trainerId)
+        .gte("start_time", rangeStart.toISOString())
+        .lte("start_time", rangeEnd.toISOString())
+        .order("start_time");
+
+      if (slotsError) throw slotsError;
+
+      // Fetch bookings for these slots with player names
+      const slotIds = availabilitySlots?.map((s) => s.id) || [];
+      let bookings: any[] = [];
+      
+      if (slotIds.length > 0) {
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select(`
+            id,
+            slot_id,
+            status,
+            player_id,
+            guest_player_id,
+            profiles:player_id (full_name, skill_rating, rating_system),
+            guest_players:guest_player_id (full_name, skill_rating, rating_system)
+          `)
+          .in("slot_id", slotIds);
+
+        if (bookingsError) throw bookingsError;
+        bookings = bookingsData || [];
+      }
+
+      // Aggregate booking counts and player info
+      const bookingCounts: Record<
+        string,
+        { confirmed: number; pending: number; players: BookedPlayer[] }
+      > = {};
+      bookings?.forEach((b) => {
+        if (!bookingCounts[b.slot_id]) {
+          bookingCounts[b.slot_id] = { confirmed: 0, pending: 0, players: [] };
+        }
+        if (b.status === "confirmed") {
+          bookingCounts[b.slot_id].confirmed++;
+        } else if (b.status === "pending") {
+          bookingCounts[b.slot_id].pending++;
+        }
+        
+        const profile = b.profiles as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+        const guestPlayer = b.guest_players as { full_name: string | null; skill_rating: number | null; rating_system: string } | null;
+        const playerName = profile?.full_name || guestPlayer?.full_name || "Unknown";
+        const skillRating = profile?.skill_rating ?? guestPlayer?.skill_rating ?? null;
+        const ratingSystem = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
+        
+        if (b.status === "confirmed" || b.status === "pending") {
+          bookingCounts[b.slot_id].players.push({
+            id: b.player_id || b.guest_player_id || b.id,
+            bookingId: b.id,
+            name: playerName,
+            status: b.status as "confirmed" | "pending",
+            isGuest: !!b.guest_player_id,
+            skillRating,
+            ratingSystem,
+          });
+        }
+      });
+
+      // Transform to SlotWithBookings
+      const now = new Date();
+      const transformedSlots: SlotWithBookings[] = (availabilitySlots || []).map(
+        (slot) => {
+          const lesson = slot.lessons as { title: string; max_participants: number; price: number } | null;
+          const location = slot.locations as { name: string } | null;
+          const counts = bookingCounts[slot.id] || { confirmed: 0, pending: 0, players: [] };
+
+          return {
+            id: slot.id,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            lesson_id: slot.lesson_id,
+            lesson_title: lesson?.title || null,
+            max_participants: lesson?.max_participants || 1,
+            price: lesson?.price || null,
+            active_bookings: counts.confirmed,
+            pending_bookings: counts.pending,
+            is_past: new Date(slot.start_time) < now,
+            cyclus_id: slot.cyclus_id || null,
+            cyclus_name: slot.cyclus_name || null,
+            booked_players: counts.players,
+            is_marked_full: slot.is_marked_full || false,
+            location_name: location?.name || null,
+          };
+        }
+      );
+
+      setCalendarSlots(transformedSlots);
+    } catch (error) {
+      console.error("Error fetching calendar slots:", error);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  // Calendar navigation
+  const navigatePrevious = () => {
+    if (view === "day") {
+      setCurrentDate(subDays(currentDate, 1));
+    } else if (view === "week") {
+      setCurrentDate(subWeeks(currentDate, 1));
+    } else {
+      setCurrentDate(subMonths(currentDate, 1));
+    }
+  };
+
+  const navigateNext = () => {
+    if (view === "day") {
+      setCurrentDate(addDays(currentDate, 1));
+    } else if (view === "week") {
+      setCurrentDate(addWeeks(currentDate, 1));
+    } else {
+      setCurrentDate(addMonths(currentDate, 1));
+    }
+  };
+
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  const getDateRangeLabel = () => {
+    if (view === "day") {
+      return format(currentDate, "EEEE, MMMM d, yyyy");
+    }
+    if (view === "week") {
+      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+      const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+      return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    }
+    return format(currentDate, "MMMM yyyy");
+  };
+
+  // Calendar stats
+  const freeSlots = calendarSlots.filter(
+    (s) => !s.is_past && s.active_bookings === 0 && s.pending_bookings === 0
+  ).length;
+  const bookedSlots = calendarSlots.filter((s) => !s.is_past && s.active_bookings > 0).length;
+  const pendingSlots = calendarSlots.filter(
+    (s) => !s.is_past && s.pending_bookings > 0 && s.active_bookings === 0
+  ).length;
+
+  // Calendar handlers
+  const handleCellClick = (date: Date, hour: number) => {
+    setDefaultSlotDate(date);
+    setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
+    setSlotTypeChoiceOpen(true);
+  };
+
+  const handleChooseSingleSlot = () => {
+    setAddSlotOpen(true);
+  };
+
+  const handleChooseCyclus = () => {
+    setBulkCreateOpen(true);
+  };
+
+  const handleSlotsCreated = () => {
+    fetchCalendarSlots();
+    fetchStats();
+  };
+
+  const handleBookForPlayer = (slot: SlotWithBookings) => {
+    setSelectedSlot(slot);
+    if (slot.lesson_id) {
+      const lesson = lessons.find(l => l.id === slot.lesson_id);
+      setSelectedLesson(lesson || null);
+    } else {
+      setSelectedLesson(null);
+    }
+    setBookForPlayerOpen(true);
+  };
+
+  const handleDuplicateCyclus = (cyclusId: string) => {
+    setPreselectedCyclusId(cyclusId);
+    setDuplicateCyclusOpen(true);
+  };
+
+  const handleDeleteSlot = (slot: SlotWithBookings) => {
+    setSlotToDelete(slot);
+    setDeleteSlotOpen(true);
+  };
+
+  const handleEditBooking = async (bookingId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(`
+          id,
+          status,
+          notes,
+          payment_status,
+          payment_amount,
+          guest_player_id,
+          availability_slots (id, start_time, end_time),
+          lessons (id, title, price, location),
+          profiles:player_id (id, full_name, email)
+        `)
+        .eq("id", bookingId)
+        .single();
+
+      if (error) throw error;
+
+      setBookingToEdit({
+        ...data,
+        player: data.profiles,
+      });
+      setEditBookingOpen(true);
+    } catch (error) {
+      console.error("Error fetching booking:", error);
+    }
+  };
+
+  const handleToggleMarkedFull = async (
+    slotId: string,
+    value: boolean,
+    applyToCyclus?: boolean
+  ) => {
+    try {
+      if (applyToCyclus) {
+        const slot = calendarSlots.find((s) => s.id === slotId);
+        if (slot?.cyclus_id) {
+          const { error } = await supabase
+            .from("availability_slots")
+            .update({ is_marked_full: value })
+            .eq("cyclus_id", slot.cyclus_id)
+            .gte("start_time", new Date().toISOString());
+
+          if (error) throw error;
+
+          toast({
+            title: value
+              ? t("calendar.cyclusMarkedFull")
+              : t("calendar.cyclusMarkedOpen"),
+          });
+        }
+      } else {
+        const { error } = await supabase
+          .from("availability_slots")
+          .update({ is_marked_full: value })
+          .eq("id", slotId);
+
+        if (error) throw error;
+
+        toast({
+          title: value
+            ? t("calendar.slotMarkedFull")
+            : t("calendar.slotMarkedOpen"),
+        });
+      }
+      fetchCalendarSlots();
+    } catch (error) {
+      console.error("Error toggling marked full:", error);
+    }
+  };
+
   const fetchSetupStatus = async () => {
     try {
-      // Get trainer profile
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
         .select('id, hourly_rate, use_manual_invoicing')
@@ -92,7 +480,6 @@ export default function TrainerDashboard() {
         return;
       }
 
-      // Check profile: bio from profiles table
       const { data: profileData } = await supabase
         .from('profiles')
         .select('bio')
@@ -100,49 +487,39 @@ export default function TrainerDashboard() {
         .maybeSingle();
 
       const profileComplete = !!(trainerProfile.hourly_rate && profileData?.bio);
+      const currentTrainerId = trainerProfile.id;
 
-      const trainerId = trainerProfile.id;
-
-      // Check lessons exist
       const { count: lessonCount } = await supabase
         .from('lessons')
         .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', trainerId);
+        .eq('trainer_id', currentTrainerId);
 
       const hasLessons = (lessonCount || 0) > 0;
 
-      // Check availability slots exist
       const { count: slotCount } = await supabase
         .from('availability_slots')
         .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', trainerId);
+        .eq('trainer_id', currentTrainerId);
 
       const hasAvailability = (slotCount || 0) > 0;
 
-      // Check Stripe status
       const { data: stripeData } = await supabase
         .from('trainer_stripe_accounts')
         .select('onboarding_complete, charges_enabled')
-        .eq('trainer_id', trainerId)
+        .eq('trainer_id', currentTrainerId)
         .maybeSingle();
 
-      // Check if trainer is covered by club payments
-      const clubPaymentInfo = await getClubPaymentInfo(trainerId);
+      const clubPaymentInfo = await getClubPaymentInfo(currentTrainerId);
 
-      // Payment is complete if:
-      // 1. Stripe is set up OR
-      // 2. Manual invoicing is enabled OR
-      // 3. Trainer is a club trainer and club has Stripe connected
       const paymentsComplete = 
         !!(stripeData?.onboarding_complete && stripeData?.charges_enabled) || 
         !!trainerProfile.use_manual_invoicing ||
         (clubPaymentInfo.isClubTrainer && clubPaymentInfo.clubChargesEnabled);
 
-      // Check if trainer has players
       const { count: playerCount } = await supabase
         .from('guest_players')
         .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', trainerId);
+        .eq('trainer_id', currentTrainerId);
 
       const hasPlayers = (playerCount || 0) > 0;
 
@@ -163,7 +540,6 @@ export default function TrainerDashboard() {
 
   const fetchStats = async () => {
     try {
-      // Get trainer profile ID
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
         .select('id')
@@ -181,13 +557,11 @@ export default function TrainerDashboard() {
       const monthStart = startOfMonth(now);
       const monthEnd = endOfMonth(now);
 
-      // 1. Total students = guest players managed by trainer
       const { count: guestPlayerCount } = await supabase
         .from('guest_players')
         .select('id', { count: 'exact', head: true })
         .eq('trainer_id', currentTrainerId);
 
-      // 2. Open slots - future slots that are not marked full and have available spots
       const { data: futureSlots } = await supabase
         .from('availability_slots')
         .select(`
@@ -201,7 +575,6 @@ export default function TrainerDashboard() {
         .eq('is_marked_full', false)
         .gte('start_time', now.toISOString());
 
-      // Count slots that have available spots
       let openSlotsCount = 0;
       futureSlots?.forEach(slot => {
         const maxParticipants = slot.lessons?.max_participants || 4;
@@ -211,7 +584,6 @@ export default function TrainerDashboard() {
         }
       });
 
-      // 3. Monthly earnings (sum of payment_amount for paid bookings this month)
       const { data: monthlyBookings } = await supabase
         .from('bookings')
         .select(`
@@ -225,16 +597,13 @@ export default function TrainerDashboard() {
         .lte('paid_at', monthEnd.toISOString());
 
       const totalEarnings = monthlyBookings?.reduce((sum, b) => sum + (b.payment_amount || 0), 0) || 0;
-      // Apply platform fee (trainer gets 90%)
       const netEarnings = totalEarnings * 0.9;
 
-      // 4. Follower count
       const { count: followerCount } = await supabase
         .from('trainer_followers')
         .select('id', { count: 'exact', head: true })
         .eq('trainer_id', currentTrainerId);
 
-      // 5. Profile views (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const { count: profileViews } = await supabase
@@ -279,7 +648,8 @@ export default function TrainerDashboard() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <>
+      <main className="container mx-auto px-4 py-8">
         {/* Trial Banner */}
         {subscription && !subscription.isSubscribed && (
           <TrialBanner 
@@ -392,110 +762,250 @@ export default function TrainerDashboard() {
           </Card>
         </div>
 
-        {/* Quick Actions - 4 cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/lessons')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Calendar className="h-5 w-5 text-primary" />
+        {/* Calendar Section */}
+        <div className="space-y-4">
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDefaultSlotDate(undefined);
+                setDefaultSlotTime(undefined);
+                setAddSlotOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
+              <span className="sm:hidden">{t("calendar.addSlot")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPreselectedCyclusId(undefined);
+                setDuplicateCyclusOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.duplicateCyclus")}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setBulkCreateOpen(true)}
+              className="gap-2"
+            >
+              <Repeat className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.createCyclus")}</span>
+              <span className="sm:hidden">{t("calendar.createCyclus")}</span>
+            </Button>
+          </div>
+
+          {/* Controls Card */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                {/* Date Navigation */}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={navigatePrevious}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm sm:text-base">
+                    {getDateRangeLabel()}
+                  </div>
+                  <Button variant="outline" size="icon" onClick={navigateNext}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={goToToday}>
+                    {t("calendar.today")}
+                  </Button>
                 </div>
-                <CardTitle className="text-lg">{t('dashboard.quickActions.myLessons.title')}</CardTitle>
+
+                {/* View Toggle */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant={view === "day" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setView("day")}
+                  >
+                    <Calendar className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t("calendar.dayView")}</span>
+                  </Button>
+                  <Button
+                    variant={view === "week" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setView("week")}
+                  >
+                    <CalendarDays className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t("calendar.weekView")}</span>
+                  </Button>
+                  <Button
+                    variant={view === "month" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setView("month")}
+                  >
+                    <LayoutGrid className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t("calendar.monthView")}</span>
+                  </Button>
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                {t('dashboard.quickActions.myLessons.description')}
-              </CardDescription>
+
+              {/* Quick Stats */}
+              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded bg-muted border border-border" />
+                  <span className="text-sm">
+                    {t("calendar.available")}: {freeSlots}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700" />
+                  <span className="text-sm">
+                    {t("calendar.pending")}: {pendingSlots}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700" />
+                  <span className="text-sm">
+                    {t("calendar.booked")}: {bookedSlots}
+                  </span>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/trainer/calendar')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-indigo-500/10">
-                  <Calendar className="h-5 w-5 text-indigo-600" />
+          {/* Calendar Grid */}
+          <Card>
+            <CardContent className="p-4">
+              {calendarLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-[500px] w-full" />
                 </div>
-                <CardTitle className="text-lg">{t('calendar.title')}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                {t('dashboard.quickActions.workingHours.description').replace('Set your weekly schedule and generate slots', 'View your schedule at a glance')}
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/trainer-bookings')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <ClipboardList className="h-5 w-5 text-blue-600" />
-                </div>
-                <CardTitle className="text-lg">{t('dashboard.quickActions.bookings.title')}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                {t('dashboard.quickActions.bookings.description')}
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/profile/edit')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/10">
-                  <UserCircle className="h-5 w-5 text-emerald-600" />
-                </div>
-                <CardTitle className="text-lg">{t('dashboard.quickActions.myProfile.title', 'My Profile')}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                {t('dashboard.quickActions.myProfile.description', 'Edit your profile, add locations and update your details')}
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/trainer/cycles')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <CalendarDays className="h-5 w-5 text-purple-600" />
-                </div>
-                <CardTitle className="text-lg">{t('dashboard.quickActions.cycles.title', 'Registration Cycles')}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                {t('dashboard.quickActions.cycles.description', 'Create signup forms for your training programs')}
-              </CardDescription>
+              ) : (
+                <TrainerCalendarGrid
+                  slots={calendarSlots}
+                  currentDate={currentDate}
+                  view={view}
+                  onCellClick={handleCellClick}
+                  onBookForPlayer={handleBookForPlayer}
+                  onDuplicateCyclus={handleDuplicateCyclus}
+                  onDeleteSlot={handleDeleteSlot}
+                  onEditBooking={handleEditBooking}
+                  onToggleMarkedFull={handleToggleMarkedFull}
+                  onNavigatePrevious={navigatePrevious}
+                  onNavigateNext={navigateNext}
+                />
+              )}
             </CardContent>
           </Card>
         </div>
-
-        {/* Calendar Widget */}
-        <div className="mb-8">
-          <DashboardCalendar trainerId={trainerId} />
-        </div>
-
       </main>
+
+      {/* Slot Type Choice Dialog */}
+      <SlotTypeChoiceDialog
+        open={slotTypeChoiceOpen}
+        onOpenChange={setSlotTypeChoiceOpen}
+        onChooseSingleSlot={handleChooseSingleSlot}
+        onChooseCyclus={handleChooseCyclus}
+      />
+
+      {/* Add Slot Dialog */}
+      <AddSlotDialog
+        open={addSlotOpen}
+        onOpenChange={setAddSlotOpen}
+        trainerId={trainerId}
+        lessons={lessons}
+        defaultDate={defaultSlotDate}
+        defaultTime={defaultSlotTime}
+        defaultDuration={settings.slot_duration_minutes}
+        defaultWeeks={settings.schedule_weeks_ahead}
+        onSlotsCreated={handleSlotsCreated}
+      />
+
+      {/* Bulk Create Sheet */}
+      <BulkCreateSheet
+        open={bulkCreateOpen}
+        onOpenChange={setBulkCreateOpen}
+        trainerId={trainerId}
+        lessons={lessons}
+        defaultDate={defaultSlotDate}
+        defaultTime={defaultSlotTime}
+        defaultDuration={settings.slot_duration_minutes}
+        defaultWeeks={settings.schedule_weeks_ahead}
+        onSlotsCreated={handleSlotsCreated}
+      />
+
+      {/* Book for Player Dialog */}
+      {selectedSlot && (
+        <BookForPlayerDialog
+          open={bookForPlayerOpen}
+          onOpenChange={(open) => {
+            setBookForPlayerOpen(open);
+            if (!open) {
+              setSelectedSlot(null);
+              setSelectedLesson(null);
+            }
+          }}
+          trainerId={trainerId!}
+          slot={{
+            id: selectedSlot.id,
+            start_time: selectedSlot.start_time,
+            end_time: selectedSlot.end_time,
+            lesson_id: selectedSlot.lesson_id,
+            cyclus_id: selectedSlot.cyclus_id,
+            cyclus_name: selectedSlot.cyclus_name,
+            booked_players: selectedSlot.booked_players,
+          }}
+          lesson={selectedLesson}
+          onBookingCreated={handleSlotsCreated}
+        />
+      )}
+
+      {/* Duplicate Cyclus Dialog */}
+      <DuplicateCyclusDialog
+        open={duplicateCyclusOpen}
+        onOpenChange={(open) => {
+          setDuplicateCyclusOpen(open);
+          if (!open) {
+            setPreselectedCyclusId(undefined);
+          }
+        }}
+        trainerId={trainerId || ""}
+        preselectedCyclusId={preselectedCyclusId}
+        onCyclusCreated={handleSlotsCreated}
+      />
+
+      {/* Delete Slot Dialog */}
+      <DeleteSlotDialog
+        open={deleteSlotOpen}
+        onOpenChange={(open) => {
+          setDeleteSlotOpen(open);
+          if (!open) {
+            setSlotToDelete(null);
+          }
+        }}
+        slot={slotToDelete}
+        trainerId={trainerId || ""}
+        onSlotDeleted={handleSlotsCreated}
+      />
+
+      {/* Edit Booking Dialog */}
+      <EditBookingDialog
+        open={editBookingOpen}
+        onOpenChange={(open) => {
+          setEditBookingOpen(open);
+          if (!open) {
+            setBookingToEdit(null);
+          }
+        }}
+        booking={bookingToEdit}
+        trainerId={trainerId || ""}
+        onBookingUpdated={handleSlotsCreated}
+      />
+    </>
   );
 }
 
@@ -542,7 +1052,6 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
   const { t } = useTranslation('trainer');
   const clubInfo = setupStatus.clubPaymentInfo;
   
-  // Determine payment step label based on club status
   let paymentLabel = 'Connect Stripe or setup manual payments';
   let paymentSubLabel = '';
   
