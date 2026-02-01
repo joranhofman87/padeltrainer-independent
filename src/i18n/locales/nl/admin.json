@@ -101,6 +101,12 @@
     "title": "Onboarding E-mails",
     "description": "Beheer automatische e-mailreeksen voor nieuwe gebruikers",
     "addTemplate": "Template Toevoegen",
+    "filterUserType": "Gebruikerstype",
+    "allUserTypes": "Alle Types",
+    "filterStatus": "Status",
+    "allStatuses": "Alle",
+    "activeOnly": "Actief",
+    "inactiveOnly": "Inactief",
     "tabs": {
       "templates": "Templates",
       "queue": "Wachtrij",
