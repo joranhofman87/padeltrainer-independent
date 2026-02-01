@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { type Cycle, getIntakeRequestCounts, updateCycle, deleteCycle } from '@/lib/cycles';
 import { toast } from 'sonner';
+import { getMarketingUrl } from '@/lib/domains';
 
 interface CycleCardProps {
   cycle: Cycle;
@@ -95,8 +96,8 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   };
 
   const copyRegistrationLink = () => {
-    const lang = document.documentElement.lang || 'en';
-    const url = `${window.location.origin}/${lang}/register/${cycle.id}`;
+    const lang = document.documentElement.lang || 'nl';
+    const url = getMarketingUrl(`register/${cycle.id}`, lang);
     navigator.clipboard.writeText(url);
     toast.success(t('actions.linkCopied'));
   };

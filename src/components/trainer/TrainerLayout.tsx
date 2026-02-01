@@ -13,6 +13,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { TrainerNavigation } from '@/components/trainer/TrainerNavigation';
 import { signOut, getTrainerProfile } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getMarketingUrl } from '@/lib/domains';
 
 export default function TrainerLayout() {
   const { t, i18n } = useTranslation('trainer');
@@ -153,8 +154,8 @@ export default function TrainerLayout() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'en';
-                    window.open(`${window.location.origin}/${lang}/trainer/${trainerProfileId}`, '_blank');
+                    const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'nl';
+                    window.open(getMarketingUrl(`trainer/${trainerProfileId}`, lang), '_blank');
                   }}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />

@@ -67,7 +67,7 @@ serve(async (req) => {
     logStep("Club verified", { clubProfileId, customerId: clubProfile.stripe_customer_id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-    const origin = req.headers.get("origin") || "https://padeltrainer.lovable.app";
+    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: clubProfile.stripe_customer_id,
