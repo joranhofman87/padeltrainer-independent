@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
 import { SubscriptionInfo, getTierFromProductId } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';
+import { isUserAcademyManager } from '@/lib/academy';
 
 interface AuthContextType {
   user: User | null;
@@ -12,6 +13,7 @@ interface AuthContextType {
   role: UserRole | null;
   roles: UserRole[];
   isClubManager: boolean;
+  isAcademyManager: boolean;
   subscription: SubscriptionInfo | null;
   loading: boolean;
   refreshAuth: () => Promise<void>;
@@ -25,6 +27,7 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   roles: [],
   isClubManager: false,
+  isAcademyManager: false,
   subscription: null,
   loading: true,
   refreshAuth: async () => {},
@@ -38,14 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [isClubManager, setIsClubManager] = useState(false);
+  const [isAcademyManager, setIsAcademyManager] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    const [userRoles, userProfile, clubManagerStatus] = await Promise.all([
+    const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
       getUserRoles(userId),
       getProfile(userId),
       isUserClubManager(userId),
+      isUserAcademyManager(userId),
     ]);
     
     // Determine primary role based on priority: admin > trainer > club > player
@@ -58,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles(userRoles);
     setRole(primaryRole);
     setIsClubManager(clubManagerStatus);
+    setIsAcademyManager(academyManagerStatus);
     setProfile(userProfile);
   };
 
@@ -161,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRole(null);
           setRoles([]);
           setIsClubManager(false);
+          setIsAcademyManager(false);
           setSubscription(null);
         }
         setLoading(false);
@@ -207,6 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       roles,
       isClubManager,
+      isAcademyManager,
       subscription,
       loading, 
       refreshAuth,

@@ -1,9 +1,11 @@
 {
   "switchProfile": "Switch Profile",
   "myClubs": "My Clubs",
+  "myAcademies": "My Academies",
   "switchRole": "Switch Role",
   "trainerDashboard": "Trainer Dashboard",
   "clubDashboard": "Club Dashboard",
+  "academyDashboard": "Academy Dashboard",
   "signedOut": "Successfully signed out",
   "appName": "PadelTrainer.ai",
   "loading": "Loading...",

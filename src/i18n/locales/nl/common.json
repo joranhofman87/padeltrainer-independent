@@ -1,9 +1,11 @@
 {
   "switchProfile": "Wissel Profiel",
   "myClubs": "Mijn Clubs",
+  "myAcademies": "Mijn Academies",
   "switchRole": "Wissel Rol",
   "trainerDashboard": "Trainer Dashboard",
   "clubDashboard": "Club Dashboard",
+  "academyDashboard": "Academy Dashboard",
   "signedOut": "Succesvol uitgelogd",
   "appName": "PadelTrainer.ai",
   "loading": "Laden...",
