@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useHostname } from '@/hooks/useHostname';
 import { LanguageRouter, RootRedirect } from '@/components/LanguageRouter';
+import { useEffect } from 'react';
 
 // Marketing pages
 import Home from '@/pages/marketing/Home';
@@ -389,7 +390,15 @@ function RedirectToAppDomain({ path }: { path: string }) {
  * Main router component that serves different routes based on hostname.
  */
 export function DomainRouter() {
-  const { isAppDomain, isMarketingDomain, isDevelopment } = useHostname();
+  const { isAppDomain, isMarketingDomain, isDevelopment, hostname } = useHostname();
+  
+  // Debug logging for production diagnostics
+  useEffect(() => {
+    console.log('[DomainRouter] hostname:', hostname, 
+      'isAppDomain:', isAppDomain, 
+      'isMarketingDomain:', isMarketingDomain,
+      'isDevelopment:', isDevelopment);
+  }, [hostname, isAppDomain, isMarketingDomain, isDevelopment]);
   
   // In development, show all routes
   if (isDevelopment) {

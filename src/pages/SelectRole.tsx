@@ -19,7 +19,8 @@ export default function SelectRole() {
   useEffect(() => {
     if (!loading) {
       // If user signed up as club, redirect to club onboarding
-      const storedPendingRole = sessionStorage.getItem('pendingRole');
+      // Check both localStorage (set by Auth.tsx) and sessionStorage for backward compatibility
+      const storedPendingRole = localStorage.getItem('pendingRole') || sessionStorage.getItem('pendingRole');
       if (storedPendingRole === 'club') {
         navigate('/onboarding/club');
         return;
