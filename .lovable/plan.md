@@ -1,149 +1,118 @@
 
-# Fix: KNLTB Rating Data Consistency Between Admin and Academy Views
 
-## Problem Summary
+# Legacy Rating Fields Cleanup Plan
 
-Tygho has a KNLTB rating that shows correctly in the admin panel but not in the academy trainer edit dialog. This is because:
+## Overview
 
-| Location | Data Source | Fields Used |
-|----------|------------|-------------|
-| **Admin Panel** | `profiles` table | `skill_rating`, `rating_system`, `rating_member_id` |
-| **Academy Edit Dialog** | `trainer_profiles` table | `knltb_rating`, `trainer_rating_system` (legacy fields) |
-
-**Database Evidence:**
-- `profiles.skill_rating = 0.9`
-- `profiles.rating_system = 'knltb'`
-- `trainer_profiles.knltb_rating = NULL` (not used)
-
-The rating data lives in the `profiles` table, but the Academy trainer edit dialog reads from `trainer_profiles`.
+The rating system has been migrated to use the `profiles` table (`skill_rating`, `rating_system`, `rating_member_id`) instead of legacy fields in `trainer_profiles` (`knltb_rating`, `trainer_rating_system`). This cleanup removes all legacy references from the codebase.
 
 ---
 
-## Solution
+## Scope of Changes
 
-Update the `EditAcademyTrainerDialog` to read and write rating data from the `profiles` table instead of `trainer_profiles`.
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/components/academy/EditAcademyTrainerDialog.tsx` | Read/write rating from `profiles` table instead of `trainer_profiles` |
-| `src/lib/academy.ts` | Include rating fields when fetching profiles for trainers list |
+| File | Legacy Fields Used | Action |
+|------|-------------------|--------|
+| `src/pages/EditProfile.tsx` | `knltb_rating`, `trainer_rating_system` in interface/fetch/save | Remove from TrainerProfileData, stop fetching/saving |
+| `src/components/club/EditClubTrainerDialog.tsx` | Same pattern | Update to use profiles table like academy dialog |
+| `src/pages/Trainers.tsx` | Uses for filtering | Update filter logic to use `profile.skill_rating` + `profile.rating_system` |
+| `src/pages/TrainersCity.tsx` | Displays `knltb_rating` | Update to use `profile.skill_rating` + `profile.rating_system` |
+| `src/pages/LocationDetail.tsx` | In Trainer interface | Update interface, already joins with profiles |
 
 ---
 
-## Implementation Details
+## Detailed Changes
 
-### 1. Update EditAcademyTrainerDialog.tsx
+### 1. EditProfile.tsx (Trainer's own profile page)
 
-**Current data model (incorrect):**
+**Current (legacy):**
+- Interface has `knltb_rating`, `trainer_rating_system`
+- Fetches from `trainer_profiles` table
+- Saves to `trainer_profiles` table
+
+**After cleanup:**
+- Remove these fields from `TrainerProfileData` interface
+- Remove from `fetchTrainerProfile()` select query
+- Remove from `handleSubmit()` update query
+- Rating is already correctly handled via `formData.skill_rating`, `formData.rating_system` → saved to `profiles` table
+
+### 2. EditClubTrainerDialog.tsx (Club editing a trainer)
+
+**Current (legacy):**
+- Same pattern as EditProfile - reads/writes rating to trainer_profiles
+
+**After cleanup:**
+- Add `skill_rating`, `rating_system`, `rating_member_id` to ProfileData interface
+- Read from profiles table
+- Save to profiles table
+- Remove legacy fields from TrainerProfileData
+- Match the pattern already used in `EditAcademyTrainerDialog`
+
+### 3. Trainers.tsx (Public trainer listing with filters)
+
+**Current (legacy):**
 ```typescript
-interface TrainerProfileData {
-  knltb_rating: number | null;          // Wrong source
-  trainer_rating_system: string;        // Wrong source
-  ...
+interface Trainer {
+  knltb_rating: number | null;
+  trainer_rating_system: string | null;
+  profile: {
+    skill_rating: number | null;  // Already has correct field!
+    rating_system: string | null; // Already has correct field!
+  }
 }
 ```
 
-**Fixed data model:**
-```typescript
-interface ProfileData {
-  full_name: string;
-  phone: string;
-  bio: string;
-  avatar_url: string | null;
-  skill_rating: number | null;          // Add rating fields
-  rating_system: string | null;
-  rating_member_id: string | null;
-}
-```
+The page fetches from `trainer_profiles_safe` but also joins with `profiles_public` which has the correct data.
 
-**Current fetch (incorrect):**
-```typescript
-// Fetching from trainer_profiles
-const { data: trainer } = await supabase
-  .from('trainer_profiles')
-  .select('..., knltb_rating, trainer_rating_system, ...')
-```
+**After cleanup:**
+- Remove `knltb_rating`, `trainer_rating_system` from interface
+- Update filter logic to use `trainer.profile?.skill_rating` and `trainer.profile?.rating_system`
+- Remove legacy fields from the select query
 
-**Fixed fetch:**
-```typescript
-// Fetch rating from profiles table
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
-  .eq('user_id', userId)
-  .single();
-```
+### 4. TrainersCity.tsx (City-specific trainer listing)
 
-**Current save (incorrect):**
-```typescript
-// Saving to trainer_profiles
-await supabase
-  .from('trainer_profiles')
-  .update({ knltb_rating: ..., trainer_rating_system: ... })
-```
+**Current (legacy):**
+- Displays `trainer.knltb_rating` directly in UI
+- Interface has `knltb_rating` but no `trainer_rating_system`
 
-**Fixed save:**
-```typescript
-// Save rating to profiles table
-await supabase
-  .from('profiles')
-  .update({ 
-    skill_rating: profileData.skill_rating,
-    rating_system: profileData.rating_system,
-    rating_member_id: profileData.rating_member_id,
-    ...
-  })
-```
+**After cleanup:**
+- Update interface to get rating from profile
+- Update display to show `profile.skill_rating` with proper rating system label
+- Join with profiles_public to get rating data
 
-### 2. Update getAcademyTrainersWithProfiles (academy.ts)
+### 5. LocationDetail.tsx (Location page showing trainers)
 
-**Current query (missing rating fields):**
-```typescript
-const { data: profiles } = await supabase
-  .from('profiles_public')
-  .select('user_id, full_name, avatar_url')  // Missing rating fields
-  .in('user_id', userIds);
-```
+**Current (legacy):**
+- Trainer interface has `knltb_rating`
 
-**Fixed query:**
-```typescript
-const { data: profiles } = await supabase
-  .from('profiles_public')
-  .select('user_id, full_name, avatar_url, skill_rating, rating_system')
-  .in('user_id', userIds);
-```
-
-This allows the trainer cards to optionally display ratings in the future.
+**After cleanup:**
+- Remove `knltb_rating` from interface
+- Rating data should come from joined profiles
 
 ---
 
-## Data Flow After Fix
+## Database Note
 
-```text
-+------------------+     reads/writes     +------------------+
-|   Admin Panel    | <------------------> |   profiles       |
-| (skill_rating)   |                      | - skill_rating   |
-+------------------+                      | - rating_system  |
-                                          | - rating_member_id|
-+------------------+     reads/writes     +------------------+
-| Academy Trainer  | <------------------> |                  |
-| Edit Dialog      |                      |                  |
-+------------------+                      +------------------+
-```
-
-Both views now read/write from the same source (profiles table).
+The `trainer_profiles_safe` view still includes `knltb_rating` and `trainer_rating_system` columns. These can remain in the view for now (backward compatibility) - the columns exist in the table but are no longer used. A future migration could remove them from the table entirely, but that's a separate concern from this code cleanup.
 
 ---
 
-## Summary of Changes
+## Summary of File Changes
 
-1. **EditAcademyTrainerDialog.tsx**:
-   - Move rating fields (`skill_rating`, `rating_system`, `rating_member_id`) to `ProfileData` interface
-   - Remove `knltb_rating` and `trainer_rating_system` from `TrainerProfileData`
-   - Update `fetchData()` to read rating from profiles query
-   - Update `handleSubmit()` to save rating to profiles table
+| File | Changes |
+|------|---------|
+| `src/pages/EditProfile.tsx` | Remove `knltb_rating`, `trainer_rating_system` from interface, fetch, and save |
+| `src/components/club/EditClubTrainerDialog.tsx` | Add rating fields to ProfileData, read/write to profiles table, remove from TrainerProfileData |
+| `src/pages/Trainers.tsx` | Update interface and filter logic to use `profile.skill_rating`/`profile.rating_system` |
+| `src/pages/TrainersCity.tsx` | Update interface and display to use profile rating fields |
+| `src/pages/LocationDetail.tsx` | Remove `knltb_rating` from interface |
 
-2. **academy.ts**:
-   - Add `skill_rating, rating_system` to the profiles_public select in `getAcademyTrainersWithProfiles`
+---
+
+## Result
+
+After cleanup:
+- All rating data flows through `profiles` table
+- `skill_rating`, `rating_system`, `rating_member_id` are the canonical fields
+- Admin, Academy, Club, and Trainer views all read/write from the same source
+- Legacy `knltb_rating` and `trainer_rating_system` fields in `trainer_profiles` table become unused
+
