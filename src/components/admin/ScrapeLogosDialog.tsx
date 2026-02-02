@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { enrichLocations, type EnrichmentResult } from "@/lib/admin";
+import { fetchLocationLogos, type LogoResult } from "@/lib/admin";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ScrapeLogosDialogProps {
@@ -44,7 +44,7 @@ export function ScrapeLogosDialog({
   const [batchSize, setBatchSize] = useState<string>("5");
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<EnrichmentResult[]>([]);
+  const [results, setResults] = useState<LogoResult[]>([]);
   const [currentBatch, setCurrentBatch] = useState(0);
   const shouldStopRef = useRef(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -106,7 +106,7 @@ export function ScrapeLogosDialog({
 
     const batch = parseInt(batchSize);
     const totalBatches = Math.ceil(locationsWithoutLogos.length / batch);
-    let allResults: EnrichmentResult[] = [];
+    let allResults: LogoResult[] = [];
     let processedCount = 0;
 
     for (let i = 0; i < totalBatches && !shouldStopRef.current; i++) {
@@ -117,7 +117,7 @@ export function ScrapeLogosDialog({
         .map((l) => l.id);
 
       try {
-        const response = await enrichLocations({
+        const response = await fetchLocationLogos({
           location_ids: batchLocationIds,
           batch_size: batch,
           dry_run: false,
@@ -145,7 +145,7 @@ export function ScrapeLogosDialog({
 
     setProcessing(false);
     
-    const successCount = allResults.filter((r) => r.status === "success" && r.data?.logo_url).length;
+    const successCount = allResults.filter((r) => r.status === "success" && r.logo_url).length;
     toast({
       title: "Scraping Complete",
       description: `Found ${successCount} logos out of ${allResults.length} locations processed`,
@@ -161,8 +161,8 @@ export function ScrapeLogosDialog({
     setProcessing(false);
   }
 
-  const successResults = results.filter((r) => r.status === "success" && r.data?.logo_url);
-  const failedResults = results.filter((r) => r.status === "error" || (r.status === "success" && !r.data?.logo_url));
+  const successResults = results.filter((r) => r.status === "success" && r.logo_url);
+  const failedResults = results.filter((r) => r.status === "error" || (r.status === "success" && !r.logo_url));
   const skippedResults = results.filter((r) => r.status === "skipped");
 
   return (
@@ -235,7 +235,7 @@ export function ScrapeLogosDialog({
                 </div>
                 <Progress value={progress} />
                 <p className="text-xs text-muted-foreground">
-                  Each location takes 15-30 seconds to process. A batch of {batchSize} may take up to {Math.ceil(parseInt(batchSize) * 0.5)} minutes.
+                  Each location takes 3-5 seconds to process. A batch of {batchSize} takes about {Math.ceil(parseInt(batchSize) * 5 / 60)} minute(s).
                 </p>
                 <Button variant="outline" size="sm" onClick={stopScraping}>
                   Stop
@@ -269,7 +269,7 @@ export function ScrapeLogosDialog({
                         key={idx}
                         className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-muted/50"
                       >
-                        {result.status === "success" && result.data?.logo_url ? (
+                        {result.status === "success" && result.logo_url ? (
                           <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                         ) : result.status === "skipped" ? (
                           <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
@@ -282,9 +282,9 @@ export function ScrapeLogosDialog({
                             {result.error}
                           </span>
                         )}
-                        {result.data?.logo_url && (
+                        {result.logo_url && (
                           <img
-                            src={result.data.logo_url}
+                            src={result.logo_url}
                             alt=""
                             className="h-6 w-6 object-contain rounded"
                           />

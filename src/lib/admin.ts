@@ -13,6 +13,14 @@ export interface EnrichmentResult {
   };
 }
 
+export interface LogoResult {
+  location_id: string;
+  location_name: string;
+  status: "success" | "skipped" | "error";
+  error?: string;
+  logo_url?: string | null;
+}
+
 export interface EnrichLocationsOptions {
   location_ids?: string[];
   batch_size?: number;
@@ -33,6 +41,28 @@ export interface EnrichLocationsResponse {
     errors: number;
   };
   results: EnrichmentResult[];
+}
+
+export interface FetchLogosOptions {
+  location_ids?: string[];
+  batch_size?: number;
+  offset?: number;
+  dry_run?: boolean;
+}
+
+export interface FetchLogosResponse {
+  success: boolean;
+  dry_run: boolean;
+  batch_size: number;
+  offset: number;
+  next_offset: number;
+  total_processed: number;
+  summary: {
+    success: number;
+    no_logo: number;
+    errors: number;
+  };
+  results: LogoResult[];
 }
 
 export async function enrichLocations(
@@ -56,6 +86,29 @@ export async function enrichLocations(
   }
 
   return response.data as EnrichLocationsResponse;
+}
+
+export async function fetchLocationLogos(
+  options: FetchLogosOptions = {}
+): Promise<FetchLogosResponse> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await supabase.functions.invoke("fetch-location-logos", {
+    body: options,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Failed to fetch logos");
+  }
+
+  return response.data as FetchLogosResponse;
 }
 
 export interface AdminStats {
