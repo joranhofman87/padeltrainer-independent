@@ -3355,8 +3355,9 @@ export type Database = {
           created_at: string | null
           full_name: string | null
           id: string | null
-          knltb_number: string | null
           location: string | null
+          phone: string | null
+          rating_member_id: string | null
           rating_system: string | null
           skill_rating: number | null
           updated_at: string | null
@@ -3368,8 +3369,9 @@ export type Database = {
           created_at?: string | null
           full_name?: string | null
           id?: string | null
-          knltb_number?: string | null
           location?: string | null
+          phone?: string | null
+          rating_member_id?: string | null
           rating_system?: string | null
           skill_rating?: number | null
           updated_at?: string | null
@@ -3381,8 +3383,9 @@ export type Database = {
           created_at?: string | null
           full_name?: string | null
           id?: string | null
-          knltb_number?: string | null
           location?: string | null
+          phone?: string | null
+          rating_member_id?: string | null
           rating_system?: string | null
           skill_rating?: number | null
           updated_at?: string | null
