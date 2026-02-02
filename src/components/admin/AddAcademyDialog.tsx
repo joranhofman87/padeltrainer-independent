@@ -12,9 +12,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { COUNTRIES } from "@/lib/countries";
 
 interface AddAcademyDialogProps {
   open: boolean;
@@ -46,6 +54,7 @@ export function AddAcademyDialog({
   const [contactEmail, setContactEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [country, setCountry] = useState("NL");
   const [isPublic, setIsPublic] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
 
@@ -64,6 +73,7 @@ export function AddAcademyDialog({
     setContactEmail("");
     setPhone("");
     setWebsiteUrl("");
+    setCountry("NL");
     setIsPublic(true);
     setIsVerified(false);
   };
@@ -113,6 +123,7 @@ export function AddAcademyDialog({
         contact_email: contactEmail.trim() || null,
         phone: phone.trim() || null,
         website_url: websiteUrl.trim() || null,
+        country,
         is_public: isPublic,
         is_verified: isVerified,
         subscription_status: "trial",
@@ -218,6 +229,22 @@ export function AddAcademyDialog({
               onChange={(e) => setWebsiteUrl(e.target.value)}
               placeholder="https://www.academy.com"
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="country">Country</Label>
+            <Select value={country} onValueChange={setCountry}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select country" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(COUNTRIES).map(([code, name]) => (
+                  <SelectItem key={code} value={code}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between pt-2">

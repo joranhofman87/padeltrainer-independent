@@ -23,6 +23,7 @@ export interface AcademyProfile {
   subscription_ends_at: string | null;
   created_at: string;
   updated_at: string;
+  country: string;
 }
 
 export interface AcademyManager {
@@ -100,7 +101,8 @@ export async function createAcademy(
   name: string,
   userId: string,
   contactEmail?: string,
-  description?: string
+  description?: string,
+  country: string = 'NL'
 ): Promise<{ success: boolean; academyId?: string; error: Error | null }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
@@ -124,6 +126,7 @@ export async function createAcademy(
         is_verified: false,
         is_public: false,
         created_by: session.user.id,
+        country,
       })
       .select('id')
       .single();
@@ -206,11 +209,10 @@ export async function isUserAcademyManager(userId: string): Promise<boolean> {
 // Get academy by slug (for public profile)
 export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyProfile> | null> {
   const { data, error } = await supabase
-    .from('academy_profiles_public')
+    .from('academy_profiles_public' as any)
     .select('*')
     .eq('slug', slug)
     .eq('is_verified', true)
-    .eq('is_public', true)
     .maybeSingle();
 
   if (error) {
@@ -218,7 +220,12 @@ export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyPro
     return null;
   }
 
-  return data;
+  // Filter for is_public in memory since view already filters it
+  if (data && !(data as any).is_public) {
+    return null;
+  }
+
+  return data as Partial<AcademyProfile> | null;
 }
 
 // Get academy by ID

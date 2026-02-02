@@ -8,10 +8,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { updateAcademyProfile } from '@/lib/academy';
 import { supabase } from '@/integrations/supabase/client';
+import { COUNTRIES } from '@/lib/countries';
 
 export default function AcademyProfile() {
   const { t } = useTranslation('academy');
@@ -28,6 +36,7 @@ export default function AcademyProfile() {
     phone: '',
     website_url: '',
     is_public: false,
+    country: 'NL',
     social_instagram: '',
     social_facebook: '',
     social_youtube: '',
@@ -44,6 +53,7 @@ export default function AcademyProfile() {
         phone: activeAcademy.phone || '',
         website_url: activeAcademy.website_url || '',
         is_public: activeAcademy.is_public || false,
+        country: (activeAcademy as any).country || 'NL',
         social_instagram: activeAcademy.social_instagram || '',
         social_facebook: activeAcademy.social_facebook || '',
         social_youtube: activeAcademy.social_youtube || '',
@@ -300,6 +310,25 @@ export default function AcademyProfile() {
                   placeholder="+31 6 12345678"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="country">{t('profile.country')}</Label>
+              <Select
+                value={formData.country}
+                onValueChange={(value) => setFormData({ ...formData, country: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('profile.selectCountry', 'Select country')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(COUNTRIES).map(([code, name]) => (
+                    <SelectItem key={code} value={code}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
