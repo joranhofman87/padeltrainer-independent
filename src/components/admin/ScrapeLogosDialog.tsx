@@ -41,12 +41,25 @@ export function ScrapeLogosDialog({
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [locationsWithoutLogos, setLocationsWithoutLogos] = useState<LocationWithoutLogo[]>([]);
-  const [batchSize, setBatchSize] = useState<string>("10");
+  const [batchSize, setBatchSize] = useState<string>("5");
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<EnrichmentResult[]>([]);
   const [currentBatch, setCurrentBatch] = useState(0);
   const [shouldStop, setShouldStop] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Timer for elapsed time during processing
+  useEffect(() => {
+    if (!processing) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [processing]);
 
   useEffect(() => {
     if (open) {
@@ -208,12 +221,21 @@ export function ScrapeLogosDialog({
 
             {/* Progress */}
             {processing && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span>Processing batch {currentBatch}...</span>
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing batch {currentBatch}...
+                    <span className="text-muted-foreground">
+                      (Elapsed: {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, '0')})
+                    </span>
+                  </span>
                   <span>{Math.round(progress)}%</span>
                 </div>
                 <Progress value={progress} />
+                <p className="text-xs text-muted-foreground">
+                  Each location takes 15-30 seconds to process. A batch of {batchSize} may take up to {Math.ceil(parseInt(batchSize) * 0.5)} minutes.
+                </p>
                 <Button variant="outline" size="sm" onClick={stopScraping}>
                   Stop
                 </Button>
