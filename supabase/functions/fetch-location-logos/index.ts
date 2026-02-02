@@ -117,6 +117,13 @@ async function processLocation(
     const logoUrl = await scrapeLogoOnly(location.website_url);
 
     if (!logoUrl) {
+      // Mark as fetched even when no logo found
+      if (!dryRun) {
+        await supabase
+          .from("locations")
+          .update({ logo_fetched_at: new Date().toISOString() })
+          .eq("id", location.id);
+      }
       result.status = "success";
       result.logo_url = null;
       result.error = "No logo found";
@@ -128,22 +135,30 @@ async function processLocation(
     if (!dryRun) {
       storedLogoUrl = await uploadLogo(supabase, location.id, logoUrl);
 
-      if (storedLogoUrl) {
-        // Update database
-        const { error: updateError } = await supabase
-          .from("locations")
-          .update({ logo_url: storedLogoUrl })
-          .eq("id", location.id);
+      // Update database with logo URL and mark as fetched
+      const { error: updateError } = await supabase
+        .from("locations")
+        .update({ 
+          logo_url: storedLogoUrl || undefined,
+          logo_fetched_at: new Date().toISOString()
+        })
+        .eq("id", location.id);
 
-        if (updateError) {
-          console.error("Error updating location:", updateError);
-        }
+      if (updateError) {
+        console.error("Error updating location:", updateError);
       }
     }
 
     result.logo_url = storedLogoUrl || logoUrl;
     return result;
   } catch (error) {
+    // Mark as fetched even on error to avoid retrying forever
+    if (!dryRun) {
+      await supabase
+        .from("locations")
+        .update({ logo_fetched_at: new Date().toISOString() })
+        .eq("id", location.id);
+    }
     result.status = "error";
     result.error = error instanceof Error ? error.message : "Unknown error";
     console.error(`Error processing ${location.name}:`, error);
@@ -166,8 +181,9 @@ Deno.serve(async (req) => {
     const offset = body.offset || 0;
     const dryRun = body.dry_run === true;
     const locationIds: string[] | undefined = body.location_ids;
+    const retryPrevious = body.retry_previous === true; // Allow retrying already-fetched
 
-    console.log(`Starting logo fetch - batch_size: ${batchSize}, offset: ${offset}, dry_run: ${dryRun}`);
+    console.log(`Starting logo fetch - batch_size: ${batchSize}, offset: ${offset}, dry_run: ${dryRun}, retry_previous: ${retryPrevious}`);
 
     // Fetch locations to process
     let query = supabase
@@ -175,6 +191,11 @@ Deno.serve(async (req) => {
       .select("id, name, website_url")
       .not("website_url", "is", null)
       .order("name", { ascending: true });
+
+    // Skip locations that have already been processed (unless retrying or specific IDs)
+    if (!retryPrevious && (!locationIds || locationIds.length === 0)) {
+      query = query.is("logo_fetched_at", null);
+    }
 
     if (locationIds && locationIds.length > 0) {
       query = query.in("id", locationIds);
