@@ -111,9 +111,9 @@ export function EditAcademyTrainerDialog({
       const country = await getTrainerCountry(userId);
       setTrainerCountry(country);
 
-      // Fetch profile data including rating fields
+      // Fetch profile data from profiles_public view (bypasses RLS for academy managers)
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('profiles_public')
         .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
         .eq('user_id', userId)
         .single();
@@ -228,22 +228,25 @@ export function EditAcademyTrainerDialog({
     setSaving(true);
 
     try {
-      // Update profile including rating fields
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
+      // Update profile via edge function (bypasses RLS)
+      const { data: updateResult, error: updateError } = await supabase.functions.invoke('update-user', {
+        body: {
+          target_user_id: userId,
+          trainer_profile_id: trainerId,
           full_name: profileData.full_name,
           phone: profileData.phone,
           bio: profileData.bio,
+          avatar_url: profileData.avatar_url,
           skill_rating: profileData.skill_rating,
           rating_system: profileData.rating_system,
           rating_member_id: profileData.rating_member_id,
-        })
-        .eq('user_id', userId);
+        },
+      });
 
-      if (profileError) throw profileError;
+      if (updateError) throw updateError;
+      if (updateResult?.error) throw new Error(updateResult.error);
 
-      // Update trainer profile
+      // Update trainer profile (direct update works due to trainer_profiles RLS)
       const { error: trainerError } = await supabase
         .from('trainer_profiles')
         .update({

@@ -27,34 +27,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify the admin user
+    // Verify the caller
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user: adminUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    const { data: { user: callerUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
-    if (authError || !adminUser) {
+    if (authError || !callerUser) {
       return new Response(
         JSON.stringify({ error: "Invalid authorization token" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if the caller is an admin
-    const { data: adminRole } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", adminUser.id)
-      .eq("role", "admin")
-      .single();
-
-    if (!adminRole) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized: Admin access required" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Get the request body
-    const { target_user_id, email, full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id } = await req.json();
+    const { 
+      target_user_id, 
+      trainer_profile_id,
+      email, 
+      full_name, 
+      phone, 
+      bio, 
+      avatar_url, 
+      skill_rating, 
+      rating_system, 
+      rating_member_id 
+    } = await req.json();
 
     if (!target_user_id) {
       return new Response(
@@ -63,23 +59,91 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Prevent modifying admin users
-    const { data: targetAdminRole } = await supabaseAdmin
+    // Check authorization: must be admin, academy manager, club manager, or the user themselves
+    const { data: adminRole } = await supabaseAdmin
       .from("user_roles")
       .select("role")
-      .eq("user_id", target_user_id)
+      .eq("user_id", callerUser.id)
       .eq("role", "admin")
       .single();
 
-    if (targetAdminRole) {
+    const isAdmin = !!adminRole;
+    const isSelf = callerUser.id === target_user_id;
+    let isAuthorizedManager = false;
+
+    // If not admin and not self, check if caller is academy/club manager for this trainer
+    if (!isAdmin && !isSelf && trainer_profile_id) {
+      // Check if caller is academy manager for this trainer
+      const { data: trainerAcademies } = await supabaseAdmin
+        .from('academy_trainers')
+        .select('academy_profile_id')
+        .eq('trainer_profile_id', trainer_profile_id)
+        .eq('status', 'active');
+
+      if (trainerAcademies && trainerAcademies.length > 0) {
+        const academyIds = trainerAcademies.map(a => a.academy_profile_id);
+        const { data: managerCheck } = await supabaseAdmin
+          .from('academy_managers')
+          .select('id')
+          .eq('user_id', callerUser.id)
+          .in('academy_profile_id', academyIds)
+          .limit(1);
+        
+        if (managerCheck && managerCheck.length > 0) {
+          isAuthorizedManager = true;
+        }
+      }
+
+      // If still not authorized, check club manager
+      if (!isAuthorizedManager) {
+        const { data: trainerClubs } = await supabaseAdmin
+          .from('club_trainers')
+          .select('club_profile_id')
+          .eq('trainer_profile_id', trainer_profile_id)
+          .eq('status', 'active');
+
+        if (trainerClubs && trainerClubs.length > 0) {
+          const clubIds = trainerClubs.map(c => c.club_profile_id);
+          const { data: clubManagerCheck } = await supabaseAdmin
+            .from('club_managers')
+            .select('id')
+            .eq('user_id', callerUser.id)
+            .in('club_profile_id', clubIds)
+            .limit(1);
+          
+          if (clubManagerCheck && clubManagerCheck.length > 0) {
+            isAuthorizedManager = true;
+          }
+        }
+      }
+    }
+
+    if (!isAdmin && !isSelf && !isAuthorizedManager) {
       return new Response(
-        JSON.stringify({ error: "Cannot modify admin users" }),
+        JSON.stringify({ error: "Unauthorized: You don't have permission to update this user" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Update email in auth if provided
-    if (email) {
+    // Prevent non-admins from modifying admin users
+    if (!isAdmin) {
+      const { data: targetAdminRole } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", target_user_id)
+        .eq("role", "admin")
+        .single();
+
+      if (targetAdminRole) {
+        return new Response(
+          JSON.stringify({ error: "Cannot modify admin users" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Update email in auth if provided (admin only)
+    if (email && isAdmin) {
       const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
         target_user_id,
         { email }
@@ -96,7 +160,7 @@ Deno.serve(async (req) => {
 
     // Update profile - support all profile fields
     const updates: Record<string, string | number | null> = {};
-    if (email !== undefined) updates.email = email;
+    if (email !== undefined && isAdmin) updates.email = email;
     if (full_name !== undefined) updates.full_name = full_name;
     if (phone !== undefined) updates.phone = phone;
     if (bio !== undefined) updates.bio = bio;
@@ -120,18 +184,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log the admin action
+    // Log the action
     await supabaseAdmin.from("admin_impersonation_logs").insert({
-      admin_user_id: adminUser.id,
+      admin_user_id: callerUser.id,
       target_user_id: target_user_id,
       action: 'update_user',
-      details: { email_changed: !!email, name_changed: full_name !== undefined },
+      details: { 
+        email_changed: !!email && isAdmin, 
+        name_changed: full_name !== undefined,
+        caller_type: isAdmin ? 'admin' : (isSelf ? 'self' : 'manager'),
+      },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
       user_agent: req.headers.get("user-agent"),
-      expires_at: new Date().toISOString(), // Not applicable for update, just set to now
+      expires_at: new Date().toISOString(),
     });
 
-    console.log(`User updated: ${target_user_id} by admin ${adminUser.id}`);
+    console.log(`User updated: ${target_user_id} by ${callerUser.id} (${isAdmin ? 'admin' : isSelf ? 'self' : 'manager'})`);
 
     return new Response(
       JSON.stringify({
