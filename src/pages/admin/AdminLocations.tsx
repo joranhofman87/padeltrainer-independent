@@ -346,7 +346,15 @@ export default function AdminLocations() {
                 <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      {location.logo_url ? (
+                        <img
+                          src={location.logo_url}
+                          alt=""
+                          className="h-4 w-4 object-contain"
+                        />
+                      ) : (
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                      )}
                       <span className="font-medium">{location.name}</span>
                     </div>
                   </TableCell>
