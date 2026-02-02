@@ -68,7 +68,9 @@
     "addSelfTitle": "Je bent ook trainer!",
     "addSelfDescription": "Voeg jezelf toe aan je academy's trainerslijst om op de publieke pagina te verschijnen.",
     "addMyselfAsTrainer": "Voeg Mezelf Toe als Trainer",
-    "addedSelf": "Je bent toegevoegd als trainer"
+    "addedSelf": "Je bent toegevoegd als trainer",
+    "createTrainer": "Trainer Aanmaken",
+    "createTrainerDescription": "Maak een nieuw trainer account aan voor je academy."
   },
   "trainerInvitation": {
     "title": "Academy Uitnodiging",
