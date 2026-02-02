@@ -5,18 +5,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap } from 'lucide-react';
 import { createAcademy } from '@/lib/academy';
 import { supabase } from '@/integrations/supabase/client';
+import { COUNTRIES, type CountryCode } from '@/lib/countries';
 
 export default function AcademyOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
   const [academyName, setAcademyName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [description, setDescription] = useState('');
+  const [country, setCountry] = useState<CountryCode>('NL');
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile, loading } = useAuth();
@@ -97,7 +106,8 @@ export default function AcademyOnboarding() {
         academyName.trim(),
         session.user.id,
         contactEmail,
-        description
+        description,
+        country
       );
       
       if (error || !success) {
@@ -177,6 +187,25 @@ export default function AcademyOnboarding() {
                 placeholder={t('onboarding.emailPlaceholder', 'info@youracademy.com')}
                 required
               />
+            </div>
+
+            {/* Country */}
+            <div className="space-y-2">
+              <Label htmlFor="country">
+                {t('onboarding.country', 'Country')} *
+              </Label>
+              <Select value={country} onValueChange={(value) => setCountry(value as CountryCode)}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('onboarding.selectCountry', 'Select country')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(COUNTRIES).map(([code, name]) => (
+                    <SelectItem key={code} value={code}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Description */}

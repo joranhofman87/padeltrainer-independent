@@ -62,6 +62,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getActiveLocations, type Location } from "@/lib/locations";
+import { COUNTRIES } from "@/lib/countries";
 
 interface AcademyEditData {
   id: string;
@@ -83,6 +84,7 @@ interface AcademyEditData {
   trial_ends_at: string | null;
   is_verified: boolean;
   is_public: boolean;
+  country?: string;
   owner_user_id?: string | null;
 }
 
@@ -164,6 +166,7 @@ export function AcademyEditDialog({
   const [websiteUrl, setWebsiteUrl] = useState(academy.website_url || "");
   const [logoUrl, setLogoUrl] = useState(academy.logo_url || "");
   const [bannerUrl, setBannerUrl] = useState(academy.banner_url || "");
+  const [country, setCountry] = useState(academy.country || "NL");
 
   // Social state
   const [socialInstagram, setSocialInstagram] = useState(academy.social_instagram || "");
@@ -748,6 +751,7 @@ export function AcademyEditDialog({
           trial_ends_at: status === "active" ? null : (trialEndsAt?.toISOString() || null),
           is_verified: isVerified,
           is_public: isPublic,
+          country,
         })
         .eq("id", academy.id);
 
@@ -839,6 +843,22 @@ export function AcademyEditDialog({
                     onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="country">Country</Label>
+                <Select value={country} onValueChange={setCountry}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(COUNTRIES).map(([code, name]) => (
+                      <SelectItem key={code} value={code}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">

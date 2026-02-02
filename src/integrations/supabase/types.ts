@@ -245,6 +245,7 @@ export type Database = {
         Row: {
           banner_url: string | null
           contact_email: string | null
+          country: string
           created_at: string
           created_by: string | null
           description: string | null
@@ -272,6 +273,7 @@ export type Database = {
         Insert: {
           banner_url?: string | null
           contact_email?: string | null
+          country?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -299,6 +301,7 @@ export type Database = {
         Update: {
           banner_url?: string | null
           contact_email?: string | null
+          country?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -3110,10 +3113,9 @@ export type Database = {
       academy_profiles_public: {
         Row: {
           banner_url: string | null
-          created_at: string | null
+          country: string | null
           description: string | null
           id: string | null
-          is_public: boolean | null
           is_verified: boolean | null
           logo_url: string | null
           name: string | null
@@ -3123,17 +3125,13 @@ export type Database = {
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
-          subscription_status: string | null
-          subscription_tier: string | null
-          updated_at: string | null
           website_url: string | null
         }
         Insert: {
           banner_url?: string | null
-          created_at?: string | null
+          country?: string | null
           description?: string | null
           id?: string | null
-          is_public?: boolean | null
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
@@ -3143,17 +3141,13 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          subscription_status?: string | null
-          subscription_tier?: string | null
-          updated_at?: string | null
           website_url?: string | null
         }
         Update: {
           banner_url?: string | null
-          created_at?: string | null
+          country?: string | null
           description?: string | null
           id?: string | null
-          is_public?: boolean | null
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
@@ -3163,9 +3157,6 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          subscription_status?: string | null
-          subscription_tier?: string | null
-          updated_at?: string | null
           website_url?: string | null
         }
         Relationships: []
@@ -3173,6 +3164,8 @@ export type Database = {
       academy_profiles_safe: {
         Row: {
           banner_url: string | null
+          contact_email: string | null
+          country: string | null
           created_at: string | null
           description: string | null
           id: string | null
@@ -3180,17 +3173,24 @@ export type Database = {
           is_verified: boolean | null
           logo_url: string | null
           name: string | null
+          phone: string | null
           slug: string | null
           social_facebook: string | null
           social_instagram: string | null
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
+          subscription_ends_at: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          trial_ends_at: string | null
           updated_at: string | null
           website_url: string | null
         }
         Insert: {
           banner_url?: string | null
+          contact_email?: string | null
+          country?: string | null
           created_at?: string | null
           description?: string | null
           id?: string | null
@@ -3198,17 +3198,24 @@ export type Database = {
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
+          phone?: string | null
           slug?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          subscription_ends_at?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
           updated_at?: string | null
           website_url?: string | null
         }
         Update: {
           banner_url?: string | null
+          contact_email?: string | null
+          country?: string | null
           created_at?: string | null
           description?: string | null
           id?: string | null
@@ -3216,12 +3223,17 @@ export type Database = {
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
+          phone?: string | null
           slug?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          subscription_ends_at?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          trial_ends_at?: string | null
           updated_at?: string | null
           website_url?: string | null
         }
