@@ -228,8 +228,11 @@ export function AcademyEditDialog({
 
   const loadAllLocations = async () => {
     try {
+      // Only fetch a limited number of locations for the picker 
+      // (search will filter further). Full list could be 1400+ items.
       const data = await getActiveLocations();
-      setAllLocations(data);
+      // Limit to first 500 for performance - search/filter handles the rest
+      setAllLocations(data.slice(0, 500));
     } catch (error) {
       console.error("Error loading locations:", error);
     }
