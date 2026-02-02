@@ -3549,6 +3549,10 @@ export type Database = {
         Returns: string
       }
       generate_trainer_slug: { Args: { full_name: string }; Returns: string }
+      generate_unique_trainer_slug: {
+        Args: { _full_name: string; _trainer_id: string }
+        Returns: string
+      }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {
