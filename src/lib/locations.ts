@@ -48,37 +48,69 @@ export interface PlayerLocation {
   created_at: string;
 }
 
-// Fetch all active locations
+// Fetch all active locations - handles >1000 rows
 export async function getActiveLocations(): Promise<Location[]> {
-  const { data, error } = await supabase
-    .from('locations')
-    .select('*')
-    .eq('is_active', true)
-    .order('city', { ascending: true })
-    .order('name', { ascending: true });
+  const allLocations: Location[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching locations:', error);
-    throw error;
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .eq('is_active', true)
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching locations:', error);
+      throw error;
+    }
+
+    if (data) {
+      allLocations.push(...data);
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
   }
 
-  return data || [];
+  return allLocations;
 }
 
-// Fetch all locations (for admin)
+// Fetch all locations (for admin) - handles >1000 rows
 export async function getAllLocations(): Promise<Location[]> {
-  const { data, error } = await supabase
-    .from('locations')
-    .select('*')
-    .order('city', { ascending: true })
-    .order('name', { ascending: true });
+  const allLocations: Location[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching all locations:', error);
-    throw error;
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching all locations:', error);
+      throw error;
+    }
+
+    if (data) {
+      allLocations.push(...data);
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
   }
 
-  return data || [];
+  return allLocations;
 }
 
 // Fetch a single location by slug
@@ -311,38 +343,68 @@ export async function updateLocation(id: string, updates: Partial<Location>): Pr
   return data;
 }
 
-// Get unique cities from locations
+// Get unique cities from locations - handles >1000 rows
 export async function getUniqueCities(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('locations')
-    .select('city')
-    .eq('is_active', true)
-    .order('city');
+  const allCities: string[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching cities:', error);
-    throw error;
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('city')
+      .eq('is_active', true)
+      .order('city')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching cities:', error);
+      throw error;
+    }
+
+    if (data) {
+      allCities.push(...data.map(l => l.city));
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
   }
 
-  const cities = [...new Set(data?.map(l => l.city) || [])];
-  return cities;
+  return [...new Set(allCities)];
 }
 
-// Get unique countries from locations
+// Get unique countries from locations - handles >1000 rows
 export async function getUniqueCountries(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('locations')
-    .select('country')
-    .eq('is_active', true)
-    .order('country');
+  const allCountries: string[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching countries:', error);
-    throw error;
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('country')
+      .eq('is_active', true)
+      .order('country')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching countries:', error);
+      throw error;
+    }
+
+    if (data) {
+      allCountries.push(...data.map(l => l.country));
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
   }
 
-  const countries = [...new Set(data?.map(l => l.country) || [])];
-  return countries;
+  return [...new Set(allCountries)];
 }
 
 // Get trainer count per location
