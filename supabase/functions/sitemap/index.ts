@@ -8,6 +8,52 @@ const corsHeaders = {
 const SITE_URL = 'https://padeltrainer.ai';
 const LANGUAGES = ['en', 'nl'];
 
+// Helper to fetch all rows (handles >1000 limit)
+// deno-lint-ignore no-explicit-any
+async function fetchAllRows<T>(
+  supabase: any,
+  table: string,
+  selectColumns: string,
+  filters?: { column: string; operator: string; value: boolean | string | number }[]
+): Promise<T[]> {
+  const allRows: T[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabase
+      .from(table)
+      .select(selectColumns)
+      .range(from, from + pageSize - 1);
+
+    if (filters) {
+      for (const filter of filters) {
+        if (filter.operator === 'eq') {
+          query = query.eq(filter.column, filter.value);
+        }
+      }
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error(`Error fetching ${table}:`, error);
+      break;
+    }
+
+    if (data) {
+      allRows.push(...(data as T[]));
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRows;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -41,15 +87,13 @@ Deno.serve(async (req) => {
       console.error('Error fetching trainers:', trainersError);
     }
 
-    // Fetch all active locations
-    const { data: locations, error: locationsError } = await supabase
-      .from('locations')
-      .select('slug, city, updated_at')
-      .eq('is_active', true);
-
-    if (locationsError) {
-      console.error('Error fetching locations:', locationsError);
-    }
+    // Fetch all active locations (with pagination for >1000 rows)
+    const locations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
+      supabase,
+      'locations',
+      'slug, city, updated_at',
+      [{ column: 'is_active', operator: 'eq', value: true }]
+    );
 
     // Fetch all verified public academies
     const { data: academies, error: academiesError } = await supabase
