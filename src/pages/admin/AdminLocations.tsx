@@ -11,9 +11,11 @@ import {
   ToggleRight,
   Upload,
   CheckCircle2,
+  Image,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
+import { ScrapeLogosDialog } from '@/components/admin/ScrapeLogosDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +67,7 @@ export default function AdminLocations() {
   const [verifiedFilter, setVerifiedFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [scrapeLogosDialogOpen, setScrapeLogosDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   // Get verified location IDs from club_profiles
@@ -203,6 +206,10 @@ export default function AdminLocations() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setScrapeLogosDialogOpen(true)}>
+            <Image className="h-4 w-4 mr-2" />
+            Fetch Logos
+          </Button>
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
@@ -406,6 +413,16 @@ export default function AdminLocations() {
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         onLocationsImported={async () => {
+          const locationsData = await getAllLocations();
+          setLocations(locationsData);
+        }}
+      />
+
+      {/* Scrape Logos Dialog */}
+      <ScrapeLogosDialog
+        open={scrapeLogosDialogOpen}
+        onOpenChange={setScrapeLogosDialogOpen}
+        onSuccess={async () => {
           const locationsData = await getAllLocations();
           setLocations(locationsData);
         }}
