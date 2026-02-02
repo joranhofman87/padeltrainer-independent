@@ -1,71 +1,131 @@
 
-# Fix Marketing Sign-In Button Navigation
+# Add Country Field to Academy Profiles
 
-## Problem
-The "Sign In" button on the marketing site (`padeltrainer.ai`) navigates to `/auth` on the same domain instead of redirecting to the app subdomain (`app.padeltrainer.ai/auth`), causing a redirect loop.
+## Overview
+Add a country selection field to academy profiles to enable future country-based filtering on the Academies page. All existing academies will default to Netherlands (NL).
 
-## Root Cause
-The `isInDevelopment()` function may be returning unexpected values, or the conditional rendering is not working as expected in production. The current approach relies on correctly detecting the environment, which can be fragile.
+## Database Changes
 
-## Solution
-Use a more robust approach: **always render external links for auth routes on the marketing site**, regardless of environment detection. This simplifies the logic and ensures proper cross-domain navigation.
+### 1. Add country column to academy_profiles
+```sql
+ALTER TABLE academy_profiles 
+ADD COLUMN country TEXT NOT NULL DEFAULT 'NL';
+
+-- Add comment for clarity
+COMMENT ON COLUMN academy_profiles.country IS 'ISO 3166-1 alpha-2 country code';
+```
+
+This will automatically set all existing academies to 'NL' (Netherlands).
+
+### 2. Update public views (if applicable)
+The `academy_profiles_public` and `academy_profiles_safe` views may need updating to include the new `country` column.
 
 ---
 
-## Changes Required
+## Frontend Changes
 
-### 1. Update MarketingLayout.tsx
-Replace the conditional `isInDevelopment()` check with domain-aware linking that always uses external URLs for auth routes:
+### 1. Create Countries List Constant
+**New file: `src/lib/countries.ts`**
 
-**Current code:**
-```tsx
-<Button variant="ghost" asChild>
-  {isInDevelopment() ? (
-    <Link to="/auth">Sign In</Link>
-  ) : (
-    <a href={getAppUrl('/auth')}>Sign In</a>
-  )}
-</Button>
-```
-
-**New code:**
-```tsx
-<Button variant="ghost" asChild>
-  <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
-</Button>
-```
-
-This applies to:
-- Desktop "Sign In" button (line 79-85)
-- Desktop "Get Started" button (line 86-92)
-- Mobile "Sign In" button (line 133-139)
-- Mobile "Get Started" button (line 140-146)
-- Footer "Register your club" link (line 182-186)
-
-### 2. Update getAppUrl function (optional improvement)
-Make `getAppUrl` environment-aware to return relative paths in development:
-
+Create a reusable list of countries with ISO codes:
 ```typescript
-export function getAppUrl(path: string): string {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  
-  // In development, use relative paths for same-origin navigation
-  if (isInDevelopment()) {
-    return normalizedPath;
-  }
-  
-  // In production, always use full app subdomain URL
-  return `${APP_DOMAIN}${normalizedPath}`;
-}
+export const COUNTRIES = {
+  NL: 'Nederland',
+  BE: 'Belgium',
+  DE: 'Germany',
+  ES: 'Spain',
+  FR: 'France',
+  GB: 'United Kingdom',
+  IT: 'Italy',
+  PT: 'Portugal',
+  // Add more as needed
+} as const;
+
+export type CountryCode = keyof typeof COUNTRIES;
+```
+
+### 2. Update Academy Onboarding Page
+**File: `src/pages/AcademyOnboarding.tsx`**
+
+Add country dropdown:
+- Default to 'NL'
+- Required field
+- Pass country to `createAcademy()` function
+
+### 3. Update Academy Profile Edit Page
+**File: `src/pages/academy/AcademyProfile.tsx`**
+
+Add country dropdown in the Basic Info section:
+- Pre-fill with current value
+- Include in form submission
+
+### 4. Update Academy Library Functions
+**File: `src/lib/academy.ts`**
+
+- Update `AcademyProfile` interface to include `country`
+- Update `createAcademy()` to accept country parameter
+- Update `updateAcademyProfile()` to handle country field
+
+### 5. Update Admin Academy Edit Dialog
+**File: `src/components/admin/AcademyEditDialog.tsx`**
+
+Add country dropdown in the profile tab for admin editing.
+
+### 6. Update Translations
+**Files: `src/i18n/locales/en/academy.json` and `src/i18n/locales/nl/academy.json`**
+
+Add translations for:
+- "Country" label
+- "Select country" placeholder
+
+---
+
+## Technical Details
+
+### Country Dropdown Component Pattern
+```text
++---------------------------+
+|  Country *                |
++---------------------------+
+| [Dropdown: NL - Nederland v]
++---------------------------+
+```
+
+Using the existing Select component pattern from the codebase:
+```tsx
+<Select value={country} onValueChange={setCountry}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select country" />
+  </SelectTrigger>
+  <SelectContent>
+    {Object.entries(COUNTRIES).map(([code, name]) => (
+      <SelectItem key={code} value={code}>
+        {name}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
 ```
 
 ---
 
-## Result
-| Environment | Sign In Link |
-|-------------|--------------|
-| `padeltrainer.ai` | `https://app.padeltrainer.ai/auth` |
-| `localhost` | `/auth` |
-| `*.lovable.app` | `/auth` |
+## Files to Modify
 
-The marketing site will correctly redirect to the app subdomain for authentication in production, while development/preview environments will continue using relative paths for easier testing.
+| File | Change |
+|------|--------|
+| Database migration | Add `country` column with default 'NL' |
+| `src/lib/countries.ts` | New file - countries list |
+| `src/lib/academy.ts` | Add country to interface and functions |
+| `src/pages/AcademyOnboarding.tsx` | Add country dropdown |
+| `src/pages/academy/AcademyProfile.tsx` | Add country dropdown |
+| `src/components/admin/AcademyEditDialog.tsx` | Add country field |
+| `src/i18n/locales/en/academy.json` | Add translations |
+| `src/i18n/locales/nl/academy.json` | Add translations |
+
+---
+
+## Future Considerations
+Once this is in place, you can:
+1. Add country filter dropdown to `/academies` page
+2. Filter academies by country in queries
+3. Display country flag/badge on academy cards
