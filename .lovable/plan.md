@@ -1,76 +1,123 @@
 
-# Add TradeTracker Script to Marketing Pages
 
-## Overview
-Add the TradeTracker SuperTag tracking script to the marketing pages only (padeltrainer.ai), excluding the app subdomain (app.padeltrainer.ai).
+# Scrape Logos from Location Websites
 
-## Approach
-Follow the existing analytics pattern used for Google Analytics:
-1. Create a dedicated function to load TradeTracker
-2. Only load on the marketing domain
-3. Respect cookie consent for tracking purposes
+## Current Situation
+- **578 locations** have website URLs configured
+- **Only 13 locations** currently have logos
+- The `enrich-clubs` edge function already has logo scraping capability built-in
+
+## Solution: Add Admin UI to Trigger Logo Scraping
+
+Rather than building new scraping logic, we'll add a user-friendly admin interface to trigger the existing `enrich-clubs` function, with options to:
+1. Scrape logos for selected locations
+2. Batch process locations without logos
+3. Preview results before saving
 
 ---
 
 ## Changes Required
 
-### 1. Create TradeTracker Loader Function
-**File: `src/lib/analytics.ts`**
+### 1. Add "Scrape Logos" Button to Admin Locations Page
+**File: `src/pages/admin/AdminLocations.tsx`**
 
-Add a new function to load the TradeTracker script:
-- Only loads on marketing domain (padeltrainer.ai)
-- Respects analytics cookie consent
-- Injects script dynamically into the page
+Add a new button in the header:
+- "Fetch Logos" button that opens a dialog
+- Shows count of locations without logos (565 currently)
 
-```typescript
-function loadTradeTracker() {
-  // Only load on marketing domain
-  if (!isOnMarketingDomain()) return;
-  if (isTradeTrackerInitialized) return;
-  
-  const _TradeTrackerTagOptions = {
-    t: 'a',
-    s: '505059',
-    chk: 'a6008bc2b069f12d2b9ed64acbcba05b',
-    overrideOptions: {}
-  };
+### 2. Create Logo Scraping Dialog Component
+**New file: `src/components/admin/ScrapeLogosDialog.tsx`**
 
-  const script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.src = `https://tm.tradetracker.net/tag?t=${...}`;
-  document.body.appendChild(script);
-  
-  isTradeTrackerInitialized = true;
-}
+A dialog with:
+- Summary: "X locations have websites but no logo"
+- Batch size selector (5, 10, 25 locations at a time)
+- Option to select specific locations or process all without logos
+- Progress indicator during scraping
+- Results preview showing extracted logos before confirming
+
+### 3. Create Admin API Helper for Enrichment
+**File: `src/lib/admin.ts`**
+
+Add a function to call the `enrich-clubs` edge function:
+```text
+enrichLocations(options: {
+  location_ids?: string[];
+  batch_size?: number;
+  offset?: number;
+  dry_run?: boolean;
+}) => Promise<EnrichmentResult[]>
 ```
-
-### 2. Update initializeAnalytics Function
-Add TradeTracker loading alongside Google Analytics:
-- Calls `loadTradeTracker()` when analytics consent is given
-- Also listens for consent updates to load if user accepts later
 
 ---
 
 ## Technical Details
 
-| Aspect | Implementation |
-|--------|----------------|
-| Loading location | Appended to `<body>` (as specified) |
-| Domain check | Uses existing `isOnMarketingDomain()` function |
-| Cookie consent | Requires analytics consent (same as GA) |
-| Script loading | Dynamic via JavaScript |
+### How Logo Extraction Works (already implemented)
+
+The `enrich-clubs` function uses Firecrawl's branding extraction:
+
+```text
+Request: { url, formats: ["markdown", "branding"] }
+
+Response includes:
+  branding: {
+    images: {
+      logo: "https://example.com/logo.svg"
+    }
+  }
+```
+
+The function then:
+1. Downloads the logo from the extracted URL
+2. Uploads it to Supabase Storage: `avatars/clubs/{location_id}/logo.png`
+3. Updates `locations.logo_url` with the public storage URL
+
+### Batch Processing Flow
+
+```text
++------------------+     +-------------------+     +------------------+
+|  Admin clicks    | --> | Dialog shows      | --> | Call enrich-clubs|
+|  "Fetch Logos"   |     | locations w/o     |     | edge function    |
+|                  |     | logos (565)       |     |                  |
++------------------+     +-------------------+     +------------------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|  Refresh table   | <-- | Show success/     | <-- | Update DB with   |
+|  with new logos  |     | failure counts    |     | extracted logos  |
++------------------+     +-------------------+     +------------------+
+```
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/lib/analytics.ts` | Add TradeTracker loader function and call it in `initializeAnalytics()` |
+| `src/components/admin/ScrapeLogosDialog.tsx` | New dialog component |
+| `src/pages/admin/AdminLocations.tsx` | Add "Fetch Logos" button |
+| `src/lib/admin.ts` | Add `enrichLocations()` helper function |
 
 ---
 
-## Result
-- TradeTracker will load on `padeltrainer.ai` marketing pages when users accept analytics cookies
-- The app subdomain (`app.padeltrainer.ai`) will NOT load TradeTracker
-- Development/preview environments will also skip loading (following marketing domain check)
+## User Flow
+
+1. Admin opens Location Management page
+2. Clicks "Fetch Logos" button
+3. Dialog shows:
+   - "565 locations have websites but no logo"
+   - Batch size selection (default: 10)
+   - "Start" button
+4. Progress bar shows as locations are processed
+5. Results show: "8 logos found, 2 failed"
+6. Table refreshes to show new logos
+
+---
+
+## Rate Limiting Considerations
+
+- Firecrawl API has rate limits
+- Process in batches of 10-25 with 500ms delay between each
+- Allow admin to stop/pause the process
+- Show which locations failed so they can be retried
+
