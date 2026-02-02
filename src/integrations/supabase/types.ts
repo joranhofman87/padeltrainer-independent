@@ -3570,6 +3570,14 @@ export type Database = {
         Args: { _academy_profile_id: string; _user_id: string }
         Returns: boolean
       }
+      is_academy_trainer: {
+        Args: { _trainer_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_active_academy_trainer: {
+        Args: { _trainer_profile_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_any_academy_manager: { Args: { _user_id: string }; Returns: boolean }
       is_any_club_manager: { Args: { _user_id: string }; Returns: boolean }
