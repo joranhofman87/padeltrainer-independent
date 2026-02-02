@@ -1,86 +1,183 @@
 
+# Data Consistency Fix: Academy Trainer Edit Dialog
 
-# Academy Calendar Fixes Plan
+## Problem Summary
 
-## Issues Identified
+The same trainer shows different data in Admin vs Academy edit dialogs because:
 
-### 1. Trainer Names Showing as "Unknown"
-The current code in `loadAcademyData()` queries the private `profiles` table directly:
+| Admin Panel | Academy Dialog |
+|-------------|----------------|
+| ✅ Reads from `profiles` table (RLS allows admins) | ❌ Reads from `profiles` table (RLS blocks academy managers) |
+| ✅ Saves via `update-user` edge function | ❌ Saves directly to `profiles` (blocked by RLS) |
+| Shows: "Tygho Schoonus", KNLTB 0.9 | Shows: "John Doe" (placeholder), 8.0 (default) |
+
+---
+
+## Root Cause
+
+The `EditAcademyTrainerDialog` directly queries the `profiles` table:
 ```typescript
 const { data: profile } = await supabase
-  .from("profiles")  // <-- Private table with RLS restrictions
-  .select("full_name, avatar_url")
-  .eq("user_id", trainer.user_id)
+  .from('profiles')  // <-- RLS restricts this!
+  .select('...')
+  .eq('user_id', userId)
 ```
 
-The RLS policy on `profiles` only allows:
-- Admins to view all profiles
-- Users to view their own profile
-- Service role to view all
+RLS policy on `profiles`:
+- Admins can view all
+- Users can view their own
+- Academy managers **cannot** view other users' profiles
 
-Academy managers don't have permission to read other users' profiles, so the query fails silently and returns `null`, resulting in "Unknown" names.
-
-### 2. Missing Action Buttons
-The Club calendar has "Add Slot" and "Create Cyclus" buttons (lines 362-370 in ClubCalendar.tsx), but the Academy calendar is missing these controls.
+The query silently returns `null`, so the dialog shows empty/placeholder values.
 
 ---
 
 ## Solution
 
-### Fix 1: Use `profiles_public` View Instead of `profiles` Table
+### 1. Update `profiles_public` View
 
-Replace the manual trainer fetching logic in `loadAcademyData()` with the existing `getAcademyTrainersWithProfiles()` function from `src/lib/academy.ts`, which correctly uses the `profiles_public` view.
+Add missing fields needed for trainer editing:
+- `phone`
+- `rating_member_id` (currently only has `knltb_number`)
 
-```text
-Current (broken):
-  for (const t of academyTrainers) {
-    const { data: profile } = await supabase.from("profiles")...
-  }
-
-After fix:
-  const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
-  // This function uses profiles_public internally
+```sql
+CREATE OR REPLACE VIEW profiles_public AS
+SELECT 
+  id, user_id, full_name, avatar_url, bio, location,
+  skill_rating, rating_system, rating_member_id,
+  phone,  -- Add phone
+  created_at, updated_at
+FROM profiles;
 ```
 
-### Fix 2: Add Action Buttons
+### 2. Update `EditAcademyTrainerDialog.tsx` - Fetch Logic
 
-Add buttons above the calendar matching the Club calendar pattern:
-- **Add Cycle** button (orange, primary action) - Opens the CycleForm dialog
-- The filters stay as-is but are repositioned to be grouped with the buttons
+Change from `profiles` table to `profiles_public` view:
+
+```typescript
+// Before (broken)
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
+  .eq('user_id', userId);
+
+// After (works)
+const { data: profile } = await supabase
+  .from('profiles_public')
+  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
+  .eq('user_id', userId);
+```
+
+### 3. Update `update-user` Edge Function
+
+Extend to allow academy managers (not just admins) to update trainers in their academy:
+
+```typescript
+// Check if caller is admin OR academy manager for this trainer
+const isAdmin = !!adminRole;
+
+// Check if academy manager for this trainer
+let isAcademyManagerForTrainer = false;
+if (!isAdmin) {
+  // Get trainer's academy membership
+  const { data: trainerAcademy } = await supabaseAdmin
+    .from('academy_trainers')
+    .select('academy_profile_id')
+    .eq('trainer_profile_id', trainer_profile_id) // Need to pass this
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (trainerAcademy) {
+    // Check if caller is manager of that academy
+    const { data: managerCheck } = await supabaseAdmin
+      .from('academy_managers')
+      .select('id')
+      .eq('user_id', adminUser.id)
+      .eq('academy_profile_id', trainerAcademy.academy_profile_id)
+      .maybeSingle();
+    
+    isAcademyManagerForTrainer = !!managerCheck;
+  }
+}
+
+if (!isAdmin && !isAcademyManagerForTrainer) {
+  return { error: "Unauthorized" };
+}
+```
+
+### 4. Update `EditAcademyTrainerDialog.tsx` - Save Logic
+
+Use the `update-user` edge function instead of direct Supabase updates:
+
+```typescript
+// Before (blocked by RLS)
+const { error } = await supabase
+  .from('profiles')
+  .update({ full_name, skill_rating, ... })
+  .eq('user_id', userId);
+
+// After (uses edge function with service role)
+const { error } = await supabase.functions.invoke("update-user", {
+  body: {
+    target_user_id: userId,
+    trainer_profile_id: trainerId, // Needed for academy manager auth
+    full_name: profileData.full_name,
+    phone: profileData.phone,
+    bio: profileData.bio,
+    skill_rating: profileData.skill_rating,
+    rating_system: profileData.rating_system,
+    rating_member_id: profileData.rating_member_id,
+  },
+});
+```
 
 ---
 
-## Technical Changes
+## Files to Modify
 
-### File: `src/pages/academy/AcademyCalendar.tsx`
+| File | Changes |
+|------|---------|
+| `supabase migration` | Add `phone` and `rating_member_id` to `profiles_public` view |
+| `supabase/functions/update-user/index.ts` | Add academy manager authorization check |
+| `src/components/academy/EditAcademyTrainerDialog.tsx` | Use `profiles_public` for reads, edge function for writes |
+| `src/components/club/EditClubTrainerDialog.tsx` | Same pattern as academy dialog |
 
-1. **Import changes**:
-   - Add import for `getAcademyTrainersWithProfiles` from `@/lib/academy`
-   - Add import for `CycleForm` from `@/components/cycles/CycleForm`
+---
 
-2. **State additions**:
-   - `showCreateCycleDialog` (boolean) - Controls CycleForm visibility
-   - `trainerOptions` (array) - Trainer ID/name pairs for CycleForm
+## Data Flow After Fix
 
-3. **Update `loadAcademyData()` function**:
-   - Replace manual profile fetching with `getAcademyTrainersWithProfiles()`
-   - This ensures proper use of `profiles_public` view
-   - Build trainer list from the correctly-fetched data
-
-4. **Add UI elements in CardHeader**:
-   - Add "Add Cycle" button (orange styling matching Club calendar's "Create Cyclus")
-   - Button opens CycleForm dialog
-
-5. **Add CycleForm dialog**:
-   - Include the CycleForm component at the end of the component
-   - Pass `ownerType="academy"`, `ownerId={activeAcademy.id}`, and trainer options
+```text
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│  Admin Panel    │      │ Academy Dialog  │      │ Trainer's Own   │
+│  TrainerEdit    │      │ EditAcademy     │      │ EditProfile     │
+│  Dialog         │      │ TrainerDialog   │      │                 │
+└────────┬────────┘      └────────┬────────┘      └────────┬────────┘
+         │                        │                        │
+         ▼                        ▼                        ▼
+    ┌────────────────────────────────────────────────────────────┐
+    │                    profiles_public VIEW                     │
+    │         (full_name, skill_rating, rating_system, phone)     │
+    └────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼ (READ)
+    ┌────────────────────────────────────────────────────────────┐
+    │                       profiles TABLE                        │
+    │              (all fields, RLS protected)                    │
+    └────────────────────────────────────────────────────────────┘
+                                  ▲
+                                  │ (WRITE via service role)
+    ┌────────────────────────────────────────────────────────────┐
+    │                   update-user Edge Function                 │
+    │    (validates: admin OR academy manager OR own profile)     │
+    └────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Result
 
-After these changes:
-- Trainer dropdown will show actual names (e.g., "Rene Lindenbergh" instead of "Unknown")
-- Academy managers can create new training cycles directly from the calendar view
-- UI matches the Club calendar pattern for consistency
-
+After implementation:
+- All three views (Admin, Academy, Trainer) show identical data
+- All three can update the same profile fields
+- Rating system, skill rating, and member ID are consistent everywhere
+- Academy managers can edit their trainers' profiles without admin access
