@@ -13,8 +13,14 @@ export const MARKETING_DOMAIN = 'https://padeltrainer.ai';
  * Use this for links from the marketing site to the app.
  */
 export function getAppUrl(path: string): string {
-  // Ensure path starts with /
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // In development, use relative paths for same-origin navigation
+  if (isInDevelopment()) {
+    return normalizedPath;
+  }
+  
+  // In production, always use full app subdomain URL
   return `${APP_DOMAIN}${normalizedPath}`;
 }
 
