@@ -3119,6 +3119,7 @@ export type Database = {
           country: string | null
           description: string | null
           id: string | null
+          is_public: boolean | null
           is_verified: boolean | null
           logo_url: string | null
           name: string | null
@@ -3128,6 +3129,7 @@ export type Database = {
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
+          subscription_status: string | null
           website_url: string | null
         }
         Insert: {
@@ -3135,6 +3137,7 @@ export type Database = {
           country?: string | null
           description?: string | null
           id?: string | null
+          is_public?: boolean | null
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
@@ -3144,6 +3147,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          subscription_status?: string | null
           website_url?: string | null
         }
         Update: {
@@ -3151,6 +3155,7 @@ export type Database = {
           country?: string | null
           description?: string | null
           id?: string | null
+          is_public?: boolean | null
           is_verified?: boolean | null
           logo_url?: string | null
           name?: string | null
@@ -3160,6 +3165,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          subscription_status?: string | null
           website_url?: string | null
         }
         Relationships: []
