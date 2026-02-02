@@ -91,3 +91,6 @@ verify_jwt = false
 
 [functions.signup-user]
 verify_jwt = false
+
+[functions.fetch-location-logos]
+verify_jwt = false
