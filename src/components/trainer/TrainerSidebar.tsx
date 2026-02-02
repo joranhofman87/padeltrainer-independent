@@ -198,7 +198,7 @@ export function TrainerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
                   <NavLink
-                    to="/trainer/profile/edit"
+                    to="/trainer/profile"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >

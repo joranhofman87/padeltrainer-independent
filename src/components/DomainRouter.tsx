@@ -173,6 +173,7 @@ function AppRoutes() {
       {/* Trainer routes */}
       <Route path="/trainer" element={<TrainerLayout />}>
         <Route index element={<TrainerDashboard />} />
+        <Route path="profile" element={<EditProfile />} />
         <Route path="settings" element={<TrainerSettings />} />
         <Route path="settings/bookings" element={<TrainerBookingSettings />} />
         <Route path="calendar" element={<TrainerCalendar />} />
@@ -301,6 +302,7 @@ function CombinedRoutes() {
       {/* Trainer routes */}
       <Route path="/trainer" element={<TrainerLayout />}>
         <Route index element={<TrainerDashboard />} />
+        <Route path="profile" element={<EditProfile />} />
         <Route path="settings" element={<TrainerSettings />} />
         <Route path="settings/bookings" element={<TrainerBookingSettings />} />
         <Route path="calendar" element={<TrainerCalendar />} />
