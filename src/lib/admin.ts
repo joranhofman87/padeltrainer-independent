@@ -1,5 +1,63 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface EnrichmentResult {
+  location_id: string;
+  location_name: string;
+  status: "success" | "skipped" | "error";
+  error?: string;
+  data?: {
+    indoor_courts: number;
+    outdoor_courts: number;
+    description: string;
+    logo_url: string | null;
+  };
+}
+
+export interface EnrichLocationsOptions {
+  location_ids?: string[];
+  batch_size?: number;
+  offset?: number;
+  dry_run?: boolean;
+}
+
+export interface EnrichLocationsResponse {
+  success: boolean;
+  dry_run: boolean;
+  batch_size: number;
+  offset: number;
+  next_offset: number;
+  total_processed: number;
+  summary: {
+    success: number;
+    skipped: number;
+    errors: number;
+  };
+  results: EnrichmentResult[];
+}
+
+export async function enrichLocations(
+  options: EnrichLocationsOptions = {}
+): Promise<EnrichLocationsResponse> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await supabase.functions.invoke("enrich-clubs", {
+    body: options,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Failed to enrich locations");
+  }
+
+  return response.data as EnrichLocationsResponse;
+}
+
 export interface AdminStats {
   overview: {
     totalGMV: number;
