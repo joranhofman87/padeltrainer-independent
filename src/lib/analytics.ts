@@ -1,8 +1,10 @@
 import { CookieConsent } from '@/contexts/CookieConsentContext';
+import { isOnMarketingDomain } from '@/lib/domains';
 
 const GA_MEASUREMENT_ID = 'G-7LV1ZK9PH5';
 
-let isInitialized = false;
+let isGAInitialized = false;
+let isTradeTrackerInitialized = false;
 
 function getStoredConsent(): CookieConsent | null {
   try {
@@ -17,7 +19,7 @@ function getStoredConsent(): CookieConsent | null {
 }
 
 function loadGoogleAnalytics() {
-  if (isInitialized) return;
+  if (isGAInitialized) return;
   
   // Create and append the GA script
   const script = document.createElement('script');
@@ -36,7 +38,29 @@ function loadGoogleAnalytics() {
   // Make gtag available globally
   window.gtag = gtag;
   
-  isInitialized = true;
+  isGAInitialized = true;
+}
+
+function loadTradeTracker() {
+  // Only load on marketing domain (padeltrainer.ai)
+  if (!isOnMarketingDomain()) return;
+  if (isTradeTrackerInitialized) return;
+
+  // Set up TradeTracker options globally
+  (window as unknown as { _TradeTrackerTagOptions: object })._TradeTrackerTagOptions = {
+    t: 'a',
+    s: '505059',
+    chk: 'a6008bc2b069f12d2b9ed64acbcba05b',
+    overrideOptions: {}
+  };
+
+  // Create and append the TradeTracker script
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src = `https://tm.tradetracker.net/tag?t=a&s=505059&chk=a6008bc2b069f12d2b9ed64acbcba05b`;
+  document.body.appendChild(script);
+
+  isTradeTrackerInitialized = true;
 }
 
 export function initializeAnalytics() {
@@ -44,15 +68,20 @@ export function initializeAnalytics() {
   
   if (consent?.analytics) {
     loadGoogleAnalytics();
+    loadTradeTracker();
   }
   
   // Listen for consent updates
   window.addEventListener('cookie-consent-updated', ((event: CustomEvent<CookieConsent>) => {
-    if (event.detail.analytics && !isInitialized) {
-      loadGoogleAnalytics();
+    if (event.detail.analytics) {
+      if (!isGAInitialized) {
+        loadGoogleAnalytics();
+      }
+      if (!isTradeTrackerInitialized) {
+        loadTradeTracker();
+      }
     }
-    // Note: We don't unload GA if consent is withdrawn - that requires a page reload
-    // This is standard practice as GA has already collected the pageview
+    // Note: We don't unload trackers if consent is withdrawn - that requires a page reload
   }) as EventListener);
 }
 
