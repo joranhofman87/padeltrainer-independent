@@ -1,111 +1,64 @@
 
-# Add Country Field to Academy Profiles
+# Add TradeTracker Script to Marketing Pages
 
 ## Overview
-Add a country selection field to academy profiles to enable future country-based filtering on the Academies page. All existing academies will default to Netherlands (NL).
+Add the TradeTracker SuperTag tracking script to the marketing pages only (padeltrainer.ai), excluding the app subdomain (app.padeltrainer.ai).
 
-## Database Changes
-
-### 1. Add country column to academy_profiles
-```sql
-ALTER TABLE academy_profiles 
-ADD COLUMN country TEXT NOT NULL DEFAULT 'NL';
-
--- Add comment for clarity
-COMMENT ON COLUMN academy_profiles.country IS 'ISO 3166-1 alpha-2 country code';
-```
-
-This will automatically set all existing academies to 'NL' (Netherlands).
-
-### 2. Update public views (if applicable)
-The `academy_profiles_public` and `academy_profiles_safe` views may need updating to include the new `country` column.
+## Approach
+Follow the existing analytics pattern used for Google Analytics:
+1. Create a dedicated function to load TradeTracker
+2. Only load on the marketing domain
+3. Respect cookie consent for tracking purposes
 
 ---
 
-## Frontend Changes
+## Changes Required
 
-### 1. Create Countries List Constant
-**New file: `src/lib/countries.ts`**
+### 1. Create TradeTracker Loader Function
+**File: `src/lib/analytics.ts`**
 
-Create a reusable list of countries with ISO codes:
+Add a new function to load the TradeTracker script:
+- Only loads on marketing domain (padeltrainer.ai)
+- Respects analytics cookie consent
+- Injects script dynamically into the page
+
 ```typescript
-export const COUNTRIES = {
-  NL: 'Nederland',
-  BE: 'Belgium',
-  DE: 'Germany',
-  ES: 'Spain',
-  FR: 'France',
-  GB: 'United Kingdom',
-  IT: 'Italy',
-  PT: 'Portugal',
-  // Add more as needed
-} as const;
+function loadTradeTracker() {
+  // Only load on marketing domain
+  if (!isOnMarketingDomain()) return;
+  if (isTradeTrackerInitialized) return;
+  
+  const _TradeTrackerTagOptions = {
+    t: 'a',
+    s: '505059',
+    chk: 'a6008bc2b069f12d2b9ed64acbcba05b',
+    overrideOptions: {}
+  };
 
-export type CountryCode = keyof typeof COUNTRIES;
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src = `https://tm.tradetracker.net/tag?t=${...}`;
+  document.body.appendChild(script);
+  
+  isTradeTrackerInitialized = true;
+}
 ```
 
-### 2. Update Academy Onboarding Page
-**File: `src/pages/AcademyOnboarding.tsx`**
-
-Add country dropdown:
-- Default to 'NL'
-- Required field
-- Pass country to `createAcademy()` function
-
-### 3. Update Academy Profile Edit Page
-**File: `src/pages/academy/AcademyProfile.tsx`**
-
-Add country dropdown in the Basic Info section:
-- Pre-fill with current value
-- Include in form submission
-
-### 4. Update Academy Library Functions
-**File: `src/lib/academy.ts`**
-
-- Update `AcademyProfile` interface to include `country`
-- Update `createAcademy()` to accept country parameter
-- Update `updateAcademyProfile()` to handle country field
-
-### 5. Update Admin Academy Edit Dialog
-**File: `src/components/admin/AcademyEditDialog.tsx`**
-
-Add country dropdown in the profile tab for admin editing.
-
-### 6. Update Translations
-**Files: `src/i18n/locales/en/academy.json` and `src/i18n/locales/nl/academy.json`**
-
-Add translations for:
-- "Country" label
-- "Select country" placeholder
+### 2. Update initializeAnalytics Function
+Add TradeTracker loading alongside Google Analytics:
+- Calls `loadTradeTracker()` when analytics consent is given
+- Also listens for consent updates to load if user accepts later
 
 ---
 
 ## Technical Details
 
-### Country Dropdown Component Pattern
-```text
-+---------------------------+
-|  Country *                |
-+---------------------------+
-| [Dropdown: NL - Nederland v]
-+---------------------------+
-```
-
-Using the existing Select component pattern from the codebase:
-```tsx
-<Select value={country} onValueChange={setCountry}>
-  <SelectTrigger>
-    <SelectValue placeholder="Select country" />
-  </SelectTrigger>
-  <SelectContent>
-    {Object.entries(COUNTRIES).map(([code, name]) => (
-      <SelectItem key={code} value={code}>
-        {name}
-      </SelectItem>
-    ))}
-  </SelectContent>
-</Select>
-```
+| Aspect | Implementation |
+|--------|----------------|
+| Loading location | Appended to `<body>` (as specified) |
+| Domain check | Uses existing `isOnMarketingDomain()` function |
+| Cookie consent | Requires analytics consent (same as GA) |
+| Script loading | Dynamic via JavaScript |
 
 ---
 
@@ -113,19 +66,11 @@ Using the existing Select component pattern from the codebase:
 
 | File | Change |
 |------|--------|
-| Database migration | Add `country` column with default 'NL' |
-| `src/lib/countries.ts` | New file - countries list |
-| `src/lib/academy.ts` | Add country to interface and functions |
-| `src/pages/AcademyOnboarding.tsx` | Add country dropdown |
-| `src/pages/academy/AcademyProfile.tsx` | Add country dropdown |
-| `src/components/admin/AcademyEditDialog.tsx` | Add country field |
-| `src/i18n/locales/en/academy.json` | Add translations |
-| `src/i18n/locales/nl/academy.json` | Add translations |
+| `src/lib/analytics.ts` | Add TradeTracker loader function and call it in `initializeAnalytics()` |
 
 ---
 
-## Future Considerations
-Once this is in place, you can:
-1. Add country filter dropdown to `/academies` page
-2. Filter academies by country in queries
-3. Display country flag/badge on academy cards
+## Result
+- TradeTracker will load on `padeltrainer.ai` marketing pages when users accept analytics cookies
+- The app subdomain (`app.padeltrainer.ai`) will NOT load TradeTracker
+- Development/preview environments will also skip loading (following marketing domain check)
