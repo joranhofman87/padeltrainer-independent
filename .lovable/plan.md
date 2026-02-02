@@ -1,78 +1,98 @@
 
 
-# Fix Logo Scraping Progress Indicator
+# Speed Up Logo Scraping
 
-## Problem
-The logo scraping IS working (confirmed via edge function logs), but the UI shows 0% because:
-1. Progress only updates after an **entire batch** completes
-2. Each website scrape takes 15-30+ seconds
-3. With a batch of 10 locations, the first update won't appear for 3-5 minutes
-4. There's no visual indicator that work is actively happening
+## Current Problem
+The `enrich-clubs` function takes 15-30 seconds per location because it does **full enrichment**:
+- Scrapes full page content (3+ seconds with waitFor)
+- 2 AI calls for courts extraction + description generation (4-10 seconds)
+- Logo download and upload (2-5 seconds)
 
-## Solution
-Add better feedback to show the scraping is actively working:
+For logo-only operations, we're doing 80% unnecessary work!
+
+## Solution: Create Dedicated Logo-Only Function
+
+Create a new lightweight edge function `fetch-location-logos` that:
+- Only requests `branding` format from Firecrawl (no markdown)
+- Removes the 3-second `waitFor` (logos load immediately)
+- Skips all AI processing
+- Only updates `logo_url` field
+
+**Expected speed improvement: 15-30 seconds → 3-5 seconds per location**
 
 ---
 
 ## Changes Required
 
-### 1. Add Elapsed Time Counter
+### 1. Create New Edge Function
+**File: `supabase/functions/fetch-location-logos/index.ts`**
+
+Streamlined function that:
+- Calls Firecrawl with `formats: ["branding"]` only
+- Removes `waitFor: 3000`
+- Downloads logo and uploads to storage
+- Updates only `locations.logo_url`
+
+### 2. Update Admin Helper
+**File: `src/lib/admin.ts`**
+
+Add new function `fetchLocationLogos()` that calls the new edge function.
+
+### 3. Update Dialog to Use New Function
 **File: `src/components/admin/ScrapeLogosDialog.tsx`**
 
-Show a running timer so users know the process is active:
-- Display "Elapsed: 0:45" next to "Processing batch 1..."
-- Timer updates every second while processing
-
-### 2. Add Spinning Indicator
-Add a visible spinner next to the progress text to indicate active work.
-
-### 3. Add Estimated Time Message
-Show informative text like:
-> "Each location takes 15-30 seconds to process. Batch of 10 may take up to 5 minutes."
-
-### 4. Use Smaller Default Batch Size
-Change default from 10 to 5 so users see results faster (feedback every 1.5-2 minutes instead of 3-5 minutes).
+Switch from `enrichLocations()` to `fetchLocationLogos()`.
 
 ---
 
-## Implementation Details
+## Technical Comparison
 
-Add state for tracking elapsed time:
+| Step | Current (enrich-clubs) | New (fetch-logos) |
+|------|------------------------|-------------------|
+| Firecrawl scrape | markdown + branding, 3s wait | branding only, no wait |
+| AI: Extract courts | Yes (2-5s) | **No** |
+| AI: Generate description | Yes (2-5s) | **No** |
+| Download logo | Yes | Yes |
+| Upload to storage | Yes | Yes |
+| DB update | courts + description + logo | logo only |
+| **Total time** | **15-30 seconds** | **3-5 seconds** |
+
+---
+
+## New Edge Function Logic
+
 ```text
-const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-useEffect(() => {
-  if (!processing) {
-    setElapsedSeconds(0);
-    return;
-  }
-  const interval = setInterval(() => {
-    setElapsedSeconds(s => s + 1);
-  }, 1000);
-  return () => clearInterval(interval);
-}, [processing]);
-```
-
-Update progress section to show:
-```text
-Processing batch 1... (Elapsed: 1:23)        0%
-[====                                          ]
-Each location takes 15-30 seconds. This batch may take a few minutes.
+async function scrapeLogoOnly(url: string) {
+  const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: formattedUrl,
+      formats: ["branding"],  // Only branding, no markdown
+      // No waitFor - logos are in initial HTML
+    }),
+  });
+  
+  const data = await response.json();
+  return data.data?.branding?.images?.logo || null;
+}
 ```
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/components/admin/ScrapeLogosDialog.tsx` | Add elapsed timer, spinner, informative text, change default batch to 5 |
+| `supabase/functions/fetch-location-logos/index.ts` | **Create** new lightweight function |
+| `src/lib/admin.ts` | Add `fetchLocationLogos()` helper |
+| `src/components/admin/ScrapeLogosDialog.tsx` | Use new function instead of `enrichLocations()` |
 
 ---
 
 ## Result
-- Users will see an actively ticking timer showing the process is running
-- Informative text sets correct expectations about timing
-- Smaller default batch means faster initial feedback
-- Spinner provides visual indication of activity
+- **5-6x faster** logo scraping (3-5 seconds vs 15-30 seconds)
+- Batch of 5 locations: ~20 seconds instead of 2+ minutes
+- Lower API costs (no AI calls)
+- Firecrawl rate limits less likely to be hit
 
