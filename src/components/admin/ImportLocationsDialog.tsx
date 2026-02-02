@@ -72,7 +72,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   country: ["country", "land"],
   street_address: ["street_address", "address", "straat", "adres", "street"],
   postal_code: ["postal_code", "postcode", "zip", "zipcode"],
-  website_url: ["website_url", "website", "url"],
+  website_url: ["website_url", "website", "url", "domain"],
   latitude: ["latitude", "lat"],
   longitude: ["longitude", "lng", "lon"],
   phone: ["phone", "telefoon", "tel", "telephone"],
