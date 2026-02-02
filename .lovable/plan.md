@@ -1,123 +1,78 @@
 
 
-# Scrape Logos from Location Websites
+# Fix Logo Scraping Progress Indicator
 
-## Current Situation
-- **578 locations** have website URLs configured
-- **Only 13 locations** currently have logos
-- The `enrich-clubs` edge function already has logo scraping capability built-in
+## Problem
+The logo scraping IS working (confirmed via edge function logs), but the UI shows 0% because:
+1. Progress only updates after an **entire batch** completes
+2. Each website scrape takes 15-30+ seconds
+3. With a batch of 10 locations, the first update won't appear for 3-5 minutes
+4. There's no visual indicator that work is actively happening
 
-## Solution: Add Admin UI to Trigger Logo Scraping
-
-Rather than building new scraping logic, we'll add a user-friendly admin interface to trigger the existing `enrich-clubs` function, with options to:
-1. Scrape logos for selected locations
-2. Batch process locations without logos
-3. Preview results before saving
+## Solution
+Add better feedback to show the scraping is actively working:
 
 ---
 
 ## Changes Required
 
-### 1. Add "Scrape Logos" Button to Admin Locations Page
-**File: `src/pages/admin/AdminLocations.tsx`**
+### 1. Add Elapsed Time Counter
+**File: `src/components/admin/ScrapeLogosDialog.tsx`**
 
-Add a new button in the header:
-- "Fetch Logos" button that opens a dialog
-- Shows count of locations without logos (565 currently)
+Show a running timer so users know the process is active:
+- Display "Elapsed: 0:45" next to "Processing batch 1..."
+- Timer updates every second while processing
 
-### 2. Create Logo Scraping Dialog Component
-**New file: `src/components/admin/ScrapeLogosDialog.tsx`**
+### 2. Add Spinning Indicator
+Add a visible spinner next to the progress text to indicate active work.
 
-A dialog with:
-- Summary: "X locations have websites but no logo"
-- Batch size selector (5, 10, 25 locations at a time)
-- Option to select specific locations or process all without logos
-- Progress indicator during scraping
-- Results preview showing extracted logos before confirming
+### 3. Add Estimated Time Message
+Show informative text like:
+> "Each location takes 15-30 seconds to process. Batch of 10 may take up to 5 minutes."
 
-### 3. Create Admin API Helper for Enrichment
-**File: `src/lib/admin.ts`**
-
-Add a function to call the `enrich-clubs` edge function:
-```text
-enrichLocations(options: {
-  location_ids?: string[];
-  batch_size?: number;
-  offset?: number;
-  dry_run?: boolean;
-}) => Promise<EnrichmentResult[]>
-```
+### 4. Use Smaller Default Batch Size
+Change default from 10 to 5 so users see results faster (feedback every 1.5-2 minutes instead of 3-5 minutes).
 
 ---
 
-## Technical Details
+## Implementation Details
 
-### How Logo Extraction Works (already implemented)
-
-The `enrich-clubs` function uses Firecrawl's branding extraction:
-
+Add state for tracking elapsed time:
 ```text
-Request: { url, formats: ["markdown", "branding"] }
+const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-Response includes:
-  branding: {
-    images: {
-      logo: "https://example.com/logo.svg"
-    }
+useEffect(() => {
+  if (!processing) {
+    setElapsedSeconds(0);
+    return;
   }
+  const interval = setInterval(() => {
+    setElapsedSeconds(s => s + 1);
+  }, 1000);
+  return () => clearInterval(interval);
+}, [processing]);
 ```
 
-The function then:
-1. Downloads the logo from the extracted URL
-2. Uploads it to Supabase Storage: `avatars/clubs/{location_id}/logo.png`
-3. Updates `locations.logo_url` with the public storage URL
-
-### Batch Processing Flow
-
+Update progress section to show:
 ```text
-+------------------+     +-------------------+     +------------------+
-|  Admin clicks    | --> | Dialog shows      | --> | Call enrich-clubs|
-|  "Fetch Logos"   |     | locations w/o     |     | edge function    |
-|                  |     | logos (565)       |     |                  |
-+------------------+     +-------------------+     +------------------+
-                                                           |
-                                                           v
-+------------------+     +-------------------+     +------------------+
-|  Refresh table   | <-- | Show success/     | <-- | Update DB with   |
-|  with new logos  |     | failure counts    |     | extracted logos  |
-+------------------+     +-------------------+     +------------------+
+Processing batch 1... (Elapsed: 1:23)        0%
+[====                                          ]
+Each location takes 15-30 seconds. This batch may take a few minutes.
 ```
 
 ---
 
-## Files to Create/Modify
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/admin/ScrapeLogosDialog.tsx` | New dialog component |
-| `src/pages/admin/AdminLocations.tsx` | Add "Fetch Logos" button |
-| `src/lib/admin.ts` | Add `enrichLocations()` helper function |
+| `src/components/admin/ScrapeLogosDialog.tsx` | Add elapsed timer, spinner, informative text, change default batch to 5 |
 
 ---
 
-## User Flow
-
-1. Admin opens Location Management page
-2. Clicks "Fetch Logos" button
-3. Dialog shows:
-   - "565 locations have websites but no logo"
-   - Batch size selection (default: 10)
-   - "Start" button
-4. Progress bar shows as locations are processed
-5. Results show: "8 logos found, 2 failed"
-6. Table refreshes to show new logos
-
----
-
-## Rate Limiting Considerations
-
-- Firecrawl API has rate limits
-- Process in batches of 10-25 with 500ms delay between each
-- Allow admin to stop/pause the process
-- Show which locations failed so they can be retried
+## Result
+- Users will see an actively ticking timer showing the process is running
+- Informative text sets correct expectations about timing
+- Smaller default batch means faster initial feedback
+- Spinner provides visual indication of activity
 
