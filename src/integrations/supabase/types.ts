@@ -1904,6 +1904,7 @@ export type Database = {
           instagram_url: string | null
           is_active: boolean
           latitude: number | null
+          logo_fetched_at: string | null
           logo_url: string | null
           longitude: number | null
           name: string
@@ -1932,6 +1933,7 @@ export type Database = {
           instagram_url?: string | null
           is_active?: boolean
           latitude?: number | null
+          logo_fetched_at?: string | null
           logo_url?: string | null
           longitude?: number | null
           name: string
@@ -1960,6 +1962,7 @@ export type Database = {
           instagram_url?: string | null
           is_active?: boolean
           latitude?: number | null
+          logo_fetched_at?: string | null
           logo_url?: string | null
           longitude?: number | null
           name?: string
