@@ -1,183 +1,89 @@
 
-# Data Consistency Fix: Academy Trainer Edit Dialog
 
-## Problem Summary
+# Fix: Academy Managers Cannot Save Trainer Profile Changes
 
-The same trainer shows different data in Admin vs Academy edit dialogs because:
+## Problem Identified
 
-| Admin Panel | Academy Dialog |
-|-------------|----------------|
-| ✅ Reads from `profiles` table (RLS allows admins) | ❌ Reads from `profiles` table (RLS blocks academy managers) |
-| ✅ Saves via `update-user` edge function | ❌ Saves directly to `profiles` (blocked by RLS) |
-| Shows: "Tygho Schoonus", KNLTB 0.9 | Shows: "John Doe" (placeholder), 8.0 (default) |
+When an academy manager edits a trainer's profile (e.g., adding experience), the changes are **not being saved**. This happens because:
 
----
+| Table | Fields | Can Academy Manager Update? |
+|-------|--------|---------------------------|
+| `profiles` | name, phone, bio, skill_rating | Yes (via edge function) |
+| `trainer_profiles` | experience_years, hourly_rate, certifications | **NO - Missing RLS policy** |
 
-## Root Cause
+The edge function logs show `"User updated... (manager)"` which means the profile fields save correctly, but the trainer-specific fields like **experience years** fail silently because there's no RLS policy allowing academy managers to update `trainer_profiles`.
 
-The `EditAcademyTrainerDialog` directly queries the `profiles` table:
-```typescript
-const { data: profile } = await supabase
-  .from('profiles')  // <-- RLS restricts this!
-  .select('...')
-  .eq('user_id', userId)
+## Current RLS Policies on `trainer_profiles`
+
+```text
+UPDATE policies:
+- "Admins can update any trainer profile"
+- "Club managers can update trainer profiles at their locations"  
+- "Trainers can update their own trainer profile"
+
+MISSING:
+- "Academy managers can update trainer profiles in their academy"
 ```
-
-RLS policy on `profiles`:
-- Admins can view all
-- Users can view their own
-- Academy managers **cannot** view other users' profiles
-
-The query silently returns `null`, so the dialog shows empty/placeholder values.
 
 ---
 
 ## Solution
 
-### 1. Update `profiles_public` View
+### Option A: Add RLS Policy for Academy Managers (Recommended)
 
-Add missing fields needed for trainer editing:
-- `phone`
-- `rating_member_id` (currently only has `knltb_number`)
+Add a new UPDATE policy on `trainer_profiles` that allows academy managers to update trainers associated with their academy:
 
 ```sql
-CREATE OR REPLACE VIEW profiles_public AS
-SELECT 
-  id, user_id, full_name, avatar_url, bio, location,
-  skill_rating, rating_system, rating_member_id,
-  phone,  -- Add phone
-  created_at, updated_at
-FROM profiles;
+CREATE POLICY "Academy managers can update trainer profiles in their academy"
+  ON public.trainer_profiles FOR UPDATE
+  USING (
+    id IN (
+      SELECT at.trainer_profile_id
+      FROM academy_trainers at
+      WHERE at.status = 'active'
+        AND at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  );
 ```
 
-### 2. Update `EditAcademyTrainerDialog.tsx` - Fetch Logic
+This is the cleanest solution because it uses the same pattern as the existing club manager policy.
 
-Change from `profiles` table to `profiles_public` view:
+### Option B: Route Through Edge Function
 
-```typescript
-// Before (broken)
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
-  .eq('user_id', userId);
+Alternatively, we could extend the `update-user` edge function to also handle trainer_profiles updates. However, this adds complexity and the RLS approach is more consistent with how club managers already work.
 
-// After (works)
-const { data: profile } = await supabase
-  .from('profiles_public')
-  .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
-  .eq('user_id', userId);
-```
+---
 
-### 3. Update `update-user` Edge Function
+## Implementation Plan
 
-Extend to allow academy managers (not just admins) to update trainers in their academy:
+### 1. Database Migration
+Add the missing RLS policy to allow academy managers to update `trainer_profiles` for trainers in their academy.
 
-```typescript
-// Check if caller is admin OR academy manager for this trainer
-const isAdmin = !!adminRole;
+### 2. Also Add SELECT Policy (for consistency)
+Academy managers should be able to read trainer profiles for trainers in their academy:
 
-// Check if academy manager for this trainer
-let isAcademyManagerForTrainer = false;
-if (!isAdmin) {
-  // Get trainer's academy membership
-  const { data: trainerAcademy } = await supabaseAdmin
-    .from('academy_trainers')
-    .select('academy_profile_id')
-    .eq('trainer_profile_id', trainer_profile_id) // Need to pass this
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (trainerAcademy) {
-    // Check if caller is manager of that academy
-    const { data: managerCheck } = await supabaseAdmin
-      .from('academy_managers')
-      .select('id')
-      .eq('user_id', adminUser.id)
-      .eq('academy_profile_id', trainerAcademy.academy_profile_id)
-      .maybeSingle();
-    
-    isAcademyManagerForTrainer = !!managerCheck;
-  }
-}
-
-if (!isAdmin && !isAcademyManagerForTrainer) {
-  return { error: "Unauthorized" };
-}
-```
-
-### 4. Update `EditAcademyTrainerDialog.tsx` - Save Logic
-
-Use the `update-user` edge function instead of direct Supabase updates:
-
-```typescript
-// Before (blocked by RLS)
-const { error } = await supabase
-  .from('profiles')
-  .update({ full_name, skill_rating, ... })
-  .eq('user_id', userId);
-
-// After (uses edge function with service role)
-const { error } = await supabase.functions.invoke("update-user", {
-  body: {
-    target_user_id: userId,
-    trainer_profile_id: trainerId, // Needed for academy manager auth
-    full_name: profileData.full_name,
-    phone: profileData.phone,
-    bio: profileData.bio,
-    skill_rating: profileData.skill_rating,
-    rating_system: profileData.rating_system,
-    rating_member_id: profileData.rating_member_id,
-  },
-});
+```sql
+CREATE POLICY "Academy managers can view trainer profiles in their academy"
+  ON public.trainer_profiles FOR SELECT
+  USING (
+    id IN (
+      SELECT at.trainer_profile_id
+      FROM academy_trainers at
+      WHERE at.academy_profile_id IN (SELECT get_user_academy_ids(auth.uid()))
+    )
+  );
 ```
 
 ---
 
-## Files to Modify
+## Result After Fix
 
-| File | Changes |
-|------|---------|
-| `supabase migration` | Add `phone` and `rating_member_id` to `profiles_public` view |
-| `supabase/functions/update-user/index.ts` | Add academy manager authorization check |
-| `src/components/academy/EditAcademyTrainerDialog.tsx` | Use `profiles_public` for reads, edge function for writes |
-| `src/components/club/EditClubTrainerDialog.tsx` | Same pattern as academy dialog |
+| Action | Before | After |
+|--------|--------|-------|
+| Edit experience years | Fails silently | Saves correctly |
+| Edit hourly rate | Fails silently | Saves correctly |
+| Edit certifications | Fails silently | Saves correctly |
+| Edit name/bio/rating | Works (edge function) | Works (unchanged) |
 
----
+Academy managers will be able to fully edit their trainers' profiles, matching the behavior available to admins and club managers.
 
-## Data Flow After Fix
-
-```text
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  Admin Panel    │      │ Academy Dialog  │      │ Trainer's Own   │
-│  TrainerEdit    │      │ EditAcademy     │      │ EditProfile     │
-│  Dialog         │      │ TrainerDialog   │      │                 │
-└────────┬────────┘      └────────┬────────┘      └────────┬────────┘
-         │                        │                        │
-         ▼                        ▼                        ▼
-    ┌────────────────────────────────────────────────────────────┐
-    │                    profiles_public VIEW                     │
-    │         (full_name, skill_rating, rating_system, phone)     │
-    └────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼ (READ)
-    ┌────────────────────────────────────────────────────────────┐
-    │                       profiles TABLE                        │
-    │              (all fields, RLS protected)                    │
-    └────────────────────────────────────────────────────────────┘
-                                  ▲
-                                  │ (WRITE via service role)
-    ┌────────────────────────────────────────────────────────────┐
-    │                   update-user Edge Function                 │
-    │    (validates: admin OR academy manager OR own profile)     │
-    └────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Result
-
-After implementation:
-- All three views (Admin, Academy, Trainer) show identical data
-- All three can update the same profile fields
-- Rating system, skill rating, and member ID are consistent everywhere
-- Academy managers can edit their trainers' profiles without admin access
