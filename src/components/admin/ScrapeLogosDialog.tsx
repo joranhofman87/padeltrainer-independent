@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, Image, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import {
   Dialog,
@@ -46,7 +46,7 @@ export function ScrapeLogosDialog({
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<EnrichmentResult[]>([]);
   const [currentBatch, setCurrentBatch] = useState(0);
-  const [shouldStop, setShouldStop] = useState(false);
+  const shouldStopRef = useRef(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Timer for elapsed time during processing
@@ -67,7 +67,7 @@ export function ScrapeLogosDialog({
       setResults([]);
       setProgress(0);
       setCurrentBatch(0);
-      setShouldStop(false);
+      shouldStopRef.current = false;
     }
   }, [open]);
 
@@ -102,14 +102,14 @@ export function ScrapeLogosDialog({
     setProcessing(true);
     setResults([]);
     setProgress(0);
-    setShouldStop(false);
+    shouldStopRef.current = false;
 
     const batch = parseInt(batchSize);
     const totalBatches = Math.ceil(locationsWithoutLogos.length / batch);
     let allResults: EnrichmentResult[] = [];
     let processedCount = 0;
 
-    for (let i = 0; i < totalBatches && !shouldStop; i++) {
+    for (let i = 0; i < totalBatches && !shouldStopRef.current; i++) {
       setCurrentBatch(i + 1);
       const startIdx = i * batch;
       const batchLocationIds = locationsWithoutLogos
@@ -157,7 +157,8 @@ export function ScrapeLogosDialog({
   }
 
   function stopScraping() {
-    setShouldStop(true);
+    shouldStopRef.current = true;
+    setProcessing(false);
   }
 
   const successResults = results.filter((r) => r.status === "success" && r.data?.logo_url);
