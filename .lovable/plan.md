@@ -1,95 +1,64 @@
 
-# Fix Sitemap 1000-Row Limit
+# Fix Academy Profiles Public View
 
-## Problem
-The sitemap edge function has the same Supabase 1000-row limit that was just fixed in the frontend. With 1,408 locations and 1,116 cities, the sitemap is missing ~408 location pages and potentially some city pages.
+## Problem Identified
+The `academy_profiles_public` view is missing two critical columns that are needed for the academy pages to work correctly:
+
+1. **`subscription_status`** - Needed to identify "featured" academies (those with active subscriptions)
+2. **`is_public`** - Needed for the in-memory check in `getAcademyBySlug()` function
+
+This is why "Bramos Padel Academy" and "RL Padel Performance" are:
+- Not appearing in the featured section (filter fails because `subscription_status` is undefined)
+- Cannot have their profiles opened (check fails because `is_public` is undefined)
 
 ## Solution
-Apply the same paginated fetching pattern to the sitemap edge function.
+Update the `academy_profiles_public` view to include both missing columns.
 
 ---
 
-## Changes Required
+## Database Migration
 
-### File: `supabase/functions/sitemap/index.ts`
-
-Add a helper function to fetch all rows with pagination, then use it for locations:
-
-```typescript
-// Helper to fetch all rows (handles >1000 limit)
-async function fetchAllRows<T>(
-  supabase: any,
-  table: string,
-  selectColumns: string,
-  filters?: { column: string; operator: string; value: any }[]
-): Promise<T[]> {
-  const allRows: T[] = [];
-  const pageSize = 1000;
-  let from = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    let query = supabase
-      .from(table)
-      .select(selectColumns)
-      .range(from, from + pageSize - 1);
-
-    // Apply filters
-    if (filters) {
-      for (const filter of filters) {
-        if (filter.operator === 'eq') {
-          query = query.eq(filter.column, filter.value);
-        }
-      }
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(`Error fetching ${table}:`, error);
-      break;
-    }
-
-    if (data) {
-      allRows.push(...data);
-      hasMore = data.length === pageSize;
-      from += pageSize;
-    } else {
-      hasMore = false;
-    }
-  }
-
-  return allRows;
-}
-```
-
-Update the locations fetch to use this helper:
-
-```typescript
-// Fetch all active locations (with pagination)
-const locations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-  supabase,
-  'locations',
-  'slug, city, updated_at',
-  [{ column: 'is_active', operator: 'eq', value: true }]
-);
+```sql
+-- Fix academy_profiles_public view to include missing columns
+DROP VIEW IF EXISTS academy_profiles_public;
+CREATE VIEW academy_profiles_public WITH (security_invoker = on) AS
+SELECT 
+  id,
+  name,
+  slug,
+  description,
+  logo_url,
+  banner_url,
+  website_url,
+  social_instagram,
+  social_facebook,
+  social_linkedin,
+  social_youtube,
+  social_tiktok,
+  is_verified,
+  is_public,
+  subscription_status,
+  country
+FROM academy_profiles
+WHERE is_public = true;
 ```
 
 ---
 
-## Expected Result
+## Technical Details
 
-| Content Type | Before | After |
-|--------------|--------|-------|
-| Locations | 1,000 | 1,408 |
-| City pages | ~800 (capped) | 1,116 |
-| **Total URLs** | ~2,500 | ~4,100+ |
+| Column | Purpose |
+|--------|---------|
+| `is_public` | Used by `getAcademyBySlug()` in-memory check at line 224 |
+| `subscription_status` | Used by `Academies.tsx` featured filter at line 53 |
+
+### Files Affected (no code changes needed)
+- `src/lib/academy.ts` - `getAcademyBySlug()` will work correctly once view is fixed
+- `src/pages/Academies.tsx` - Featured filter will work correctly once view is fixed
 
 ---
 
-## After Deployment
-
-Once deployed, you can:
-1. Test the function directly: `curl https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap | grep -c '<url>'`
-2. Trigger the GitHub Action to update `public/sitemap.xml`
-3. Submit the updated sitemap to Google Search Console
+## Expected Result After Fix
+- "Bramos Padel Academy" and "RL Padel Performance" will appear in the featured section
+- Both academy profiles will be accessible via their public URLs
+- All other academies with `subscription_status = 'active'` will also appear as featured
