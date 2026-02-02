@@ -1,76 +1,144 @@
 
+# Fix Supabase 1000 Row Limit for Locations
 
-# Update CSV Import to Support Your Data Format
-
-## Overview
-Your CSV is already **mostly compatible** with the current importer! Only one small change is needed: adding "Domain" as an alias for website_url.
-
----
-
-## CSV Compatibility Analysis
-
-| Your CSV Column | Database Field | Status |
-|-----------------|----------------|--------|
-| Name | name | ✅ Ready |
-| Domain | website_url | ⚠️ **Need to add alias** |
-| Street | street_address | ✅ Ready |
-| Zipcode | postal_code | ✅ Ready |
-| City | city | ✅ Ready |
-| Country | country | ✅ Ready |
-| Latitude | latitude | ✅ Ready |
-| Longitude | longitude | ✅ Ready |
-| Facebook | facebook_url | ✅ Ready |
-| Instagram | instagram_url | ✅ Ready |
-| outdoor courts | outdoor_courts | ✅ Ready |
-| indoor courts | indoor_courts | ✅ Ready |
-| Phone | phone | ✅ Ready |
-| Review Count | google_review_count | ✅ Ready |
-| Average Rating | google_rating | ✅ Ready |
-| Email | email | ✅ Ready |
-| Opening Hours | opening_hours | ✅ Ready |
-| Google Maps URL | google_maps_url | ✅ Ready |
+## The Problem
+Supabase has a default limit of 1,000 rows per query. Your database has **1,408 locations**, but the admin page and public locations page only show 1,000 because the queries don't override this limit.
 
 ---
 
-## Required Change
+## Solution
+Use `.range()` to fetch locations in larger chunks, or increase the limit. Since you have ~1,400 locations and likely growing, I'll implement pagination-style fetching that retrieves all records.
 
-### File: `src/components/admin/ImportLocationsDialog.tsx`
+---
 
-Add "domain" as an alias for `website_url` in the HEADER_ALIASES mapping:
+## Changes Required
 
-**Current (line 75):**
+### File: `src/lib/locations.ts`
+
+**Update `getAllLocations()` (lines 69-82):**
+
 ```typescript
-website_url: ["website_url", "website", "url"],
+// Fetch all locations (for admin) - handles >1000 rows
+export async function getAllLocations(): Promise<Location[]> {
+  const allLocations: Location[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching all locations:', error);
+      throw error;
+    }
+
+    if (data) {
+      allLocations.push(...data);
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allLocations;
+}
 ```
 
-**Updated:**
+**Update `getActiveLocations()` (lines 52-66) with the same pattern:**
+
 ```typescript
-website_url: ["website_url", "website", "url", "domain"],
+// Fetch all active locations - handles >1000 rows
+export async function getActiveLocations(): Promise<Location[]> {
+  const allLocations: Location[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .eq('is_active', true)
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching locations:', error);
+      throw error;
+    }
+
+    if (data) {
+      allLocations.push(...data);
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allLocations;
+}
 ```
 
 ---
 
-## Data Quality Notes
+## Also Update These Helper Functions
 
-### Coordinate Format
-Your coordinates like `381.892.692` are already handled by the existing `normalizeCoordinate()` function which:
-- Converts `381.892.692` → `38.1892692`
-- Handles comma decimal separators (`44,895733` → `44.895733`)
+**`getUniqueCities()` and `getUniqueCountries()`** - Same issue, they only fetch first 1000:
 
-### Duplicate Columns
-Your CSV has `Zipcode`, `City`, `Country` appearing twice (columns 4-6 and 17-19). The importer uses the **first occurrence** of each column, which is correct.
+```typescript
+// Get unique cities from locations - handles >1000 rows
+export async function getUniqueCities(): Promise<string[]> {
+  const allCities: string[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  let hasMore = true;
 
-### Rating Format
-The rating `4,7` (comma decimal) is handled by the existing parser which converts to `4.7`.
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('city')
+      .eq('is_active', true)
+      .order('city')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching cities:', error);
+      throw error;
+    }
+
+    if (data) {
+      allCities.push(...data.map(l => l.city));
+      hasMore = data.length === pageSize;
+      from += pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return [...new Set(allCities)];
+}
+```
+
+Apply same pattern to `getUniqueCountries()`.
 
 ---
 
 ## Summary
 
-**Only 1 line needs to change** - adding "domain" to the website_url aliases. Your CSV is otherwise fully compatible with the existing importer, which already handles:
-- All your column headers (except Domain)
-- European number formats (comma decimals)
-- Malformed coordinates
-- Multiple email addresses
-- Opening hours text
+| Function | Current Limit | After Fix |
+|----------|---------------|-----------|
+| `getAllLocations()` | 1,000 | All (1,408+) |
+| `getActiveLocations()` | 1,000 | All |
+| `getUniqueCities()` | 1,000 | All |
+| `getUniqueCountries()` | 1,000 | All |
 
+The fix uses a simple loop with `.range()` to fetch in batches of 1,000 until all records are retrieved.
