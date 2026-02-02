@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Loader2, Upload } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -90,6 +91,8 @@ export function LocationEditDialog({
   const { toast } = useToast();
   const [formData, setFormData] = useState<FormData>(getInitialFormData(location));
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -168,6 +171,47 @@ export function LocationEditDialog({
 
   const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Please upload an image file.", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Error", description: "File size must be under 5MB.", variant: "destructive" });
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const locationId = location?.id || `temp-${Date.now()}`;
+      const filePath = `locations/${locationId}/logo.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const newUrl = publicUrlData.publicUrl + "?t=" + Date.now();
+      updateField('logo_url', newUrl);
+      toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
   };
 
   return (
@@ -357,13 +401,36 @@ export function LocationEditDialog({
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-muted-foreground">Media</h3>
             <div className="space-y-2">
-              <Label htmlFor="logo_url">Logo URL</Label>
-              <Input
-                id="logo_url"
-                value={formData.logo_url}
-                onChange={e => updateField('logo_url', e.target.value)}
-                placeholder="https://..."
-              />
+              <Label htmlFor="logo_url">Logo</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="logo_url"
+                  value={formData.logo_url}
+                  onChange={e => updateField('logo_url', e.target.value)}
+                  placeholder="URL or upload"
+                  className="flex-1"
+                />
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={logoUploading}
+                >
+                  {logoUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               {formData.logo_url && (
                 <div className="mt-2">
                   <img
