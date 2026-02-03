@@ -138,8 +138,8 @@ Test with Mollie test mode using test API key.
 | 2. Mollie Connect | 3-5 | ✅ Complete |
 | 3. Payment Functions | 6-8 | ✅ Complete |
 | 4. Subscription Functions | 9-12 | ✅ Complete |
-| 5. Frontend Updates | 13-14 | 🔄 Next |
-| 6. Testing | 15-16 | Final phase |
+| 5. Frontend Updates | 13-14 | ✅ Complete |
+| 6. Testing | 15-16 | 🔄 Next |
 
-**Next Step:** Implement Phase 5 - Frontend updates to use new Mollie functions (TrainerEarnings, BookLesson, BookingSuccess, TrainerSubscription, ClubSubscription pages).
+**Next Step:** Test the Mollie integration end-to-end using Mollie test mode.
 

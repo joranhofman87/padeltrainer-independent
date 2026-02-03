@@ -129,10 +129,10 @@ export default function TrainerEarnings() {
     }
   };
 
-  // Handle return from Stripe Connect onboarding
+  // Handle return from Mollie Connect onboarding
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
-      toast({ title: 'Stripe Connected!', description: 'Your account is now set up to receive payments' });
+      toast({ title: 'Mollie Connected!', description: 'Your account is now set up to receive payments' });
       checkConnectStatus();
     }
     if (searchParams.get('refresh') === 'true') {
@@ -192,19 +192,27 @@ export default function TrainerEarnings() {
 
   const checkConnectStatus = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('check-connect-status');
+      const { data, error } = await supabase.functions.invoke('check-mollie-connect-status', {
+        body: { type: 'trainer' },
+      });
       if (error) throw error;
-      setConnectStatus(data);
+      setConnectStatus({
+        connected: data?.connected || false,
+        chargesEnabled: data?.chargesEnabled,
+        payoutsEnabled: data?.payoutsEnabled,
+        onboardingComplete: data?.onboardingComplete,
+        balance: data?.balance,
+      });
     } catch (err) {
       console.error('Error checking connect status:', err);
       setConnectStatus({ connected: false });
     }
   };
 
-  const handleConnectStripe = async () => {
+  const handleConnectMollie = async () => {
     setConnectLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('connect-trainer');
+      const { data, error } = await supabase.functions.invoke('mollie-connect-trainer');
       if (error) throw error;
       if (data?.url) {
         window.location.href = data.url;
@@ -212,7 +220,7 @@ export default function TrainerEarnings() {
     } catch (err: any) {
       toast({
         title: 'Error',
-        description: err.message || 'Failed to connect Stripe',
+        description: err.message || 'Failed to connect Mollie',
         variant: 'destructive',
       });
       setConnectLoading(false);
@@ -446,7 +454,7 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Stripe Connect Card - only show when NOT using manual invoicing and NOT a club trainer */}
+        {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT a club trainer */}
         {!clubPaymentInfo?.isClubTrainer && !useManualInvoicing && connectStatus && !connectStatus.chargesEnabled && (
           <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
             <CardHeader>
@@ -457,7 +465,7 @@ export default function TrainerEarnings() {
                 <div>
                   <CardTitle className="text-lg">Connect Your Bank Account</CardTitle>
                   <CardDescription>
-                    Receive payments directly to your bank account with Stripe
+                    Receive payments directly to your bank account with Mollie
                   </CardDescription>
                 </div>
               </div>
@@ -475,23 +483,23 @@ export default function TrainerEarnings() {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Platform fee: 10% per transaction
+                    Platform fee: 5% per transaction
                   </div>
                 </div>
-                <Button onClick={handleConnectStripe} disabled={connectLoading} size="lg">
+                <Button onClick={handleConnectMollie} disabled={connectLoading} size="lg">
                   {connectLoading ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <ExternalLink className="h-4 w-4 mr-2" />
                   )}
-                  Connect with Stripe
+                  Connect with Mollie
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Stripe Balance Card - only show when NOT using manual invoicing and NOT a club trainer */}
+        {/* Mollie Balance Card - only show when NOT using manual invoicing and NOT a club trainer */}
         {!clubPaymentInfo?.isClubTrainer && !useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
           <Card className="mb-8 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
             <CardContent className="p-6">
@@ -501,7 +509,7 @@ export default function TrainerEarnings() {
                     <Wallet className="h-6 w-6 text-green-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Stripe Balance</p>
+                    <p className="text-sm text-muted-foreground">Mollie Balance</p>
                     <div className="flex items-baseline gap-3">
                       <span className="text-2xl font-bold text-green-600">
                         €{connectStatus.balance.available.toFixed(2)}
@@ -517,7 +525,7 @@ export default function TrainerEarnings() {
                 </div>
                 <Badge variant="outline" className="border-green-300 text-green-600">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Stripe Connected
+                  Mollie Connected
                 </Badge>
               </div>
             </CardContent>
@@ -530,10 +538,10 @@ export default function TrainerEarnings() {
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your Stripe setup</p>
+                <p className="font-medium text-orange-800 dark:text-orange-200">Complete your Mollie setup</p>
                 <p className="text-sm text-orange-600 dark:text-orange-300">Finish onboarding to start receiving payments</p>
               </div>
-              <Button variant="outline" onClick={handleConnectStripe} disabled={connectLoading}>
+              <Button variant="outline" onClick={handleConnectMollie} disabled={connectLoading}>
                 Continue Setup
               </Button>
             </CardContent>
