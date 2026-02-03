@@ -1,15 +1,18 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
+import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, TRIAL_TIER } from '@/lib/subscription';
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
-  const { user, role, loading } = useAuth();
+  const location = useLocation();
+  const { user, role, loading, subscription } = useAuth();
 
   // Auth guard
   useEffect(() => {
@@ -52,6 +55,23 @@ export default function TrainerLayout() {
     );
   }
 
+  // Calculate subscription status
+  const hasActiveSubscription = subscription?.isSubscribed || subscription?.isInTrial || false;
+  const isTrialing = subscription?.isInTrial || false;
+  const trialDaysRemaining = subscription?.trialEndsAt 
+    ? getTrialDaysRemaining(subscription.trialEndsAt) 
+    : 0;
+  const isSubscriptionExpired = !subscription?.isSubscribed && !subscription?.isInTrial;
+  const isOnSubscriptionPage = location.pathname === '/subscription' || location.pathname === '/trainer/subscription';
+
+  // Feature translations for subscription overlay
+  const subscriptionFeatures = [
+    t('subscriptionOverlay.features.unlimitedLessons', 'Unlimited lessons'),
+    t('subscriptionOverlay.features.calendarSync', 'Google Calendar sync'),
+    t('subscriptionOverlay.features.analytics', 'Analytics dashboard'),
+    t('subscriptionOverlay.features.prioritySupport', 'Priority support'),
+  ];
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
@@ -67,6 +87,21 @@ export default function TrainerLayout() {
           </div>
         </main>
       </div>
+      
+      {/* Subscription Paywall Overlay */}
+      {!loading && isSubscriptionExpired && !isOnSubscriptionPage && (
+        <SubscriptionOverlay
+          roleName="trainer"
+          subscriptionPath="/subscription"
+          pricing={{
+            monthly: SUBSCRIPTION_TIERS.professional.monthlyPrice,
+            yearly: SUBSCRIPTION_TIERS.professional.yearlyPrice,
+          }}
+          features={subscriptionFeatures}
+          trialDaysRemaining={trialDaysRemaining}
+          isTrialExpired={isSubscriptionExpired}
+        />
+      )}
     </SidebarProvider>
   );
 }

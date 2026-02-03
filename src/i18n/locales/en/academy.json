@@ -228,5 +228,43 @@
     "notFound": "Academy Not Found",
     "notFoundDescription": "This academy doesn't exist or is not public.",
     "browseAcademies": "Browse Academies"
+  },
+  "subscription": {
+    "title": "Academy Subscription",
+    "description": "Manage your academy's subscription and billing",
+    "active": "Active",
+    "trial": "Trial",
+    "trialActive": "Free Trial Active",
+    "trialDaysRemaining": "You have {{days}} days remaining in your free trial",
+    "trialExpired": "Trial Expired",
+    "subscribeToAccess": "Subscribe to continue accessing all academy features",
+    "perMonth": "per month",
+    "billedAnnually": "Billed annually at €{{amount}}/year",
+    "startTrial": "Start Free Trial",
+    "upgradeNow": "Subscribe Now",
+    "cancelSubscription": "Cancel Subscription",
+    "renewsOn": "Renews on {{date}}",
+    "endsOn": "Ends on {{date}}",
+    "successTitle": "Subscription Successful",
+    "successDescription": "Thank you! Your academy subscription is now active.",
+    "canceledTitle": "Subscription Canceled",
+    "canceledDescription": "Your subscription was not completed.",
+    "features": {
+      "unlimitedTrainers": "Unlimited Trainers",
+      "multipleLocations": "Multiple Locations",
+      "analytics": "Advanced Analytics",
+      "prioritySupport": "Priority Support"
+    }
+  },
+  "subscriptionOverlay": {
+    "title": "Subscription Required",
+    "description": "Upgrade to access all features",
+    "trialExpired": "Your trial has expired",
+    "expiredDescription": "Subscribe to continue using all features",
+    "upgradeNow": "Upgrade Now",
+    "features": "What you'll get:",
+    "trialDaysRemaining": "{{days}} days left in trial",
+    "perMonth": "/month",
+    "billedAnnually": "Billed annually at €{{amount}}"
   }
 }

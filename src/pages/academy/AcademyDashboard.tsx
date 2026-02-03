@@ -7,6 +7,8 @@ import {
   AlertCircle, 
   ArrowRight,
   Eye,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +20,7 @@ import { logger } from '@/lib/logger';
 export default function AcademyDashboard() {
   const { t } = useTranslation('academy');
   const navigate = useNavigate();
-  const { activeAcademy } = useAcademyContext();
+  const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
   const [stats, setStats] = useState({ trainers: 0, locations: 0, viewsLast7Days: 0, viewsLast30Days: 0 });
 
   useEffect(() => {
@@ -49,8 +51,38 @@ export default function AcademyDashboard() {
     fetchStats();
   }, [activeAcademy]);
 
+  const isTrialExpired = subscription?.trialExpired && !subscription?.isSubscribed;
+
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Trial Banner */}
+      {isTrialing && trialDaysRemaining > 0 && (
+        <Alert className="mb-6 border-primary bg-primary/5">
+          <Clock className="h-4 w-4" />
+          <AlertTitle>{t('subscription.trialActive')}</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}</span>
+            <Button variant="outline" size="sm" onClick={() => navigate('/academy/subscription')}>
+              {t('subscription.upgradeNow')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Trial Expired Banner */}
+      {isTrialExpired && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>{t('subscription.trialExpired')}</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{t('subscription.subscribeToAccess')}</span>
+            <Button variant="outline" size="sm" onClick={() => navigate('/academy/subscription')}>
+              {t('subscription.upgradeNow')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Verification Alert */}
       {activeAcademy && !activeAcademy.is_verified && (
         <Alert className="mb-6">

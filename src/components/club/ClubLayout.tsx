@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Building2, MapPin, Settings, LogOut, ExternalLink } from 'lucide-react';
@@ -16,6 +16,13 @@ import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
 import { getMarketingUrl } from '@/lib/domains';
+import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { 
+  checkClubSubscription, 
+  getTrialDaysRemaining, 
+  CLUB_SUBSCRIPTION,
+  type ClubSubscriptionInfo 
+} from '@/lib/clubSubscription';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -27,6 +34,11 @@ interface ClubContextValue {
   clubs: ClubWithLocation[];
   setActiveClub: (club: ClubWithLocation) => void;
   refreshClubs: () => Promise<void>;
+  subscription: ClubSubscriptionInfo | null;
+  hasActiveSubscription: boolean;
+  isTrialing: boolean;
+  trialDaysRemaining: number;
+  refreshSubscription: () => Promise<void>;
 }
 
 const ClubContext = createContext<ClubContextValue | undefined>(undefined);
@@ -44,12 +56,15 @@ const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
 export default function ClubLayout() {
   const { t, i18n } = useTranslation('club');
   const navigate = useNavigate();
+  const location = useLocation();
   const localizePath = useLocalizedPathFn();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [clubs, setClubs] = useState<ClubWithLocation[]>([]);
   const [activeClub, setActiveClub] = useState<ClubWithLocation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState<ClubSubscriptionInfo | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -85,10 +100,46 @@ export default function ClubLayout() {
     fetchClubs();
   }, [user]);
 
+  // Fetch subscription status when active club changes
+  const fetchSubscription = async () => {
+    if (!activeClub) {
+      setSubscription(null);
+      return;
+    }
+    
+    setSubscriptionLoading(true);
+    try {
+      const sub = await checkClubSubscription(activeClub.id);
+      setSubscription(sub);
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      setSubscription(null);
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSubscription();
+    
+    // Refresh subscription every 60 seconds
+    const interval = setInterval(fetchSubscription, 60000);
+    return () => clearInterval(interval);
+  }, [activeClub]);
+
   const handleClubChange = (club: ClubWithLocation) => {
     setActiveClub(club);
     localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, club.id);
   };
+
+  // Calculate subscription status
+  const hasActiveSubscription = subscription?.isSubscribed || false;
+  const isTrialing = subscription?.isTrial && !subscription?.trialExpired;
+  const trialDaysRemaining = subscription?.trialEnd 
+    ? getTrialDaysRemaining(subscription.trialEnd) 
+    : 0;
+  const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
+  const isOnSubscriptionPage = location.pathname === '/club/subscription';
 
   const handleSignOut = async () => {
     await signOut();
@@ -155,8 +206,26 @@ export default function ClubLayout() {
     );
   }
 
+  // Feature translations for subscription overlay
+  const subscriptionFeatures = [
+    t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
+    t('subscription.features.unifiedCalendar', 'Unified calendar'),
+    t('subscription.features.analytics', 'Club analytics'),
+    t('subscription.features.prioritySupport', 'Priority support'),
+  ];
+
   return (
-    <ClubContext.Provider value={{ activeClub, clubs, setActiveClub: handleClubChange, refreshClubs: fetchClubs }}>
+    <ClubContext.Provider value={{ 
+      activeClub, 
+      clubs, 
+      setActiveClub: handleClubChange, 
+      refreshClubs: fetchClubs,
+      subscription,
+      hasActiveSubscription,
+      isTrialing: isTrialing || false,
+      trialDaysRemaining,
+      refreshSubscription: fetchSubscription,
+    }}>
       <div className="min-h-screen bg-background">
         {/* Top Header Bar */}
         <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -226,6 +295,21 @@ export default function ClubLayout() {
 
         {/* Page Content */}
         <Outlet />
+        
+        {/* Subscription Paywall Overlay */}
+        {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
+          <SubscriptionOverlay
+            roleName="club"
+            subscriptionPath="/club/subscription"
+            pricing={{
+              monthly: CLUB_SUBSCRIPTION.monthlyPrice,
+              yearly: CLUB_SUBSCRIPTION.yearlyPrice,
+            }}
+            features={subscriptionFeatures}
+            trialDaysRemaining={trialDaysRemaining}
+            isTrialExpired={isSubscriptionExpired}
+          />
+        )}
       </div>
     </ClubContext.Provider>
   );

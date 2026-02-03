@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,13 @@ import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
+import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { 
+  checkAcademySubscription, 
+  getTrialDaysRemaining, 
+  ACADEMY_SUBSCRIPTION,
+  type AcademySubscriptionInfo 
+} from '@/lib/academySubscription';
 
 interface AcademyWithRole extends AcademyProfile {
   role: string;
@@ -19,6 +26,11 @@ interface AcademyContextValue {
   academies: AcademyWithRole[];
   setActiveAcademy: (academy: AcademyWithRole) => void;
   refreshAcademies: () => Promise<void>;
+  subscription: AcademySubscriptionInfo | null;
+  hasActiveSubscription: boolean;
+  isTrialing: boolean;
+  trialDaysRemaining: number;
+  refreshSubscription: () => Promise<void>;
 }
 
 const AcademyContext = createContext<AcademyContextValue | undefined>(undefined);
@@ -36,11 +48,14 @@ const ACTIVE_ACADEMY_STORAGE_KEY = 'activeAcademyId';
 export default function AcademyLayout() {
   const { t } = useTranslation('academy');
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
   const [activeAcademy, setActiveAcademy] = useState<AcademyWithRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState<AcademySubscriptionInfo | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -76,10 +91,46 @@ export default function AcademyLayout() {
     fetchAcademies();
   }, [user]);
 
+  // Fetch subscription status when active academy changes
+  const fetchSubscription = async () => {
+    if (!activeAcademy) {
+      setSubscription(null);
+      return;
+    }
+    
+    setSubscriptionLoading(true);
+    try {
+      const sub = await checkAcademySubscription(activeAcademy.id);
+      setSubscription(sub);
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      setSubscription(null);
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSubscription();
+    
+    // Refresh subscription every 60 seconds
+    const interval = setInterval(fetchSubscription, 60000);
+    return () => clearInterval(interval);
+  }, [activeAcademy]);
+
   const handleAcademyChange = (academy: AcademyWithRole) => {
     setActiveAcademy(academy);
     localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, academy.id);
   };
+
+  // Calculate subscription status
+  const hasActiveSubscription = subscription?.isSubscribed || false;
+  const isTrialing = subscription?.isTrial && !subscription?.trialExpired;
+  const trialDaysRemaining = subscription?.trialEnd 
+    ? getTrialDaysRemaining(subscription.trialEnd) 
+    : 0;
+  const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
+  const isOnSubscriptionPage = location.pathname === '/academy/subscription';
 
   if (authLoading || loading) {
     return (
@@ -119,8 +170,26 @@ export default function AcademyLayout() {
     );
   }
 
+  // Feature translations for subscription overlay
+  const subscriptionFeatures = [
+    t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
+    t('subscription.features.multipleLocations', 'Multiple locations'),
+    t('subscription.features.analytics', 'Advanced analytics'),
+    t('subscription.features.prioritySupport', 'Priority support'),
+  ];
+
   return (
-    <AcademyContext.Provider value={{ activeAcademy, academies, setActiveAcademy: handleAcademyChange, refreshAcademies: fetchAcademies }}>
+    <AcademyContext.Provider value={{ 
+      activeAcademy, 
+      academies, 
+      setActiveAcademy: handleAcademyChange, 
+      refreshAcademies: fetchAcademies,
+      subscription,
+      hasActiveSubscription,
+      isTrialing: isTrialing || false,
+      trialDaysRemaining,
+      refreshSubscription: fetchSubscription,
+    }}>
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-background">
           <AcademySidebar 
@@ -145,6 +214,21 @@ export default function AcademyLayout() {
             </main>
           </SidebarInset>
         </div>
+        
+        {/* Subscription Paywall Overlay */}
+        {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
+          <SubscriptionOverlay
+            roleName="academy"
+            subscriptionPath="/academy/subscription"
+            pricing={{
+              monthly: ACADEMY_SUBSCRIPTION.monthlyPrice,
+              yearly: ACADEMY_SUBSCRIPTION.yearlyPrice,
+            }}
+            features={subscriptionFeatures}
+            trialDaysRemaining={trialDaysRemaining}
+            isTrialExpired={isSubscriptionExpired}
+          />
+        )}
       </SidebarProvider>
     </AcademyContext.Provider>
   );
