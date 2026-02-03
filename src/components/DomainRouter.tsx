@@ -393,33 +393,28 @@ function CombinedRoutes() {
  * Used on marketing domain when users try to access app routes.
  */
 function RedirectToAppDomain({ path }: { path: string }) {
-  const { isDevelopment, hostname } = useHostname();
+  const hostname = window.location.hostname;
   
-  useEffect(() => {
-    // Log for debugging
-    logger.debug('RedirectToAppDomain', { path, isDevelopment, hostname });
-    
-    // In production custom domains, always redirect to app subdomain
-    const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-    
-    if (isCustomDomain) {
-      window.location.href = `https://app.padeltrainer.ai${path}`;
-      return;
-    }
-    
-    // For other production environments, redirect to app subdomain
-    if (!isDevelopment) {
-      window.location.href = `https://app.padeltrainer.ai${path}`;
-    }
-  }, [path, isDevelopment, hostname]);
+  // Check if we're on a custom domain (production marketing site)
+  const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
   
-  // In development, show the actual route (navigate within same domain)
-  if (isDevelopment) {
-    // But NOT if we're on a custom domain
-    const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-    if (!isCustomDomain) {
-      return <Navigate to={path} replace />;
-    }
+  // Check if we're in development/preview mode
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  const isLovablePreview = hostname.includes('.lovable.app') || hostname.includes('.lovableproject.com');
+  const isDev = isLocalhost || isLovablePreview;
+  
+  // Log for debugging
+  logger.debug('RedirectToAppDomain', { path, hostname, isCustomDomain, isDev });
+  
+  // In development (but NOT custom domains), use React Router navigation
+  if (isDev && !isCustomDomain) {
+    return <Navigate to={path} replace />;
+  }
+  
+  // For production or custom domains, do an immediate hard redirect
+  // This happens synchronously before any useEffect
+  if (typeof window !== 'undefined') {
+    window.location.replace(`https://app.padeltrainer.ai${path}`);
   }
   
   // Return null while redirecting
