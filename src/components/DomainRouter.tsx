@@ -103,7 +103,31 @@ function MarketingRoutes() {
       {/* Root redirect - detects browser language */}
       <Route path="/" element={<RootRedirect />} />
       
-      {/* Language-prefixed marketing routes */}
+      {/* App route redirects - MUST come before /:lang to avoid being caught as language */}
+      <Route path="/auth" element={<RedirectToAppDomain path="/auth" />} />
+      <Route path="/forgot-password" element={<RedirectToAppDomain path="/forgot-password" />} />
+      <Route path="/reset-password" element={<RedirectToAppDomain path="/reset-password" />} />
+      <Route path="/signup/*" element={<RedirectToAppDomain path="/signup" />} />
+      <Route path="/onboarding/*" element={<RedirectToAppDomain path="/onboarding" />} />
+      <Route path="/select-role" element={<RedirectToAppDomain path="/select-role" />} />
+      <Route path="/player/*" element={<RedirectToAppDomain path="/player" />} />
+      <Route path="/trainer/*" element={<RedirectToAppDomain path="/trainer" />} />
+      <Route path="/club/*" element={<RedirectToAppDomain path="/club" />} />
+      <Route path="/academy/*" element={<RedirectToAppDomain path="/academy" />} />
+      <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
+      <Route path="/profile/*" element={<RedirectToAppDomain path="/profile" />} />
+      <Route path="/lessons" element={<RedirectToAppDomain path="/lessons" />} />
+      <Route path="/bookings" element={<RedirectToAppDomain path="/bookings" />} />
+      <Route path="/booking-success" element={<RedirectToAppDomain path="/booking-success" />} />
+      <Route path="/earnings" element={<RedirectToAppDomain path="/earnings" />} />
+      <Route path="/subscription" element={<RedirectToAppDomain path="/subscription" />} />
+      <Route path="/analytics" element={<RedirectToAppDomain path="/analytics" />} />
+      <Route path="/settings/*" element={<RedirectToAppDomain path="/settings" />} />
+      <Route path="/availability" element={<RedirectToAppDomain path="/availability" />} />
+      <Route path="/schedule" element={<RedirectToAppDomain path="/schedule" />} />
+      <Route path="/trainer-bookings" element={<RedirectToAppDomain path="/trainer-bookings" />} />
+      
+      {/* Language-prefixed marketing routes - MUST come after app routes */}
       <Route path="/:lang" element={<LanguageRouter />}>
         <Route index element={<Home />} />
         <Route path="pricing" element={<Pricing />} />
@@ -123,15 +147,6 @@ function MarketingRoutes() {
         <Route path="book/:trainerId" element={<BookLesson />} />
         <Route path="register/:cycleId" element={<CycleRegistration />} />
       </Route>
-      
-      {/* Redirect app routes to app subdomain in production */}
-      <Route path="/auth" element={<RedirectToAppDomain path="/auth" />} />
-      <Route path="/signup/*" element={<RedirectToAppDomain path="/signup" />} />
-      <Route path="/player/*" element={<RedirectToAppDomain path="/player" />} />
-      <Route path="/trainer/*" element={<RedirectToAppDomain path="/trainer" />} />
-      <Route path="/club/*" element={<RedirectToAppDomain path="/club" />} />
-      <Route path="/academy/*" element={<RedirectToAppDomain path="/academy" />} />
-      <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
       
       <Route path="*" element={<NotFound />} />
     </Routes>
