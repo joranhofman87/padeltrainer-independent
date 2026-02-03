@@ -295,7 +295,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
-                            {t("nav.cycles")}
+                            {t("nav.registrations", "Registrations")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

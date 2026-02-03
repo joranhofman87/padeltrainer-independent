@@ -33,11 +33,19 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings } from '@/lib/cycles';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
+const CURRENCIES = ['EUR', 'USD', 'GBP'] as const;
 
 interface CycleFormProps {
   cycle?: Cycle | null;
@@ -47,6 +55,7 @@ interface CycleFormProps {
   onOpenChange: (open: boolean) => void;
   onSuccess?: (cycle: Cycle) => void;
   trainers?: { id: string; name: string }[];
+  locations?: { id: string; name: string; city: string }[];
 }
 
 export default function CycleForm({
@@ -57,6 +66,7 @@ export default function CycleForm({
   onOpenChange,
   onSuccess,
   trainers = [],
+  locations = [],
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,6 +82,10 @@ export default function CycleForm({
     show_preferred_trainer: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     applicable_trainer_ids: z.array(z.string()).optional(),
+    location_id: z.string().optional(),
+    price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
+    total_price: z.coerce.number().min(0).optional().or(z.literal('')),
+    currency: z.string().default('EUR'),
   }).refine(data => data.end_date > data.start_date, {
     message: 'End date must be after start date',
     path: ['end_date'],
@@ -91,6 +105,10 @@ export default function CycleForm({
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
       applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
+      location_id: cycle?.location_id || '',
+      price_per_session: cycle?.price_per_session ?? '',
+      total_price: cycle?.total_price ?? '',
+      currency: cycle?.currency || 'EUR',
     },
   });
 
@@ -114,6 +132,10 @@ export default function CycleForm({
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
+        location_id: values.location_id || null,
+        price_per_session: values.price_per_session ? Number(values.price_per_session) : null,
+        total_price: values.total_price ? Number(values.total_price) : null,
+        currency: values.currency,
       };
 
       let result: Cycle;
@@ -283,6 +305,105 @@ export default function CycleForm({
                 </FormItem>
               )}
             />
+
+            {/* Location Picker - for academies/clubs with locations */}
+            {locations.length > 0 && (
+              <FormField
+                control={form.control}
+                name="location_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.location')}</FormLabel>
+                    <Select value={field.value || ''} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('form.selectLocation')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locations.map(loc => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.name} ({loc.city})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-xs">
+                      {t('form.locationHelp')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Pricing Section */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-20 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCIES.map(currency => (
+                          <SelectItem key={currency} value={currency}>
+                            {currency}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="price_per_session"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{t('form.pricePerSession')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="total_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{t('form.totalPrice')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormDescription className="text-xs">
+                {t('form.pricingHelp')}
+              </FormDescription>
+            </div>
 
             <FormField
               control={form.control}

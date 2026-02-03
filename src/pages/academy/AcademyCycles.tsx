@@ -1,19 +1,23 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays } from 'lucide-react';
-import { getCycles, type Cycle } from '@/lib/cycles';
-import CycleCard from '@/components/cycles/CycleCard';
+import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
+import CyclesTable from '@/components/cycles/CyclesTable';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
-import { getAcademyTrainersWithProfiles } from '@/lib/academy';
+import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
+
+interface LocationData {
+  id: string;
+  name: string;
+  city: string;
+}
 
 export default function AcademyCycles() {
   const { t } = useTranslation('cycles');
-  const navigate = useNavigate();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
 
@@ -22,24 +26,39 @@ export default function AcademyCycles() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
+  const [locations, setLocations] = useState<LocationData[]>([]);
 
-  // Fetch academy trainers for the form
+  // Fetch academy trainers and locations for the form
   useEffect(() => {
-    const fetchTrainers = async () => {
+    const fetchData = async () => {
       if (!activeAcademy) return;
       try {
-        const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
+        const [academyTrainers, academyLocations] = await Promise.all([
+          getAcademyTrainersWithProfiles(activeAcademy.id),
+          getAcademyLocations(activeAcademy.id),
+        ]);
+        
         setTrainers(
           academyTrainers.map((t) => ({
             id: t.trainer_profile_id,
             name: t.profile?.full_name || 'Unknown',
           }))
         );
+        
+        setLocations(
+          academyLocations
+            .filter((l) => l.location)
+            .map((l) => ({
+              id: l.location!.id,
+              name: l.location!.name,
+              city: l.location!.city || '',
+            }))
+        );
       } catch (error) {
-        console.error('Error fetching trainers:', error);
+        console.error('Error fetching data:', error);
       }
     };
-    fetchTrainers();
+    fetchData();
   }, [activeAcademy]);
 
   const fetchCycles = async () => {
@@ -47,7 +66,7 @@ export default function AcademyCycles() {
 
     setIsLoading(true);
     try {
-      const data = await getCycles('academy', activeAcademy.id);
+      const data = await getCyclesWithCounts('academy', activeAcademy.id);
       setCycles(data);
     } catch (error: any) {
       console.error('Error fetching cycles:', error);
@@ -71,15 +90,24 @@ export default function AcademyCycles() {
     fetchCycles();
   };
 
+  const handleDuplicate = (cycle: Cycle) => {
+    // Pre-fill form with existing cycle data (but new name)
+    const duplicatedCycle: Cycle = {
+      ...cycle,
+      id: '', // Will be generated
+      name: `${cycle.name} (${t('common:copy', 'Copy')})`,
+      status: 'draft',
+    };
+    setEditingCycle(duplicatedCycle);
+    setShowCreateDialog(true);
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-6">
         <Skeleton className="h-8 w-48 mb-6" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
-        </div>
+        <Skeleton className="h-12 w-full mb-4" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
@@ -91,7 +119,7 @@ export default function AcademyCycles() {
         <div>
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-muted-foreground hidden sm:block">
-            {t('academyDescription', 'Create and manage registration cycles for your academy programs')}
+            {t('academyDescription')}
           </p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
@@ -100,7 +128,7 @@ export default function AcademyCycles() {
         </Button>
       </div>
 
-      {/* Cycles Grid */}
+      {/* Cycles Table or Empty State */}
       {cycles.length === 0 ? (
         <div className="text-center py-16">
           <div className="mx-auto h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -116,16 +144,14 @@ export default function AcademyCycles() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {cycles.map((cycle) => (
-            <CycleCard
-              key={cycle.id}
-              cycle={cycle}
-              onEdit={(c) => setEditingCycle(c)}
-              onDeleted={fetchCycles}
-            />
-          ))}
-        </div>
+        <CyclesTable
+          cycles={cycles}
+          locations={locations}
+          onEdit={(c) => setEditingCycle(c)}
+          onDuplicate={handleDuplicate}
+          onDeleted={fetchCycles}
+          ownerType="academy"
+        />
       )}
 
       {/* Create/Edit Dialog */}
@@ -138,11 +164,12 @@ export default function AcademyCycles() {
               setEditingCycle(null);
             }
           }}
-          cycle={editingCycle || undefined}
+          cycle={editingCycle && editingCycle.id ? editingCycle : undefined}
           ownerType="academy"
           ownerId={activeAcademy.id}
           onSuccess={handleCycleCreated}
           trainers={trainers}
+          locations={locations}
         />
       )}
     </div>

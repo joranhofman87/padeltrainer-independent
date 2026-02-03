@@ -1369,47 +1369,67 @@ export type Database = {
       cycles: {
         Row: {
           created_at: string
+          currency: string | null
           description: string | null
           end_date: string
           enrollment_deadline: string | null
           id: string
+          location_id: string | null
           name: string
           owner_id: string
           owner_type: string
+          price_per_session: number | null
           settings: Json | null
           start_date: string
           status: string
+          total_price: number | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          currency?: string | null
           description?: string | null
           end_date: string
           enrollment_deadline?: string | null
           id?: string
+          location_id?: string | null
           name: string
           owner_id: string
           owner_type: string
+          price_per_session?: number | null
           settings?: Json | null
           start_date: string
           status?: string
+          total_price?: number | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          currency?: string | null
           description?: string | null
           end_date?: string
           enrollment_deadline?: string | null
           id?: string
+          location_id?: string | null
           name?: string
           owner_id?: string
           owner_type?: string
+          price_per_session?: number | null
           settings?: Json | null
           start_date?: string
           status?: string
+          total_price?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cycles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       guest_players: {
         Row: {

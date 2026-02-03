@@ -14,8 +14,15 @@ export interface Cycle {
   enrollment_deadline: string | null;
   settings: CycleSettings;
   status: 'draft' | 'open' | 'closed' | 'archived';
+  location_id: string | null;
+  price_per_session: number | null;
+  total_price: number | null;
+  currency: string;
   created_at: string;
   updated_at: string;
+  // Joined data (optional)
+  location?: { id: string; name: string; city: string } | null;
+  _intakeCount?: number;
 }
 
 export interface ScoringWeights {
@@ -153,6 +160,10 @@ export interface CycleInput {
   enrollment_deadline?: string;
   settings?: CycleSettings;
   status?: 'draft' | 'open' | 'closed' | 'archived';
+  location_id?: string | null;
+  price_per_session?: number | null;
+  total_price?: number | null;
+  currency?: string;
 }
 
 // Helper to convert DB row to typed object
@@ -181,13 +192,47 @@ function toProposedAssignment(row: any): ProposedAssignment {
 export async function getCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
-    .select('*')
+    .select('*, location:locations(id, name, city)')
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
   return (data || []) as Cycle[];
+}
+
+// Get cycles with intake request counts
+export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
+  const { data, error } = await supabase
+    .from('cycles')
+    .select('*, location:locations(id, name, city)')
+    .eq('owner_type', ownerType)
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  
+  const cycles = (data || []) as Cycle[];
+  
+  // Get intake counts for all cycles
+  if (cycles.length > 0) {
+    const cycleIds = cycles.map(c => c.id);
+    const { data: intakeCounts } = await supabase
+      .from('intake_requests')
+      .select('cycle_id')
+      .in('cycle_id', cycleIds);
+    
+    const countMap = new Map<string, number>();
+    intakeCounts?.forEach(row => {
+      countMap.set(row.cycle_id, (countMap.get(row.cycle_id) || 0) + 1);
+    });
+    
+    cycles.forEach(cycle => {
+      cycle._intakeCount = countMap.get(cycle.id) || 0;
+    });
+  }
+  
+  return cycles;
 }
 
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
@@ -275,6 +320,10 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     enrollment_deadline: input.enrollment_deadline || null,
     settings: (input.settings || {}) as Json,
     status: input.status || 'draft',
+    location_id: input.location_id || null,
+    price_per_session: input.price_per_session ?? null,
+    total_price: input.total_price ?? null,
+    currency: input.currency || 'EUR',
   };
   
   const { data, error } = await supabase
@@ -298,6 +347,10 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   if (updates.enrollment_deadline !== undefined) updateData.enrollment_deadline = updates.enrollment_deadline;
   if (updates.settings !== undefined) updateData.settings = updates.settings as Json;
   if (updates.status !== undefined) updateData.status = updates.status;
+  if (updates.location_id !== undefined) updateData.location_id = updates.location_id;
+  if (updates.price_per_session !== undefined) updateData.price_per_session = updates.price_per_session;
+  if (updates.total_price !== undefined) updateData.total_price = updates.total_price;
+  if (updates.currency !== undefined) updateData.currency = updates.currency;
   
   const { data, error } = await supabase
     .from('cycles')
