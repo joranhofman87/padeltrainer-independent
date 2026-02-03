@@ -1,230 +1,204 @@
 
+# Obsolete Code and Complexity Analysis
 
-# Mollie Connect: Shift from Clubs to Academies
-
-## Problem Summary
-
-The current implementation has Mollie Connect for:
-- **Trainers** ✅ (should keep)
-- **Clubs** ❌ (should NOT collect payments)
-
-The correct model should be:
-- **Trainers** - Can collect payments via their own Mollie account
-- **Academies** - Can collect payments on behalf of their trainers
-- **Clubs** - Do NOT collect payments themselves
-
-When a trainer is part of an academy, payments should route through the academy's Mollie account (with the academy paying trainers separately via salary/contracts).
+After a thorough analysis of the codebase, I've identified several areas of obsolete code, legacy patterns, and unnecessary complexity that can be cleaned up.
 
 ---
 
-## Current State Analysis
+## 1. Stripe Remnants (CRITICAL - Legacy Payment System)
 
-### Existing Club Mollie Infrastructure (to be REMOVED/REPURPOSED)
-| Component | File | Action |
-|-----------|------|--------|
-| `club_mollie_accounts` table | Database | Already exists, could rename to academy or deprecate |
-| `mollie-connect-club` | Edge Function | DELETE or repurpose for academy |
-| `ClubSettings.tsx` | Mollie Connect UI | REMOVE payment setup section |
-| `clubPayments.ts` | Client lib | REMOVE or repurpose |
-| `check-mollie-connect-status` | Edge Function | Currently handles `club` type - CHANGE to `academy` |
-| `mollie-callback` | Edge Function | Handles `club_` state prefix - CHANGE to `academy_` |
+**Issue**: The platform migrated from Stripe to Mollie, but database tables and type references still contain Stripe naming.
 
-### Academy Mollie Infrastructure (to be CREATED)
-| Component | File | Status |
-|-----------|------|--------|
-| `academy_mollie_accounts` table | Database | ✅ Already exists! |
-| `mollie-connect-academy` | Edge Function | ❌ Need to CREATE |
-| `AcademySettings.tsx` | Mollie Connect UI | ❌ Need to ADD payment section |
-| `academyPayments.ts` | Client lib | ❌ Need to CREATE |
-| Payment routing for academy trainers | `create-mollie-payment` | ❌ Need to UPDATE |
+| Location | Issue |
+|----------|-------|
+| `src/integrations/supabase/types.ts` | Contains `academy_stripe_accounts`, `club_stripe_accounts`, `trainer_stripe_accounts` table types |
+| Database foreign keys | Named `academy_stripe_accounts_academy_profile_id_fkey`, `club_stripe_accounts_club_profile_id_fkey`, etc. |
+| `src/lib/subscription.ts` | Contains Stripe `priceId` and `productId` values (e.g., `price_1Spz9VPxAlHS6UZH9wmgdECd`, `prod_TnaKMqklQL0csZ`) |
+| `src/lib/clubSubscription.ts` | Contains Stripe `priceId: "price_1SqSZBPxAlHS6UZHJHw1xUFB"`, `productId: "prod_TobiJfC96Jjf3h"` |
 
-### Trainer Payment Logic Changes Needed
-When a trainer creates a booking/lesson, the payment should:
-1. Check if trainer is part of an active academy (`academy_trainers` table)
-2. If YES → Route payment to academy's Mollie account
-3. If NO → Route payment to trainer's own Mollie account (existing behavior)
+**Recommendation**: 
+- Rename database tables from `*_stripe_accounts` to `*_mollie_accounts`
+- Remove hardcoded Stripe price/product IDs since Mollie doesn't use them
+- These IDs are vestiges of the old Stripe integration and serve no purpose with Mollie
 
 ---
 
-## Implementation Plan
+## 2. Club Mollie/Payment Infrastructure (Obsolete per Recent Decision)
 
-### Phase 1: Create Academy Mollie Connect Infrastructure
+**Issue**: Club payment collection was recently deprecated (clubs don't collect payments - academies do), but code remains.
 
-**1.1 Create `src/lib/academyPayments.ts`**
-- Mirror pattern from `clubPayments.ts` but for academies
-- Functions: `connectAcademyMollie()`, `checkAcademyConnectStatus()`, `getAcademyMollieAccount()`
-- Add `getAcademyMollieAccountForTrainer()` - checks if trainer belongs to an academy and returns academy's Mollie account
+| File | Status |
+|------|--------|
+| `supabase/functions/create-club-mollie-subscription/index.ts` | Should be DELETED - calls club Mollie subscription |
+| `src/lib/clubTrainerPayments.ts` | References `club_mollie_accounts` - should be REVIEWED/DELETED |
+| `supabase/functions/cancel-mollie-subscription/index.ts` | Still handles `type === "club"` case |
+| `supabase/functions/check-mollie-subscription/index.ts` | Still handles `type === "club"` case |
+| `src/lib/clubSubscription.ts` | References `create-club-mollie-subscription` function |
 
-**1.2 Create `supabase/functions/mollie-connect-academy/index.ts`**
-- Copy from `mollie-connect-club` but adapted for academies
-- Verify user is academy manager via `academy_managers` table
-- Use `academy_mollie_accounts` table
-- State prefix: `academy_{academyProfileId}_{state}`
-
-**1.3 Update `supabase/functions/check-mollie-connect-status/index.ts`**
-- Add `entityType === 'academy'` case
-- Verify access via `academy_managers` table
-- Query `academy_mollie_accounts` table
-
-**1.4 Update `supabase/functions/mollie-callback/index.ts`**
-- Add `entityType === 'academy'` case (alongside trainer)
-- Update `academy_mollie_accounts` table on successful OAuth
+**Recommendation**:
+- Delete `create-club-mollie-subscription` edge function
+- Remove club payment collection references from `clubTrainerPayments.ts`
+- Update `cancel-mollie-subscription` and `check-mollie-subscription` to remove club payment handling (keep subscription handling)
+- Keep club SUBSCRIPTION infrastructure (clubs still pay for platform access)
 
 ---
 
-### Phase 2: Update Payment Routing for Academy Trainers
+## 3. Legacy Function Aliases and Backward Compatibility Code
 
-**2.1 Update `supabase/functions/create-mollie-payment/index.ts`**
+**Issue**: Duplicate/aliased functions kept for "backward compatibility" that add confusion.
 
-Current flow:
-```
-1. Check trainer_mollie_accounts for trainer
-2. Route payment to trainer's account (if exists)
-```
+| Location | Issue |
+|----------|-------|
+| `src/lib/subscription.ts:50` | `TRIAL_TIER = STARTER_TIER` - unnecessary alias |
+| `src/lib/subscription.ts:86-89` | `isTrialExpiredLegacy()` - marked legacy, duplicates `isDateExpired()` from sharedSubscription |
+| `src/lib/subscription.ts:83` | Re-exports `isDateExpired as isTrialExpired` - confusing naming |
+| Multiple files | `getTrialDaysRemaining` is re-exported in multiple places instead of importing from source |
 
-New flow:
-```
-1. Check if trainer is part of an active academy (academy_trainers)
-2. If YES:
-   a. Get academy's Mollie account (academy_mollie_accounts)
-   b. Route payment to academy's account
-   c. Use academy's platform fee tier
-3. If NO:
-   a. Check trainer_mollie_accounts (existing logic)
-   b. Route to trainer's account
-```
-
-The `payment_percentage` field in `academy_trainers` is for internal academy-trainer splits, NOT for platform routing. The academy handles paying trainers separately.
+**Recommendation**:
+- Remove `TRIAL_TIER` alias, use `STARTER_TIER` directly
+- Delete `isTrialExpiredLegacy()` function
+- Standardize on `isDateExpired()` from `sharedSubscription.ts`
+- Import `getTrialDaysRemaining` directly from `sharedSubscription.ts` everywhere
 
 ---
 
-### Phase 3: Update Academy Settings UI
+## 4. Legacy Routes (Duplicate Path Handling)
 
-**3.1 Update `src/pages/academy/AcademySettings.tsx`**
-- Add Payment Setup Card (copy pattern from ClubSettings.tsx)
-- Connect Academy Mollie button
-- Status display (charges enabled, payouts enabled)
-- Balance display
-- Link to Mollie dashboard
+**Issue**: Multiple routes point to the same components for "backwards compatibility."
 
----
+| Legacy Route | Redirects To | Component |
+|--------------|--------------|-----------|
+| `/lessons` | - | `ManageLessons` (same as nowhere else uses it) |
+| `/availability` | - | `TrainerCalendar` |
+| `/schedule` | - | `TrainerCalendar` |
+| `/trainer-bookings` | - | `TrainerBookings` |
+| `/earnings` | - | `TrainerEarnings` |
+| `/subscription` | - | `TrainerSubscription` |
+| `/analytics` | - | `TrainerAnalytics` |
+| `/settings/notifications` | - | `NotificationSettings` |
+| `/settings/calendar` | - | `CalendarSettings` |
 
-### Phase 4: Remove Club Mollie Connect
+Many of these are also defined inside the `/trainer` route group.
 
-**4.1 Update `src/pages/club/ClubSettings.tsx`**
-- REMOVE the entire "Payment Setup" card section
-- Keep only managers section and delete account
-
-**4.2 DELETE `supabase/functions/mollie-connect-club/`**
-- This edge function will no longer be needed
-
-**4.3 DELETE or deprecate `src/lib/clubPayments.ts`**
-- The `getClubMollieAccountForTrainer` function is no longer needed
-- Remove the file entirely
-
-**4.4 Update `supabase/functions/check-mollie-connect-status/index.ts`**
-- REMOVE `entityType === 'club'` case
-
-**4.5 Update `supabase/functions/mollie-callback/index.ts`**
-- REMOVE `entityType === 'club'` case
+**Recommendation**:
+- Consolidate routes under `/trainer/*` namespace
+- Add redirect rules for legacy routes instead of duplicating
+- Remove standalone legacy route definitions from `DomainRouter.tsx` (lines 205-217, 313-325)
 
 ---
 
-### Phase 5: Add i18n Translations
+## 5. Unused/Redundant Pages
 
-**5.1 Update `src/i18n/locales/en/academy.json`**
-```json
-"settings": {
-  "mollieConnect": "Payment Setup",
-  "mollieConnectDescription": "Connect your payment account to receive payments from lesson bookings.",
-  "notConnected": "Not Connected",
-  "notConnectedDescription": "Connect your payment account to receive payments when players book lessons with your trainers.",
-  "connectMollie": "Connect Payment Account",
-  "paymentsEnabled": "Payments Enabled",
-  "paymentsNotEnabled": "Payments Not Yet Enabled",
-  "payoutsEnabled": "Payouts Enabled",
-  "payoutsNotEnabled": "Payouts Not Yet Enabled",
-  "setupIncomplete": "Setup Incomplete",
-  "setupIncompleteDescription": "Please complete your payment account setup to start receiving payments.",
-  "completeSetup": "Complete Setup",
-  "refreshStatus": "Refresh Status",
-  "statusRefreshed": "Status Refreshed",
-  "statusRefreshedDescription": "Connection status has been updated.",
-  "availableBalance": "Available",
-  "pendingBalance": "Pending",
-  "mollieDashboard": "Payment Dashboard",
-  "checkingStatus": "Checking status...",
-  "mollieConnectSuccess": "Payment Account Connected",
-  "mollieConnectSuccessDescription": "Your payment account has been connected successfully."
-}
-```
+**Issue**: Some pages appear to overlap in functionality or may be unused.
 
-**5.2 Update `src/i18n/locales/nl/academy.json`** (Dutch translations)
+| Page | Issue |
+|------|-------|
+| `ManageSchedule.tsx` (741 lines) | Complex page for working hours + bulk slots - duplicates TrainerCalendar functionality |
+| `ManageAvailability.tsx` (521 lines) | Individual slot management - overlaps with TrainerCalendar |
+| `ManageLessons.tsx` | Lesson CRUD - unclear if still primary path |
+| `OpenSlots.tsx` | View of open slots - could be tab in TrainerCalendar |
+
+**Recommendation**:
+- Audit actual usage of these pages
+- Consider consolidating schedule/availability management into `TrainerCalendar`
+- The setup checklist in `TrainerDashboard` still references `/lessons` and `/schedule` - needs updating
 
 ---
 
-## Files Summary
+## 6. TrainerDashboard Complexity (1156 lines)
 
-### New Files to Create
-1. `src/lib/academyPayments.ts` - Academy payment utilities
-2. `supabase/functions/mollie-connect-academy/index.ts` - OAuth connect for academies
+**Issue**: The TrainerDashboard is significantly more complex than other dashboards (Club: ~156 lines, Academy: ~186 lines).
 
-### Files to Modify
-1. `supabase/functions/check-mollie-connect-status/index.ts` - Add academy, remove club
-2. `supabase/functions/mollie-callback/index.ts` - Add academy, remove club
-3. `supabase/functions/create-mollie-payment/index.ts` - Add academy trainer routing logic
-4. `src/pages/academy/AcademySettings.tsx` - Add Payment Setup UI
-5. `src/pages/club/ClubSettings.tsx` - Remove Payment Setup UI
-6. `src/i18n/locales/en/academy.json` - Add payment translations
-7. `src/i18n/locales/nl/academy.json` - Add payment translations
+It contains:
+- Full calendar grid
+- Setup checklist
+- Stats cards
+- Trial banner
+- Multiple dialog components
+- Complex state management
 
-### Files to Delete
-1. `supabase/functions/mollie-connect-club/` - No longer needed
-2. `src/lib/clubPayments.ts` - No longer needed
+**Recommendation**:
+- Extract calendar into separate component
+- Move setup checklist to its own component file
+- Move trial banner to shared component (already exists in other dashboards)
+- Target: Reduce to ~400-500 lines by component extraction
 
 ---
 
-## Payment Flow Diagram
+## 7. Database Tables to Clean Up
 
-```text
-Player books lesson with Trainer
-           │
-           ▼
-┌────────────────────────────────┐
-│ create-mollie-payment function │
-└─────────────┬──────────────────┘
-              │
-              ▼
-┌───────────────────────────────────┐
-│ Is trainer part of active academy? │
-│ (check academy_trainers table)     │
-└─────────────┬─────────────────────┘
-         │           │
-        YES         NO
-         │           │
-         ▼           ▼
-┌────────────────┐  ┌────────────────────┐
-│ Get academy's  │  │ Get trainer's      │
-│ Mollie account │  │ Mollie account     │
-└────────┬───────┘  └──────────┬─────────┘
-         │                     │
-         ▼                     ▼
-┌────────────────────────────────────────┐
-│ Route payment with split:              │
-│ - Recipient gets (amount - platformFee)│
-│ - Platform keeps platformFee           │
-└────────────────────────────────────────┘
+Based on the Stripe migration and club payment changes:
+
+| Table | Action |
+|-------|--------|
+| `academy_stripe_accounts` | RENAME to `academy_mollie_accounts` (if not already exists) or DELETE if duplicate |
+| `club_stripe_accounts` | RENAME to `club_mollie_accounts` (if not already exists) or DELETE if duplicate |
+| `trainer_stripe_accounts` | RENAME to `trainer_mollie_accounts` (if not already exists) or DELETE if duplicate |
+| `club_mollie_accounts` | KEEP - used for club subscriptions (not payments) |
+
+---
+
+## 8. Secrets to Clean Up
+
+| Secret | Status |
+|--------|--------|
+| `STRIPE_SECRET_KEY` | REMOVE - Stripe is no longer used |
+
+---
+
+## 9. Academy Subscription Placeholder Values
+
+**Issue**: `src/lib/academySubscription.ts` contains placeholder IDs.
+
+```typescript
+export const ACADEMY_SUBSCRIPTION = {
+  priceId: "price_academy_monthly", // Update with actual Mollie price ID
+  productId: "prod_academy", // Update with actual Mollie product ID
+  ...
+};
 ```
 
+**Recommendation**: These Stripe-style IDs aren't used by Mollie - remove them or document they're unused.
+
 ---
 
-## Expected Outcome
+## Summary: Cleanup Priority
 
-| Scenario | Payment Routing |
-|----------|-----------------|
-| Independent trainer with Mollie connected | → Trainer's Mollie account |
-| Independent trainer without Mollie | → Platform (no split) |
-| Academy trainer, academy has Mollie | → Academy's Mollie account |
-| Academy trainer, academy no Mollie | → Platform (no split) |
-| Club trainer | No payment collection at club level |
+### High Priority (Remove immediately)
+1. Delete `create-club-mollie-subscription` edge function
+2. Remove `STRIPE_SECRET_KEY` secret
+3. Remove `isTrialExpiredLegacy()` function
+4. Remove `TRIAL_TIER` alias
+
+### Medium Priority (Consolidate)
+1. Consolidate legacy routes into redirects
+2. Rename database tables from `*_stripe_*` to `*_mollie_*`
+3. Remove Stripe priceId/productId values from subscription configs
+4. Update `cancel-mollie-subscription` and `check-mollie-subscription` to remove club payment handling
+
+### Lower Priority (Refactor)
+1. Extract TrainerDashboard components
+2. Consolidate ManageSchedule/ManageAvailability into TrainerCalendar
+3. Standardize imports of shared subscription utilities
+
+---
+
+## Files to Delete
+
+| File | Reason |
+|------|--------|
+| `supabase/functions/create-club-mollie-subscription/index.ts` | Clubs no longer collect payments |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/lib/subscription.ts` | Remove `TRIAL_TIER`, `isTrialExpiredLegacy`, Stripe IDs |
+| `src/lib/clubSubscription.ts` | Remove Stripe priceId/productId |
+| `src/lib/academySubscription.ts` | Remove placeholder priceId/productId |
+| `src/lib/clubTrainerPayments.ts` | Remove or update (clubs don't collect payments) |
+| `supabase/functions/cancel-mollie-subscription/index.ts` | Remove club payment handling |
+| `supabase/functions/check-mollie-subscription/index.ts` | Remove club-specific payment logic |
+| `src/components/DomainRouter.tsx` | Consolidate legacy routes |
+| `src/pages/TrainerDashboard.tsx` | Extract components to reduce complexity |
 
