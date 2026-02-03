@@ -133,13 +133,13 @@ Test with Mollie test mode using test API key.
 
 | Phase | Days | Status |
 |-------|------|--------|
-| 0. Partner Application | External | Waiting for you |
-| 1. Database Migration | 1-2 | Ready to start after secrets |
-| 2. Mollie Connect | 3-5 | Ready to start after secrets |
-| 3. Payment Functions | 6-8 | Depends on Phase 2 |
-| 4. Subscription Functions | 9-12 | Depends on Phase 3 |
-| 5. Frontend Updates | 13-14 | Depends on Phase 4 |
+| 0. Partner Application | External | ✅ Complete |
+| 1. Database Migration | 1-2 | ✅ Complete |
+| 2. Mollie Connect | 3-5 | ✅ Complete |
+| 3. Payment Functions | 6-8 | 🔄 Next |
+| 4. Subscription Functions | 9-12 | Pending |
+| 5. Frontend Updates | 13-14 | Pending |
 | 6. Testing | 15-16 | Final phase |
 
-**Next Step:** Apply for Mollie Partner status to receive OAuth credentials, then we can proceed with Phase 1 (Database Migration).
+**Next Step:** Implement Phase 3 - Create Mollie payment edge functions (`create-mollie-payment`, `mollie-webhook`, `verify-mollie-payment`).
 
