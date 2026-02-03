@@ -4,10 +4,12 @@ import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/c
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
 import { getBlogPosts } from '@/lib/contentful';
 import { useTranslation } from 'react-i18next';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 function BlogPostCardSkeleton() {
   return (
@@ -69,8 +71,30 @@ export default function Blog() {
   
   const dateLocale = i18n.language === 'nl' ? 'nl-NL' : 'en-US';
 
+  // Structured data for blog
+  const structuredData = posts.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: t('blog.title'),
+    description: t('blog.subtitle'),
+    url: `${MARKETING_DOMAIN}/blog`,
+    blogPost: posts.slice(0, 10).map(post => ({
+      '@type': 'BlogPosting',
+      headline: post.title,
+      description: post.excerpt,
+      datePublished: post.date,
+      url: `${MARKETING_DOMAIN}/blog/${post.slug}`
+    }))
+  } : undefined;
+
   return (
     <MarketingLayout>
+      <SEO 
+        title={t('blog.title')}
+        description={t('blog.subtitle')}
+        url="/blog"
+        structuredData={structuredData}
+      />
       {/* Hero */}
       <section className="py-16 bg-gradient-to-b from-background to-accent/20">
         <div className="container mx-auto px-4">

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { Handshake, Send, Loader2 } from 'lucide-react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -104,6 +105,11 @@ export default function Partner() {
 
   return (
     <MarketingLayout>
+      <SEO 
+        title={t('partner.title')}
+        description={t('partner.subtitle')}
+        url="/partner"
+      />
       <section className="py-20 md:py-32">
         <div className="container mx-auto px-4">
           <motion.div

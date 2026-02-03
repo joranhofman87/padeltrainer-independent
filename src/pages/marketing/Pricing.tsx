@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Check, X, HelpCircle, Building2, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAppUrl, isInDevelopment } from '@/lib/domains';
+import { getAppUrl, isInDevelopment, MARKETING_DOMAIN } from '@/lib/domains';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
@@ -55,8 +56,43 @@ export default function Pricing() {
     return features;
   };
 
+  // Structured data for pricing page
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: t('pricing.hero.title'),
+    description: t('pricing.hero.subtitle'),
+    url: `${MARKETING_DOMAIN}/pricing`,
+    mainEntity: {
+      '@type': 'ItemList',
+      itemListElement: [
+        {
+          '@type': 'Offer',
+          name: 'Player',
+          price: '0',
+          priceCurrency: 'EUR',
+          description: t('pricing.players.description')
+        },
+        ...(trainerPlans?.map((plan, index) => ({
+          '@type': 'Offer',
+          name: plan.name,
+          price: plan.monthly_price.toString(),
+          priceCurrency: 'EUR',
+          description: plan.description,
+          position: index + 2
+        })) || [])
+      ]
+    }
+  };
+
   return (
     <MarketingLayout>
+      <SEO 
+        title={t('pricing.hero.title')}
+        description={t('pricing.hero.subtitle')}
+        url="/pricing"
+        structuredData={structuredData}
+      />
       {/* Hero */}
       <section className="py-20 bg-gradient-to-b from-background to-accent/20">
         <div className="container mx-auto px-4">

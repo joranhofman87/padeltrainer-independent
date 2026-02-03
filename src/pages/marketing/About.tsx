@@ -3,10 +3,11 @@ import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Target, Heart, Users, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getAppUrl, isInDevelopment } from '@/lib/domains';
+import { getAppUrl, isInDevelopment, MARKETING_DOMAIN } from '@/lib/domains';
 
 export default function About() {
   const { t } = useTranslation('marketing');
@@ -40,8 +41,30 @@ export default function About() {
     { value: '50+', labelKey: 'about.stats.cities' }
   ];
 
+  // Structured data for About page
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'AboutPage',
+    name: t('about.hero.title'),
+    description: t('about.hero.subtitle'),
+    url: `${MARKETING_DOMAIN}/about`,
+    mainEntity: {
+      '@type': 'Organization',
+      name: 'PadelTrainer.ai',
+      description: t('about.hero.subtitle'),
+      foundingDate: '2024',
+      url: MARKETING_DOMAIN
+    }
+  };
+
   return (
     <MarketingLayout>
+      <SEO 
+        title={`${t('about.hero.title')} ${t('about.hero.titleHighlight')}`}
+        description={t('about.hero.subtitle')}
+        url="/about"
+        structuredData={structuredData}
+      />
       {/* Hero */}
       <section className="py-20 bg-gradient-to-b from-background to-accent/20">
         <div className="container mx-auto px-4">

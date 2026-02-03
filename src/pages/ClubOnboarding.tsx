@@ -314,7 +314,7 @@ export default function ClubOnboarding() {
                 <p className="text-sm text-muted-foreground">
                   {t('onboarding.cantFindClub', "Can't find your club?")}{' '}
                   <a 
-                    href="mailto:info@padeltrainer.ai?subject=Add%20my%20club&body=Hi%20Team%2C%0A%0ACould%20you%20add%20my%20club%20XXX.%0A%0ASee%20here%20all%20details%3A%20ADD%20WEBSITE%20LINK"
+                    href="mailto:info@padeltrainer.ai?subject=Add%20my%20club&body=Hi%20Team%2C%0A%0ACould%20you%20please%20add%20my%20club%3F%0A%0AClub%20name%3A%20%5BYour%20club%20name%5D%0AWebsite%3A%20%5BYour%20website%20URL%5D%0A%0AThank%20you!"
                     className="text-primary hover:underline font-medium"
                   >
                     {t('onboarding.contactUs', 'Contact us')}

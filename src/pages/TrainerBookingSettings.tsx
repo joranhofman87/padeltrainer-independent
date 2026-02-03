@@ -112,7 +112,7 @@ export default function TrainerBookingSettings() {
                 <p className="text-sm text-muted-foreground mt-1">
                   {useManualInvoicing
                     ? t('bookingSettings.requireApprovalDescriptionInvoice')
-                    : t('bookingSettings.requireApprovalDescriptionStripe')
+                    : t('bookingSettings.requireApprovalDescriptionOnline')
                   }
                 </p>
               </div>
@@ -138,7 +138,7 @@ export default function TrainerBookingSettings() {
                 <p className="text-sm text-muted-foreground">
                   {useManualInvoicing
                     ? t('bookingSettings.autoAcceptDescriptionInvoice')
-                    : t('bookingSettings.autoAcceptDescriptionStripe')
+                    : t('bookingSettings.autoAcceptDescriptionOnline')
                   }
                 </p>
               </div>
@@ -155,7 +155,7 @@ export default function TrainerBookingSettings() {
                 <p className="text-sm text-muted-foreground">
                   {useManualInvoicing
                     ? t('bookingSettings.manualApprovalDescriptionInvoice')
-                    : t('bookingSettings.manualApprovalDescriptionStripe')
+                    : t('bookingSettings.manualApprovalDescriptionOnline')
                   }
                 </p>
               </div>
