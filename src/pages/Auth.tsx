@@ -177,6 +177,7 @@ export default function Auth() {
             className="w-full h-12 text-base"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
+            data-testid="auth-google-button"
           >
             <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
               <path
@@ -218,6 +219,7 @@ export default function Auth() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                data-testid="auth-email-input"
               />
             </div>
             <div className="space-y-2">
@@ -237,9 +239,10 @@ export default function Auth() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                data-testid="auth-password-input"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading} data-testid="auth-login-button">
               {isLoading ? t('signIn.loading') : t('signIn.button')}
             </Button>
           </form>

@@ -191,8 +191,11 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => {/* TODO: Open slot picker */}}
-              disabled={isUpdating}
+              onClick={() => {
+                // Slot picker not implemented - disabled until feature is built
+              }}
+              disabled={true}
+              title="Slot picker coming soon"
             >
               <Edit className="h-4 w-4" />
             </Button>

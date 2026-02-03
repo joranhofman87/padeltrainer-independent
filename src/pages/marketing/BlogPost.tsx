@@ -186,6 +186,7 @@ export default function BlogPost() {
             src={post.image} 
             alt={post.title}
             className="w-full h-full object-cover"
+            loading="lazy"
           />
         </motion.div>
 

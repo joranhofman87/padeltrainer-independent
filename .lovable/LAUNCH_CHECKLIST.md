@@ -14,6 +14,8 @@
 - [x] Error boundaries implemented for graceful failure
 - [x] SEO component added to all marketing pages
 - [x] Structured data (JSON-LD) on key pages
+- [x] data-testid attributes on critical UI elements
+- [x] Image lazy loading implemented
 
 ### Security
 - [x] RLS policies on all sensitive tables
@@ -128,8 +130,9 @@
 | Item | Location | Notes |
 |------|----------|-------|
 | Logger monitoring integration | `src/lib/logger.ts:68` | TODO: Integrate with Sentry |
-| Slot picker for proposals | `src/components/cycles/ProposalCard.tsx:194` | Feature not yet implemented |
+| Slot picker for proposals | `src/components/cycles/ProposalCard.tsx` | Button disabled until feature is built |
 | Plan placeholder values | `src/components/admin/PlanEditDialog.tsx` | Admin-only, cosmetic |
+| TrainerDashboard refactoring | `src/pages/TrainerDashboard.tsx` | Components extracted but file still large |
 
 ---
 
