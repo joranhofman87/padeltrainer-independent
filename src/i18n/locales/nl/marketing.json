@@ -135,17 +135,23 @@
         "tracking": "Volg je boekingen"
       }
     },
-    "trainers": {
+  "trainers": {
       "badge": "Voor Trainers",
       "title": "Kies je abonnement",
       "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. Lagere platformkosten bij hogere niveaus.",
       "platformFee": "per boeking",
       "feeTooltip": "Een vast bedrag wordt afgetrokken van elke lesbetaling. Hogere abonnementen betalen minder.",
       "mostPopular": "Meest Populair",
+      "monthly": "Maandelijks",
+      "yearly": "Jaarlijks",
+      "month": "maand",
+      "year": "jaar",
+      "save20": "Bespaar 20%",
+      "saveAmount": "Bespaar €{{amount}}/jaar",
       "plans": {
         "starter": {
           "name": "Starter",
-          "price": "Gratis",
+          "price": "€10",
           "description": "Perfect om te beginnen",
           "cta": "Start Gratis",
           "features": {
@@ -161,9 +167,9 @@
         },
         "professional": {
           "name": "Professional",
-          "price": "€29",
+          "price": "€39",
           "period": "/maand",
-          "yearlyPrice": "€278/jaar (bespaar 20%)",
+          "yearlyPrice": "€374/jaar (bespaar 20%)",
           "description": "Voor serieuze trainers",
           "cta": "Kies Professional",
           "features": {
@@ -179,9 +185,9 @@
         },
         "academy": {
           "name": "Academy",
-          "price": "€79",
+          "price": "€99",
           "period": "/maand",
-          "yearlyPrice": "€758/jaar (bespaar 20%)",
+          "yearlyPrice": "€950/jaar (bespaar 20%)",
           "description": "Voor clubs & academies",
           "cta": "Neem Contact Op",
           "features": {

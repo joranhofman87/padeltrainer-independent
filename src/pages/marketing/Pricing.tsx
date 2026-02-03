@@ -1,12 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
-import { Check, X, HelpCircle, Building2, Loader2 } from 'lucide-react';
+import { Check, X, HelpCircle, Building2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
@@ -17,6 +17,7 @@ export default function Pricing() {
   const { t } = useTranslation('marketing');
   const { data: trainerPlans, isLoading: loadingTrainer } = useTrainerPlans();
   const { data: clubPlan, isLoading: loadingClub } = useClubPlan();
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   const playerFeatureKeys = [
     'pricing.players.features.browse',
@@ -156,7 +157,7 @@ export default function Pricing() {
       <section className="py-16 bg-accent/30">
         <div className="container mx-auto px-4">
           <motion.div
-            className="text-center mb-12"
+            className="text-center mb-8"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -170,6 +171,30 @@ export default function Pricing() {
             </p>
           </motion.div>
 
+          {/* Billing Toggle */}
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex items-center gap-1 p-1 bg-muted rounded-lg">
+              <Button
+                variant={billingCycle === 'monthly' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setBillingCycle('monthly')}
+              >
+                {t('pricing.trainers.monthly')}
+              </Button>
+              <Button
+                variant={billingCycle === 'yearly' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setBillingCycle('yearly')}
+                className="gap-2"
+              >
+                {t('pricing.trainers.yearly')}
+                <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                  {t('pricing.trainers.save20')}
+                </Badge>
+              </Button>
+            </div>
+          </div>
+
           {loadingTrainer ? (
             <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
               {[1, 2, 3].map((i) => (
@@ -178,78 +203,87 @@ export default function Pricing() {
             </div>
           ) : (
             <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              {trainerPlans?.map((plan, index) => (
-                <motion.div
-                  key={plan.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Card className={`h-full relative ${plan.is_highlighted ? 'border-2 border-primary shadow-lg' : ''}`}>
-                    {plan.is_highlighted && (
-                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        {plan.badge || t('pricing.trainers.mostPopular')}
-                      </Badge>
-                    )}
-                    <CardHeader className="text-center">
-                      <CardTitle className="text-xl">{plan.name}</CardTitle>
-                      <CardDescription>{plan.description}</CardDescription>
-                      <div className="pt-4">
-                        <span className="text-4xl font-bold">
-                          {plan.monthly_price === 0 ? t('pricing.trainers.plans.starter.price') : `€${plan.monthly_price}`}
-                        </span>
-                        {plan.monthly_price > 0 && (
-                          <span className="text-muted-foreground">/month</span>
-                        )}
-                        {plan.yearly_price > 0 && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            €{plan.yearly_price}/year (save {Math.round((1 - plan.yearly_price / (plan.monthly_price * 12)) * 100)}%)
-                          </p>
-                        )}
-                      </div>
-                      <div className="pt-2 flex items-center justify-center gap-1">
-                        <Badge variant="outline">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} {t('pricing.trainers.platformFee')}</Badge>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{t('pricing.trainers.feeTooltip')}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-3 mb-8">
-                        {getFeatureList(plan.tier).map((feature) => (
-                          <li key={feature.key} className="flex items-center gap-2">
-                            {feature.included ? (
-                              <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                            ) : (
-                              <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
-                            )}
-                            <span className={feature.included ? '' : 'text-muted-foreground/50'}>
-                              {t(`pricing.trainers.plans.${plan.tier}.features.${feature.key}`)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      <Button 
-                        className="w-full" 
-                        variant={plan.is_highlighted ? 'default' : 'outline'}
-                        asChild
-                      >
-                        {isInDevelopment() ? (
-                          <Link to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
-                        ) : (
-                          <a href={getAppUrl('/auth')}>{t(`pricing.trainers.plans.${plan.tier}.cta`)}</a>
-                        )}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
+              {trainerPlans?.map((plan, index) => {
+                const displayPrice = billingCycle === 'yearly' ? plan.yearly_price : plan.monthly_price;
+                const yearlySavings = plan.monthly_price > 0 
+                  ? Math.round(plan.monthly_price * 12 - plan.yearly_price) 
+                  : 0;
+                
+                return (
+                  <motion.div
+                    key={plan.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <Card className={`h-full relative ${plan.is_highlighted ? 'border-2 border-primary shadow-lg' : ''}`}>
+                      {plan.is_highlighted && (
+                        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+                          {plan.badge || t('pricing.trainers.mostPopular')}
+                        </Badge>
+                      )}
+                      <CardHeader className="text-center">
+                        <CardTitle className="text-xl">{plan.name}</CardTitle>
+                        <CardDescription>{plan.description}</CardDescription>
+                        <div className="pt-4">
+                          <span className="text-4xl font-bold">
+                            {plan.monthly_price === 0 && billingCycle === 'monthly' 
+                              ? t('pricing.trainers.plans.starter.price') 
+                              : `€${displayPrice}`}
+                          </span>
+                          <span className="text-muted-foreground">
+                            /{billingCycle === 'yearly' ? t('pricing.trainers.year') : t('pricing.trainers.month')}
+                          </span>
+                          {billingCycle === 'yearly' && yearlySavings > 0 && (
+                            <p className="text-sm text-green-600 dark:text-green-400 font-medium mt-1">
+                              {t('pricing.trainers.saveAmount', { amount: yearlySavings })}
+                            </p>
+                          )}
+                        </div>
+                        <div className="pt-2 flex items-center justify-center gap-1">
+                          <Badge variant="outline">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} {t('pricing.trainers.platformFee')}</Badge>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{t('pricing.trainers.feeTooltip')}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-3 mb-8">
+                          {getFeatureList(plan.tier).map((feature) => (
+                            <li key={feature.key} className="flex items-center gap-2">
+                              {feature.included ? (
+                                <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                              ) : (
+                                <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
+                              )}
+                              <span className={feature.included ? '' : 'text-muted-foreground/50'}>
+                                {t(`pricing.trainers.plans.${plan.tier}.features.${feature.key}`)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button 
+                          className="w-full" 
+                          variant={plan.is_highlighted ? 'default' : 'outline'}
+                          asChild
+                        >
+                          {isInDevelopment() ? (
+                            <Link to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
+                          ) : (
+                            <a href={getAppUrl('/auth')}>{t(`pricing.trainers.plans.${plan.tier}.cta`)}</a>
+                          )}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
             </div>
           )}
         </div>

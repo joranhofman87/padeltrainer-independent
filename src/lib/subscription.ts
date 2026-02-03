@@ -23,8 +23,8 @@ export const SUBSCRIPTION_TIERS = {
     productIdMonthly: 'prod_TnaKMqklQL0csZ',
     productIdYearly: 'prod_TnaK7n69g3z1go',
     platformFeePercent: 5,
-    monthlyPrice: 29,
-    yearlyPrice: 278,
+    monthlyPrice: 39,
+    yearlyPrice: 374,
   },
   academy: {
     name: 'Academy',
@@ -33,18 +33,21 @@ export const SUBSCRIPTION_TIERS = {
     productIdMonthly: 'prod_TnaKlteqteiFWb',
     productIdYearly: 'prod_TnaLKqo3OnQCOd',
     platformFeePercent: 2.5,
-    monthlyPrice: 79,
-    yearlyPrice: 758,
+    monthlyPrice: 99,
+    yearlyPrice: 950,
   },
 } as const;
 
-export const TRIAL_TIER = {
-  name: 'Trial',
+export const STARTER_TIER = {
+  name: 'Starter',
   platformFeePercent: TRIAL_PLATFORM_FEE_PERCENT,
   maxLessons: 3,
-  monthlyPrice: 0,
-  yearlyPrice: 0,
+  monthlyPrice: 10,
+  yearlyPrice: 96,
 };
+
+// Keep TRIAL_TIER as alias for backward compatibility
+export const TRIAL_TIER = STARTER_TIER;
 
 export function getPlatformFeePercent(tier: SubscriptionTier): number {
   if (tier === 'trial') return TRIAL_TIER.platformFeePercent;

@@ -255,7 +255,7 @@ export default function TrainerSubscription() {
 
         {/* Billing Toggle */}
         <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center gap-4 p-1 bg-muted rounded-lg">
+          <div className="inline-flex items-center gap-1 p-1 bg-muted rounded-lg">
             <Button
               variant={billingCycle === 'monthly' ? 'default' : 'ghost'}
               size="sm"
@@ -270,7 +270,7 @@ export default function TrainerSubscription() {
               className="gap-2"
             >
               Yearly
-              <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
+              <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
                 Save 20%
               </Badge>
             </Button>
@@ -309,6 +309,11 @@ export default function TrainerSubscription() {
                   <span className="text-muted-foreground">
                     /{billingCycle === 'yearly' ? 'year' : 'month'}
                   </span>
+                  {billingCycle === 'yearly' && plan.monthly_price > 0 && (
+                    <p className="text-sm text-green-600 dark:text-green-400 font-medium mt-1">
+                      Save €{Math.round(plan.monthly_price * 12 - plan.yearly_price)}/year
+                    </p>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
