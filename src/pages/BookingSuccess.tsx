@@ -60,13 +60,13 @@ export default function BookingSuccess() {
       if (bookingData?.availability_slots) {
         const trainerId = (bookingData.availability_slots as any).trainer_id;
         if (trainerId) {
-          const { data: stripeAccount } = await supabase
-            .from('trainer_stripe_accounts')
-            .select('stripe_account_id')
+          const { data: mollieAccount } = await supabase
+            .from('trainer_mollie_accounts')
+            .select('mollie_organization_id')
             .eq('trainer_id', trainerId)
             .single();
           
-          connectedAccountId = stripeAccount?.stripe_account_id;
+          connectedAccountId = mollieAccount?.mollie_organization_id;
         }
       }
 

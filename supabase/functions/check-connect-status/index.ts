@@ -52,15 +52,15 @@ serve(async (req) => {
       });
     }
 
-    // Get Stripe account
-    const { data: stripeAccount } = await supabaseClient
-      .from('trainer_stripe_accounts')
-      .select('stripe_account_id, onboarding_complete, charges_enabled, payouts_enabled')
+    // Get Mollie account
+    const { data: mollieAccount } = await supabaseClient
+      .from('trainer_mollie_accounts')
+      .select('mollie_organization_id, onboarding_complete, charges_enabled, payouts_enabled')
       .eq('trainer_id', trainerProfile.id)
       .single();
 
-    if (!stripeAccount?.stripe_account_id) {
-      return new Response(JSON.stringify({ connected: false, message: "No Stripe account" }), {
+    if (!mollieAccount?.mollie_organization_id) {
+      return new Response(JSON.stringify({ connected: false, message: "No payment account" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -68,8 +68,8 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Fetch latest account status from Stripe
-    const account = await stripe.accounts.retrieve(stripeAccount.stripe_account_id);
+    // Fetch latest account status from Stripe (temporary - will be replaced with Mollie API)
+    const account = await stripe.accounts.retrieve(mollieAccount.mollie_organization_id);
     logStep("Account retrieved", { 
       chargesEnabled: account.charges_enabled, 
       payoutsEnabled: account.payouts_enabled,
@@ -78,7 +78,7 @@ serve(async (req) => {
 
     // Update database with latest status
     const { error: updateError } = await supabaseClient
-      .from('trainer_stripe_accounts')
+      .from('trainer_mollie_accounts')
       .update({
         charges_enabled: account.charges_enabled,
         payouts_enabled: account.payouts_enabled,
@@ -95,7 +95,7 @@ serve(async (req) => {
     if (account.charges_enabled) {
       try {
         const stripeBalance = await stripe.balance.retrieve({
-          stripeAccount: stripeAccount.stripe_account_id,
+          stripeAccount: mollieAccount.mollie_organization_id,
         });
         balance = {
           available: stripeBalance.available.reduce((sum: number, b: { amount: number }) => sum + b.amount, 0) / 100,

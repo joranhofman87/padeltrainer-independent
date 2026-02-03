@@ -83,10 +83,10 @@ serve(async (req) => {
       trialExpired: clubProfile.trial_ends_at ? new Date(clubProfile.trial_ends_at) < new Date() : false,
     };
 
-    // Check Stripe subscription if customer exists
-    if (clubProfile.stripe_customer_id) {
+    // Check Stripe subscription if customer exists (temporary - will be replaced with Mollie)
+    if (clubProfile.mollie_customer_id) {
       const subscriptions = await stripe.subscriptions.list({
-        customer: clubProfile.stripe_customer_id,
+        customer: clubProfile.mollie_customer_id,
         limit: 1,
       });
 

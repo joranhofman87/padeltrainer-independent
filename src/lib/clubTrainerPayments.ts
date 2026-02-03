@@ -4,13 +4,13 @@ export interface ClubPaymentInfo {
   isClubTrainer: boolean;
   clubProfileId?: string;
   clubName?: string;
-  clubStripeConnected: boolean;
+  clubMollieConnected: boolean;
   clubChargesEnabled: boolean;
 }
 
 /**
  * Check if a trainer is covered by club payments.
- * A club trainer doesn't need their own Stripe account if their club has Stripe connected.
+ * A club trainer doesn't need their own Mollie account if their club has Mollie connected.
  */
 export async function getClubPaymentInfo(trainerId: string): Promise<ClubPaymentInfo> {
   // Check if trainer has a club_trainer relationship
@@ -27,7 +27,7 @@ export async function getClubPaymentInfo(trainerId: string): Promise<ClubPayment
   if (locationError || !trainerLocations || trainerLocations.length === 0) {
     return {
       isClubTrainer: false,
-      clubStripeConnected: false,
+      clubMollieConnected: false,
       clubChargesEnabled: false,
     };
   }
@@ -47,39 +47,41 @@ export async function getClubPaymentInfo(trainerId: string): Promise<ClubPayment
     return {
       isClubTrainer: true,
       clubName: locationData?.name,
-      clubStripeConnected: false,
+      clubMollieConnected: false,
       clubChargesEnabled: false,
     };
   }
 
-  // Get club's Stripe account status
-  const { data: clubStripeAccount, error: stripeError } = await supabase
-    .from('club_stripe_accounts')
-    .select('stripe_account_id, charges_enabled, onboarding_complete')
+  // Get club's Mollie account status
+  const { data: clubMollieAccount, error: mollieError } = await supabase
+    .from('club_mollie_accounts' as any)
+    .select('mollie_organization_id, charges_enabled, onboarding_complete')
     .eq('club_profile_id', clubProfile.id)
     .maybeSingle();
 
-  if (stripeError || !clubStripeAccount) {
+  if (mollieError || !clubMollieAccount) {
     return {
       isClubTrainer: true,
       clubProfileId: clubProfile.id,
       clubName: locationData?.name,
-      clubStripeConnected: false,
+      clubMollieConnected: false,
       clubChargesEnabled: false,
     };
   }
+
+  const typedAccount = clubMollieAccount as unknown as { mollie_organization_id: string; charges_enabled: boolean };
 
   return {
     isClubTrainer: true,
     clubProfileId: clubProfile.id,
     clubName: locationData?.name,
-    clubStripeConnected: !!clubStripeAccount.stripe_account_id,
-    clubChargesEnabled: !!clubStripeAccount.charges_enabled,
+    clubMollieConnected: !!typedAccount.mollie_organization_id,
+    clubChargesEnabled: !!typedAccount.charges_enabled,
   };
 }
 
 /**
- * Check if a trainer has valid payment setup (either personal Stripe, manual invoicing, or club coverage)
+ * Check if a trainer has valid payment setup (either personal Mollie, manual invoicing, or club coverage)
  */
 export async function hasValidPaymentSetup(
   trainerId: string,
@@ -116,19 +118,21 @@ export async function hasValidPaymentSetup(
     }
   }
 
-  // Check trainer's personal Stripe account
-  const { data: stripeAccount } = await supabase
-    .from('trainer_stripe_accounts')
-    .select('stripe_account_id, charges_enabled, onboarding_complete')
+  // Check trainer's personal Mollie account
+  const { data: mollieAccount } = await supabase
+    .from('trainer_mollie_accounts' as any)
+    .select('mollie_organization_id, charges_enabled, onboarding_complete')
     .eq('trainer_id', trainerProfileId)
     .maybeSingle();
 
-  if (stripeAccount?.charges_enabled) {
+  const typedAccount = mollieAccount as unknown as { charges_enabled: boolean } | null;
+
+  if (typedAccount?.charges_enabled) {
     return { valid: true };
   }
 
   return {
     valid: false,
-    message: 'Please connect your Stripe account or enable manual invoicing',
+    message: 'Please connect your payment account or enable manual invoicing',
   };
 }

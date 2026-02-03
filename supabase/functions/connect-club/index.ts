@@ -82,18 +82,18 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Check if club already has a Stripe account
+    // Check if club already has a Mollie account
     const { data: existingAccount } = await supabaseClient
-      .from('club_stripe_accounts')
-      .select('stripe_account_id')
+      .from('club_mollie_accounts')
+      .select('mollie_organization_id')
       .eq('club_profile_id', clubProfileId)
       .maybeSingle();
 
-    let stripeAccountId: string;
+    let mollieAccountId: string;
 
-    if (existingAccount?.stripe_account_id) {
-      stripeAccountId = existingAccount.stripe_account_id;
-      logStep("Using existing Stripe account", { stripeAccountId });
+    if (existingAccount?.mollie_organization_id) {
+      mollieAccountId = existingAccount.mollie_organization_id;
+      logStep("Using existing account", { mollieAccountId });
     } else {
       // Create new Stripe Express account for the club
       const locationName = location?.name || 'Club';
@@ -116,28 +116,28 @@ serve(async (req) => {
           user_id: user.id,
         },
       });
-      stripeAccountId = account.id;
-      logStep("Created new Stripe account", { stripeAccountId });
+      mollieAccountId = account.id;
+      logStep("Created new account", { mollieAccountId });
 
       // Save to database
       const { error: insertError } = await supabaseClient
-        .from('club_stripe_accounts')
+        .from('club_mollie_accounts')
         .insert({
           club_profile_id: clubProfileId,
-          stripe_account_id: stripeAccountId,
+          mollie_organization_id: mollieAccountId,
         });
 
       if (insertError) {
-        logStep("Warning: Could not save Stripe account", { error: insertError });
+        logStep("Warning: Could not save account", { error: insertError });
       }
     }
 
     // Create onboarding link
     const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
     const accountLink = await stripe.accountLinks.create({
-      account: stripeAccountId,
-      refresh_url: `${origin}/club/settings?stripe_refresh=true`,
-      return_url: `${origin}/club/settings?stripe_success=true`,
+      account: mollieAccountId,
+      refresh_url: `${origin}/club/settings?mollie_refresh=true`,
+      return_url: `${origin}/club/settings?mollie_success=true`,
       type: 'account_onboarding',
     });
     logStep("Created onboarding link", { url: accountLink.url });
