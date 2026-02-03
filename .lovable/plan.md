@@ -1,207 +1,185 @@
 
 
-# Unified Subscription Paywall System for All Roles
+# Role Consistency Analysis: Academy / Club / Trainer / Player
 
-## Problem Summary
+## Current State Analysis
 
-1. **Academy subscription not being checked**: RL Performance Academy shows an upgrade banner despite having `subscription_status: active` in the database
-2. **No paywall exists for any role**: Trainers, Clubs, and Academies can all access features even without an active subscription
-3. **Missing AcademySubscription page**: The page file and route don't exist
-4. **Inconsistent implementation**: Each role handles subscriptions differently
-
-## Solution: Unified Subscription Pattern
-
-Create a consistent paywall/lock mechanism that works identically across Trainer, Club, and Academy roles.
+After analyzing all four roles, I've identified significant inconsistencies that add unnecessary complexity. Here's a comprehensive comparison:
 
 ---
 
-## Implementation Overview
+## 1. Layout Architecture Differences
 
-### Phase 1: Create Shared Subscription Overlay Component
+| Aspect | Trainer | Academy | Club | Player |
+|--------|---------|---------|------|--------|
+| **Navigation Type** | Collapsible Sidebar | Collapsible Sidebar | Horizontal Header Nav | Horizontal Header Nav |
+| **Navigation Component** | `TrainerSidebar.tsx` | `AcademySidebar.tsx` | `ClubNavigation.tsx` | `PlayerNavigation.tsx` |
+| **Layout Container** | `SidebarProvider` | `SidebarProvider` | Direct container | Direct container |
+| **Gradient Background** | Orange gradient | Plain background | Plain background | Blue gradient |
 
-**File:** `src/components/shared/SubscriptionOverlay.tsx`
-
-A reusable full-screen overlay component that:
-- Blocks all content except navigation to the subscription page
-- Accepts role-specific props (pricing, features, route)
-- Shows trial countdown if applicable
-- Works for trainer, club, and academy
-
-```text
-┌────────────────────────────────────────────────────────────┐
-│                  SubscriptionOverlay                        │
-│                                                              │
-│  Props:                                                      │
-│  - roleName: "Trainer" | "Club" | "Academy"                 │
-│  - subscriptionPath: "/subscription" | "/club/subscription" │
-│  - pricing: { monthly, yearly }                              │
-│  - features: string[]                                        │
-│  - trialDaysRemaining?: number                               │
-│  - isTrialExpired: boolean                                   │
-│                                                              │
-│  Renders:                                                    │
-│  - Semi-transparent backdrop covering all content            │
-│  - Modal card with upgrade messaging                         │
-│  - Feature highlights                                        │
-│  - "Upgrade Now" CTA button                                  │
-└────────────────────────────────────────────────────────────┘
-```
+**Recommendation**: Club and Player should switch to sidebar navigation like Trainer/Academy for consistency.
 
 ---
 
-### Phase 2: Academy Subscription Infrastructure
+## 2. Subscription System Differences
 
-**2.1 Create `src/lib/academySubscription.ts`**
-- Mirror pattern from `clubSubscription.ts`
-- `checkAcademySubscription(academyId)` - Calls `check-mollie-subscription` with `type: "academy"`
-- `createAcademyCheckout(academyId)` - Creates Mollie checkout session
-- `cancelAcademySubscription(academyId)` - Cancels subscription
-- `ACADEMY_SUBSCRIPTION` constant (€199/month, 14-day trial)
+| Aspect | Trainer | Club | Academy | Player |
+|--------|---------|------|---------|--------|
+| **Subscription Lib** | `subscription.ts` (inline types) | `clubSubscription.ts` | `academySubscription.ts` | N/A |
+| **Type Interface** | `SubscriptionInfo` | `ClubSubscriptionInfo` | `AcademySubscriptionInfo` | N/A |
+| **Trial Duration** | 7 days | 14 days | 14 days | N/A |
+| **Tier Names** | trial/professional/academy | starter/club | starter/academy | N/A |
+| **Pricing Model** | Multiple tiers (Starter €10, Pro €39, Academy €99) | Single plan (€199/mo) | Single plan (€199/mo) | N/A |
+| **Subscription Page** | Full tier comparison UI | Simple status card | Simple status card | N/A |
+| **Context Integration** | Via `useAuth()` | Via `useClubContext()` | Via `useAcademyContext()` | N/A |
 
-**2.2 Update Edge Function `check-mollie-subscription`**
-- Add `type: "academy"` case alongside existing trainer and club
-- Query `academy_profiles` table with `academy_managers` join for authorization
-- Return consistent response shape
-
-**2.3 Create `src/pages/academy/AcademySubscription.tsx`**
-- Model after `ClubSubscription.tsx` for consistency
-- Uses new academySubscription lib functions
-
-**2.4 Add Route**
-- Add `/academy/subscription` route in DomainRouter
+**Issues Found**:
+- `getTrialDaysRemaining()` is duplicated in all 3 subscription files - should be a shared utility
+- Subscription interfaces are slightly different but could be unified
+- Trainer subscription uses inconsistent tier naming (`trial` vs `starter`)
 
 ---
 
-### Phase 3: Integrate Paywall into Layouts
+## 3. Dashboard Layout Differences
 
-**3.1 Update `AcademyLayout.tsx`**
-- Extend context to include subscription state
-- Check subscription when academy loads
-- Render `SubscriptionOverlay` when subscription inactive and not on subscription page
+| Component | Trainer | Club | Academy | Player |
+|-----------|---------|------|---------|--------|
+| **Stats Cards** | 5 cards + calendar grid | 3 cards | 4 cards | 4 cards |
+| **Trial Banners** | None (soft enforcement) | None | Yes (via context) | N/A |
+| **Calendar Embed** | Full calendar on dashboard | No | No | No |
+| **Quick Actions** | Complex setup checklist | Simple action cards | Simple action cards | Action cards + trainer list |
+| **Page Length** | ~1156 lines | ~156 lines | ~186 lines | ~623 lines |
 
-**3.2 Update `ClubLayout.tsx`**
-- Check club subscription status using existing `checkClubSubscription()`
-- Add subscription context fields
-- Render `SubscriptionOverlay` when subscription inactive/expired
-
-**3.3 Update `TrainerLayout.tsx`**
-- Use existing `useAuth().subscription` data
-- Add `SubscriptionOverlay` when subscription inactive and not on subscription page
-
----
-
-### Phase 4: Update Dashboard Banners
-
-Add consistent subscription alert banners across all dashboards:
-
-**Files:**
-- `src/pages/TrainerDashboard.tsx` - Add trial/subscription banners
-- `src/pages/club/ClubDashboard.tsx` - Add trial/subscription banners  
-- `src/pages/academy/AcademyDashboard.tsx` - Add trial/subscription banners
-
-Banner types:
-- Green: Trial active with countdown
-- Red: Trial expired / No subscription
-- Yellow: Subscription ending soon
+**Issues Found**:
+- Trainer dashboard is overly complex (1156 lines) compared to others
+- Club dashboard is missing trial/subscription banners (recently added to Academy)
+- Inconsistent "quick actions" patterns
 
 ---
 
-### Phase 5: i18n Translations
+## 4. Settings Page Differences
 
-**Files to update:**
-- `src/i18n/locales/en/academy.json`
-- `src/i18n/locales/nl/academy.json`
-- `src/i18n/locales/en/trainer.json` (add missing subscription keys)
-- `src/i18n/locales/nl/trainer.json`
+| Feature | Trainer | Club | Academy | Player |
+|---------|---------|------|---------|--------|
+| **Settings File** | `TrainerSettings.tsx` | `ClubSettings.tsx` | `AcademySettings.tsx` | No dedicated settings page |
+| **Visibility Toggle** | Yes (with subscription logic) | No | No | N/A |
+| **Mollie Connect** | Separate page | Yes (inline) | No | N/A |
+| **Manager Invites** | N/A | Yes | Yes | N/A |
+| **Delete Account** | Yes | No | No | No |
 
-Add subscription overlay translations:
-```json
-"subscriptionOverlay": {
-  "title": "Subscription Required",
-  "description": "Upgrade to access all features",
-  "trialExpired": "Your trial has expired",
-  "upgradeNow": "Upgrade Now",
-  "features": "What you'll get:",
-  "trialDaysRemaining": "{{days}} days left in trial"
-}
-```
+**Issues Found**:
+- Player has no settings page (only via navigation dropdown)
+- Visibility toggle pattern could be useful for Club/Academy
+- Delete account option missing from Club/Academy
 
 ---
 
-## Technical Flow
+## 5. Subscription Overlay/Paywall Consistency
 
-```text
-User loads /trainer, /club, or /academy
-            │
-            ▼
-┌─────────────────────────────────────────┐
-│ Layout Component Loads                   │
-│ - Fetches subscription status            │
-│ - Determines: hasActiveSubscription      │
-└───────────────┬─────────────────────────┘
-                │
-                ▼
-        ┌───────────────────┐
-        │ Has active         │
-        │ subscription?      │
-        └─────────┬─────────┘
-              │         │
-            YES        NO
-              │         │
-              ▼         ▼
-        ┌────────┐  ┌──────────────────────┐
-        │ Normal │  │ Is on subscription   │
-        │ Access │  │ page?                │
-        └────────┘  └─────────┬────────────┘
-                          │         │
-                        YES        NO
-                          │         │
-                          ▼         ▼
-                    ┌────────┐ ┌─────────────────┐
-                    │ Show   │ │ Show Paywall    │
-                    │ Page   │ │ Overlay         │
-                    └────────┘ └─────────────────┘
-```
+| Aspect | Trainer | Club | Academy |
+|--------|---------|------|---------|
+| **Overlay Component** | Uses shared `SubscriptionOverlay` | Uses shared `SubscriptionOverlay` | Uses shared `SubscriptionOverlay` |
+| **Features List** | 4 items | 4 items | 4 items |
+| **Trial Banner in Dashboard** | No | No | Yes (recently added) |
+
+**Good**: The shared `SubscriptionOverlay` component is now used consistently. But trial banners should be added to Trainer and Club dashboards.
 
 ---
 
-## Files Summary
+## 6. Navigation Structure Differences
 
-### New Files to Create
-1. `src/components/shared/SubscriptionOverlay.tsx` - Reusable paywall component
-2. `src/lib/academySubscription.ts` - Academy subscription utilities
-3. `src/pages/academy/AcademySubscription.tsx` - Academy subscription page
+| Section | Trainer | Club | Academy |
+|---------|---------|------|---------|
+| **Dashboard** | Direct link | Direct link | Direct link |
+| **Profile** | "My Profile" → /profile/edit | Dropdown under "Club" | Direct "Profile" link |
+| **People/Team** | "Players" group (My Players, Intake) | "People" dropdown (Trainers, Players) | "Team" group (Trainers) |
+| **Schedule** | "Schedule" group (Calendar, Open Slots) | "Schedule" dropdown (Calendar, Lessons) | "Schedule" group (Calendar, Registrations) |
+| **Business** | "Business" group (Settings, Subscription, Earnings) | "Club" dropdown (Profile, Subscription, Settings) | "Business" group (Settings, Subscription, Earnings) |
 
-### Files to Modify
-1. `supabase/functions/check-mollie-subscription/index.ts` - Add academy type
-2. `src/components/academy/AcademyLayout.tsx` - Add subscription check + overlay
-3. `src/components/club/ClubLayout.tsx` - Add subscription check + overlay
-4. `src/components/trainer/TrainerLayout.tsx` - Add subscription check + overlay
-5. `src/pages/TrainerDashboard.tsx` - Add subscription banners
-6. `src/pages/club/ClubDashboard.tsx` - Add subscription banners
-7. `src/pages/academy/AcademyDashboard.tsx` - Add subscription banners
-8. `src/components/DomainRouter.tsx` - Add academy subscription route
-9. `src/i18n/locales/en/academy.json` - Add translations
-10. `src/i18n/locales/nl/academy.json` - Add translations
-11. `src/i18n/locales/en/trainer.json` - Add overlay translations
-12. `src/i18n/locales/nl/trainer.json` - Add overlay translations
-13. `src/i18n/locales/en/club.json` - Add overlay translations (if missing)
-14. `src/i18n/locales/nl/club.json` - Add overlay translations (if missing)
+**Issues Found**:
+- Profile navigation inconsistent: Trainer uses /profile/edit, Academy uses /academy/profile, Club uses /club/profile
+- Grouping labels differ: "Business" vs "Club" vs "Settings"
+- Sidebar nav uses collapsible groups, horizontal nav uses dropdowns
 
 ---
 
-## Expected Outcome
+## Recommended Unification Plan
 
-After implementation:
+### Phase 1: Unified Subscription Infrastructure
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| RL Performance Academy (active) | Shows upgrade banner | Full access, no barriers |
-| Trainer with active sub | Full access | Full access (same) |
-| Trainer without sub | Full access | Locked with paywall |
-| Club in trial | Full access | Full access + trial banner |
-| Club trial expired | Full access | Locked with paywall |
-| Academy without sub | Full access | Locked with paywall |
+1. **Create shared subscription types**:
+   - Extract common `SubscriptionInfo` interface to `src/lib/sharedSubscription.ts`
+   - Unify tier naming: `starter` | `active` (instead of trial/professional/academy/club)
+   - Share `getTrialDaysRemaining()` helper across all roles
 
-The unified `SubscriptionOverlay` component ensures visual and behavioral consistency across all three role types.
+2. **Standardize trial configuration**:
+   - Consider aligning trial duration (7 days vs 14 days)
+   - Use consistent trial banner pattern across all dashboards
+
+### Phase 2: Unified Layout System
+
+1. **Create shared layout components**:
+   - Abstract sidebar pattern into reusable `DashboardSidebar` component
+   - Convert Club and Player to use sidebar navigation
+
+2. **Standardize visual theming**:
+   - Apply consistent gradient backgrounds (or no gradients for all)
+   - Unify header/footer patterns
+
+### Phase 3: Feature Parity
+
+1. **Settings pages**:
+   - Add visibility toggle to Club/Academy settings
+   - Add delete account option to Club/Academy settings
+   - Create PlayerSettings.tsx page
+
+2. **Dashboard enhancements**:
+   - Add trial banners to Trainer and Club dashboards (like Academy)
+   - Consider calendar view for Club dashboard
+
+### Phase 4: Navigation Consistency
+
+1. **Standardize section naming**:
+   - Use "Business" across all roles (not "Settings" or role name)
+   - Use consistent icon sets
+
+2. **Profile location**:
+   - Decide: standalone /profile/edit vs nested /[role]/profile
+
+---
+
+## Summary Table: What Needs Unification
+
+| Item | Current State | Unified Approach |
+|------|---------------|------------------|
+| Navigation style | Mixed (sidebar/horizontal) | Sidebar for all |
+| Subscription interface | 3 separate types | Single shared type |
+| `getTrialDaysRemaining` | Duplicated 3x | Single shared function |
+| Trial duration | 7 days / 14 days | Align to 14 days |
+| Trial banners | Only Academy | All paid roles |
+| Settings pages | Inconsistent features | Feature parity |
+| Profile route | Mixed patterns | Standardize to /profile/edit |
+| Background gradients | Role-specific colors | Unified or none |
+| Delete account | Only Trainer | All roles |
+
+---
+
+## Quick Wins (Low Effort, High Impact)
+
+1. **Extract shared `getTrialDaysRemaining` function** - currently duplicated in 3 files
+2. **Add trial banners to Club and Trainer dashboards** - copy from Academy pattern
+3. **Add delete account to Club and Academy settings** - component already exists
+4. **Standardize navigation group labels** - "Business" for all
+
+## Medium Effort
+
+1. **Create unified subscription type interface**
+2. **Align trial durations** (requires business decision)
+3. **Create PlayerSettings.tsx page**
+
+## High Effort (Consider for Future)
+
+1. **Convert Club/Player to sidebar navigation**
+2. **Unify background gradient theming**
+3. **Refactor TrainerDashboard.tsx** (currently 1156 lines - needs splitting)
 
