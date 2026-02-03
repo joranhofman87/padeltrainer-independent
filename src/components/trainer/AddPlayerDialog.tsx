@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -77,7 +78,7 @@ export function AddPlayerDialog({
           setRatingSystem(systems[0].code);
         }
       } catch (error) {
-        console.error("Error fetching rating systems:", error);
+        logger.error('Error fetching rating systems', error as Error, { component: 'AddPlayerDialog' });
       } finally {
         setLoadingRatingSystems(false);
       }
@@ -134,7 +135,7 @@ export function AddPlayerDialog({
         setLinkedProfile(null);
       }
     } catch (error) {
-      console.error("Error checking email:", error);
+      logger.warn('Error checking email', { error, component: 'AddPlayerDialog' });
       setLinkedProfile(null);
     } finally {
       setIsCheckingEmail(false);
@@ -183,7 +184,7 @@ export function AddPlayerDialog({
       onOpenChange(false);
       onPlayerCreated?.(data as GuestPlayer);
     } catch (error: any) {
-      console.error("Error creating player:", error);
+      logger.error('Error creating player', error as Error, { component: 'AddPlayerDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

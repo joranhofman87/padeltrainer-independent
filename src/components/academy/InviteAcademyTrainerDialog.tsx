@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Mail, Send, Loader2 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -82,7 +83,7 @@ export function InviteAcademyTrainerDialog({
       setOpen(false);
       onInviteSent();
     } catch (error) {
-      console.error('Error sending invitation:', error);
+      logger.error('Error sending invitation', error as Error, { component: 'InviteAcademyTrainerDialog' });
       toast({
         title: t('trainerInvitation.error'),
         description: String(error),

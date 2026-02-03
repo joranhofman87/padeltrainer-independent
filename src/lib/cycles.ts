@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
+import { logger } from '@/lib/logger';
 
 // Types
 export interface Cycle {
@@ -443,7 +444,7 @@ export async function getIntakeRequestsWithProposals(
     .in('intake_request_id', requestIds);
 
   if (error) {
-    console.error('Error fetching proposals:', error);
+    logger.warn('Error fetching proposals', { error });
     return requests; // Return requests without proposals on error
   }
 
@@ -598,7 +599,7 @@ async function autoFollowOwner(
         }, { onConflict: 'player_id,club_profile_id' });
     }
   } catch (error) {
-    console.error('Auto-follow failed (non-blocking):', error);
+    logger.warn('Auto-follow failed (non-blocking)', { error });
   }
 }
 
@@ -645,7 +646,7 @@ async function addToStudentList(
         });
     }
   } catch (error) {
-    console.error('Add to student list failed (non-blocking):', error);
+    logger.warn('Add to student list failed (non-blocking)', { error });
   }
 }
 

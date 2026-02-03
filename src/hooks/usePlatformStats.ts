@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 interface PlatformStats {
   trainers: number;
@@ -59,7 +60,7 @@ export function usePlatformStats(): PlatformStats {
           loading: false
         });
       } catch (error) {
-        console.error('Error fetching platform stats:', error);
+        logger.warn('Error fetching platform stats', { error, component: 'usePlatformStats' });
         setStats(prev => ({ ...prev, loading: false }));
       }
     }

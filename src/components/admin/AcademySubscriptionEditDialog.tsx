@@ -28,6 +28,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 
 interface AcademySubscriptionData {
   subscription_status: string | null;
@@ -99,7 +100,7 @@ export function AcademySubscriptionEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating academy:", error);
+      logger.error('Error updating academy', error as Error, { component: 'AcademySubscriptionEditDialog', academyId });
       toast({
         title: "Error",
         description: "Failed to update academy. Please try again.",

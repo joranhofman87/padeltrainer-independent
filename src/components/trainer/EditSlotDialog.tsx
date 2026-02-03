@@ -5,6 +5,7 @@ import { CalendarIcon, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -170,7 +171,7 @@ export function EditSlotDialog({
       onSlotUpdated();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error updating slot:", error);
+      logger.error('Error updating slot', error as Error, { component: 'EditSlotDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

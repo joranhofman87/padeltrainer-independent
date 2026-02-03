@@ -21,6 +21,7 @@ import {
 import { Loader2, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 
 interface AddTrainerDialogProps {
   open: boolean;
@@ -135,7 +136,7 @@ export function AddTrainerDialog({
         onOpenChange(false);
       }
     } catch (error) {
-      console.error("Error creating trainer:", error);
+      logger.error('Error creating trainer', error as Error, { component: 'AddTrainerDialog' });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to create trainer. Please try again.",

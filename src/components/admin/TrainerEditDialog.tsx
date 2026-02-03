@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getRatingSystems, type RatingSystemConfig } from "@/lib/ratingSystems";
+import { logger } from '@/lib/logger';
 
 export interface TrainerEditData {
   id: string;
@@ -226,7 +227,7 @@ export function TrainerEditDialog({
       setAvatarUrl(newUrl);
       toast({ title: "Avatar uploaded", description: "Avatar image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading avatar:", error);
+      logger.error('Error uploading avatar', error as Error, { component: 'TrainerEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload avatar.", variant: "destructive" });
     } finally {
       setAvatarUploading(false);
@@ -252,7 +253,7 @@ export function TrainerEditDialog({
       });
 
       if (profileError) {
-        console.error("Error updating profile:", profileError);
+        logger.error('Error updating profile', undefined, { error: profileError, component: 'TrainerEditDialog' });
         throw new Error("Failed to update profile");
       }
 
@@ -293,7 +294,7 @@ export function TrainerEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating trainer:", error);
+      logger.error('Error updating trainer', error as Error, { component: 'TrainerEditDialog' });
       toast({
         title: "Error",
         description: "Failed to update trainer. Please try again.",

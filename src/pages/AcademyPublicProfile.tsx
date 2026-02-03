@@ -40,6 +40,7 @@ import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
+import { logger } from '@/lib/logger';
 
 interface TrainerData {
   id: string;
@@ -120,7 +121,7 @@ export default function AcademyPublicProfile() {
         setTrainers(trainersData);
         setLocations(locationsData);
       } catch (error) {
-        console.error('Error fetching academy:', error);
+        logger.error('Error fetching academy', error as Error, { component: 'AcademyPublicProfile', slug });
       } finally {
         setLoading(false);
       }

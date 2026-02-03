@@ -32,6 +32,7 @@ import { CreateInvoiceDialog } from '@/components/trainer/CreateInvoiceDialog';
 import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
+import { logger } from '@/lib/logger';
 
 interface EarningsBooking {
   id: string;
@@ -182,7 +183,7 @@ export default function TrainerEarnings() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching earnings:', error);
+      logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
       toast({ title: 'Error', description: 'Failed to load earnings data', variant: 'destructive' });
     } else {
       setBookings((data as any) || []);
@@ -204,7 +205,7 @@ export default function TrainerEarnings() {
         balance: data?.balance,
       });
     } catch (err) {
-      console.error('Error checking connect status:', err);
+      logger.warn('Error checking connect status', { error: err, component: 'TrainerEarnings' });
       setConnectStatus({ connected: false });
     }
   };

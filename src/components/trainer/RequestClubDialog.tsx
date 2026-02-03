@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -92,7 +93,7 @@ export function RequestClubDialog({ open, onOpenChange }: RequestClubDialogProps
         throw new Error(result.error);
       }
     } catch (error) {
-      console.error('Error submitting club request:', error);
+      logger.error('Error submitting club request', error as Error, { component: 'RequestClubDialog' });
       toast({
         title: t('locations.requestClubError', 'Error'),
         description: t('locations.requestClubErrorDesc', 'Failed to submit request. Please try again.'),
