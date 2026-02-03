@@ -154,10 +154,6 @@ export interface AdminStats {
     fees: number;
     bookings: number;
   }>;
-  stripeBalance: {
-    available: Array<{ amount: number; currency: string }>;
-    pending: Array<{ amount: number; currency: string }>;
-  } | null;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {

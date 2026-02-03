@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Stripe from "https://esm.sh/stripe@14.21.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +26,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -74,7 +72,7 @@ serve(async (req) => {
       bookingsResult,
       trainersResult,
       playersResult,
-      stripeAccountsResult,
+      mollieAccountsResult,
       clubsResult,
     ] = await Promise.all([
       supabase
@@ -87,7 +85,7 @@ serve(async (req) => {
         .from("profiles")
         .select("id, user_id, created_at"),
       supabase
-        .from("trainer_stripe_accounts")
+        .from("trainer_mollie_accounts")
         .select("trainer_id, charges_enabled, payouts_enabled, onboarding_complete"),
       supabase
         .from("club_profiles")
@@ -97,14 +95,14 @@ serve(async (req) => {
     const bookings = bookingsResult.data || [];
     const trainers = trainersResult.data || [];
     const players = playersResult.data || [];
-    const stripeAccounts = stripeAccountsResult.data || [];
+    const mollieAccounts = mollieAccountsResult.data || [];
     const clubs = clubsResult.data || [];
 
     logStep("Data fetched", {
       bookings: bookings.length,
       trainers: trainers.length,
       players: players.length,
-      stripeAccounts: stripeAccounts.length,
+      mollieAccounts: mollieAccounts.length,
       clubs: clubs.length,
     });
 
@@ -166,9 +164,9 @@ serve(async (req) => {
     
     const estimatedPlatformFees = totalGMV * (avgFeePercent / 100);
 
-    // Stripe Connect stats
-    const connectedAccounts = stripeAccounts.filter(a => a.charges_enabled).length;
-    const pendingAccounts = stripeAccounts.filter(a => !a.charges_enabled).length;
+    // Mollie Connect stats
+    const connectedAccounts = mollieAccounts.filter(a => a.charges_enabled).length;
+    const pendingAccounts = mollieAccounts.filter(a => !a.charges_enabled).length;
 
     // Club stats
     const clubStats = {
@@ -216,33 +214,6 @@ serve(async (req) => {
       });
     }
 
-    // Get Stripe platform balance if available
-    let stripeBalance: {
-      available: Array<{ amount: number; currency: string }>;
-      pending: Array<{ amount: number; currency: string }>;
-    } | null = null;
-    if (stripeSecretKey) {
-      try {
-        const stripe = new Stripe(stripeSecretKey, {
-          apiVersion: "2023-10-16",
-        });
-        const balance = await stripe.balance.retrieve();
-        stripeBalance = {
-          available: balance.available.map((b: { amount: number; currency: string }) => ({
-            amount: b.amount / 100,
-            currency: b.currency.toUpperCase(),
-          })),
-          pending: balance.pending.map((b: { amount: number; currency: string }) => ({
-            amount: b.amount / 100,
-            currency: b.currency.toUpperCase(),
-          })),
-        };
-        logStep("Stripe balance retrieved", stripeBalance);
-      } catch (stripeError) {
-        logStep("Stripe balance error", { error: (stripeError as Error).message });
-      }
-    }
-
     const response = {
       overview: {
         totalGMV,
@@ -271,7 +242,6 @@ serve(async (req) => {
       trainersByTier: trainerTiers,
       clubStats,
       monthlyStats,
-      stripeBalance,
     };
 
     logStep("Response prepared", { totalGMV, platformFees: estimatedPlatformFees });
