@@ -1,204 +1,205 @@
 
-# Obsolete Code and Complexity Analysis
 
-After a thorough analysis of the codebase, I've identified several areas of obsolete code, legacy patterns, and unnecessary complexity that can be cleaned up.
+# Comprehensive Legacy & Obsolete Code Analysis
 
----
-
-## 1. Stripe Remnants (CRITICAL - Legacy Payment System)
-
-**Issue**: The platform migrated from Stripe to Mollie, but database tables and type references still contain Stripe naming.
-
-| Location | Issue |
-|----------|-------|
-| `src/integrations/supabase/types.ts` | Contains `academy_stripe_accounts`, `club_stripe_accounts`, `trainer_stripe_accounts` table types |
-| Database foreign keys | Named `academy_stripe_accounts_academy_profile_id_fkey`, `club_stripe_accounts_club_profile_id_fkey`, etc. |
-| `src/lib/subscription.ts` | Contains Stripe `priceId` and `productId` values (e.g., `price_1Spz9VPxAlHS6UZH9wmgdECd`, `prod_TnaKMqklQL0csZ`) |
-| `src/lib/clubSubscription.ts` | Contains Stripe `priceId: "price_1SqSZBPxAlHS6UZHJHw1xUFB"`, `productId: "prod_TobiJfC96Jjf3h"` |
-
-**Recommendation**: 
-- Rename database tables from `*_stripe_accounts` to `*_mollie_accounts`
-- Remove hardcoded Stripe price/product IDs since Mollie doesn't use them
-- These IDs are vestiges of the old Stripe integration and serve no purpose with Mollie
+After a thorough review of the codebase, I've identified multiple categories of legacy code, broken functionality, and unnecessary complexity.
 
 ---
 
-## 2. Club Mollie/Payment Infrastructure (Obsolete per Recent Decision)
+## Critical Issues (Breaking Functionality)
 
-**Issue**: Club payment collection was recently deprecated (clubs don't collect payments - academies do), but code remains.
+### 1. Missing Edge Functions Called by Frontend
 
-| File | Status |
-|------|--------|
-| `supabase/functions/create-club-mollie-subscription/index.ts` | Should be DELETED - calls club Mollie subscription |
-| `src/lib/clubTrainerPayments.ts` | References `club_mollie_accounts` - should be REVIEWED/DELETED |
-| `supabase/functions/cancel-mollie-subscription/index.ts` | Still handles `type === "club"` case |
-| `supabase/functions/check-mollie-subscription/index.ts` | Still handles `type === "club"` case |
-| `src/lib/clubSubscription.ts` | References `create-club-mollie-subscription` function |
+The following edge functions are invoked by frontend code but **do not exist**:
 
-**Recommendation**:
-- Delete `create-club-mollie-subscription` edge function
-- Remove club payment collection references from `clubTrainerPayments.ts`
-- Update `cancel-mollie-subscription` and `check-mollie-subscription` to remove club payment handling (keep subscription handling)
-- Keep club SUBSCRIPTION infrastructure (clubs still pay for platform access)
+| Edge Function | Called From | Impact |
+|---------------|-------------|--------|
+| `check-trainer-subscription` | `src/hooks/useAuth.tsx:77` | **CRITICAL**: Trainer subscription checking fails for all trainers |
+| `create-academy-mollie-subscription` | `src/lib/academySubscription.ts:55` | Academy checkout will fail |
 
----
+**Action Required**: 
+- Create `check-trainer-subscription` function or update `useAuth.tsx` to use `check-mollie-subscription` with `type: "trainer"`
+- Create `create-academy-mollie-subscription` function (copy pattern from `create-mollie-subscription`)
 
-## 3. Legacy Function Aliases and Backward Compatibility Code
+### 2. Club Subscription Calling Non-Existent Type
 
-**Issue**: Duplicate/aliased functions kept for "backward compatibility" that add confusion.
+The edge functions `check-mollie-subscription` and `cancel-mollie-subscription` were updated to only accept `"trainer"` or `"academy"` types, but `clubSubscription.ts` still calls them with `type: "club"`:
 
-| Location | Issue |
-|----------|-------|
-| `src/lib/subscription.ts:50` | `TRIAL_TIER = STARTER_TIER` - unnecessary alias |
-| `src/lib/subscription.ts:86-89` | `isTrialExpiredLegacy()` - marked legacy, duplicates `isDateExpired()` from sharedSubscription |
-| `src/lib/subscription.ts:83` | Re-exports `isDateExpired as isTrialExpired` - confusing naming |
-| Multiple files | `getTrialDaysRemaining` is re-exported in multiple places instead of importing from source |
+| File | Line | Issue |
+|------|------|-------|
+| `src/lib/clubSubscription.ts:27` | `type: "club"` | Function will throw "Invalid type" error |
+| `src/lib/clubSubscription.ts:76` | `type: "club"` | Function will throw "Invalid type" error |
 
-**Recommendation**:
-- Remove `TRIAL_TIER` alias, use `STARTER_TIER` directly
-- Delete `isTrialExpiredLegacy()` function
-- Standardize on `isDateExpired()` from `sharedSubscription.ts`
-- Import `getTrialDaysRemaining` directly from `sharedSubscription.ts` everywhere
+**Action Required**: Add `type === "club"` case back to the edge functions OR update clubs to use a different subscription pattern.
 
 ---
 
-## 4. Legacy Routes (Duplicate Path Handling)
+## High Priority Cleanup
 
-**Issue**: Multiple routes point to the same components for "backwards compatibility."
+### 3. Orphaned Edge Function References in config.toml
 
-| Legacy Route | Redirects To | Component |
-|--------------|--------------|-----------|
-| `/lessons` | - | `ManageLessons` (same as nowhere else uses it) |
-| `/availability` | - | `TrainerCalendar` |
-| `/schedule` | - | `TrainerCalendar` |
-| `/trainer-bookings` | - | `TrainerBookings` |
-| `/earnings` | - | `TrainerEarnings` |
-| `/subscription` | - | `TrainerSubscription` |
-| `/analytics` | - | `TrainerAnalytics` |
-| `/settings/notifications` | - | `NotificationSettings` |
-| `/settings/calendar` | - | `CalendarSettings` |
+The `supabase/config.toml` contains references to edge functions that **no longer exist** (deleted during Stripe→Mollie migration):
 
-Many of these are also defined inside the `/trainer` route group.
-
-**Recommendation**:
-- Consolidate routes under `/trainer/*` namespace
-- Add redirect rules for legacy routes instead of duplicating
-- Remove standalone legacy route definitions from `DomainRouter.tsx` (lines 205-217, 313-325)
-
----
-
-## 5. Unused/Redundant Pages
-
-**Issue**: Some pages appear to overlap in functionality or may be unused.
-
-| Page | Issue |
-|------|-------|
-| `ManageSchedule.tsx` (741 lines) | Complex page for working hours + bulk slots - duplicates TrainerCalendar functionality |
-| `ManageAvailability.tsx` (521 lines) | Individual slot management - overlaps with TrainerCalendar |
-| `ManageLessons.tsx` | Lesson CRUD - unclear if still primary path |
-| `OpenSlots.tsx` | View of open slots - could be tab in TrainerCalendar |
-
-**Recommendation**:
-- Audit actual usage of these pages
-- Consider consolidating schedule/availability management into `TrainerCalendar`
-- The setup checklist in `TrainerDashboard` still references `/lessons` and `/schedule` - needs updating
-
----
-
-## 6. TrainerDashboard Complexity (1156 lines)
-
-**Issue**: The TrainerDashboard is significantly more complex than other dashboards (Club: ~156 lines, Academy: ~186 lines).
-
-It contains:
-- Full calendar grid
-- Setup checklist
-- Stats cards
-- Trial banner
-- Multiple dialog components
-- Complex state management
-
-**Recommendation**:
-- Extract calendar into separate component
-- Move setup checklist to its own component file
-- Move trial banner to shared component (already exists in other dashboards)
-- Target: Reduce to ~400-500 lines by component extraction
-
----
-
-## 7. Database Tables to Clean Up
-
-Based on the Stripe migration and club payment changes:
-
-| Table | Action |
-|-------|--------|
-| `academy_stripe_accounts` | RENAME to `academy_mollie_accounts` (if not already exists) or DELETE if duplicate |
-| `club_stripe_accounts` | RENAME to `club_mollie_accounts` (if not already exists) or DELETE if duplicate |
-| `trainer_stripe_accounts` | RENAME to `trainer_mollie_accounts` (if not already exists) or DELETE if duplicate |
-| `club_mollie_accounts` | KEEP - used for club subscriptions (not payments) |
-
----
-
-## 8. Secrets to Clean Up
-
-| Secret | Status |
-|--------|--------|
-| `STRIPE_SECRET_KEY` | REMOVE - Stripe is no longer used |
-
----
-
-## 9. Academy Subscription Placeholder Values
-
-**Issue**: `src/lib/academySubscription.ts` contains placeholder IDs.
-
-```typescript
-export const ACADEMY_SUBSCRIPTION = {
-  priceId: "price_academy_monthly", // Update with actual Mollie price ID
-  productId: "prod_academy", // Update with actual Mollie product ID
-  ...
-};
+```text
+Lines 4-54 contain references to deleted Stripe functions:
+- [functions.create-checkout-session]
+- [functions.verify-payment]
+- [functions.connect-trainer]
+- [functions.check-connect-status]
+- [functions.create-trainer-checkout]
+- [functions.check-trainer-subscription]
+- [functions.customer-portal]
+- [functions.create-club-checkout]
+- [functions.check-club-subscription]
+- [functions.club-customer-portal]
+- [functions.connect-club]
+- [functions.check-club-connect-status]
+- [functions.mollie-connect-club] (line 101)
+- [functions.create-club-mollie-subscription] (line 122)
 ```
 
-**Recommendation**: These Stripe-style IDs aren't used by Mollie - remove them or document they're unused.
+**Action Required**: Clean up `supabase/config.toml` to remove references to non-existent functions.
+
+### 4. Stripe productId/priceId Constants Still in Use
+
+Even after the Mollie migration, the code still contains **hardcoded Stripe product IDs** that are being used:
+
+| File | Lines | Issue |
+|------|-------|-------|
+| `src/lib/subscription.ts:21-38` | `priceIdMonthly: 'price_1Spz9V...'`, `productIdMonthly: 'prod_TnaK...'` | Stripe IDs hardcoded |
+| `src/lib/subscription.ts:54-67` | `getTierFromProductId()` | Compares against Stripe product IDs |
+| `src/hooks/useAuth.tsx:99` | `getTierFromProductId(data.product_id)` | Uses Stripe-based tier detection |
+
+The `getTierFromProductId` function is called to determine subscription tiers but relies on Stripe product IDs that Mollie doesn't use.
+
+**Action Required**: 
+- Update tier detection to use `subscription_tier` from the database (already stored)
+- Remove Stripe IDs from `SUBSCRIPTION_TIERS` or replace with Mollie equivalents from the `pricing_plans` table
+
+### 5. STRIPE_SECRET_KEY Still Present
+
+The secret `STRIPE_SECRET_KEY` is still configured (marked as "cannot be deleted"). While not used, it should be removed for security hygiene.
+
+**Action Required**: Remove via workspace admin settings (cannot be done via code).
 
 ---
 
-## Summary: Cleanup Priority
+## Medium Priority Cleanup
 
-### High Priority (Remove immediately)
-1. Delete `create-club-mollie-subscription` edge function
-2. Remove `STRIPE_SECRET_KEY` secret
-3. Remove `isTrialExpiredLegacy()` function
-4. Remove `TRIAL_TIER` alias
+### 6. Club Payment UI Translations Still Present
 
-### Medium Priority (Consolidate)
-1. Consolidate legacy routes into redirects
-2. Rename database tables from `*_stripe_*` to `*_mollie_*`
-3. Remove Stripe priceId/productId values from subscription configs
-4. Update `cancel-mollie-subscription` and `check-mollie-subscription` to remove club payment handling
+Even though club Mollie Connect was removed, the translation files still contain club payment UI strings:
 
-### Lower Priority (Refactor)
-1. Extract TrainerDashboard components
-2. Consolidate ManageSchedule/ManageAvailability into TrainerCalendar
-3. Standardize imports of shared subscription utilities
+| File | Lines | Content |
+|------|-------|---------|
+| `src/i18n/locales/en/club.json` | 263-285 | `mollieConnect`, `paymentsEnabled`, `payoutsEnabled`, etc. |
+| `src/i18n/locales/nl/club.json` | 263-285 | Same keys in Dutch |
+
+**Action Required**: Remove unused `settings.mollieConnect*` translation keys from club locale files.
+
+### 7. Legacy Route Duplication
+
+The `DomainRouter.tsx` defines routes twice - once in the trainer layout and once as "legacy routes":
+
+```typescript
+// Lines 205-217: Legacy routes that duplicate trainer routes
+<Route path="/lessons" element={<ManageLessons />} />
+<Route path="/availability" element={<TrainerCalendar />} />
+<Route path="/schedule" element={<TrainerCalendar />} />
+<Route path="/trainer-bookings" element={<TrainerBookings />} />
+<Route path="/earnings" element={<TrainerEarnings />} />
+<Route path="/subscription" element={<TrainerSubscription />} />
+<Route path="/analytics" element={<TrainerAnalytics />} />
+```
+
+These duplicate routes that already exist under `/trainer/*`. This also exists in lines 313-325.
+
+**Action Required**: Convert legacy routes to `<Navigate>` redirects instead of duplicating components.
+
+### 8. Unused Pages (ManageSchedule, ManageAvailability)
+
+Two large pages exist but may be unused:
+
+| Page | Lines | Status |
+|------|-------|--------|
+| `src/pages/ManageSchedule.tsx` | 741 lines | Has working hours + bulk slots - overlaps with TrainerCalendar |
+| `src/pages/ManageAvailability.tsx` | 521 lines | Individual slot management - not referenced in navigation |
+
+**Action Required**: 
+- Audit if these pages are still accessed (they're only accessible via legacy `/schedule` and `/availability` routes which point to `TrainerCalendar`)
+- Consider removing if unused
 
 ---
 
-## Files to Delete
+## Lower Priority (Technical Debt)
 
-| File | Reason |
-|------|--------|
-| `supabase/functions/create-club-mollie-subscription/index.ts` | Clubs no longer collect payments |
+### 9. Stripe Type References in Supabase Types
+
+The auto-generated `src/integrations/supabase/types.ts` contains references to `stripe_accounts` foreign keys:
+
+```typescript
+foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+```
+
+These reflect the database foreign key constraints that weren't renamed during migration.
+
+**Action Required**: Database migration to rename foreign key constraints (optional - cosmetic only).
+
+### 10. TrainerDashboard Complexity
+
+At 1156 lines, `TrainerDashboard.tsx` is significantly larger than other dashboards (Club: ~156, Academy: ~186). It includes:
+- Full calendar grid
+- Setup checklist component
+- Trial banner component
+- Multiple dialog states
+
+**Action Required**: Extract components:
+- `TrainerSetupChecklist` component
+- `TrainerTrialBanner` component
+- Move calendar logic to use existing `TrainerCalendarGrid`
+
+---
+
+## Summary: Cleanup Actions
+
+### Immediate (Fix breaking functionality)
+1. **Update `useAuth.tsx`** to use `check-mollie-subscription` with `type: "trainer"` instead of `check-trainer-subscription`
+2. **Add `type === "club"` support back** to `check-mollie-subscription` and `cancel-mollie-subscription` (for club subscriptions - not payments)
+3. **Create `create-academy-mollie-subscription`** edge function for academy checkout
+
+### High Priority (Remove obsolete code)
+4. Clean up `supabase/config.toml` - remove 14+ non-existent function references
+5. Remove/update Stripe productId constants in `subscription.ts`
+6. Update `getTierFromProductId` to use database tier values
+
+### Medium Priority (Reduce complexity)
+7. Remove unused club payment translations
+8. Convert legacy routes to redirects
+9. Audit ManageSchedule/ManageAvailability pages for removal
+
+### Lower Priority (Technical debt)
+10. Extract TrainerDashboard components
+11. Rename database foreign key constraints
+
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/subscription.ts` | Remove `TRIAL_TIER`, `isTrialExpiredLegacy`, Stripe IDs |
-| `src/lib/clubSubscription.ts` | Remove Stripe priceId/productId |
-| `src/lib/academySubscription.ts` | Remove placeholder priceId/productId |
-| `src/lib/clubTrainerPayments.ts` | Remove or update (clubs don't collect payments) |
-| `supabase/functions/cancel-mollie-subscription/index.ts` | Remove club payment handling |
-| `supabase/functions/check-mollie-subscription/index.ts` | Remove club-specific payment logic |
-| `src/components/DomainRouter.tsx` | Consolidate legacy routes |
-| `src/pages/TrainerDashboard.tsx` | Extract components to reduce complexity |
+| `src/hooks/useAuth.tsx` | Change `check-trainer-subscription` to `check-mollie-subscription` with `type: "trainer"` |
+| `supabase/functions/check-mollie-subscription/index.ts` | Add `type === "club"` case |
+| `supabase/functions/cancel-mollie-subscription/index.ts` | Add `type === "club"` case |
+| `src/lib/subscription.ts` | Remove Stripe IDs, update tier detection |
+| `supabase/config.toml` | Remove orphaned function configs |
+| `src/i18n/locales/en/club.json` | Remove unused mollieConnect keys |
+| `src/i18n/locales/nl/club.json` | Remove unused mollieConnect keys |
+
+## New Files to Create
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/create-academy-mollie-subscription/index.ts` | Academy subscription checkout |
 
