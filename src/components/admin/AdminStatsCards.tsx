@@ -112,22 +112,11 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       color: "text-amber-500",
     },
     {
-      title: "Stripe Connect",
+      title: "Mollie Connect",
       value: stats.overview.connectedAccounts.toString(),
       description: `${stats.overview.pendingAccounts} pending onboarding`,
       icon: CreditCard,
       color: "text-orange-500",
-    },
-    {
-      title: "Stripe Balance",
-      value: stats.stripeBalance?.available?.[0]
-        ? formatCurrency(stats.stripeBalance.available[0].amount)
-        : "€0.00",
-      description: stats.stripeBalance?.pending?.[0]
-        ? `${formatCurrency(stats.stripeBalance.pending[0].amount)} pending`
-        : "No pending balance",
-      icon: Shield,
-      color: "text-indigo-500",
     },
   ];
 

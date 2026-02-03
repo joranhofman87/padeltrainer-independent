@@ -459,11 +459,11 @@
         "title": "6. Payments and Fees",
         "forPlayers": {
           "title": "For Players:",
-          "content": "Payment is processed through Stripe at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy."
+          "content": "Payment is processed through Mollie at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy."
         },
         "forTrainers": {
           "title": "For Trainers:",
-          "content": "PadelTrainer.ai charges a platform fee (percentage varies by subscription plan) on each completed booking. The remaining amount is transferred to your connected Stripe account. Subscription fees are billed according to your chosen plan."
+          "content": "PadelTrainer.ai charges a platform fee (percentage varies by subscription plan) on each completed booking. The remaining amount is transferred to your connected Mollie account. Subscription fees are billed according to your chosen plan."
         }
       },
       "cancellation": {

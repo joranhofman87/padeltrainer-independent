@@ -126,7 +126,7 @@
         },
         "payments": {
           "title": "Betalingen Koppelen",
-          "description": "Stel Stripe in om uitbetalingen te ontvangen",
+          "description": "Stel betaalaccount in om uitbetalingen te ontvangen",
           "clubManaged": "Beheerd door {{clubName}}",
           "clubManagedDescription": "Je club ontvangt betalingen voor je lessen"
         },
@@ -141,8 +141,8 @@
     "handledByClub": "Betalingen worden afgehandeld door {{clubName}}",
     "clubCollectsPayments": "Je club ontvangt betalingen voor lessen op deze locatie",
     "clubNeedsSetup": "{{clubName}} moet de betalingsinstellingen voltooien",
-    "contactClubOwner": "Neem contact op met je clubeigenaar om Stripe-betalingen in te stellen",
-    "independentLessons": "Koppel voor zelfstandige lessen je eigen Stripe-account",
+    "contactClubOwner": "Neem contact op met je clubeigenaar om Mollie-betalingen in te stellen",
+    "independentLessons": "Koppel voor zelfstandige lessen je eigen Mollie-account",
     "clubEarnings": "Club Inkomsten",
     "paidToClub": "Betaald aan {{clubName}}",
     "viewClubDashboard": "Bekijk in club dashboard"
@@ -350,18 +350,18 @@
     "paymentMode": {
       "title": "Handmatig betalen via factuur",
       "enabledDescription": "Je maakt facturen aan en spelers betalen je direct (bankoverschrijving, contant, etc.)",
-      "disabledDescription": "Spelers betalen je online via Stripe bij het boeken. Geld gaat automatisch naar je bankrekening.",
+      "disabledDescription": "Spelers betalen je online via Mollie bij het boeken. Geld gaat automatisch naar je bankrekening.",
       "enabledToast": "Handmatig factureren ingeschakeld",
       "enabledToastDescription": "Je maakt facturen aan en handelt betalingen zelf af",
       "disabledToast": "Automatische betalingen ingeschakeld",
-      "disabledToastDescription": "Spelers betalen online via Stripe bij het boeken"
+      "disabledToastDescription": "Spelers betalen online via Mollie bij het boeken"
     },
-    "stripeConnect": {
-      "title": "Stripe Koppelen",
-      "description": "Stel je Stripe-account in om uitbetalingen te ontvangen",
-      "connect": "Verbinden met Stripe",
-      "connected": "Stripe Gekoppeld",
-      "viewDashboard": "Bekijk Stripe Dashboard"
+    "mollieConnect": {
+      "title": "Mollie Koppelen",
+      "description": "Stel je Mollie-account in om uitbetalingen te ontvangen",
+      "connect": "Verbinden met Mollie",
+      "connected": "Mollie Gekoppeld",
+      "viewDashboard": "Bekijk Mollie Dashboard"
     }
   },
   "subscription": {

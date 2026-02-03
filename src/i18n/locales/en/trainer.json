@@ -126,7 +126,7 @@
         },
         "payments": {
           "title": "Connect Payments",
-          "description": "Set up Stripe to receive payouts",
+          "description": "Set up payment account to receive payouts",
           "clubManaged": "Handled by {{clubName}}",
           "clubManagedDescription": "Your club collects payments for your lessons"
         },
@@ -141,8 +141,8 @@
     "handledByClub": "Payments handled by {{clubName}}",
     "clubCollectsPayments": "Your club collects payments for lessons at this location",
     "clubNeedsSetup": "{{clubName}} needs to complete payment setup",
-    "contactClubOwner": "Contact your club owner to set up Stripe payments",
-    "independentLessons": "For independent lessons, connect your own Stripe account",
+    "contactClubOwner": "Contact your club owner to set up Mollie payments",
+    "independentLessons": "For independent lessons, connect your own Mollie account",
     "clubEarnings": "Club Earnings",
     "paidToClub": "Paid to {{clubName}}",
     "viewClubDashboard": "View in club dashboard"
@@ -350,18 +350,18 @@
     "paymentMode": {
       "title": "Manual payments by invoice",
       "enabledDescription": "You create invoices and players pay you directly (bank transfer, cash, etc.)",
-      "disabledDescription": "Players pay you online via Stripe when booking. Money goes to your bank automatically.",
+      "disabledDescription": "Players pay you online via Mollie when booking. Money goes to your bank automatically.",
       "enabledToast": "Manual invoicing enabled",
       "enabledToastDescription": "You create invoices and handle payments yourself",
       "disabledToast": "Automatic payments enabled",
-      "disabledToastDescription": "Players pay online via Stripe when booking"
+      "disabledToastDescription": "Players pay online via Mollie when booking"
     },
-    "stripeConnect": {
-      "title": "Connect Stripe",
-      "description": "Set up your Stripe account to receive payouts",
-      "connect": "Connect with Stripe",
-      "connected": "Stripe Connected",
-      "viewDashboard": "View Stripe Dashboard"
+    "mollieConnect": {
+      "title": "Connect Mollie",
+      "description": "Set up your Mollie account to receive payouts",
+      "connect": "Connect with Mollie",
+      "connected": "Mollie Connected",
+      "viewDashboard": "View Mollie Dashboard"
     }
   },
   "subscription": {
