@@ -393,15 +393,36 @@ function CombinedRoutes() {
  * Used on marketing domain when users try to access app routes.
  */
 function RedirectToAppDomain({ path }: { path: string }) {
-  const { isDevelopment } = useHostname();
+  const { isDevelopment, hostname } = useHostname();
   
-  // In development, show the actual route
+  useEffect(() => {
+    // Log for debugging
+    logger.debug('RedirectToAppDomain', { path, isDevelopment, hostname });
+    
+    // In production custom domains, always redirect to app subdomain
+    const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
+    
+    if (isCustomDomain) {
+      window.location.href = `https://app.padeltrainer.ai${path}`;
+      return;
+    }
+    
+    // For other production environments, redirect to app subdomain
+    if (!isDevelopment) {
+      window.location.href = `https://app.padeltrainer.ai${path}`;
+    }
+  }, [path, isDevelopment, hostname]);
+  
+  // In development, show the actual route (navigate within same domain)
   if (isDevelopment) {
-    return <Navigate to={path} replace />;
+    // But NOT if we're on a custom domain
+    const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
+    if (!isCustomDomain) {
+      return <Navigate to={path} replace />;
+    }
   }
   
-  // In production, redirect to app subdomain
-  window.location.href = `https://app.padeltrainer.ai${path}`;
+  // Return null while redirecting
   return null;
 }
 
