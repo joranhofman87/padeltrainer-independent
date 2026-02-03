@@ -397,42 +397,17 @@ function CombinedRoutes() {
  */
 function RedirectToAppDomain({ path }: { path: string }) {
   const hostname = window.location.hostname;
-  
-  // Check if we're on the production marketing domain
   const isProductionMarketing = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-  
-  // Check if we're in local development only
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  
-  // Build the target URL
   const targetUrl = `https://app.padeltrainer.ai${path}`;
-  
-  // Log for debugging - this will show in browser console
-  console.log('[RedirectToAppDomain]', { 
-    path, 
-    hostname, 
-    isProductionMarketing, 
-    isLocalhost,
-    targetUrl,
-    currentUrl: window.location.href 
-  });
-  
-  // PRODUCTION: On padeltrainer.ai, immediately redirect to app.padeltrainer.ai
+
+  useEffect(() => {
+    if (isProductionMarketing) {
+      logger.debug('RedirectToAppDomain executing redirect', { path, targetUrl });
+      window.location.replace(targetUrl);
+    }
+  }, [isProductionMarketing, targetUrl]);
+
   if (isProductionMarketing) {
-    // Use useEffect to ensure redirect happens after component mounts
-    // This is more reliable than synchronous redirect in render
-    useEffect(() => {
-      console.log('[RedirectToAppDomain] Executing redirect to:', targetUrl);
-      try {
-        // Try multiple methods to ensure redirect works
-        window.location.replace(targetUrl);
-      } catch (error) {
-        console.error('[RedirectToAppDomain] Redirect failed:', error);
-        // Fallback: try href assignment
-        window.location.href = targetUrl;
-      }
-    }, []);
-    
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
@@ -444,8 +419,7 @@ function RedirectToAppDomain({ path }: { path: string }) {
       </div>
     );
   }
-  
-  // LOCALHOST or LOVABLE PREVIEW: Use React Router navigation
+
   return <Navigate to={path} replace />;
 }
 
