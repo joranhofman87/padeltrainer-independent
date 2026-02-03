@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 export interface Review {
   id: string;
@@ -99,7 +100,7 @@ export async function createReviewWithTags(
       .insert(tagSelections);
 
     if (tagsError) {
-      console.error('Error inserting review tags:', tagsError);
+      logger.error('Error inserting review tags', undefined, { error: tagsError });
     }
   }
 

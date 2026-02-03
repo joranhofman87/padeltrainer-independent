@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 export interface AcademyProfile {
   id: string;
@@ -132,7 +133,7 @@ export async function createAcademy(
       .single();
 
     if (profileError) {
-      console.error('Error creating academy profile:', profileError);
+      logger.error('Error creating academy profile', undefined, { error: profileError });
       return { success: false, error: new Error(profileError.message) };
     }
 
@@ -146,7 +147,7 @@ export async function createAcademy(
       });
 
     if (managerError) {
-      console.error('Error creating academy manager:', managerError);
+      logger.error('Error creating academy manager', undefined, { error: managerError });
       // Clean up the academy profile if manager creation fails
       await supabase.from('academy_profiles').delete().eq('id', academy.id);
       return { success: false, error: new Error(managerError.message) };
@@ -159,12 +160,12 @@ export async function createAcademy(
 
     // Ignore duplicate key error
     if (roleError && roleError.code !== '23505') {
-      console.error('Error setting academy role:', roleError);
+      logger.warn('Error setting academy role', { error: roleError });
     }
 
     return { success: true, academyId: academy.id, error: null };
   } catch (err) {
-    console.error('Error creating academy:', err);
+    logger.error('Error creating academy', err as Error);
     return { success: false, error: err as Error };
   }
 }
@@ -180,7 +181,7 @@ export async function getUserAcademyProfiles(userId: string): Promise<(AcademyPr
     .eq('user_id', userId);
 
   if (error) {
-    console.error('Error fetching user academy profiles:', error);
+    logger.error('Error fetching user academy profiles', undefined, { error });
     return [];
   }
 
@@ -199,7 +200,7 @@ export async function isUserAcademyManager(userId: string): Promise<boolean> {
     .limit(1);
 
   if (error) {
-    console.error('Error checking academy manager status:', error);
+    logger.error('Error checking academy manager status', undefined, { error });
     return false;
   }
 
@@ -216,7 +217,7 @@ export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyPro
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching academy by slug:', error);
+    logger.error('Error fetching academy by slug', undefined, { error });
     return null;
   }
 
@@ -237,7 +238,7 @@ export async function getAcademyById(id: string): Promise<AcademyProfile | null>
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching academy by id:', error);
+    logger.error('Error fetching academy by id', undefined, { error });
     return null;
   }
 
@@ -257,7 +258,7 @@ export async function updateAcademyProfile(
     .single();
 
   if (error) {
-    console.error('Error updating academy profile:', error);
+    logger.error('Error updating academy profile', undefined, { error });
     return null;
   }
 
@@ -284,7 +285,7 @@ export async function getAcademyTrainers(academyProfileId: string): Promise<any[
     .eq('status', 'active');
 
   if (error) {
-    console.error('Error fetching academy trainers:', error);
+    logger.error('Error fetching academy trainers', undefined, { error });
     return [];
   }
 
@@ -303,7 +304,7 @@ export async function getAcademyLocations(academyProfileId: string): Promise<any
     .eq('is_active', true);
 
   if (error) {
-    console.error('Error fetching academy locations:', error);
+    logger.error('Error fetching academy locations', undefined, { error });
     return [];
   }
 
@@ -322,7 +323,7 @@ export async function getTrainerAcademy(trainerProfileId: string): Promise<Parti
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching trainer academy:', error);
+    logger.error('Error fetching trainer academy', undefined, { error });
     return null;
   }
 
@@ -341,7 +342,7 @@ export async function getAcademiesAtLocation(locationId: string): Promise<Partia
     .eq('show_on_club_page', true);
 
   if (error) {
-    console.error('Error fetching academies at location:', error);
+    logger.error('Error fetching academies at location', undefined, { error });
     return [];
   }
 
@@ -356,7 +357,7 @@ export async function getAcademyManagers(academyProfileId: string): Promise<any[
     .eq('academy_profile_id', academyProfileId);
 
   if (error) {
-    console.error('Error fetching academy managers:', error);
+    logger.error('Error fetching academy managers', undefined, { error });
     return [];
   }
 
@@ -437,7 +438,7 @@ export async function getAcademyLocationsWithDetails(academyProfileId: string): 
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching academy locations:', error);
+    logger.error('Error fetching academy locations', undefined, { error });
     return [];
   }
 
@@ -476,7 +477,7 @@ export async function addAcademyLocation(
   });
 
   if (error) {
-    console.error('Error adding academy location:', error);
+    logger.error('Error adding academy location', undefined, { error });
     return { success: false, error: error.message };
   }
 
@@ -501,7 +502,7 @@ export async function updateAcademyLocation(
     .eq('id', academyLocationId);
 
   if (error) {
-    console.error('Error updating academy location:', error);
+    logger.error('Error updating academy location', undefined, { error });
     return false;
   }
 
@@ -516,7 +517,7 @@ export async function removeAcademyLocation(academyLocationId: string): Promise<
     .eq('id', academyLocationId);
 
   if (error) {
-    console.error('Error removing academy location:', error);
+    logger.error('Error removing academy location', undefined, { error });
     return false;
   }
 
@@ -607,7 +608,7 @@ export async function inviteAcademyTrainer(
     .single();
 
   if (error) {
-    console.error('Error creating academy trainer invitation:', error);
+    logger.error('Error creating academy trainer invitation', undefined, { error });
     return { success: false, error: error.message };
   }
 
@@ -626,7 +627,7 @@ export async function getAcademyInvitationByToken(token: string): Promise<any | 
     .maybeSingle();
 
   if (error || !data) {
-    console.error('Error fetching academy invitation:', error);
+    logger.error('Error fetching academy invitation', undefined, { error });
     return null;
   }
 
@@ -683,7 +684,7 @@ export async function respondToAcademyTrainerInvitation(
     .eq('id', invitation.id);
 
   if (updateError) {
-    console.error('Error updating invitation:', updateError);
+    logger.error('Error updating invitation', undefined, { error: updateError });
     return { success: false, error: updateError.message };
   }
 
@@ -701,7 +702,7 @@ export async function respondToAcademyTrainerInvitation(
       });
 
     if (trainerError) {
-      console.error('Error creating academy trainer:', trainerError);
+      logger.error('Error creating academy trainer', undefined, { error: trainerError });
       // Try to rollback invitation status
       await supabase
         .from('academy_trainer_invitations')
@@ -774,7 +775,7 @@ export async function addSelfAsAcademyTrainer(
     });
 
   if (error) {
-    console.error('Error adding self as trainer:', error);
+    logger.error('Error adding self as trainer', undefined, { error });
     return false;
   }
 
@@ -801,7 +802,7 @@ export async function getAcademyTrainersWithProfiles(academyProfileId: string): 
     .eq('academy_profile_id', academyProfileId);
 
   if (error) {
-    console.error('Error fetching academy trainers:', error);
+    logger.error('Error fetching academy trainers', undefined, { error });
     return [];
   }
 
@@ -834,7 +835,7 @@ export async function getAcademyPendingInvitations(academyProfileId: string): Pr
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching pending invitations:', error);
+    logger.error('Error fetching pending invitations', undefined, { error });
     return [];
   }
 
@@ -852,7 +853,7 @@ export async function updateAcademyTrainerPayment(
     .eq('id', academyTrainerId);
 
   if (error) {
-    console.error('Error updating trainer payment:', error);
+    logger.error('Error updating trainer payment', undefined, { error });
     return false;
   }
 
@@ -870,7 +871,7 @@ export async function updateAcademyTrainerVisibility(
     .eq('id', academyTrainerId);
 
   if (error) {
-    console.error('Error updating trainer visibility:', error);
+    logger.error('Error updating trainer visibility', undefined, { error });
     return false;
   }
 
@@ -885,7 +886,7 @@ export async function removeAcademyTrainer(academyTrainerId: string): Promise<bo
     .eq('id', academyTrainerId);
 
   if (error) {
-    console.error('Error removing trainer from academy:', error);
+    logger.error('Error removing trainer from academy', undefined, { error });
     return false;
   }
 
@@ -901,7 +902,7 @@ export async function cancelAcademyInvitation(invitationId: string): Promise<boo
     .eq('status', 'pending');
 
   if (error) {
-    console.error('Error canceling invitation:', error);
+    logger.error('Error canceling invitation', undefined, { error });
     return false;
   }
 
@@ -933,7 +934,7 @@ export async function getPublicAcademyTrainers(academyProfileId: string): Promis
     .eq('show_on_academy_page', true);
 
   if (error) {
-    console.error('Error fetching public academy trainers:', error);
+    logger.error('Error fetching public academy trainers', undefined, { error });
     return [];
   }
 
@@ -992,7 +993,7 @@ export async function getPublicAcademyLocations(academyProfileId: string): Promi
     .eq('show_on_academy_page', true);
 
   if (error) {
-    console.error('Error fetching public academy locations:', error);
+    logger.error('Error fetching public academy locations', undefined, { error });
     return [];
   }
 
@@ -1007,7 +1008,7 @@ export async function getPublicAcademies(): Promise<Partial<AcademyProfile>[]> {
     .order('name');
 
   if (error) {
-    console.error('Error fetching public academies:', error);
+    logger.error('Error fetching public academies', undefined, { error });
     return [];
   }
 

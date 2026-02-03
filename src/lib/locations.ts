@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 export interface Location {
   id: string;
@@ -65,7 +66,7 @@ export async function getActiveLocations(): Promise<Location[]> {
       .range(from, from + pageSize - 1);
 
     if (error) {
-      console.error('Error fetching locations:', error);
+      logger.error('Error fetching locations', undefined, { error });
       throw error;
     }
 
@@ -97,7 +98,7 @@ export async function getAllLocations(): Promise<Location[]> {
       .range(from, from + pageSize - 1);
 
     if (error) {
-      console.error('Error fetching all locations:', error);
+      logger.error('Error fetching all locations', undefined, { error });
       throw error;
     }
 
@@ -124,7 +125,7 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
 
   if (error) {
     if (error.code === 'PGRST116') return null;
-    console.error('Error fetching location:', error);
+    logger.error('Error fetching location', undefined, { error });
     throw error;
   }
 
@@ -156,7 +157,7 @@ export async function getTrainersAtLocation(locationId: string) {
     .eq('show_on_club_page', true);
 
   if (error) {
-    console.error('Error fetching trainers at location:', error);
+    logger.error('Error fetching trainers at location', undefined, { error });
     throw error;
   }
 
@@ -175,7 +176,7 @@ export async function getTrainerLocations(userId: string): Promise<(TrainerLocat
     .single();
 
   if (profileError || !trainerProfile) {
-    console.error('Error fetching trainer profile for locations:', profileError);
+    logger.error('Error fetching trainer profile for locations', undefined, { error: profileError });
     return [];
   }
 
@@ -188,7 +189,7 @@ export async function getTrainerLocations(userId: string): Promise<(TrainerLocat
     .eq('trainer_id', trainerProfile.id);
 
   if (error) {
-    console.error('Error fetching trainer locations:', error);
+    logger.error('Error fetching trainer locations', undefined, { error });
     throw error;
   }
 
@@ -210,7 +211,7 @@ export async function getPlayerLocations(profileId: string): Promise<(PlayerLoca
     .eq('profile_id', profileId);
 
   if (error) {
-    console.error('Error fetching player locations:', error);
+    logger.error('Error fetching player locations', undefined, { error });
     throw error;
   }
 
@@ -236,7 +237,7 @@ export async function updateTrainerLocations(
     .single();
 
   if (profileError || !trainerProfile) {
-    console.error('Error fetching trainer profile:', profileError);
+    logger.error('Error fetching trainer profile', undefined, { error: profileError });
     throw new Error('Trainer profile not found');
   }
 
@@ -249,7 +250,7 @@ export async function updateTrainerLocations(
     .eq('trainer_id', trainerId);
 
   if (deleteError) {
-    console.error('Error deleting trainer locations:', deleteError);
+    logger.error('Error deleting trainer locations', undefined, { error: deleteError });
     throw deleteError;
   }
 
@@ -267,7 +268,7 @@ export async function updateTrainerLocations(
       .insert(inserts);
 
     if (insertError) {
-      console.error('Error inserting trainer locations:', insertError);
+      logger.error('Error inserting trainer locations', undefined, { error: insertError });
       throw insertError;
     }
   }
@@ -287,7 +288,7 @@ export async function updatePlayerLocations(
     .eq('profile_id', profileId);
 
   if (deleteError) {
-    console.error('Error deleting player locations:', deleteError);
+    logger.error('Error deleting player locations', undefined, { error: deleteError });
     throw deleteError;
   }
 
@@ -304,7 +305,7 @@ export async function updatePlayerLocations(
       .insert(inserts);
 
     if (insertError) {
-      console.error('Error inserting player locations:', insertError);
+      logger.error('Error inserting player locations', undefined, { error: insertError });
       throw insertError;
     }
   }
@@ -319,7 +320,7 @@ export async function createLocation(location: Omit<Location, 'id' | 'created_at
     .single();
 
   if (error) {
-    console.error('Error creating location:', error);
+    logger.error('Error creating location', undefined, { error });
     throw error;
   }
 
@@ -336,7 +337,7 @@ export async function updateLocation(id: string, updates: Partial<Location>): Pr
     .single();
 
   if (error) {
-    console.error('Error updating location:', error);
+    logger.error('Error updating location', undefined, { error });
     throw error;
   }
 
@@ -359,7 +360,7 @@ export async function getUniqueCities(): Promise<string[]> {
       .range(from, from + pageSize - 1);
 
     if (error) {
-      console.error('Error fetching cities:', error);
+      logger.error('Error fetching cities', undefined, { error });
       throw error;
     }
 
@@ -391,7 +392,7 @@ export async function getUniqueCountries(): Promise<string[]> {
       .range(from, from + pageSize - 1);
 
     if (error) {
-      console.error('Error fetching countries:', error);
+      logger.error('Error fetching countries', undefined, { error });
       throw error;
     }
 
@@ -414,7 +415,7 @@ export async function getLocationTrainerCounts(): Promise<Record<string, number>
     .select('location_id');
 
   if (error) {
-    console.error('Error fetching trainer counts:', error);
+    logger.error('Error fetching trainer counts', undefined, { error });
     throw error;
   }
 
@@ -433,7 +434,7 @@ export async function getClaimedLocationIds(): Promise<Set<string>> {
     .select('location_id');
 
   if (error) {
-    console.error('Error fetching claimed locations:', error);
+    logger.error('Error fetching claimed locations', undefined, { error });
     return new Set();
   }
 
@@ -465,7 +466,7 @@ export async function getClubProfileByLocationId(locationId: string): Promise<Cl
 
   if (error) {
     if (error.code === 'PGRST116') return null;
-    console.error('Error fetching club profile:', error);
+    logger.error('Error fetching club profile', undefined, { error });
     return null;
   }
 

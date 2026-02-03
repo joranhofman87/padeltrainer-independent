@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 // Generate or retrieve a session ID for deduplication
 function getSessionId(): string {
@@ -42,7 +43,7 @@ export async function recordProfileView(trainerId: string): Promise<void> {
     }
   } catch (err) {
     // Silently fail - don't break the page for analytics
-    console.error('Failed to record profile view:', err);
+    logger.warn('Failed to record profile view', { error: err });
   }
 }
 

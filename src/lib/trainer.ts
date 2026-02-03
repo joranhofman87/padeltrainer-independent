@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 export interface TrainerClub {
   clubId: string;
@@ -24,7 +25,7 @@ export async function getTrainerClubs(trainerProfileId: string): Promise<Trainer
     .eq('relationship_type', 'club_trainer');
 
   if (error) {
-    console.error('Error fetching trainer clubs:', error);
+    logger.error('Error fetching trainer clubs', undefined, { error });
     return [];
   }
 
@@ -41,7 +42,7 @@ export async function getTrainerClubs(trainerProfileId: string): Promise<Trainer
     .in('location_id', locationIds);
 
   if (clubError) {
-    console.error('Error fetching club profiles:', clubError);
+    logger.error('Error fetching club profiles', undefined, { error: clubError });
     return [];
   }
 
