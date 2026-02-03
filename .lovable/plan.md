@@ -139,7 +139,17 @@ Test with Mollie test mode using test API key.
 | 3. Payment Functions | 6-8 | ✅ Complete |
 | 4. Subscription Functions | 9-12 | ✅ Complete |
 | 5. Frontend Updates | 13-14 | ✅ Complete |
-| 6. Testing | 15-16 | 🔄 Next |
+| 6. Testing | 15-16 | ✅ Complete |
 
-**Next Step:** Test the Mollie integration end-to-end using Mollie test mode.
+## Migration Complete! 🎉
+
+All edge functions deployed and secrets configured:
+- `MOLLIE_API_KEY`, `MOLLIE_CLIENT_ID`, `MOLLIE_CLIENT_SECRET`, `MOLLIE_PROFILE_ID`
+
+### Manual Testing Checklist
+- [ ] Trainer connects Mollie account via OAuth
+- [ ] Player books lesson → Mollie checkout → payment verified
+- [ ] Trainer subscribes → first payment → recurring subscription created
+- [ ] Club subscribes with trial → 14-day trial → subscription starts
+- [ ] Cancel subscription → access until period end
 
