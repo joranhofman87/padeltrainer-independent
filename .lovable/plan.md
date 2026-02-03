@@ -1,194 +1,265 @@
 
 
-# Pre-Production Finalization Plan
+# Tiered Flat Fee Implementation
 
 ## Overview
 
-This plan addresses the three requested tasks:
-1. Remove debug console.log statements
-2. Update security scan findings with proper ignore reasons
-3. Create a final pre-launch checklist
+This plan changes the platform fee from a **percentage-based model** to a **tiered flat fee** based on subscription level:
+
+| Tier | Current Fee | New Fee |
+|------|-------------|---------|
+| Starter (Trial) | 5% (hardcoded) | €1.00 per payment |
+| Professional | 3% (database) | €0.75 per payment |
+| Academy | 2% (database) | €0.50 per payment |
+
+Additionally, admins will be able to **override the fee per trainer or academy** for special arrangements.
 
 ---
 
-## Task 1: Remove Debug Console.log Statements
+## Examples
 
-### Files to Update
-
-| File | Line | Console Statement | Action |
-|------|------|-------------------|--------|
-| `src/components/DomainRouter.tsx` | Lines 398-404 | `console.log('[DomainRouter] hostname:...')` | Replace with `logger.debug()` |
-| `src/pages/TrainerProfile.tsx` | Lines 197, 210, 233, 298 | `console.error('Error fetching...')` | Replace with `logger.error()` |
-
-### Implementation
-
-**DomainRouter.tsx:**
-- Import logger from `@/lib/logger`
-- Change `console.log('[DomainRouter]...)` to `logger.debug('DomainRouter routing', { hostname, isAppDomain, isMarketingDomain, isDevelopment })`
-- This preserves debugging in development but removes production console noise
-
-**TrainerProfile.tsx:**
-- Import logger from `@/lib/logger`
-- Replace `console.error()` calls with `logger.error()` for structured logging
-- Replace `console.log()` calls with `logger.debug()` for development-only output
+| Lesson Price | Old Fee (5%) | Starter (€1) | Professional (€0.75) | Academy (€0.50) |
+|--------------|--------------|--------------|----------------------|-----------------|
+| €20 | €1.00 | €1.00 | €0.75 | €0.50 |
+| €40 | €2.00 | €1.00 | €0.75 | €0.50 |
+| €80 | €4.00 | €1.00 | €0.75 | €0.50 |
+| €100 | €5.00 | €1.00 | €0.75 | €0.50 |
 
 ---
 
-## Task 2: Update Security Scan Findings
+## Database Changes
 
-### Findings to Mark as Ignored (False Positives)
+### 1. Add Flat Fee Column to subscription_plans
 
-| Internal ID | Issue | Status | Ignore Reason |
-|-------------|-------|--------|---------------|
-| `mollie_accounts_public_tokens` | Payment tokens exposed | False Positive | All Mollie account tables have RLS policies restricting access to account owners only (trainers to their own, club managers to their clubs, academy managers to their academies) |
-| `user_calendar_connections_token_exposure` | Calendar tokens exposed | False Positive | RLS policy restricts access to `user_id = auth.uid()` - users can only access their own calendar connections |
-| `intake_requests_personal_data` | Registration forms expose PII | False Positive | RLS policies restrict access to: (1) the player who submitted the request, (2) cycle owners (trainers/clubs/academies). No public access. |
-| `profiles_email_phone_exposure` | Contact info exposed | Needs Clarification | `profiles_public` intentionally exposes phone for trainer contact, but uses security_invoker=off for public access. `profiles_safe` excludes phone/email. This is by design. |
-| `SUPA_security_definer_view` | Security Definer View | Intentional | `profiles_public` uses security_invoker=off to allow public read access to trainer contact info (name, avatar, bio, phone). This is intentional for the marketing pages. |
-
-### API Call Sequence
-1. Update `mollie_accounts_public_tokens` - ignore with detailed RLS explanation
-2. Update `user_calendar_connections_token_exposure` - ignore with user_id restriction explanation
-3. Update `intake_requests_personal_data` - ignore with player/owner restriction explanation
-4. Update `profiles_email_phone_exposure` - ignore with intentional design explanation
-5. Update `SUPA_security_definer_view` - ignore with public access design explanation
-
----
-
-## Task 3: Final Pre-Launch Checklist
-
-### Document to Create: `.lovable/LAUNCH_CHECKLIST.md`
+Replace the percentage-based fee with a flat fee amount:
 
 ```text
-text
-# PadelTrainer.ai Pre-Launch Checklist
+ALTER TABLE subscription_plans 
+ADD COLUMN platform_fee_flat NUMERIC(6,2) DEFAULT 1.00;
 
-## ✅ Completed Items
+-- Set values for existing plans
+UPDATE subscription_plans SET platform_fee_flat = 1.00 WHERE tier = 'starter';
+UPDATE subscription_plans SET platform_fee_flat = 0.75 WHERE tier = 'professional';
+UPDATE subscription_plans SET platform_fee_flat = 0.50 WHERE tier = 'academy';
+```
 
-### Code Quality
-- [x] All Stripe references removed and replaced with Mollie
-- [x] Translation files complete for EN and NL
-- [x] No production console.log statements (converted to logger)
-- [x] Error boundaries implemented for graceful failure
-- [x] SEO component added to all marketing pages
-- [x] Structured data (JSON-LD) on key pages
+### 2. Add Override Column to trainer_profiles
 
-### Security
-- [x] RLS policies on all sensitive tables
-- [x] Admin functions verify role server-side
-- [x] Input validation on all edge functions
-- [x] Rate limiting on contact forms
-- [x] HTML sanitization for user inputs
-- [x] SECURITY DEFINER functions use search_path = public
+Allow per-trainer fee customization:
 
-### Payments (Mollie)
-- [x] create-mollie-payment function deployed
-- [x] verify-mollie-payment function deployed
-- [x] mollie-webhook function deployed
-- [x] mollie-subscription-webhook function deployed
-- [x] create-mollie-subscription function deployed
-- [x] cancel-mollie-subscription function deployed
-- [x] mollie-connect-trainer function deployed
-- [x] mollie-connect-club function deployed
+```text
+ALTER TABLE trainer_profiles 
+ADD COLUMN platform_fee_override NUMERIC(6,2) DEFAULT NULL;
 
-### Authentication
-- [x] Email verification enabled
-- [x] Password reset flow working
-- [x] Role-based access control implemented
-- [x] Impersonation logging for admin
+COMMENT ON COLUMN trainer_profiles.platform_fee_override IS 
+  'Custom platform fee for this trainer. If NULL, uses tier default.';
+```
 
-### SEO
-- [x] Sitemap edge function deployed
-- [x] Static sitemap.xml generated
-- [x] robots.txt configured for app/marketing domains
-- [x] llms.txt for AI crawlers
-- [x] Hreflang tags for EN/NL
-- [x] Open Graph meta tags
-- [x] Twitter cards
-- [x] Structured data on 9+ pages
+### 3. Add Override Column to academy_profiles
 
-### E2E Tests
-- [x] Authentication flows
-- [x] Navigation
-- [x] Booking flows
-- [x] Role-based access
-- [x] i18n language switching
-- [x] Accessibility basics
-- [x] Performance thresholds
-- [x] Error handling
+Allow per-academy fee customization:
 
-## ⚠️ Known Warnings (Acceptable)
+```text
+ALTER TABLE academy_profiles 
+ADD COLUMN platform_fee_override NUMERIC(6,2) DEFAULT NULL;
 
-| Issue | Reason | Risk Level |
-|-------|--------|------------|
-| profiles_public uses security_invoker=off | Intentional for public trainer profiles | Low |
-| pg_net extension in public schema | Cannot be moved (Supabase limitation) | None |
-| Leaked password protection disabled | Requires Supabase dashboard | Low |
-
-## 📋 Pre-Launch Manual Verification
-
-### Payment Testing
-- [ ] Test Mollie payment with test card
-- [ ] Verify webhook receives payment confirmation
-- [ ] Test subscription creation and cancellation
-- [ ] Test trainer payout flow
-
-### User Flows
-- [ ] Complete trainer signup → onboarding → first lesson
-- [ ] Complete player signup → book lesson → receive confirmation
-- [ ] Complete club signup → onboarding → add trainer
-- [ ] Complete academy signup → create cycle → receive applications
-
-### Mobile Verification
-- [ ] Test all pages on iPhone Safari
-- [ ] Test all pages on Android Chrome
-- [ ] Verify touch targets are 44px minimum
-- [ ] Check calendar drag-and-drop on mobile
-
-### Email Delivery
-- [ ] Verify welcome emails are sent
-- [ ] Verify booking confirmation emails
-- [ ] Verify password reset emails
-- [ ] Check spam folder delivery rates
-
-## 🚀 Launch Day
-
-1. [ ] Deploy to production domain
-2. [ ] Verify DNS propagation
-3. [ ] Check SSL certificates
-4. [ ] Monitor error logs for first hour
-5. [ ] Verify sitemap is accessible
-6. [ ] Submit sitemap to Google Search Console
-7. [ ] Verify Mollie webhooks receiving events
-8. [ ] Test one real payment (small amount)
-
-## 📊 Post-Launch Monitoring
-
-- [ ] Set up Sentry/LogRocket integration (TODO in logger.ts)
-- [ ] Monitor edge function logs daily for first week
-- [ ] Track Core Web Vitals in Search Console
-- [ ] Monitor payment success rates in Mollie dashboard
-- [ ] Review user signup funnel analytics
+COMMENT ON COLUMN academy_profiles.platform_fee_override IS 
+  'Custom platform fee for this academy. If NULL, uses tier default.';
 ```
 
 ---
 
-## Technical Changes Summary
+## Edge Function Changes
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/components/DomainRouter.tsx` | Edit | Replace console.log with logger.debug |
-| `src/pages/TrainerProfile.tsx` | Edit | Replace console.error with logger.error |
-| `.lovable/LAUNCH_CHECKLIST.md` | Create | Comprehensive pre-launch checklist |
-| Security Findings | API Update | Mark 5 false positive findings as ignored |
+### create-mollie-payment/index.ts
+
+**Current code (lines 88-89):**
+```javascript
+// Calculate platform fee (5%)
+const platformFee = Math.round(amount * 0.05 * 100) / 100;
+```
+
+**New logic:**
+```javascript
+// 1. Check for trainer-specific override
+const { data: trainerProfile } = await supabase
+  .from("trainer_profiles")
+  .select("platform_fee_override, subscription_status")
+  .eq("user_id", trainerId)
+  .single();
+
+// 2. Get tier-based default fee
+let platformFee = 1.00; // Default to starter fee
+
+if (trainerProfile?.platform_fee_override !== null) {
+  // Use trainer's custom override
+  platformFee = trainerProfile.platform_fee_override;
+} else {
+  // Look up fee from subscription_plans based on status
+  const tier = trainerProfile?.subscription_status === "active" 
+    ? "professional" // Active subscribers are Professional or higher
+    : "starter";
+    
+  const { data: plan } = await supabase
+    .from("subscription_plans")
+    .select("platform_fee_flat")
+    .eq("tier", tier)
+    .eq("plan_type", "trainer")
+    .single();
+    
+  if (plan?.platform_fee_flat) {
+    platformFee = plan.platform_fee_flat;
+  }
+}
+
+// Ensure fee doesn't exceed payment amount
+platformFee = Math.min(platformFee, amount);
+
+logStep("Platform fee calculated", { 
+  platformFee, 
+  hasOverride: trainerProfile?.platform_fee_override !== null 
+});
+```
+
+---
+
+## Frontend Changes
+
+### 1. Update Pricing Page Display
+
+**File: `src/pages/marketing/Pricing.tsx`**
+
+Change from percentage badge to flat fee display:
+
+```text
+Current (line 212):
+<Badge variant="outline">{plan.platform_fee_percent}% {t('pricing.trainers.platformFee')}</Badge>
+
+New:
+<Badge variant="outline">€{plan.platform_fee_flat?.toFixed(2) || '1.00'} {t('pricing.trainers.platformFee')}</Badge>
+```
+
+### 2. Update usePricingPlans Interface
+
+**File: `src/hooks/usePricingPlans.ts`**
+
+Add the new field to the interface:
+
+```text
+export interface SubscriptionPlan {
+  // ... existing fields
+  platform_fee_percent: number;  // Keep for backwards compatibility
+  platform_fee_flat: number;     // Add new flat fee field
+}
+```
+
+### 3. Update Admin Plan Edit Dialog
+
+**File: `src/components/admin/PlanEditDialog.tsx`**
+
+Change the fee input from percentage to flat amount:
+
+```text
+Current (lines 214-230):
+<Label htmlFor="platform_fee">Platform Fee (%)</Label>
+<Input type="number" max="100" step="0.1" .../>
+
+New:
+<Label htmlFor="platform_fee_flat">Platform Fee (€)</Label>
+<Input type="number" min="0" step="0.01" placeholder="e.g. 1.00" .../>
+```
+
+### 4. Update Admin Trainer Edit Dialog
+
+**File: `src/components/admin/TrainerEditDialog.tsx`**
+
+Add a fee override field in the Settings tab:
+
+```text
+<div className="grid gap-2">
+  <Label htmlFor="platformFeeOverride">Platform Fee Override (€)</Label>
+  <Input
+    id="platformFeeOverride"
+    type="number"
+    min="0"
+    step="0.01"
+    value={platformFeeOverride}
+    onChange={(e) => setPlatformFeeOverride(e.target.value)}
+    placeholder="Leave empty for tier default"
+  />
+  <p className="text-xs text-muted-foreground">
+    Set a custom fee for this trainer. Leave empty to use tier default.
+  </p>
+</div>
+```
+
+### 5. Update Admin Academy Edit Dialog
+
+**File: `src/components/admin/AcademyEditDialog.tsx`**
+
+Add the same fee override field for academies.
+
+---
+
+## Translation Updates
+
+### English (`src/i18n/locales/en/marketing.json`)
+
+```text
+"platformFee": "per booking"
+"feeTooltip": "A flat fee is deducted from each booking payment. Higher tiers pay less."
+```
+
+Update FAQ:
+```text
+"platformFee": {
+  "q": "How does the platform fee work?",
+  "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
+}
+```
+
+### Dutch (`src/i18n/locales/nl/marketing.json`)
+
+```text
+"platformFee": "per boeking"
+"feeTooltip": "Een vast bedrag wordt afgetrokken van elke betaling. Hogere abonnementen betalen minder."
+```
+
+---
+
+## Code Files to Modify
+
+| File | Change |
+|------|--------|
+| **Database** | Add `platform_fee_flat` column, add override columns |
+| `supabase/functions/create-mollie-payment/index.ts` | Implement tier-based fee lookup with override support |
+| `src/hooks/usePricingPlans.ts` | Add `platform_fee_flat` to interface |
+| `src/pages/marketing/Pricing.tsx` | Display €X.XX instead of X% |
+| `src/components/admin/PlanEditDialog.tsx` | Change % input to € flat input |
+| `src/components/admin/TrainerEditDialog.tsx` | Add fee override field |
+| `src/components/admin/AcademyEditDialog.tsx` | Add fee override field |
+| `src/lib/subscription.ts` | Update constants to flat fees |
+| `src/i18n/locales/en/marketing.json` | Update fee text |
+| `src/i18n/locales/nl/marketing.json` | Update fee text |
 
 ---
 
 ## Implementation Order
 
-1. **Update DomainRouter.tsx** - Add logger import, replace console.log
-2. **Update TrainerProfile.tsx** - Add logger import, replace console.error calls
-3. **Update security findings** - Use manage_security_finding tool to mark false positives
-4. **Create launch checklist** - Write .lovable/LAUNCH_CHECKLIST.md
-5. **Verify changes** - Run tests to confirm no regressions
+1. **Database migration** - Add new columns
+2. **Update edge function** - Implement fee calculation logic
+3. **Update TypeScript interfaces** - Add new fields
+4. **Update admin dialogs** - Enable fee management
+5. **Update pricing page** - Show flat fees
+6. **Update translations** - New fee messaging
+7. **Test end-to-end** - Verify fee calculation in Mollie payments
+
+---
+
+## Technical Notes
+
+- The `platform_fee_percent` column will be kept for backwards compatibility but deprecated
+- If a trainer has an override set, it takes priority over the tier default
+- The minimum fee of €0.00 (free) can be set for special partnerships
+- The fee is capped at the payment amount to prevent negative trainer payouts
 
