@@ -135,17 +135,23 @@
         "tracking": "Track your bookings"
       }
     },
-    "trainers": {
+  "trainers": {
       "badge": "For Trainers",
       "title": "Choose your plan",
       "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
       "platformFee": "per booking",
       "feeTooltip": "A flat fee is deducted from each lesson payment. Higher tiers pay less.",
       "mostPopular": "Most Popular",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "month": "month",
+      "year": "year",
+      "save20": "Save 20%",
+      "saveAmount": "Save €{{amount}}/year",
       "plans": {
         "starter": {
           "name": "Starter",
-          "price": "Free",
+          "price": "€10",
           "description": "Perfect for getting started",
           "cta": "Start Free",
           "features": {
@@ -161,9 +167,9 @@
         },
         "professional": {
           "name": "Professional",
-          "price": "€29",
+          "price": "€39",
           "period": "/month",
-          "yearlyPrice": "€278/year (save 20%)",
+          "yearlyPrice": "€374/year (save 20%)",
           "description": "For serious trainers",
           "cta": "Get Professional",
           "features": {
@@ -179,9 +185,9 @@
         },
         "academy": {
           "name": "Academy",
-          "price": "€79",
+          "price": "€99",
           "period": "/month",
-          "yearlyPrice": "€758/year (save 20%)",
+          "yearlyPrice": "€950/year (save 20%)",
           "description": "For clubs & academies",
           "cta": "Contact Sales",
           "features": {
