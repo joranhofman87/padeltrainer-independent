@@ -44,34 +44,8 @@ export default function BookingSuccess() {
         sessionId 
       });
 
-      // First, get the trainer's connected account ID from the booking
-      const { data: bookingData } = await supabase
-        .from('bookings')
-        .select(`
-          availability_slots!inner(
-            trainer_id
-          )
-        `)
-        .eq('id', bookingId)
-        .single();
-
-      let connectedAccountId: string | undefined;
-      
-      if (bookingData?.availability_slots) {
-        const trainerId = (bookingData.availability_slots as any).trainer_id;
-        if (trainerId) {
-          const { data: mollieAccount } = await supabase
-            .from('trainer_mollie_accounts')
-            .select('mollie_organization_id')
-            .eq('trainer_id', trainerId)
-            .single();
-          
-          connectedAccountId = mollieAccount?.mollie_organization_id;
-        }
-      }
-
-      const { data, error: fnError } = await supabase.functions.invoke('verify-payment', {
-        body: { sessionId, bookingId, connectedAccountId },
+      const { data, error: fnError } = await supabase.functions.invoke('verify-mollie-payment', {
+        body: { bookingId },
       });
 
       if (fnError) throw fnError;

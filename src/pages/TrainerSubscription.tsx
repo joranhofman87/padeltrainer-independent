@@ -98,34 +98,25 @@ export default function TrainerSubscription() {
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
       toast({
-        title: 'Use Manage Billing',
-        description: 'To downgrade, please use the Manage Billing option.',
+        title: 'Use Cancel Subscription',
+        description: 'To downgrade, please cancel your current subscription.',
       });
       return;
     }
 
-    const priceId = billingCycle === 'monthly' ? plan.stripe_price_id_monthly : plan.stripe_price_id_yearly;
-
-    if (!priceId) {
-      toast({
-        title: 'Configuration Error',
-        description: 'This plan is not properly configured.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    const planId = billingCycle === 'monthly' ? plan.tier : `${plan.tier}_yearly`;
 
     setProcessingPlan(plan.id);
 
     try {
-      logger.info('Starting checkout for subscription', { 
+      logger.info('Starting Mollie checkout for subscription', { 
         component: 'TrainerSubscription', 
-        planId: plan.id, 
+        planId, 
         billingCycle 
       });
 
-      const { data, error } = await supabase.functions.invoke('create-trainer-checkout', {
-        body: { priceId },
+      const { data, error } = await supabase.functions.invoke('create-mollie-subscription', {
+        body: { planId },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
@@ -133,9 +124,17 @@ export default function TrainerSubscription() {
 
       if (error) throw error;
 
-      if (data?.url) {
-        window.open(data.url, '_blank');
+      if (data?.hasActiveSubscription) {
+        toast({
+          title: 'Already Subscribed',
+          description: data.message,
+        });
         setProcessingPlan(null);
+        return;
+      }
+
+      if (data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
         return;
       } else {
         throw new Error('No checkout URL returned');
@@ -143,7 +142,7 @@ export default function TrainerSubscription() {
     } catch (err) {
       logger.error('Subscription checkout failed', err as Error, { 
         component: 'TrainerSubscription', 
-        planId: plan.id 
+        planId 
       });
       toast({
         title: 'Error',
@@ -154,11 +153,12 @@ export default function TrainerSubscription() {
     }
   };
 
-  const handleManageBilling = async () => {
+  const handleCancelSubscription = async () => {
     setLoadingPortal(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('customer-portal', {
+      const { data, error } = await supabase.functions.invoke('cancel-mollie-subscription', {
+        body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
@@ -166,18 +166,19 @@ export default function TrainerSubscription() {
 
       if (error) throw error;
 
-      if (data?.url) {
-        window.open(data.url, '_blank');
-      } else {
-        throw new Error('No portal URL returned');
-      }
+      toast({
+        title: 'Subscription Canceled',
+        description: data.message || 'Your subscription has been canceled.',
+      });
+      
+      refreshSubscription();
     } catch (err) {
-      logger.error('Billing portal access failed', err as Error, { 
+      logger.error('Subscription cancellation failed', err as Error, { 
         component: 'TrainerSubscription' 
       });
       toast({
         title: 'Error',
-        description: 'Failed to open billing portal. Please try again.',
+        description: 'Failed to cancel subscription. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -239,15 +240,13 @@ export default function TrainerSubscription() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={handleManageBilling}
+                  onClick={handleCancelSubscription}
                   disabled={loadingPortal}
                 >
                   {loadingPortal ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                  )}
-                  Manage Billing
+                  ) : null}
+                  Cancel Subscription
                 </Button>
               )}
             </div>

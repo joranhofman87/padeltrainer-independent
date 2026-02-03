@@ -25,8 +25,8 @@ export async function checkClubSubscription(clubProfileId: string): Promise<Club
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("check-club-subscription", {
-    body: { clubProfileId },
+  const response = await supabase.functions.invoke("check-mollie-subscription", {
+    body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
@@ -36,7 +36,14 @@ export async function checkClubSubscription(clubProfileId: string): Promise<Club
     throw new Error(response.error.message || "Failed to check subscription");
   }
 
-  return response.data as ClubSubscriptionInfo;
+  return {
+    isSubscribed: response.data.subscribed,
+    isTrial: response.data.status === "trialing",
+    tier: response.data.tier || "starter",
+    subscriptionEnd: response.data.endsAt || null,
+    trialEnd: response.data.trialEndsAt || null,
+    trialExpired: response.data.status === "inactive" && !response.data.subscribed,
+  };
 }
 
 export async function createClubCheckout(clubProfileId: string): Promise<string> {
@@ -46,7 +53,7 @@ export async function createClubCheckout(clubProfileId: string): Promise<string>
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("create-club-checkout", {
+  const response = await supabase.functions.invoke("create-club-mollie-subscription", {
     body: { clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
@@ -57,28 +64,28 @@ export async function createClubCheckout(clubProfileId: string): Promise<string>
     throw new Error(response.error.message || "Failed to create checkout");
   }
 
-  return response.data.url;
+  return response.data.checkoutUrl;
 }
 
-export async function openClubBillingPortal(clubProfileId: string): Promise<string> {
+export async function cancelClubSubscription(clubProfileId: string): Promise<{ success: boolean; message: string }> {
   const { data: { session } } = await supabase.auth.getSession();
   
   if (!session) {
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("club-customer-portal", {
-    body: { clubProfileId },
+  const response = await supabase.functions.invoke("cancel-mollie-subscription", {
+    body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
   });
 
   if (response.error) {
-    throw new Error(response.error.message || "Failed to open billing portal");
+    throw new Error(response.error.message || "Failed to cancel subscription");
   }
 
-  return response.data.url;
+  return response.data;
 }
 
 export function getTrialDaysRemaining(trialEnd: string | null): number {

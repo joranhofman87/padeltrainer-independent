@@ -520,26 +520,24 @@ export default function BookLesson() {
 
         if (error) throw error;
 
-        // Create Stripe checkout session
-        const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
-          'create-checkout-session',
+        // Create Mollie payment
+        const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+          'create-mollie-payment',
           {
             body: {
-              bookingId: bookingData.id,
-              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
-              trainerName: trainer.profiles.full_name,
-              price,
-              trainerId: trainer.id,
               slotId: selectedSlot.id,
+              amount: price,
+              description: selectedSlot.lessons?.title || 'Training Session',
+              trainerId: trainer.id,
             },
           }
         );
 
-        if (checkoutError) throw checkoutError;
+        if (paymentError) throw paymentError;
 
-        if (checkoutData?.url) {
-          // Redirect to Stripe Checkout
-          window.location.href = checkoutData.url;
+        if (paymentData?.checkoutUrl) {
+          // Redirect to Mollie Checkout
+          window.location.href = paymentData.checkoutUrl;
         } else {
           throw new Error('No checkout URL received');
         }

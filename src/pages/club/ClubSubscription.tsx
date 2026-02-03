@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   checkClubSubscription, 
   createClubCheckout, 
-  openClubBillingPortal,
+  cancelClubSubscription,
   getTrialDaysRemaining,
   CLUB_SUBSCRIPTION,
   type ClubSubscriptionInfo 
@@ -118,13 +118,19 @@ export default function ClubSubscription() {
     }
   };
 
-  const handleManageBilling = async () => {
+  const handleCancelSubscription = async () => {
     if (!activeClub) return;
     
     setActionLoading(true);
     try {
-      const url = await openClubBillingPortal(activeClub.id);
-      window.location.href = url;
+      const result = await cancelClubSubscription(activeClub.id);
+      toast({
+        title: t("subscription.canceledTitle"),
+        description: result.message,
+      });
+      // Refresh subscription status
+      const sub = await checkClubSubscription(activeClub.id);
+      setSubscription(sub);
     } catch (error: any) {
       toast({
         title: t("common:error"),
@@ -263,12 +269,11 @@ export default function ClubSubscription() {
               {(isActive || subscription?.isSubscribed) && (
                 <Button 
                   variant="outline" 
-                  onClick={handleManageBilling}
+                  onClick={handleCancelSubscription}
                   disabled={actionLoading}
                   className="flex-1"
                 >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  {t("subscription.manageBilling")}
+                  {t("subscription.cancelSubscription")}
                 </Button>
               )}
             </div>
