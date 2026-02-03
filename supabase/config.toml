@@ -1,27 +1,6 @@
 project_id = "ppkbhdiiqdusdeatgdft"
 
 
-[functions.create-checkout-session]
-verify_jwt = false
-
-[functions.verify-payment]
-verify_jwt = false
-
-[functions.connect-trainer]
-verify_jwt = false
-
-[functions.check-connect-status]
-verify_jwt = false
-
-[functions.create-trainer-checkout]
-verify_jwt = false
-
-[functions.check-trainer-subscription]
-verify_jwt = false
-
-[functions.customer-portal]
-verify_jwt = false
-
 [functions.google-calendar-auth]
 verify_jwt = false
 
@@ -31,26 +10,10 @@ verify_jwt = false
 [functions.sync-calendar-event]
 verify_jwt = false
 
-
 [functions.generate-invoice]
 verify_jwt = false
 
 [functions.sitemap]
-verify_jwt = false
-
-[functions.create-club-checkout]
-verify_jwt = false
-
-[functions.check-club-subscription]
-verify_jwt = false
-
-[functions.club-customer-portal]
-verify_jwt = false
-
-[functions.connect-club]
-verify_jwt = false
-
-[functions.check-club-connect-status]
 verify_jwt = false
 
 [functions.impersonate-user]
@@ -98,7 +61,7 @@ verify_jwt = false
 [functions.mollie-connect-trainer]
 verify_jwt = false
 
-[functions.mollie-connect-club]
+[functions.mollie-connect-academy]
 verify_jwt = false
 
 [functions.mollie-callback]
@@ -119,7 +82,7 @@ verify_jwt = false
 [functions.create-mollie-subscription]
 verify_jwt = false
 
-[functions.create-club-mollie-subscription]
+[functions.create-academy-mollie-subscription]
 verify_jwt = false
 
 [functions.mollie-subscription-webhook]
@@ -129,4 +92,31 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.cancel-mollie-subscription]
+verify_jwt = false
+
+[functions.create-academy-trainer]
+verify_jwt = false
+
+[functions.create-admin-trainer]
+verify_jwt = false
+
+[functions.create-club-trainer]
+verify_jwt = false
+
+[functions.create-manual-player]
+verify_jwt = false
+
+[functions.admin-reset-password]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.notify-followers]
+verify_jwt = false
+
+[functions.get-admin-stats]
+verify_jwt = false
+
+[functions.generate-proposals]
 verify_jwt = false

@@ -202,19 +202,19 @@ function AppRoutes() {
         <Route path="open-slots" element={<OpenSlots />} />
       </Route>
 
-      {/* Legacy routes for backwards compatibility */}
-      <Route path="/profile/edit" element={<EditProfile />} />
-      <Route path="/lessons" element={<ManageLessons />} />
-      <Route path="/availability" element={<TrainerCalendar />} />
-      <Route path="/schedule" element={<TrainerCalendar />} />
-      <Route path="/bookings" element={<PlayerBookings />} />
-      <Route path="/trainer-bookings" element={<TrainerBookings />} />
+      {/* Legacy route redirects */}
+      <Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
+      <Route path="/lessons" element={<Navigate to="/trainer" replace />} />
+      <Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
+      <Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
+      <Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
+      <Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
       <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/earnings" element={<TrainerEarnings />} />
-      <Route path="/subscription" element={<TrainerSubscription />} />
-      <Route path="/analytics" element={<TrainerAnalytics />} />
-      <Route path="/settings/notifications" element={<NotificationSettings />} />
-      <Route path="/settings/calendar" element={<CalendarSettings />} />
+      <Route path="/earnings" element={<Navigate to="/trainer" replace />} />
+      <Route path="/subscription" element={<Navigate to="/trainer" replace />} />
+      <Route path="/analytics" element={<Navigate to="/trainer" replace />} />
+      <Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
+      <Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>
@@ -310,19 +310,19 @@ function CombinedRoutes() {
         <Route path="open-slots" element={<OpenSlots />} />
       </Route>
 
-      {/* Legacy routes */}
-      <Route path="/profile/edit" element={<EditProfile />} />
-      <Route path="/lessons" element={<ManageLessons />} />
-      <Route path="/availability" element={<TrainerCalendar />} />
-      <Route path="/schedule" element={<TrainerCalendar />} />
-      <Route path="/bookings" element={<PlayerBookings />} />
-      <Route path="/trainer-bookings" element={<TrainerBookings />} />
+      {/* Legacy route redirects */}
+      <Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
+      <Route path="/lessons" element={<Navigate to="/trainer" replace />} />
+      <Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
+      <Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
+      <Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
+      <Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
       <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/earnings" element={<TrainerEarnings />} />
-      <Route path="/subscription" element={<TrainerSubscription />} />
-      <Route path="/analytics" element={<TrainerAnalytics />} />
-      <Route path="/settings/notifications" element={<NotificationSettings />} />
-      <Route path="/settings/calendar" element={<CalendarSettings />} />
+      <Route path="/earnings" element={<Navigate to="/trainer" replace />} />
+      <Route path="/subscription" element={<Navigate to="/trainer" replace />} />
+      <Route path="/analytics" element={<Navigate to="/trainer" replace />} />
+      <Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
+      <Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>

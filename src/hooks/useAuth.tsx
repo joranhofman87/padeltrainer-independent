@@ -2,7 +2,7 @@ import { useEffect, useState, createContext, useContext, ReactNode, useCallback 
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
-import { SubscriptionInfo, getTierFromProductId } from '@/lib/subscription';
+import { SubscriptionInfo, SubscriptionTier } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';
 import { isUserAcademyManager } from '@/lib/academy';
 
@@ -74,7 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('check-trainer-subscription', {
+      // Use check-mollie-subscription with type: "trainer" instead of legacy check-trainer-subscription
+      const { data, error } = await supabase.functions.invoke('check-mollie-subscription', {
+        body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -94,14 +96,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Use tier directly from API response (database-driven) instead of Stripe product ID mapping
+      const tier = data.tier || 'trial';
+      
       setSubscription({
         isSubscribed: data.subscribed,
-        tier: data.tier || getTierFromProductId(data.product_id),
-        productId: data.product_id,
-        subscriptionEnd: data.subscription_end,
-        trialEndsAt: data.trial_ends_at,
-        isInTrial: data.is_trial || false,
-        isPublic: data.is_public || false,
+        tier: tier as SubscriptionTier,
+        productId: null, // No longer using Stripe product IDs
+        subscriptionEnd: data.endsAt || null,
+        trialEndsAt: data.trialEndsAt || null,
+        isInTrial: data.status === 'trialing',
+        isPublic: data.subscribed || data.status === 'trialing',
       });
     } catch (err) {
       console.error('Error fetching subscription:', err);
