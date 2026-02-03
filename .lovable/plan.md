@@ -1,210 +1,607 @@
 
-
-# Trainer & Academy Registration and Booking System - UX Improvement Plan
+# Complete Migration Plan: Stripe to Mollie
 
 ## Executive Summary
 
-After thorough exploration, I've identified that the core functionality exists but the UX is fragmented and lacks a clear "command center" for academies to manage registrations across multiple clubs. The main issues are:
+This plan outlines a comprehensive migration from Stripe to Mollie for all payment processing in the PadelTrainer platform. The migration covers three distinct payment use cases:
 
-1. **Registrations (Cycles) lack club/location context** - Cycles are owned by academies or trainers but don't explicitly connect to specific clubs/locations with their varying configurations
-2. **No central registration overview** - Academies need a table/dashboard view to see all cycles across clubs at a glance
-3. **Calendar and open slots are disconnected from registrations** - Players booking individual slots vs. registering for cycles are separate flows
-4. **Follow/waitlist features exist but aren't prominently surfaced** when slots are unavailable
+1. **Player-to-Trainer/Club Payments** (lesson bookings with marketplace split)
+2. **Trainer Subscriptions** (platform subscriptions for trainers)
+3. **Club Subscriptions** (platform subscriptions for clubs)
 
----
-
-## Current State Analysis
-
-### What's Working Well
-
-- **Cycles (Registrations)** exist at `/academy/cycles` with create/edit/delete functionality
-- **Cycle Application Form** allows players to apply with availability preferences
-- **LocationOpenCycles** component displays cycles from trainers/academies at a club location
-- **Open Slots booking** via `/trainer/open-slots` and `/book/:trainerId`
-- **Follow button** exists on trainer profiles for notifications
-- **Intake Requests Table** shows applications with proposal generation
-
-### Key Gaps Identified
-
-| Gap | Current State | Impact |
-|-----|---------------|--------|
-| No location/club linkage on cycles | Cycles have `owner_type`/`owner_id` but no explicit `location_id` | Academies can't create cycles "for Club X" with club-specific pricing |
-| No registrations dashboard table | Grid of cards view only | Hard to get quick overview, duplicate, compare |
-| No pricing per cycle | Only trainer hourly rate exists | Can't set different prices per club (indoor vs outdoor, etc.) |
-| Calendar slots disconnected | Slots and cycles are separate systems | Confusing which to use when |
-| Waitlist not implemented | Only "follow" for trainers exists | No waitlist for specific cycles/slots |
+**Estimated effort**: 12-16 days
+**Risk level**: High (payment system is business-critical)
 
 ---
 
-## Proposed Solution
+## Current Stripe Integration Scope
 
-### Phase 1: Enhanced Registration (Cycles) Management for Academies
+### Edge Functions to Migrate (15 functions)
 
-**Goal:** Create a clear, table-based "Registrations" dashboard where academies can:
-- See all registrations at a glance with status, dates, club, applications count
-- Filter by club/location, status, date range
-- Duplicate cycles with one click
-- Quickly toggle open/closed status
-- See pricing information per cycle
+| Function | Purpose | Mollie Equivalent |
+|----------|---------|-------------------|
+| `create-checkout-session` | Lesson payment with split | Mollie Payment API with routing |
+| `verify-payment` | Confirm payment success | Mollie Payment status check |
+| `connect-trainer` | Trainer Stripe Connect onboarding | Mollie Connect OAuth flow |
+| `check-connect-status` | Check trainer payment account | Mollie Organizations API |
+| `connect-club` | Club Stripe Connect onboarding | Mollie Connect OAuth flow |
+| `check-club-connect-status` | Check club payment account | Mollie Organizations API |
+| `create-trainer-checkout` | Trainer subscription checkout | Mollie Subscriptions API |
+| `check-trainer-subscription` | Verify trainer subscription | Mollie Subscriptions API |
+| `create-club-checkout` | Club subscription checkout | Mollie Subscriptions API |
+| `check-club-subscription` | Verify club subscription | Mollie Subscriptions API |
+| `customer-portal` | Manage trainer billing | Custom portal (Mollie has no hosted portal) |
+| `club-customer-portal` | Manage club billing | Custom portal (Mollie has no hosted portal) |
+| `generate-invoice` | PDF invoice generation | Keep as-is (not Stripe-dependent) |
 
-**Changes Required:**
+### Database Tables Affected
 
-1. **Database: Add fields to `cycles` table**
-   - `location_id` (UUID, nullable, FK to locations) - which club this cycle is for
-   - `price_per_session` (numeric, nullable) - session price for this cycle
-   - `total_price` (numeric, nullable) - or fixed package price
-   - `currency` (text, default 'EUR')
+| Table | Changes Required |
+|-------|------------------|
+| `trainer_stripe_accounts` | Rename to `trainer_mollie_accounts`, change `stripe_account_id` to `mollie_organization_id` |
+| `club_stripe_accounts` | Rename to `club_mollie_accounts`, change `stripe_account_id` to `mollie_organization_id` |
+| `subscription_plans` | Change `stripe_*` columns to `mollie_*` (price/product IDs) |
+| `bookings` | Change `stripe_session_id` to `mollie_payment_id`, `stripe_payment_intent_id` to `mollie_transaction_id` |
+| `club_profiles` | Change `stripe_customer_id` to `mollie_customer_id` |
 
-2. **New: Registrations Table View Component**
-   - Replace card grid with sortable/filterable table
-   - Columns: Name, Club, Dates, Duration (weeks), Status, Applications, Price, Actions
-   - Quick actions: Open/Close, Duplicate, Edit, View Applications, Copy Link
+### Frontend Files Affected
 
-3. **Enhanced CycleForm**
-   - Add location picker (from `academy_locations`)
-   - Add pricing fields
-   - Add "duplicate from existing" option
-
-4. **Academy Sidebar Navigation Update**
-   - Rename "Cycles" to "Registrations" for clarity
-   - Add badge with open registration count
-
-### Phase 2: Unified Calendar Experience
-
-**Goal:** Help trainers understand the relationship between their calendar slots and registration cycles.
-
-**Changes Required:**
-
-1. **Dashboard Clarity**
-   - Add "Filling Methods" info card explaining:
-     - Registrations (cycles) - for recurring programs
-     - Open Slots - for one-off bookings
-   - Visual distinction on calendar for cycle-linked vs individual slots
-
-2. **Cycle Slot Generation**
-   - When creating a cycle, optionally auto-generate availability slots
-   - Link slots to cycle via `cyclus_id` (already exists)
-
-3. **Calendar Legend/Filter**
-   - Filter to show: All | Cycle Slots | Individual Slots | Booked | Available
-
-### Phase 3: Waitlist & Follow Improvements
-
-**Goal:** When nothing is available, give players clear actions.
-
-**Changes Required:**
-
-1. **Database: Add `waitlists` table**
-   - `id`, `user_id`, `type` (cycle|trainer|location), `target_id`, `created_at`
-   - Notify via email when spots open
-
-2. **UI Enhancements**
-   - On trainer profile when no slots: "Join Waitlist" or "Follow for Updates"
-   - On cycle card when deadline passed: "Notify me for next cycle"
-   - On location page: "Follow this club" button
-
-3. **Notification System**
-   - Trigger `notify-followers` edge function when:
-     - New cycle opens
-     - Slot becomes available
-     - New trainer joins location
+| File | Changes |
+|------|---------|
+| `src/lib/clubPayments.ts` | Rename functions, update types |
+| `src/lib/clubTrainerPayments.ts` | Update Mollie references |
+| `src/lib/subscription.ts` | Update tier mappings to Mollie products |
+| `src/lib/clubSubscription.ts` | Update to Mollie subscription IDs |
+| `src/pages/TrainerEarnings.tsx` | Update Connect flow, balance display |
+| `src/pages/BookLesson.tsx` | Update payment flow |
+| `src/pages/BookingSuccess.tsx` | Update verification |
+| `src/pages/club/ClubSettings.tsx` | Update Connect flow |
+| `src/pages/TrainerSubscription.tsx` | Update subscription flow |
+| `src/pages/club/ClubSubscription.tsx` | Update subscription flow |
+| `src/components/admin/PlanEditDialog.tsx` | Update price ID fields |
 
 ---
 
-## Technical Implementation Details
+## Key Technical Differences: Stripe vs Mollie
 
-### Database Migration
+| Feature | Stripe | Mollie |
+|---------|--------|--------|
+| **SDK** | Official Deno ESM module | No official Deno SDK (use REST API) |
+| **Marketplace onboarding** | Hosted Express onboarding | OAuth 2.0 flow (more manual) |
+| **Split payments** | `application_fee` on direct charges | `routing` array in payment request |
+| **Subscriptions** | Built-in recurring billing | Mollie Subscriptions API |
+| **Customer portal** | Hosted billing portal | Must build custom UI |
+| **Payment methods** | iDEAL, Bancontact, Card | iDEAL, Bancontact, Card (same coverage) |
+| **Webhooks** | Required for async updates | Required for async updates |
+| **Testing** | Test mode with sk_test_ keys | Test mode with test_ API key |
+
+---
+
+## Phase 1: Mollie Connect for Trainers/Clubs (Days 1-5)
+
+### 1.1 Database Migration
 
 ```sql
--- Add location and pricing to cycles
-ALTER TABLE cycles
-ADD COLUMN location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
-ADD COLUMN price_per_session NUMERIC(10,2),
-ADD COLUMN total_price NUMERIC(10,2),
-ADD COLUMN currency TEXT DEFAULT 'EUR';
+-- Rename trainer accounts table
+ALTER TABLE trainer_stripe_accounts 
+  RENAME TO trainer_mollie_accounts;
 
--- Create waitlists table
-CREATE TABLE waitlists (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  waitlist_type TEXT NOT NULL CHECK (waitlist_type IN ('cycle', 'trainer', 'location')),
-  target_id UUID NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  notified_at TIMESTAMPTZ,
-  UNIQUE(user_id, waitlist_type, target_id)
-);
+ALTER TABLE trainer_mollie_accounts
+  RENAME COLUMN stripe_account_id TO mollie_organization_id;
 
--- RLS for waitlists
-ALTER TABLE waitlists ENABLE ROW LEVEL SECURITY;
+-- Rename club accounts table
+ALTER TABLE club_stripe_accounts 
+  RENAME TO club_mollie_accounts;
 
-CREATE POLICY "Users can manage their own waitlist entries"
-ON waitlists FOR ALL USING (auth.uid() = user_id);
+ALTER TABLE club_mollie_accounts
+  RENAME COLUMN stripe_account_id TO mollie_organization_id;
 
-CREATE POLICY "Academy/trainer owners can view waitlist for their cycles"
-ON waitlists FOR SELECT USING (
-  waitlist_type = 'cycle' AND
-  EXISTS (
-    SELECT 1 FROM cycles c
-    WHERE c.id = target_id
-    AND (
-      (c.owner_type = 'academy' AND is_academy_manager(auth.uid(), c.owner_id))
-      OR
-      (c.owner_type = 'trainer' AND EXISTS (
-        SELECT 1 FROM trainer_profiles tp WHERE tp.id = c.owner_id AND tp.user_id = auth.uid()
-      ))
-    )
-  )
-);
+-- Add OAuth tokens storage (Mollie requires storing refresh tokens)
+ALTER TABLE trainer_mollie_accounts
+  ADD COLUMN access_token TEXT,
+  ADD COLUMN refresh_token TEXT,
+  ADD COLUMN token_expires_at TIMESTAMPTZ;
+
+ALTER TABLE club_mollie_accounts
+  ADD COLUMN access_token TEXT,
+  ADD COLUMN refresh_token TEXT,
+  ADD COLUMN token_expires_at TIMESTAMPTZ;
+
+-- Update bookings table
+ALTER TABLE bookings
+  RENAME COLUMN stripe_session_id TO mollie_payment_id;
+  
+ALTER TABLE bookings
+  RENAME COLUMN stripe_payment_intent_id TO mollie_transaction_id;
 ```
 
-### New/Modified Files
+### 1.2 New Edge Function: `mollie-connect-trainer`
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/pages/academy/AcademyCycles.tsx` | Modify | Replace card grid with table, add filters |
-| `src/components/cycles/CyclesTable.tsx` | New | Table component with sorting, filtering |
-| `src/components/cycles/CycleForm.tsx` | Modify | Add location picker, pricing fields |
-| `src/lib/cycles.ts` | Modify | Add pricing, location to types and queries |
-| `src/components/academy/AcademySidebar.tsx` | Modify | Rename nav, add badge |
-| `src/components/waitlist/JoinWaitlistButton.tsx` | New | Reusable waitlist CTA |
-| `src/hooks/useWaitlist.ts` | New | Waitlist state management |
-| `supabase/functions/notify-waitlist/index.ts` | New | Email notifications when spots open |
+OAuth 2.0 flow for trainer onboarding:
 
-### UI Mockup: Registrations Table
+```typescript
+// supabase/functions/mollie-connect-trainer/index.ts
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
-```text
-+---------------------------------------------------------------------------------+
-| Registrations                                               [+ New Registration] |
-+---------------------------------------------------------------------------------+
-| Filter: [All Clubs ▼] [All Status ▼] [2026 ▼]                      🔍 Search    |
-+---------------------------------------------------------------------------------+
-| Name           | Club          | Period      | Status | Apps | Price   | Actions |
-+----------------+---------------+-------------+--------+------+---------+---------+
-| Spring 2026    | PAZ Zeist     | Feb-Apr     | Open   | 12   | €450    | ⋮       |
-| Spring 2026    | TC Boemerang  | Feb-Apr     | Draft  | 0    | €380    | ⋮       |
-| Winter 2025    | PAZ Zeist     | Oct-Dec     | Closed | 28   | €420    | ⋮       |
-+---------------------------------------------------------------------------------+
+const MOLLIE_CLIENT_ID = Deno.env.get("MOLLIE_CLIENT_ID");
+const MOLLIE_CLIENT_SECRET = Deno.env.get("MOLLIE_CLIENT_SECRET");
+
+serve(async (req) => {
+  // Generate OAuth authorization URL
+  const state = crypto.randomUUID();
+  const redirectUri = `${origin}/api/mollie-callback`;
+  
+  const authUrl = new URL("https://my.mollie.com/oauth2/authorize");
+  authUrl.searchParams.set("client_id", MOLLIE_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("scope", "payments.read payments.write organizations.read");
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("approval_prompt", "auto");
+  
+  // Store state in database for verification
+  // ...
+  
+  return new Response(JSON.stringify({ url: authUrl.toString() }), { ... });
+});
+```
+
+### 1.3 New Edge Function: `mollie-callback`
+
+Handle OAuth callback and store tokens:
+
+```typescript
+serve(async (req) => {
+  const { code, state } = await req.json();
+  
+  // Exchange code for tokens
+  const tokenResponse = await fetch("https://api.mollie.com/oauth2/tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+      client_id: MOLLIE_CLIENT_ID,
+      client_secret: MOLLIE_CLIENT_SECRET,
+    }),
+  });
+  
+  const tokens = await tokenResponse.json();
+  // Store tokens in trainer_mollie_accounts
+  // ...
+});
+```
+
+### 1.4 New Edge Function: `check-mollie-connect-status`
+
+Replace Stripe Connect status check:
+
+```typescript
+serve(async (req) => {
+  // Get stored access token
+  const { data: mollieAccount } = await supabaseClient
+    .from('trainer_mollie_accounts')
+    .select('*')
+    .eq('trainer_id', trainerProfile.id)
+    .single();
+  
+  if (!mollieAccount?.access_token) {
+    return new Response(JSON.stringify({ connected: false }));
+  }
+  
+  // Verify token is still valid, refresh if needed
+  // Get organization info from Mollie
+  const orgResponse = await fetch("https://api.mollie.com/v2/organizations/me", {
+    headers: { Authorization: `Bearer ${mollieAccount.access_token}` }
+  });
+  
+  // Return connection status
+  // ...
+});
 ```
 
 ---
 
-## Recommended Implementation Order
+## Phase 2: Lesson Payments with Split (Days 6-8)
 
-1. **Database changes** - Add location_id and pricing to cycles
-2. **Update CycleForm** - Location picker, pricing fields
-3. **Create CyclesTable** - Replace cards with table view
-4. **Update AcademyCycles page** - Integrate table, add filters
-5. **Add waitlist table** - Database + RLS
-6. **Waitlist UI components** - JoinWaitlistButton, hooks
-7. **Notification edge function** - notify-waitlist
-8. **Calendar improvements** - Legends, filters, slot type indicators
+### 2.1 New Edge Function: `create-mollie-payment`
+
+Replace `create-checkout-session`:
+
+```typescript
+serve(async (req) => {
+  const { bookingId, lessonTitle, price, trainerId, slotId } = await req.json();
+  
+  // Determine if club or trainer payment
+  const connectedOrgId = await getConnectedOrganizationId(trainerId, slotId);
+  const platformFee = calculatePlatformFee(price, tier);
+  
+  // Create payment with split
+  const payment = await fetch("https://api.mollie.com/v2/payments", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${MOLLIE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      amount: { currency: "EUR", value: price.toFixed(2) },
+      description: lessonTitle,
+      redirectUrl: `${origin}/booking-success?booking_id=${bookingId}`,
+      webhookUrl: `${SUPABASE_URL}/functions/v1/mollie-webhook`,
+      method: ["ideal", "bancontact", "creditcard"],
+      metadata: { booking_id: bookingId, trainer_id: trainerId },
+      routing: [
+        {
+          amount: {
+            currency: "EUR",
+            value: (price - platformFee).toFixed(2)
+          },
+          destination: {
+            type: "organization",
+            organizationId: connectedOrgId
+          }
+        }
+      ]
+    }),
+  });
+  
+  const paymentData = await payment.json();
+  
+  // Update booking with payment ID
+  await supabaseClient
+    .from('bookings')
+    .update({ mollie_payment_id: paymentData.id })
+    .eq('id', bookingId);
+  
+  return new Response(JSON.stringify({ 
+    url: paymentData._links.checkout.href 
+  }));
+});
+```
+
+### 2.2 New Edge Function: `mollie-webhook`
+
+Handle payment status updates:
+
+```typescript
+serve(async (req) => {
+  const { id: paymentId } = await req.json();
+  
+  // Fetch payment status from Mollie
+  const payment = await fetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${MOLLIE_API_KEY}` }
+  });
+  const paymentData = await payment.json();
+  
+  if (paymentData.status === "paid") {
+    const bookingId = paymentData.metadata.booking_id;
+    
+    await supabaseClient
+      .from('bookings')
+      .update({
+        payment_status: 'paid',
+        status: 'confirmed',
+        mollie_transaction_id: paymentData.id,
+        payment_amount: parseFloat(paymentData.amount.value),
+        paid_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId);
+    
+    // Send confirmation emails...
+  }
+});
+```
+
+### 2.3 Update `verify-payment` Edge Function
+
+Simplified verification (webhook handles most work):
+
+```typescript
+serve(async (req) => {
+  const { bookingId } = await req.json();
+  
+  // Get booking with payment ID
+  const { data: booking } = await supabaseClient
+    .from('bookings')
+    .select('mollie_payment_id, payment_status')
+    .eq('id', bookingId)
+    .single();
+  
+  if (booking?.payment_status === 'paid') {
+    return new Response(JSON.stringify({ paid: true }));
+  }
+  
+  // Double-check with Mollie API
+  const payment = await fetch(
+    `https://api.mollie.com/v2/payments/${booking.mollie_payment_id}`,
+    { headers: { Authorization: `Bearer ${MOLLIE_API_KEY}` } }
+  );
+  const paymentData = await payment.json();
+  
+  return new Response(JSON.stringify({ 
+    paid: paymentData.status === "paid" 
+  }));
+});
+```
 
 ---
 
-## Benefits
+## Phase 3: Subscriptions (Days 9-12)
 
-- **For Academies:** Central command center to manage all registrations across clubs
-- **For Trainers:** Clearer understanding of how slots and cycles work together  
-- **For Players:** Always have an action (apply, book, follow, waitlist) rather than dead ends
-- **For Business:** Better conversion as interested players can always express intent
+### 3.1 Database: Update subscription_plans
 
+```sql
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_price_id_monthly TO mollie_plan_id_monthly;
+  
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_price_id_yearly TO mollie_plan_id_yearly;
+  
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_product_id_monthly TO mollie_product_id_monthly;
+  
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_product_id_yearly TO mollie_product_id_yearly;
+
+-- Add Mollie customer IDs to profiles
+ALTER TABLE trainer_profiles
+  ADD COLUMN mollie_customer_id TEXT;
+  
+ALTER TABLE club_profiles
+  RENAME COLUMN stripe_customer_id TO mollie_customer_id;
+```
+
+### 3.2 New Edge Function: `create-mollie-subscription`
+
+```typescript
+serve(async (req) => {
+  const { planId, interval } = await req.json();
+  
+  // Get or create Mollie customer
+  let customerId = trainerProfile.mollie_customer_id;
+  
+  if (!customerId) {
+    const customer = await fetch("https://api.mollie.com/v2/customers", {
+      method: "POST",
+      headers: { 
+        Authorization: `Bearer ${MOLLIE_API_KEY}`,
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({
+        name: profile.full_name,
+        email: profile.email,
+        metadata: { user_id: user.id }
+      }),
+    });
+    customerId = (await customer.json()).id;
+    
+    // Store customer ID
+    await supabaseClient
+      .from('trainer_profiles')
+      .update({ mollie_customer_id: customerId })
+      .eq('id', trainerProfile.id);
+  }
+  
+  // Create first payment for mandate
+  const payment = await fetch("https://api.mollie.com/v2/payments", {
+    method: "POST",
+    headers: { 
+      Authorization: `Bearer ${MOLLIE_API_KEY}`,
+      "Content-Type": "application/json" 
+    },
+    body: JSON.stringify({
+      amount: plan.monthly_price,
+      customerId,
+      sequenceType: "first",
+      description: `${plan.name} Subscription`,
+      redirectUrl: `${origin}/subscription?success=true`,
+      webhookUrl: `${SUPABASE_URL}/functions/v1/mollie-subscription-webhook`,
+      metadata: { plan_id: planId, interval }
+    }),
+  });
+  
+  return new Response(JSON.stringify({ 
+    url: (await payment.json())._links.checkout.href 
+  }));
+});
+```
+
+### 3.3 New Edge Function: `mollie-subscription-webhook`
+
+Handle subscription creation after first payment:
+
+```typescript
+serve(async (req) => {
+  const { id: paymentId } = await req.json();
+  
+  const payment = await fetchMolliePayment(paymentId);
+  
+  if (payment.status === "paid" && payment.sequenceType === "first") {
+    // Create recurring subscription
+    const subscription = await fetch(
+      `https://api.mollie.com/v2/customers/${payment.customerId}/subscriptions`,
+      {
+        method: "POST",
+        headers: { 
+          Authorization: `Bearer ${MOLLIE_API_KEY}`,
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          amount: payment.amount,
+          interval: payment.metadata.interval === "yearly" ? "12 months" : "1 month",
+          description: `Trainer Subscription`,
+          webhookUrl: `${SUPABASE_URL}/functions/v1/mollie-subscription-webhook`,
+        }),
+      }
+    );
+    
+    // Update trainer profile with subscription status
+    // ...
+  }
+});
+```
+
+### 3.4 Custom Subscription Portal
+
+Since Mollie has no hosted billing portal, build a custom page:
+
+```typescript
+// src/pages/TrainerSubscriptionManage.tsx
+
+export default function TrainerSubscriptionManage() {
+  // Fetch subscription from Mollie via edge function
+  // Display current plan, next billing date
+  // Options: Cancel, Change Plan
+  
+  const handleCancel = async () => {
+    await supabase.functions.invoke('cancel-mollie-subscription');
+    // ...
+  };
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Manage Subscription</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div>Current Plan: {subscription.plan}</div>
+        <div>Next Billing: {subscription.nextBillingDate}</div>
+        <Button variant="destructive" onClick={handleCancel}>
+          Cancel Subscription
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+---
+
+## Phase 4: Frontend Updates (Days 13-14)
+
+### 4.1 Update Payment Libraries
+
+```typescript
+// src/lib/molliePayments.ts (renamed from clubPayments.ts)
+export interface MollieConnectStatus {
+  connected: boolean;
+  organizationId?: string;
+  organizationName?: string;
+  // ...
+}
+
+export async function connectMollie(trainerId: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('mollie-connect-trainer', {
+    body: { trainerId },
+  });
+  return data.url;
+}
+
+export async function checkMollieConnectStatus(trainerId: string): Promise<MollieConnectStatus> {
+  const { data, error } = await supabase.functions.invoke('check-mollie-connect-status', {
+    body: { trainerId },
+  });
+  return data;
+}
+```
+
+### 4.2 Update TrainerEarnings Page
+
+- Replace Stripe Connect button with Mollie Connect button
+- Update balance display (Mollie API for payouts)
+- Update status indicators
+
+### 4.3 Update BookLesson Page
+
+```typescript
+// Change from:
+const { data: checkoutData } = await supabase.functions.invoke('create-checkout-session', ...);
+
+// To:
+const { data: checkoutData } = await supabase.functions.invoke('create-mollie-payment', ...);
+```
+
+### 4.4 Update BookingSuccess Page
+
+```typescript
+// Change from:
+const { data } = await supabase.functions.invoke('verify-payment', {
+  body: { sessionId, bookingId, connectedAccountId },
+});
+
+// To:
+const { data } = await supabase.functions.invoke('verify-mollie-payment', {
+  body: { bookingId },
+});
+```
+
+---
+
+## Phase 5: Testing & Deployment (Days 15-16)
+
+### 5.1 Test Mode Configuration
+
+1. Create Mollie test account
+2. Get test API keys (`test_xxxxx`)
+3. Add to secrets: `MOLLIE_API_KEY`, `MOLLIE_CLIENT_ID`, `MOLLIE_CLIENT_SECRET`
+
+### 5.2 Test Scenarios
+
+| Scenario | Test Steps |
+|----------|------------|
+| Trainer onboarding | Complete OAuth flow, verify organization stored |
+| iDEAL payment | Book lesson, pay with iDEAL test bank |
+| Split routing | Verify platform fee deducted, trainer receives amount |
+| Subscription create | Subscribe, verify first payment + recurring |
+| Subscription cancel | Cancel via custom portal, verify status |
+| Webhook reliability | Simulate delayed webhooks, verify idempotency |
+
+### 5.3 Migration Checklist
+
+- [ ] All edge functions deployed and tested
+- [ ] Database migration applied
+- [ ] Frontend updated and tested
+- [ ] Mollie production API keys configured
+- [ ] Webhook URLs verified
+- [ ] Old Stripe functions deprecated (not deleted yet)
+- [ ] Monitoring for payment failures set up
+
+---
+
+## New Secrets Required
+
+| Secret Name | Purpose |
+|-------------|---------|
+| `MOLLIE_API_KEY` | API authentication (live key) |
+| `MOLLIE_CLIENT_ID` | OAuth Connect client ID |
+| `MOLLIE_CLIENT_SECRET` | OAuth Connect client secret |
+| `MOLLIE_PARTNER_ID` | For marketplace/platform features |
+
+---
+
+## Rollback Plan
+
+If issues arise after deployment:
+
+1. Keep Stripe edge functions as backup (renamed with `_deprecated` suffix)
+2. Maintain Stripe API key in secrets
+3. Database columns can coexist (both `mollie_*` and `stripe_*` during transition)
+4. Feature flag to switch payment provider if needed
+
+---
+
+## Summary
+
+| Phase | Days | Deliverables |
+|-------|------|--------------|
+| 1. Mollie Connect | 1-5 | Trainer/Club onboarding via OAuth |
+| 2. Lesson Payments | 6-8 | Payment creation, webhooks, verification |
+| 3. Subscriptions | 9-12 | Recurring billing, custom portal |
+| 4. Frontend | 13-14 | All UI components updated |
+| 5. Testing | 15-16 | End-to-end testing, deployment |
+
+**Total: 16 days**
+
+This migration preserves all existing functionality while switching the payment processor. The main additional work is building a custom subscription management portal since Mollie doesn't offer a hosted solution like Stripe's Customer Portal.
