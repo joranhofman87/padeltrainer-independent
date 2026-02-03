@@ -1,185 +1,230 @@
 
 
-# Role Consistency Analysis: Academy / Club / Trainer / Player
+# Mollie Connect: Shift from Clubs to Academies
+
+## Problem Summary
+
+The current implementation has Mollie Connect for:
+- **Trainers** ✅ (should keep)
+- **Clubs** ❌ (should NOT collect payments)
+
+The correct model should be:
+- **Trainers** - Can collect payments via their own Mollie account
+- **Academies** - Can collect payments on behalf of their trainers
+- **Clubs** - Do NOT collect payments themselves
+
+When a trainer is part of an academy, payments should route through the academy's Mollie account (with the academy paying trainers separately via salary/contracts).
+
+---
 
 ## Current State Analysis
 
-After analyzing all four roles, I've identified significant inconsistencies that add unnecessary complexity. Here's a comprehensive comparison:
+### Existing Club Mollie Infrastructure (to be REMOVED/REPURPOSED)
+| Component | File | Action |
+|-----------|------|--------|
+| `club_mollie_accounts` table | Database | Already exists, could rename to academy or deprecate |
+| `mollie-connect-club` | Edge Function | DELETE or repurpose for academy |
+| `ClubSettings.tsx` | Mollie Connect UI | REMOVE payment setup section |
+| `clubPayments.ts` | Client lib | REMOVE or repurpose |
+| `check-mollie-connect-status` | Edge Function | Currently handles `club` type - CHANGE to `academy` |
+| `mollie-callback` | Edge Function | Handles `club_` state prefix - CHANGE to `academy_` |
+
+### Academy Mollie Infrastructure (to be CREATED)
+| Component | File | Status |
+|-----------|------|--------|
+| `academy_mollie_accounts` table | Database | ✅ Already exists! |
+| `mollie-connect-academy` | Edge Function | ❌ Need to CREATE |
+| `AcademySettings.tsx` | Mollie Connect UI | ❌ Need to ADD payment section |
+| `academyPayments.ts` | Client lib | ❌ Need to CREATE |
+| Payment routing for academy trainers | `create-mollie-payment` | ❌ Need to UPDATE |
+
+### Trainer Payment Logic Changes Needed
+When a trainer creates a booking/lesson, the payment should:
+1. Check if trainer is part of an active academy (`academy_trainers` table)
+2. If YES → Route payment to academy's Mollie account
+3. If NO → Route payment to trainer's own Mollie account (existing behavior)
 
 ---
 
-## 1. Layout Architecture Differences
+## Implementation Plan
 
-| Aspect | Trainer | Academy | Club | Player |
-|--------|---------|---------|------|--------|
-| **Navigation Type** | Collapsible Sidebar | Collapsible Sidebar | Horizontal Header Nav | Horizontal Header Nav |
-| **Navigation Component** | `TrainerSidebar.tsx` | `AcademySidebar.tsx` | `ClubNavigation.tsx` | `PlayerNavigation.tsx` |
-| **Layout Container** | `SidebarProvider` | `SidebarProvider` | Direct container | Direct container |
-| **Gradient Background** | Orange gradient | Plain background | Plain background | Blue gradient |
+### Phase 1: Create Academy Mollie Connect Infrastructure
 
-**Recommendation**: Club and Player should switch to sidebar navigation like Trainer/Academy for consistency.
+**1.1 Create `src/lib/academyPayments.ts`**
+- Mirror pattern from `clubPayments.ts` but for academies
+- Functions: `connectAcademyMollie()`, `checkAcademyConnectStatus()`, `getAcademyMollieAccount()`
+- Add `getAcademyMollieAccountForTrainer()` - checks if trainer belongs to an academy and returns academy's Mollie account
 
----
+**1.2 Create `supabase/functions/mollie-connect-academy/index.ts`**
+- Copy from `mollie-connect-club` but adapted for academies
+- Verify user is academy manager via `academy_managers` table
+- Use `academy_mollie_accounts` table
+- State prefix: `academy_{academyProfileId}_{state}`
 
-## 2. Subscription System Differences
+**1.3 Update `supabase/functions/check-mollie-connect-status/index.ts`**
+- Add `entityType === 'academy'` case
+- Verify access via `academy_managers` table
+- Query `academy_mollie_accounts` table
 
-| Aspect | Trainer | Club | Academy | Player |
-|--------|---------|------|---------|--------|
-| **Subscription Lib** | `subscription.ts` (inline types) | `clubSubscription.ts` | `academySubscription.ts` | N/A |
-| **Type Interface** | `SubscriptionInfo` | `ClubSubscriptionInfo` | `AcademySubscriptionInfo` | N/A |
-| **Trial Duration** | 7 days | 14 days | 14 days | N/A |
-| **Tier Names** | trial/professional/academy | starter/club | starter/academy | N/A |
-| **Pricing Model** | Multiple tiers (Starter €10, Pro €39, Academy €99) | Single plan (€199/mo) | Single plan (€199/mo) | N/A |
-| **Subscription Page** | Full tier comparison UI | Simple status card | Simple status card | N/A |
-| **Context Integration** | Via `useAuth()` | Via `useClubContext()` | Via `useAcademyContext()` | N/A |
-
-**Issues Found**:
-- `getTrialDaysRemaining()` is duplicated in all 3 subscription files - should be a shared utility
-- Subscription interfaces are slightly different but could be unified
-- Trainer subscription uses inconsistent tier naming (`trial` vs `starter`)
+**1.4 Update `supabase/functions/mollie-callback/index.ts`**
+- Add `entityType === 'academy'` case (alongside trainer)
+- Update `academy_mollie_accounts` table on successful OAuth
 
 ---
 
-## 3. Dashboard Layout Differences
+### Phase 2: Update Payment Routing for Academy Trainers
 
-| Component | Trainer | Club | Academy | Player |
-|-----------|---------|------|---------|--------|
-| **Stats Cards** | 5 cards + calendar grid | 3 cards | 4 cards | 4 cards |
-| **Trial Banners** | None (soft enforcement) | None | Yes (via context) | N/A |
-| **Calendar Embed** | Full calendar on dashboard | No | No | No |
-| **Quick Actions** | Complex setup checklist | Simple action cards | Simple action cards | Action cards + trainer list |
-| **Page Length** | ~1156 lines | ~156 lines | ~186 lines | ~623 lines |
+**2.1 Update `supabase/functions/create-mollie-payment/index.ts`**
 
-**Issues Found**:
-- Trainer dashboard is overly complex (1156 lines) compared to others
-- Club dashboard is missing trial/subscription banners (recently added to Academy)
-- Inconsistent "quick actions" patterns
+Current flow:
+```
+1. Check trainer_mollie_accounts for trainer
+2. Route payment to trainer's account (if exists)
+```
 
----
+New flow:
+```
+1. Check if trainer is part of an active academy (academy_trainers)
+2. If YES:
+   a. Get academy's Mollie account (academy_mollie_accounts)
+   b. Route payment to academy's account
+   c. Use academy's platform fee tier
+3. If NO:
+   a. Check trainer_mollie_accounts (existing logic)
+   b. Route to trainer's account
+```
 
-## 4. Settings Page Differences
-
-| Feature | Trainer | Club | Academy | Player |
-|---------|---------|------|---------|--------|
-| **Settings File** | `TrainerSettings.tsx` | `ClubSettings.tsx` | `AcademySettings.tsx` | No dedicated settings page |
-| **Visibility Toggle** | Yes (with subscription logic) | No | No | N/A |
-| **Mollie Connect** | Separate page | Yes (inline) | No | N/A |
-| **Manager Invites** | N/A | Yes | Yes | N/A |
-| **Delete Account** | Yes | No | No | No |
-
-**Issues Found**:
-- Player has no settings page (only via navigation dropdown)
-- Visibility toggle pattern could be useful for Club/Academy
-- Delete account option missing from Club/Academy
+The `payment_percentage` field in `academy_trainers` is for internal academy-trainer splits, NOT for platform routing. The academy handles paying trainers separately.
 
 ---
 
-## 5. Subscription Overlay/Paywall Consistency
+### Phase 3: Update Academy Settings UI
 
-| Aspect | Trainer | Club | Academy |
-|--------|---------|------|---------|
-| **Overlay Component** | Uses shared `SubscriptionOverlay` | Uses shared `SubscriptionOverlay` | Uses shared `SubscriptionOverlay` |
-| **Features List** | 4 items | 4 items | 4 items |
-| **Trial Banner in Dashboard** | No | No | Yes (recently added) |
-
-**Good**: The shared `SubscriptionOverlay` component is now used consistently. But trial banners should be added to Trainer and Club dashboards.
-
----
-
-## 6. Navigation Structure Differences
-
-| Section | Trainer | Club | Academy |
-|---------|---------|------|---------|
-| **Dashboard** | Direct link | Direct link | Direct link |
-| **Profile** | "My Profile" → /profile/edit | Dropdown under "Club" | Direct "Profile" link |
-| **People/Team** | "Players" group (My Players, Intake) | "People" dropdown (Trainers, Players) | "Team" group (Trainers) |
-| **Schedule** | "Schedule" group (Calendar, Open Slots) | "Schedule" dropdown (Calendar, Lessons) | "Schedule" group (Calendar, Registrations) |
-| **Business** | "Business" group (Settings, Subscription, Earnings) | "Club" dropdown (Profile, Subscription, Settings) | "Business" group (Settings, Subscription, Earnings) |
-
-**Issues Found**:
-- Profile navigation inconsistent: Trainer uses /profile/edit, Academy uses /academy/profile, Club uses /club/profile
-- Grouping labels differ: "Business" vs "Club" vs "Settings"
-- Sidebar nav uses collapsible groups, horizontal nav uses dropdowns
+**3.1 Update `src/pages/academy/AcademySettings.tsx`**
+- Add Payment Setup Card (copy pattern from ClubSettings.tsx)
+- Connect Academy Mollie button
+- Status display (charges enabled, payouts enabled)
+- Balance display
+- Link to Mollie dashboard
 
 ---
 
-## Recommended Unification Plan
+### Phase 4: Remove Club Mollie Connect
 
-### Phase 1: Unified Subscription Infrastructure
+**4.1 Update `src/pages/club/ClubSettings.tsx`**
+- REMOVE the entire "Payment Setup" card section
+- Keep only managers section and delete account
 
-1. **Create shared subscription types**:
-   - Extract common `SubscriptionInfo` interface to `src/lib/sharedSubscription.ts`
-   - Unify tier naming: `starter` | `active` (instead of trial/professional/academy/club)
-   - Share `getTrialDaysRemaining()` helper across all roles
+**4.2 DELETE `supabase/functions/mollie-connect-club/`**
+- This edge function will no longer be needed
 
-2. **Standardize trial configuration**:
-   - Consider aligning trial duration (7 days vs 14 days)
-   - Use consistent trial banner pattern across all dashboards
+**4.3 DELETE or deprecate `src/lib/clubPayments.ts`**
+- The `getClubMollieAccountForTrainer` function is no longer needed
+- Remove the file entirely
 
-### Phase 2: Unified Layout System
+**4.4 Update `supabase/functions/check-mollie-connect-status/index.ts`**
+- REMOVE `entityType === 'club'` case
 
-1. **Create shared layout components**:
-   - Abstract sidebar pattern into reusable `DashboardSidebar` component
-   - Convert Club and Player to use sidebar navigation
-
-2. **Standardize visual theming**:
-   - Apply consistent gradient backgrounds (or no gradients for all)
-   - Unify header/footer patterns
-
-### Phase 3: Feature Parity
-
-1. **Settings pages**:
-   - Add visibility toggle to Club/Academy settings
-   - Add delete account option to Club/Academy settings
-   - Create PlayerSettings.tsx page
-
-2. **Dashboard enhancements**:
-   - Add trial banners to Trainer and Club dashboards (like Academy)
-   - Consider calendar view for Club dashboard
-
-### Phase 4: Navigation Consistency
-
-1. **Standardize section naming**:
-   - Use "Business" across all roles (not "Settings" or role name)
-   - Use consistent icon sets
-
-2. **Profile location**:
-   - Decide: standalone /profile/edit vs nested /[role]/profile
+**4.5 Update `supabase/functions/mollie-callback/index.ts`**
+- REMOVE `entityType === 'club'` case
 
 ---
 
-## Summary Table: What Needs Unification
+### Phase 5: Add i18n Translations
 
-| Item | Current State | Unified Approach |
-|------|---------------|------------------|
-| Navigation style | Mixed (sidebar/horizontal) | Sidebar for all |
-| Subscription interface | 3 separate types | Single shared type |
-| `getTrialDaysRemaining` | Duplicated 3x | Single shared function |
-| Trial duration | 7 days / 14 days | Align to 14 days |
-| Trial banners | Only Academy | All paid roles |
-| Settings pages | Inconsistent features | Feature parity |
-| Profile route | Mixed patterns | Standardize to /profile/edit |
-| Background gradients | Role-specific colors | Unified or none |
-| Delete account | Only Trainer | All roles |
+**5.1 Update `src/i18n/locales/en/academy.json`**
+```json
+"settings": {
+  "mollieConnect": "Payment Setup",
+  "mollieConnectDescription": "Connect your payment account to receive payments from lesson bookings.",
+  "notConnected": "Not Connected",
+  "notConnectedDescription": "Connect your payment account to receive payments when players book lessons with your trainers.",
+  "connectMollie": "Connect Payment Account",
+  "paymentsEnabled": "Payments Enabled",
+  "paymentsNotEnabled": "Payments Not Yet Enabled",
+  "payoutsEnabled": "Payouts Enabled",
+  "payoutsNotEnabled": "Payouts Not Yet Enabled",
+  "setupIncomplete": "Setup Incomplete",
+  "setupIncompleteDescription": "Please complete your payment account setup to start receiving payments.",
+  "completeSetup": "Complete Setup",
+  "refreshStatus": "Refresh Status",
+  "statusRefreshed": "Status Refreshed",
+  "statusRefreshedDescription": "Connection status has been updated.",
+  "availableBalance": "Available",
+  "pendingBalance": "Pending",
+  "mollieDashboard": "Payment Dashboard",
+  "checkingStatus": "Checking status...",
+  "mollieConnectSuccess": "Payment Account Connected",
+  "mollieConnectSuccessDescription": "Your payment account has been connected successfully."
+}
+```
+
+**5.2 Update `src/i18n/locales/nl/academy.json`** (Dutch translations)
 
 ---
 
-## Quick Wins (Low Effort, High Impact)
+## Files Summary
 
-1. **Extract shared `getTrialDaysRemaining` function** - currently duplicated in 3 files
-2. **Add trial banners to Club and Trainer dashboards** - copy from Academy pattern
-3. **Add delete account to Club and Academy settings** - component already exists
-4. **Standardize navigation group labels** - "Business" for all
+### New Files to Create
+1. `src/lib/academyPayments.ts` - Academy payment utilities
+2. `supabase/functions/mollie-connect-academy/index.ts` - OAuth connect for academies
 
-## Medium Effort
+### Files to Modify
+1. `supabase/functions/check-mollie-connect-status/index.ts` - Add academy, remove club
+2. `supabase/functions/mollie-callback/index.ts` - Add academy, remove club
+3. `supabase/functions/create-mollie-payment/index.ts` - Add academy trainer routing logic
+4. `src/pages/academy/AcademySettings.tsx` - Add Payment Setup UI
+5. `src/pages/club/ClubSettings.tsx` - Remove Payment Setup UI
+6. `src/i18n/locales/en/academy.json` - Add payment translations
+7. `src/i18n/locales/nl/academy.json` - Add payment translations
 
-1. **Create unified subscription type interface**
-2. **Align trial durations** (requires business decision)
-3. **Create PlayerSettings.tsx page**
+### Files to Delete
+1. `supabase/functions/mollie-connect-club/` - No longer needed
+2. `src/lib/clubPayments.ts` - No longer needed
 
-## High Effort (Consider for Future)
+---
 
-1. **Convert Club/Player to sidebar navigation**
-2. **Unify background gradient theming**
-3. **Refactor TrainerDashboard.tsx** (currently 1156 lines - needs splitting)
+## Payment Flow Diagram
+
+```text
+Player books lesson with Trainer
+           │
+           ▼
+┌────────────────────────────────┐
+│ create-mollie-payment function │
+└─────────────┬──────────────────┘
+              │
+              ▼
+┌───────────────────────────────────┐
+│ Is trainer part of active academy? │
+│ (check academy_trainers table)     │
+└─────────────┬─────────────────────┘
+         │           │
+        YES         NO
+         │           │
+         ▼           ▼
+┌────────────────┐  ┌────────────────────┐
+│ Get academy's  │  │ Get trainer's      │
+│ Mollie account │  │ Mollie account     │
+└────────┬───────┘  └──────────┬─────────┘
+         │                     │
+         ▼                     ▼
+┌────────────────────────────────────────┐
+│ Route payment with split:              │
+│ - Recipient gets (amount - platformFee)│
+│ - Platform keeps platformFee           │
+└────────────────────────────────────────┘
+```
+
+---
+
+## Expected Outcome
+
+| Scenario | Payment Routing |
+|----------|-----------------|
+| Independent trainer with Mollie connected | → Trainer's Mollie account |
+| Independent trainer without Mollie | → Platform (no split) |
+| Academy trainer, academy has Mollie | → Academy's Mollie account |
+| Academy trainer, academy no Mollie | → Platform (no split) |
+| Club trainer | No payment collection at club level |
 
