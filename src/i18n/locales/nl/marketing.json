@@ -234,7 +234,7 @@
       },
       "payouts": {
         "q": "Hoe werken uitbetalingen?",
-        "a": "Betalingen worden verwerkt via onze betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+        "a": "Betalingen worden verwerkt via Mollie, onze betrouwbare betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
       },
       "clubTrial": {
         "q": "Hoe werkt de gratis proefperiode voor clubs?",

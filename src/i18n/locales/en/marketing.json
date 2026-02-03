@@ -234,7 +234,7 @@
       },
       "payouts": {
         "q": "How do payouts work?",
-        "a": "Payments are processed through our payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+        "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
       },
       "clubTrial": {
         "q": "How does the club free trial work?",
