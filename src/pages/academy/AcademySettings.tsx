@@ -24,6 +24,7 @@ import {
 } from '@/lib/academyPayments';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 
 export default function AcademySettings() {
   const { t } = useTranslation('academy');
@@ -50,7 +51,7 @@ export default function AcademySettings() {
         const status = await checkAcademyConnectStatus(activeAcademy.id);
         setConnectStatus(status);
       } catch (e) {
-        console.error("Error checking connect status:", e);
+        logger.error("Error checking connect status", e as Error, { component: "AcademySettings", academyId: activeAcademy?.id });
       } finally {
         setCheckingStatus(false);
       }
@@ -66,7 +67,7 @@ export default function AcademySettings() {
         description: t("settings.mollieConnectSuccessDescription", "Your payment account has been connected successfully."),
       });
       // Refresh status
-      checkAcademyConnectStatus(activeAcademy.id).then(setConnectStatus).catch(console.error);
+      checkAcademyConnectStatus(activeAcademy.id).then(setConnectStatus).catch((e) => logger.error("Error refreshing connect status", e as Error, { component: "AcademySettings" }));
     } else if (searchParams.get("mollie_refresh") === "true") {
       toast({
         title: t("settings.mollieConnectRefresh", "Complete Setup"),

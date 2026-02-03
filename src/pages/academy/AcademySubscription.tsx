@@ -27,6 +27,7 @@ import {
   BarChart3,
   Sparkles
 } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function AcademySubscription() {
   const { t } = useTranslation(["academy", "common"]);
@@ -47,7 +48,7 @@ export default function AcademySubscription() {
         const sub = await checkAcademySubscription(activeAcademy.id);
         setSubscription(sub);
       } catch (error) {
-        console.error("Error loading subscription:", error);
+        logger.error("Error loading subscription", error as Error, { component: "AcademySubscription", academyId: activeAcademy?.id });
       } finally {
         setLoading(false);
       }

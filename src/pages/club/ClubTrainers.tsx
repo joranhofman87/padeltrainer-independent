@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { CreateClubTrainerDialog } from '@/components/club/CreateClubTrainerDialog';
 import { EditClubTrainerDialog } from '@/components/club/EditClubTrainerDialog';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 interface TrainerWithProfile {
   id: string;
@@ -68,7 +69,7 @@ export default function ClubTrainers() {
 
       setTrainers(trainersWithProfiles);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      logger.error('Error fetching club trainers', error as Error, { component: 'ClubTrainers', clubId: activeClub?.id });
     } finally {
       setLoading(false);
     }

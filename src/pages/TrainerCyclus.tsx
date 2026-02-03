@@ -48,6 +48,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import { format, parseISO, isPast } from "date-fns";
+import { logger } from "@/lib/logger";
 
 interface CyclusInfo {
   cyclus_id: string;
@@ -238,7 +239,7 @@ export default function TrainerCyclus() {
       setCyclusList(list);
       setFilteredCyclus(list);
     } catch (error: any) {
-      console.error("Error fetching cyclus list:", error);
+      logger.error("Error fetching cyclus list", error as Error, { component: "TrainerCyclus", trainerId });
       toast({
         title: t("common:error"),
         description: error.message,
@@ -287,7 +288,7 @@ export default function TrainerCyclus() {
 
       fetchCyclusList();
     } catch (error: any) {
-      console.error("Error deleting cyclus:", error);
+      logger.error("Error deleting cyclus", error as Error, { component: "TrainerCyclus", cyclusId: deletingCyclus?.cyclus_id });
       toast({
         title: t("common:error"),
         description: error.message,
