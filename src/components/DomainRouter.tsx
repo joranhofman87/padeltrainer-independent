@@ -255,28 +255,7 @@ function CombinedRoutes() {
       {/* Root redirect - detects browser language */}
       <Route path="/" element={<RootRedirect />} />
       
-      {/* Language-prefixed marketing routes */}
-      <Route path="/:lang" element={<LanguageRouter />}>
-        <Route index element={<Home />} />
-        <Route path="pricing" element={<Pricing />} />
-        <Route path="about" element={<About />} />
-        <Route path="blog" element={<Blog />} />
-        <Route path="blog/:slug" element={<BlogPost />} />
-        <Route path="privacy" element={<Privacy />} />
-        <Route path="terms" element={<Terms />} />
-        <Route path="partner" element={<Partner />} />
-        <Route path="trainers" element={<Trainers />} />
-        <Route path="trainers/:city" element={<TrainersCity />} />
-        <Route path="trainer/:trainerId" element={<TrainerProfile />} />
-        <Route path="locations" element={<Locations />} />
-        <Route path="locations/:slug" element={<LocationDetail />} />
-        <Route path="academies" element={<Academies />} />
-        <Route path="academies/:slug" element={<AcademyPublicProfile />} />
-        <Route path="book/:trainerId" element={<BookLesson />} />
-        <Route path="register/:cycleId" element={<CycleRegistration />} />
-      </Route>
-      
-      {/* App routes */}
+      {/* App routes - MUST come before /:lang to avoid being caught by language router */}
       <Route path="/auth" element={<Auth />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -367,6 +346,27 @@ function CombinedRoutes() {
         <Route path="settings" element={<AcademySettings />} />
       </Route>
       <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
+      
+      {/* Language-prefixed marketing routes - MUST come after app routes */}
+      <Route path="/:lang" element={<LanguageRouter />}>
+        <Route index element={<Home />} />
+        <Route path="pricing" element={<Pricing />} />
+        <Route path="about" element={<About />} />
+        <Route path="blog" element={<Blog />} />
+        <Route path="blog/:slug" element={<BlogPost />} />
+        <Route path="privacy" element={<Privacy />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="partner" element={<Partner />} />
+        <Route path="trainers" element={<Trainers />} />
+        <Route path="trainers/:city" element={<TrainersCity />} />
+        <Route path="trainer/:trainerId" element={<TrainerProfile />} />
+        <Route path="locations" element={<Locations />} />
+        <Route path="locations/:slug" element={<LocationDetail />} />
+        <Route path="academies" element={<Academies />} />
+        <Route path="academies/:slug" element={<AcademyPublicProfile />} />
+        <Route path="book/:trainerId" element={<BookLesson />} />
+        <Route path="register/:cycleId" element={<CycleRegistration />} />
+      </Route>
       
       <Route path="*" element={<NotFound />} />
     </Routes>
