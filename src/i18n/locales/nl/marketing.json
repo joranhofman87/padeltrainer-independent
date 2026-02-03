@@ -459,11 +459,11 @@
         "title": "6. Betalingen en kosten",
         "forPlayers": {
           "title": "Voor Spelers:",
-          "content": "Betaling wordt verwerkt via Stripe op het moment van boeken. De volledige lesprijs wordt in rekening gebracht op uw betaalmethode. Terugbetalingen worden afgehandeld volgens ons annuleringsbeleid."
+          "content": "Betaling wordt verwerkt via Mollie op het moment van boeken. De volledige lesprijs wordt in rekening gebracht op uw betaalmethode. Terugbetalingen worden afgehandeld volgens ons annuleringsbeleid."
         },
         "forTrainers": {
           "title": "Voor Trainers:",
-          "content": "PadelTrainer.ai brengt een platformvergoeding in rekening (percentage varieert per abonnement) op elke voltooide boeking. Het resterende bedrag wordt overgemaakt naar uw gekoppelde Stripe-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
+          "content": "PadelTrainer.ai brengt een platformvergoeding in rekening (percentage varieert per abonnement) op elke voltooide boeking. Het resterende bedrag wordt overgemaakt naar uw gekoppelde Mollie-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
         }
       },
       "cancellation": {

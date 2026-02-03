@@ -1,4 +1,5 @@
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +13,12 @@ export default function Privacy() {
 
   return (
     <MarketingLayout>
+      <SEO 
+        title={t('privacy.title')}
+        description="Learn how PadelTrainer.ai collects, uses, and protects your personal data"
+        url="/privacy"
+        noIndex={false}
+      />
       <div className="container mx-auto px-4 py-16 max-w-4xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
