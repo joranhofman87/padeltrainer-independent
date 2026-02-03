@@ -68,12 +68,12 @@ async function getTrainerPlatformFee(stripe: Stripe, supabaseClient: any, traine
   }
 }
 
-// Get club's Stripe account if trainer is a club_trainer at the slot's location
-async function getClubStripeAccountForSlot(
+// Get club's Mollie account if trainer is a club_trainer at the slot's location
+async function getClubMollieAccountForSlot(
   supabaseClient: any,
   trainerId: string,
   slotId: string
-): Promise<{ clubProfileId: string; stripeAccountId: string } | null> {
+): Promise<{ clubProfileId: string; mollieOrganizationId: string } | null> {
   // Get the slot to find its location (if it's tied to a lesson with a location)
   const { data: slot } = await supabaseClient
     .from('availability_slots')
@@ -107,20 +107,20 @@ async function getClubStripeAccountForSlot(
     return null; // No club profile for this location
   }
 
-  // Get club's Stripe account
-  const { data: clubStripeAccount } = await supabaseClient
-    .from('club_stripe_accounts')
-    .select('stripe_account_id, charges_enabled')
+  // Get club's Mollie account
+  const { data: clubMollieAccount } = await supabaseClient
+    .from('club_mollie_accounts')
+    .select('mollie_organization_id, charges_enabled')
     .eq('club_profile_id', clubProfile.id)
     .maybeSingle();
 
-  if (!clubStripeAccount?.charges_enabled || !clubStripeAccount?.stripe_account_id) {
-    return null; // Club doesn't have Stripe set up
+  if (!clubMollieAccount?.charges_enabled || !clubMollieAccount?.mollie_organization_id) {
+    return null; // Club doesn't have Mollie set up
   }
 
   return {
     clubProfileId: clubProfile.id,
-    stripeAccountId: clubStripeAccount.stripe_account_id,
+    mollieOrganizationId: clubMollieAccount.mollie_organization_id,
   };
 }
 
@@ -182,11 +182,11 @@ serve(async (req) => {
 
     // First, check if this is a club trainer and should route to club
     if (slotId) {
-      const clubAccount = await getClubStripeAccountForSlot(supabaseClient, trainerId, slotId);
-      if (clubAccount) {
+      const clubAccount = await getClubMollieAccountForSlot(supabaseClient, trainerId, slotId);
+    if (clubAccount) {
         isClubPayment = true;
         clubProfileId = clubAccount.clubProfileId;
-        connectedAccountId = clubAccount.stripeAccountId;
+        connectedAccountId = clubAccount.mollieOrganizationId;
         platformFeePercent = CLUB_FEE;
         applicationFeeAmount = Math.round(priceInCents * (platformFeePercent / 100));
         logStep("Routing payment to club", { 
@@ -197,19 +197,19 @@ serve(async (req) => {
       }
     }
 
-    // If not a club payment, use trainer's personal Stripe account
+    // If not a club payment, use trainer's personal Mollie account
     if (!isClubPayment) {
-      const { data: stripeAccount } = await supabaseClient
-        .from('trainer_stripe_accounts')
-        .select('stripe_account_id, charges_enabled')
+      const { data: mollieAccount } = await supabaseClient
+        .from('trainer_mollie_accounts')
+        .select('mollie_organization_id, charges_enabled')
         .eq('trainer_id', trainerId)
         .single();
 
-      if (!stripeAccount?.charges_enabled || !stripeAccount?.stripe_account_id) {
-        throw new Error("This trainer has not connected their Stripe account. Please contact them to set up payments or choose a different trainer.");
+      if (!mollieAccount?.charges_enabled || !mollieAccount?.mollie_organization_id) {
+        throw new Error("This trainer has not connected their payment account. Please contact them to set up payments or choose a different trainer.");
       }
 
-      connectedAccountId = stripeAccount.stripe_account_id;
+      connectedAccountId = mollieAccount.mollie_organization_id;
       
       // Get trainer's email to check their subscription tier
       const { data: trainerProfile } = await supabaseClient
@@ -275,10 +275,10 @@ serve(async (req) => {
     );
     logStep("Checkout session created", { sessionId: session.id, url: session.url, isClubPayment });
 
-    // Update booking with session ID
+    // Update booking with payment ID
     const { error: updateError } = await supabaseClient
       .from('bookings')
-      .update({ stripe_session_id: session.id })
+      .update({ mollie_payment_id: session.id })
       .eq('id', bookingId);
 
     if (updateError) {

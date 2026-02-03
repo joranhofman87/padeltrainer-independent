@@ -67,8 +67,8 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
-    // Check for existing Stripe customer
-    let customerId = clubProfile.stripe_customer_id;
+    // Check for existing Mollie customer
+    let customerId = clubProfile.mollie_customer_id;
     
     if (!customerId) {
       // Check if customer exists by email
@@ -94,7 +94,7 @@ serve(async (req) => {
       // Save customer ID to club profile
       await supabaseClient
         .from("club_profiles")
-        .update({ stripe_customer_id: customerId })
+        .update({ mollie_customer_id: customerId })
         .eq("id", clubProfileId);
 
       logStep("Customer created/found", { customerId });

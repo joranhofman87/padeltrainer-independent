@@ -86,16 +86,16 @@ serve(async (req) => {
         .single();
       
       if (bookingMeta?.trainer_id) {
-        const { data: stripeAccount } = await supabaseClient
-          .from('trainer_stripe_accounts')
-          .select('stripe_account_id')
+        const { data: mollieAccount } = await supabaseClient
+          .from('trainer_mollie_accounts')
+          .select('mollie_organization_id')
           .eq('trainer_id', bookingMeta.trainer_id)
           .single();
         
-        if (stripeAccount?.stripe_account_id) {
+        if (mollieAccount?.mollie_organization_id) {
           session = await stripe.checkout.sessions.retrieve(
             sessionId,
-            { stripeAccount: stripeAccount.stripe_account_id }
+            { stripeAccount: mollieAccount.mollie_organization_id }
           );
         }
       }
@@ -115,7 +115,7 @@ serve(async (req) => {
         .update({
           payment_status: 'paid',
           status: 'confirmed',
-          stripe_payment_intent_id: session.payment_intent as string,
+          mollie_transaction_id: session.payment_intent as string,
           payment_amount: amount,
           paid_at: new Date().toISOString(),
         })

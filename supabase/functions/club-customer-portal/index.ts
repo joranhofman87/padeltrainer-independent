@@ -51,7 +51,7 @@ serve(async (req) => {
     // Verify user is a club manager and get club profile
     const { data: clubProfile, error: clubError } = await supabaseClient
       .from("club_profiles")
-      .select("stripe_customer_id, club_managers!inner(user_id)")
+      .select("mollie_customer_id, club_managers!inner(user_id)")
       .eq("id", clubProfileId)
       .eq("club_managers.user_id", user.id)
       .maybeSingle();
@@ -60,17 +60,17 @@ serve(async (req) => {
       throw new Error("Club not found or access denied");
     }
 
-    if (!clubProfile.stripe_customer_id) {
+    if (!clubProfile.mollie_customer_id) {
       throw new Error("No billing account found. Please subscribe first.");
     }
 
-    logStep("Club verified", { clubProfileId, customerId: clubProfile.stripe_customer_id });
+    logStep("Club verified", { clubProfileId, customerId: clubProfile.mollie_customer_id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: clubProfile.stripe_customer_id,
+      customer: clubProfile.mollie_customer_id,
       return_url: `${origin}/club/subscription`,
     });
 

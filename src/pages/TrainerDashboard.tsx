@@ -503,8 +503,8 @@ export default function TrainerDashboard() {
 
       const hasAvailability = (slotCount || 0) > 0;
 
-      const { data: stripeData } = await supabase
-        .from('trainer_stripe_accounts')
+      const { data: mollieData } = await supabase
+        .from('trainer_mollie_accounts')
         .select('onboarding_complete, charges_enabled')
         .eq('trainer_id', currentTrainerId)
         .maybeSingle();
@@ -512,7 +512,7 @@ export default function TrainerDashboard() {
       const clubPaymentInfo = await getClubPaymentInfo(currentTrainerId);
 
       const paymentsComplete = 
-        !!(stripeData?.onboarding_complete && stripeData?.charges_enabled) || 
+        !!(mollieData?.onboarding_complete && mollieData?.charges_enabled) || 
         !!trainerProfile.use_manual_invoicing ||
         (clubPaymentInfo.isClubTrainer && clubPaymentInfo.clubChargesEnabled);
 

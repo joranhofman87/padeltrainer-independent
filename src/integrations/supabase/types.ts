@@ -685,6 +685,8 @@ export type Database = {
           guest_player_id: string | null
           id: string
           lesson_id: string | null
+          mollie_payment_id: string | null
+          mollie_transaction_id: string | null
           notes: string | null
           original_amount: number | null
           paid_at: string | null
@@ -693,8 +695,6 @@ export type Database = {
           player_id: string | null
           slot_id: string
           status: string
-          stripe_payment_intent_id: string | null
-          stripe_session_id: string | null
           updated_at: string
         }
         Insert: {
@@ -705,6 +705,8 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
+          mollie_payment_id?: string | null
+          mollie_transaction_id?: string | null
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
@@ -713,8 +715,6 @@ export type Database = {
           player_id?: string | null
           slot_id: string
           status?: string
-          stripe_payment_intent_id?: string | null
-          stripe_session_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -725,6 +725,8 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           lesson_id?: string | null
+          mollie_payment_id?: string | null
+          mollie_transaction_id?: string | null
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
@@ -733,8 +735,6 @@ export type Database = {
           player_id?: string | null
           slot_id?: string
           status?: string
-          stripe_payment_intent_id?: string | null
-          stripe_session_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -952,6 +952,70 @@ export type Database = {
           },
         ]
       }
+      club_mollie_accounts: {
+        Row: {
+          access_token: string | null
+          charges_enabled: boolean
+          club_profile_id: string
+          created_at: string
+          id: string
+          mollie_organization_id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          charges_enabled?: boolean
+          club_profile_id: string
+          created_at?: string
+          id?: string
+          mollie_organization_id: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          charges_enabled?: boolean
+          club_profile_id?: string
+          created_at?: string
+          id?: string
+          mollie_organization_id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: true
+            referencedRelation: "club_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_players: {
         Row: {
           club_profile_id: string
@@ -1098,13 +1162,13 @@ export type Database = {
           is_verified: boolean
           location_id: string
           logo_url: string | null
+          mollie_customer_id: string | null
           phone: string | null
           social_facebook: string | null
           social_instagram: string | null
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
-          stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
           subscription_status: string | null
@@ -1123,13 +1187,13 @@ export type Database = {
           is_verified?: boolean
           location_id: string
           logo_url?: string | null
+          mollie_customer_id?: string | null
           phone?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -1148,13 +1212,13 @@ export type Database = {
           is_verified?: boolean
           location_id?: string
           logo_url?: string | null
+          mollie_customer_id?: string | null
           phone?: string | null
           social_facebook?: string | null
           social_instagram?: string | null
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -1168,61 +1232,6 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: true
             referencedRelation: "locations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      club_stripe_accounts: {
-        Row: {
-          charges_enabled: boolean
-          club_profile_id: string
-          created_at: string
-          id: string
-          onboarding_complete: boolean
-          payouts_enabled: boolean
-          stripe_account_id: string
-          updated_at: string
-        }
-        Insert: {
-          charges_enabled?: boolean
-          club_profile_id: string
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id: string
-          updated_at?: string
-        }
-        Update: {
-          charges_enabled?: boolean
-          club_profile_id?: string
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
-            columns: ["club_profile_id"]
-            isOneToOne: true
-            referencedRelation: "club_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
-            columns: ["club_profile_id"]
-            isOneToOne: true
-            referencedRelation: "club_profiles_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "club_stripe_accounts_club_profile_id_fkey"
-            columns: ["club_profile_id"]
-            isOneToOne: true
-            referencedRelation: "club_profiles_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -2813,6 +2822,63 @@ export type Database = {
           },
         ]
       }
+      trainer_mollie_accounts: {
+        Row: {
+          access_token: string | null
+          charges_enabled: boolean
+          created_at: string
+          id: string
+          mollie_organization_id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          refresh_token: string | null
+          token_expires_at: string | null
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          mollie_organization_id: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          mollie_organization_id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainer_profile_views: {
         Row: {
           id: string
@@ -2977,54 +3043,6 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: []
-      }
-      trainer_stripe_accounts: {
-        Row: {
-          charges_enabled: boolean
-          created_at: string
-          id: string
-          onboarding_complete: boolean
-          payouts_enabled: boolean
-          stripe_account_id: string
-          trainer_id: string
-          updated_at: string
-        }
-        Insert: {
-          charges_enabled?: boolean
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id: string
-          trainer_id: string
-          updated_at?: string
-        }
-        Update: {
-          charges_enabled?: boolean
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id?: string
-          trainer_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
-            columns: ["trainer_id"]
-            isOneToOne: true
-            referencedRelation: "trainer_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
-            columns: ["trainer_id"]
-            isOneToOne: true
-            referencedRelation: "trainer_profiles_safe"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       trainer_working_hours: {
         Row: {

@@ -9,16 +9,16 @@ export interface ClubConnectStatus {
     available: Array<{ amount: number; currency: string }>;
     pending: Array<{ amount: number; currency: string }>;
   };
-  stripeAccountId?: string;
+  mollieOrganizationId?: string;
 }
 
-export async function connectClubStripe(clubProfileId: string): Promise<string> {
+export async function connectClubMollie(clubProfileId: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('connect-club', {
     body: { clubProfileId },
   });
 
   if (error) {
-    throw new Error(error.message || 'Failed to connect Stripe');
+    throw new Error(error.message || 'Failed to connect payment account');
   }
 
   if (data?.error) {
@@ -44,23 +44,23 @@ export async function checkClubConnectStatus(clubProfileId: string): Promise<Clu
   return data as ClubConnectStatus;
 }
 
-export async function getClubStripeAccount(clubProfileId: string) {
+export async function getClubMollieAccount(clubProfileId: string) {
   const { data, error } = await supabase
-    .from('club_stripe_accounts')
+    .from('club_mollie_accounts' as any)
     .select('*')
     .eq('club_profile_id', clubProfileId)
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching club stripe account:', error);
+    console.error('Error fetching club mollie account:', error);
     return null;
   }
 
   return data;
 }
 
-// Check if a trainer is a club trainer and get the club's Stripe account
-export async function getClubStripeAccountForTrainer(trainerId: string, locationId?: string) {
+// Check if a trainer is a club trainer and get the club's Mollie account
+export async function getClubMollieAccountForTrainer(trainerId: string, locationId?: string) {
   // Get trainer's club location
   let query = supabase
     .from('trainer_locations')
@@ -93,20 +93,22 @@ export async function getClubStripeAccountForTrainer(trainerId: string, location
     return null; // No club profile for this location
   }
 
-  // Get the club's Stripe account
-  const { data: stripeAccount, error: stripeError } = await supabase
-    .from('club_stripe_accounts')
-    .select('stripe_account_id, charges_enabled')
+  // Get the club's Mollie account
+  const { data: mollieAccount, error: mollieError } = await supabase
+    .from('club_mollie_accounts' as any)
+    .select('mollie_organization_id, charges_enabled')
     .eq('club_profile_id', clubProfile.id)
     .maybeSingle();
 
-  if (stripeError || !stripeAccount) {
+  if (mollieError || !mollieAccount) {
     return null;
   }
 
+  const typedAccount = mollieAccount as unknown as { mollie_organization_id: string; charges_enabled: boolean };
+
   return {
     clubProfileId: clubProfile.id,
-    stripeAccountId: stripeAccount.stripe_account_id,
-    chargesEnabled: stripeAccount.charges_enabled,
+    mollieOrganizationId: typedAccount.mollie_organization_id,
+    chargesEnabled: typedAccount.charges_enabled,
   };
 }

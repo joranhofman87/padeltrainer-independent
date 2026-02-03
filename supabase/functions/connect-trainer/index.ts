@@ -53,18 +53,18 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
-    // Check if trainer already has a Stripe account
+    // Check if trainer already has a Mollie account
     const { data: existingAccount } = await supabaseClient
-      .from('trainer_stripe_accounts')
-      .select('stripe_account_id, onboarding_complete')
+      .from('trainer_mollie_accounts')
+      .select('mollie_organization_id, onboarding_complete')
       .eq('trainer_id', trainerProfile.id)
       .single();
 
     let accountId: string;
 
-    if (existingAccount?.stripe_account_id) {
-      accountId = existingAccount.stripe_account_id;
-      logStep("Existing Stripe account found", { accountId });
+    if (existingAccount?.mollie_organization_id) {
+      accountId = existingAccount.mollie_organization_id;
+      logStep("Existing account found", { accountId });
     } else {
       // Create new Connect Express account
       const account = await stripe.accounts.create({
@@ -84,14 +84,14 @@ serve(async (req) => {
       });
 
       accountId = account.id;
-      logStep("Created new Stripe account", { accountId });
+      logStep("Created new account", { accountId });
 
       // Save to database
       const { error: insertError } = await supabaseClient
-        .from('trainer_stripe_accounts')
+        .from('trainer_mollie_accounts')
         .insert({
           trainer_id: trainerProfile.id,
-          stripe_account_id: accountId,
+          mollie_organization_id: accountId,
           onboarding_complete: false,
           charges_enabled: false,
           payouts_enabled: false,

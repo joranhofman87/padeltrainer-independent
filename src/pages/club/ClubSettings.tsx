@@ -49,7 +49,7 @@ import {
   removeClubManager,
 } from "@/lib/club";
 import { 
-  connectClubStripe, 
+  connectClubMollie, 
   checkClubConnectStatus,
   type ClubConnectStatus 
 } from "@/lib/clubPayments";
@@ -131,7 +131,7 @@ export default function ClubSettings() {
     
     setConnectLoading(true);
     try {
-      const url = await connectClubStripe(activeClub.id);
+      const url = await connectClubMollie(activeClub.id);
       window.open(url, "_blank");
     } catch (error: any) {
       toast({

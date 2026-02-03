@@ -53,15 +53,15 @@ serve(async (req) => {
       throw new Error("You are not a manager of this club");
     }
 
-    // Get club's Stripe account
-    const { data: stripeAccount, error: accountError } = await supabaseClient
-      .from('club_stripe_accounts')
-      .select('stripe_account_id, charges_enabled, payouts_enabled, onboarding_complete')
+    // Get club's Mollie account
+    const { data: mollieAccount, error: accountError } = await supabaseClient
+      .from('club_mollie_accounts')
+      .select('mollie_organization_id, charges_enabled, payouts_enabled, onboarding_complete')
       .eq('club_profile_id', clubProfileId)
       .maybeSingle();
 
-    if (!stripeAccount) {
-      logStep("No Stripe account found for club");
+    if (!mollieAccount) {
+      logStep("No Mollie account found for club");
       return new Response(JSON.stringify({ 
         connected: false,
         chargesEnabled: false,
@@ -75,9 +75,9 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Get current status from Stripe
-    const account = await stripe.accounts.retrieve(stripeAccount.stripe_account_id);
-    logStep("Retrieved Stripe account", { 
+    // Get current status from Stripe (temporary - will be replaced with Mollie API)
+    const account = await stripe.accounts.retrieve(mollieAccount.mollie_organization_id);
+    logStep("Retrieved account", { 
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
       detailsSubmitted: account.details_submitted,
@@ -88,7 +88,7 @@ serve(async (req) => {
     if (account.charges_enabled) {
       try {
         const stripeBalance = await stripe.balance.retrieve({
-          stripeAccount: stripeAccount.stripe_account_id,
+          stripeAccount: mollieAccount.mollie_organization_id,
         });
         balance = {
           available: stripeBalance.available.map((b: { amount: number; currency: string }) => ({
@@ -108,7 +108,7 @@ serve(async (req) => {
 
     // Update database with current status
     const { error: updateError } = await supabaseClient
-      .from('club_stripe_accounts')
+      .from('club_mollie_accounts')
       .update({
         charges_enabled: account.charges_enabled,
         payouts_enabled: account.payouts_enabled,
@@ -118,7 +118,7 @@ serve(async (req) => {
       .eq('club_profile_id', clubProfileId);
 
     if (updateError) {
-      logStep("Warning: Could not update Stripe account status", { error: updateError });
+      logStep("Warning: Could not update Mollie account status", { error: updateError });
     }
 
     return new Response(JSON.stringify({
@@ -127,7 +127,7 @@ serve(async (req) => {
       payoutsEnabled: account.payouts_enabled,
       onboardingComplete: account.details_submitted,
       balance,
-      stripeAccountId: stripeAccount.stripe_account_id,
+      mollieOrganizationId: mollieAccount.mollie_organization_id,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
