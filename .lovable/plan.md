@@ -1,170 +1,137 @@
 
-# Remove Legacy Routes and Simplify Navigation
 
-Since the app hasn't gone live yet, there's no need for backwards compatibility redirects. This cleanup will remove all legacy route handling and update navigation to use proper namespaced paths.
+# Pre-Launch Code Quality & Polish Plan
 
----
-
-## Changes Overview
-
-### 1. Remove Legacy Route Redirects from DomainRouter.tsx
-
-**Remove these redirect blocks entirely:**
-
-**In `AppRoutes()` function (lines 205-217):**
-```tsx
-{/* Legacy route redirects */}
-<Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
-<Route path="/lessons" element={<Navigate to="/trainer" replace />} />
-<Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
-<Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
-<Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
-<Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
-<Route path="/earnings" element={<Navigate to="/trainer" replace />} />
-<Route path="/subscription" element={<Navigate to="/trainer" replace />} />
-<Route path="/analytics" element={<Navigate to="/trainer" replace />} />
-<Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
-<Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
-```
-
-**In `CombinedRoutes()` function (lines 313-325):**
-Same block to be removed.
-
-**In `MarketingRoutes()` function (lines 121-130):**
-Remove these app-path redirects:
-```tsx
-<Route path="/lessons" element={<RedirectToAppDomain path="/lessons" />} />
-<Route path="/bookings" element={<RedirectToAppDomain path="/bookings" />} />
-<Route path="/earnings" element={<RedirectToAppDomain path="/earnings" />} />
-<Route path="/subscription" element={<RedirectToAppDomain path="/subscription" />} />
-<Route path="/analytics" element={<RedirectToAppDomain path="/analytics" />} />
-<Route path="/availability" element={<RedirectToAppDomain path="/availability" />} />
-<Route path="/schedule" element={<RedirectToAppDomain path="/schedule" />} />
-<Route path="/trainer-bookings" element={<RedirectToAppDomain path="/trainer-bookings" />} />
-```
-
-Also remove the `ManageLessons` import since it's no longer used.
+A comprehensive plan to ensure the application is in the best possible shape before going live. This covers code hygiene, testing infrastructure, performance optimizations, and component refactoring.
 
 ---
 
-### 2. Update TrainerSidebar.tsx to Use Proper Paths
+## Priority 1: Migrate Remaining Console Statements to Logger
 
-**Update navigation links:**
+**Issue**: The LAUNCH_CHECKLIST states "No production console.log statements" but there are still ~1,725 instances across 130 files.
 
-| Current Path | New Path |
-|--------------|----------|
-| `/profile/edit` | `/trainer/profile` |
-| `/subscription` | `/trainer/subscription` |
-| `/earnings` | `/trainer/earnings` |
+**Action**: Focus on the most critical user-facing components first:
 
-**Update path checks for `businessOpen` state:**
-```tsx
-// Line 82-86: Change from
-location.pathname.startsWith("/subscription") ||
-location.pathname.startsWith("/earnings")
+| File | Lines | Change |
+|------|-------|--------|
+| `src/pages/NotFound.tsx` | 16 | Replace `console.error` with `logger.warn` |
+| `src/components/trainer/BookForPlayerDialog.tsx` | 131, 147, 166, 300, 358, 376 | Replace `console.error/log` with `logger.error` |
+| `src/components/trainer/AddSlotDialog.tsx` | Throughout | Replace `console.error` with `logger.error` |
 
-// To
-location.pathname.startsWith("/trainer/subscription") ||
-location.pathname.startsWith("/trainer/earnings")
-```
+**Note**: Edge functions (`supabase/functions/*`) can retain `console.log` as they run server-side with proper logging infrastructure.
 
 ---
 
-### 3. Update PlayerDashboard.tsx to Use Proper Paths
+## Priority 2: Add data-testid Attributes for E2E Testing
 
-| Current Path | New Path |
-|--------------|----------|
-| `/bookings` (line 398, 480) | `/player/bookings` |
-| `/profile/edit` (line 499) | `/player/profile` |
+**Issue**: Zero `data-testid` attributes found. E2E tests rely on fragile text/class selectors.
 
----
+**Action**: Add attributes to critical interactive elements:
 
-### 4. Update TrainerSettings.tsx to Use Proper Path
+| Component | Elements | testid Pattern |
+|-----------|----------|----------------|
+| Auth forms | Login/signup buttons, inputs | `auth-login-button`, `auth-email-input` |
+| Navigation | Sidebar links, header items | `nav-trainer-dashboard`, `nav-player-bookings` |
+| Booking flow | Book button, player selects | `booking-confirm-button`, `booking-player-select` |
+| Calendar | Add slot button, slot cards | `calendar-add-slot`, `calendar-slot-{id}` |
 
-| Current Path | New Path |
-|--------------|----------|
-| `/profile/edit` (line 122) | `/trainer/profile` |
-
----
-
-### 5. Update TrainerDashboard.tsx Setup Steps
-
-| Current Path | New Path |
-|--------------|----------|
-| `/profile/edit` (line 1066) | `/trainer/profile` |
-| `/lessons` (line 1067) | `/trainer/calendar` |
+**Files to modify**:
+- `src/pages/Auth.tsx`
+- `src/components/trainer/TrainerSidebar.tsx`
+- `src/components/player/PlayerNavigation.tsx`
+- `src/pages/BookLesson.tsx`
+- `src/pages/TrainerDashboard.tsx`
 
 ---
 
-### 6. Add Missing Trainer Routes to DomainRouter.tsx
+## Priority 3: Add Image Lazy Loading
 
-Add these routes inside the `/trainer` layout:
+**Issue**: 115 `<img>` tags across 18 files without `loading="lazy"`.
 
-```tsx
-<Route path="profile" element={<EditProfile />} />
-<Route path="subscription" element={<TrainerSubscription />} />
-<Route path="earnings" element={<TrainerEarnings />} />
-<Route path="analytics" element={<TrainerAnalytics />} />
-<Route path="bookings" element={<TrainerBookings />} />
+**Action**: Add lazy loading to all non-critical images:
+
+| File | Count | Notes |
+|------|-------|-------|
+| `src/pages/marketing/Blog.tsx` | 2 | Featured/post images |
+| `src/pages/marketing/BlogPost.tsx` | 2 | Post content images |
+| `src/pages/academy/AcademyProfile.tsx` | 1 | Banner image |
+| `src/components/profiles/ProfileLayout.tsx` | 1 | Banner image |
+| `src/pages/admin/AdminLocations.tsx` | 1 | Logo thumbnails |
+| `src/pages/admin/AdminAcademies.tsx` | 1 | Logo thumbnails |
+| All other admin preview images | ~15 | Preview thumbnails |
+
+**Exception**: Keep eager loading for above-the-fold hero images.
+
+---
+
+## Priority 4: Extract TrainerDashboard Components
+
+**Issue**: At 1,156 lines, `TrainerDashboard.tsx` is 6x larger than other dashboards and harder to maintain.
+
+**Action**: Extract embedded components to separate files:
+
+| New File | Lines | Source |
+|----------|-------|--------|
+| `src/components/trainer/TrainerTrialBanner.tsx` | ~30 | Lines 1012-1040 |
+| `src/components/trainer/TrainerSetupChecklist.tsx` | ~110 | Lines 1043-1156 |
+
+**Benefits**:
+- Dashboard reduced to ~1,000 lines
+- Components reusable in other contexts
+- Easier to test in isolation
+
+---
+
+## Priority 5: Update Launch Checklist
+
+**Issue**: Some items are marked complete but aren't fully accurate.
+
+**Updates needed**:
+```markdown
+### Code Quality
+- [x] All Stripe references removed and replaced with Mollie
+- [x] Translation files complete for EN and NL
+- [ ] No production console.log statements (converted to logger) ← CHANGE TO INCOMPLETE
+- [x] Error boundaries implemented for graceful failure
+...
+
+### Testing Infrastructure
+- [ ] data-testid attributes on critical UI elements ← ADD NEW
+- [ ] Image lazy loading implemented ← ADD NEW
 ```
 
 ---
 
-### 7. Delete Unused Pages
+## Priority 6: Address Remaining TODOs
 
-These pages are no longer accessible or needed:
-
-| File | Reason |
-|------|--------|
-| `src/pages/ManageSchedule.tsx` | Replaced by TrainerCalendar |
-| `src/pages/ManageAvailability.tsx` | Replaced by TrainerCalendar |
-| `src/pages/ManageLessons.tsx` | Functionality merged into TrainerCalendar |
+| Location | TODO | Action |
+|----------|------|--------|
+| `src/lib/logger.ts:68` | Sentry integration | Add placeholder comment with priority |
+| `src/components/cycles/ProposalCard.tsx:194` | Slot picker | Either implement or remove button |
 
 ---
 
 ## Summary of Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/DomainRouter.tsx` | Remove legacy redirects, add proper trainer routes, remove ManageLessons import |
-| `src/components/trainer/TrainerSidebar.tsx` | Update paths from legacy to `/trainer/*` namespace |
-| `src/pages/PlayerDashboard.tsx` | Update `/bookings` → `/player/bookings`, `/profile/edit` → `/player/profile` |
-| `src/pages/TrainerSettings.tsx` | Update `/profile/edit` → `/trainer/profile` |
-| `src/pages/TrainerDashboard.tsx` | Update setup step paths to proper routes |
+| Category | Files | Effort |
+|----------|-------|--------|
+| Logger migration | 3 files | Low |
+| data-testid | 5 files | Low |
+| Lazy loading | 18 files | Low |
+| Component extraction | 1 file → 3 files | Medium |
+| Checklist update | 1 file | Low |
+| TODO cleanup | 2 files | Low |
 
-## Files to Delete
-
-| File | Reason |
-|------|--------|
-| `src/pages/ManageSchedule.tsx` | Unused - replaced by TrainerCalendar |
-| `src/pages/ManageAvailability.tsx` | Unused - replaced by TrainerCalendar |
-| `src/pages/ManageLessons.tsx` | Unused - no longer in routes |
+**Total estimated changes**: ~30 files with mostly small, mechanical updates.
 
 ---
 
-## Route Structure After Cleanup
+## What This Won't Cover
 
-**Trainer Routes (`/trainer/*`):**
-- `/trainer` → Dashboard
-- `/trainer/profile` → Edit Profile
-- `/trainer/settings` → Settings
-- `/trainer/settings/bookings` → Booking Settings
-- `/trainer/calendar` → Calendar
-- `/trainer/players` → Players
-- `/trainer/subscription` → Subscription
-- `/trainer/earnings` → Earnings
-- `/trainer/analytics` → Analytics
-- `/trainer/bookings` → Bookings
-- `/trainer/cyclus` → Cyclus
-- `/trainer/cycles` → Cycles
-- `/trainer/intake-requests` → Intake Requests
-- `/trainer/open-slots` → Open Slots
+1. **RLS Policy Review**: Already documented in security memories; requires database expertise
+2. **Sentry Integration**: Requires account setup and secrets configuration
+3. **Mobile Testing**: Manual verification needed per LAUNCH_CHECKLIST
+4. **Payment Flow Testing**: Requires Mollie test credentials
 
-**Player Routes (`/player/*`):**
-- `/player` → Dashboard
-- `/player/bookings` → Bookings
-- `/player/following` → Following
-- `/player/profile` → Edit Profile
-- `/player/settings` → Settings
-- `/player/settings/notifications` → Notification Settings
-- `/player/settings/calendar` → Calendar Settings
+These are marked in the checklist for manual verification before launch.
+
