@@ -118,7 +118,7 @@
     "backToLocations": "Back to Locations",
     "visitWebsite": "Visit Website",
     "getDirections": "Get Directions",
-    "trainersAtLocation": "Trainers at this location",
+    "trainersAtLocation": "Padel trainers at this club",
     "trainer": "trainer",
     "trainers": "trainers",
     "noTrainers": "No trainers yet",
@@ -161,7 +161,7 @@
     "locationsOnMap": "locations on map",
     "locationsNotMapped": "not mapped",
     "academiesAtLocation": "Training Academies",
-    "similarClubs": "Similar Clubs in {{city}}",
+    "similarClubs": "Other padel clubs in {{city}}",
     "club": "Club",
     "clubs": "Clubs"
   },

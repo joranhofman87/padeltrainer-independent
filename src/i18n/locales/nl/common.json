@@ -118,7 +118,7 @@
     "backToLocations": "Terug naar Locaties",
     "visitWebsite": "Bezoek Website",
     "getDirections": "Route",
-    "trainersAtLocation": "Trainers op deze locatie",
+    "trainersAtLocation": "Padeltrainers bij deze club",
     "trainer": "trainer",
     "trainers": "trainers",
     "noTrainers": "Nog geen trainers",
@@ -161,7 +161,7 @@
     "locationsOnMap": "locaties op kaart",
     "locationsNotMapped": "niet gekoppeld",
     "academiesAtLocation": "Trainings Academies",
-    "similarClubs": "Vergelijkbare Clubs in {{city}}",
+    "similarClubs": "Andere padelclubs in {{city}}",
     "club": "Club",
     "clubs": "Clubs"
   },
