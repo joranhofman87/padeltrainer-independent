@@ -1,155 +1,175 @@
 
 
-# Updated Migration Plan: Stripe to Mollie Partner
+# Stripe Cleanup Plan: Complete Removal
 
-## What Changes with Mollie Partner
+## Overview
 
-Becoming a Mollie Partner gives you access to:
-- **Client ID & Client Secret** for OAuth Connect flow
-- **Organization API** to manage connected accounts (trainers/clubs)
-- **Routing** for split payments to connected organizations
-
-### Requirements to Become a Mollie Partner
-
-1. Apply at [mollie.com/partners](https://www.mollie.com/partners)
-2. Once approved, you'll receive:
-   - Partner Client ID
-   - Partner Client Secret
-   - Your Platform Profile ID
-
-### Secrets You'll Need
-
-| Secret | Source | Purpose |
-|--------|--------|---------|
-| `MOLLIE_API_KEY` | Your Mollie Dashboard | Platform-level API calls |
-| `MOLLIE_PROFILE_ID` | Your Mollie Dashboard | Identify your platform |
-| `MOLLIE_CLIENT_ID` | After Partner approval | OAuth Connect for trainers |
-| `MOLLIE_CLIENT_SECRET` | After Partner approval | OAuth Connect for trainers |
+This plan removes all Stripe references from the codebase now that you've fully migrated to Mollie. This includes deleting deprecated edge functions, renaming database columns, cleaning up frontend code, and updating marketing content.
 
 ---
 
-## Implementation Timeline
+## Current Stripe Footprint
 
-### Phase 0: Partner Application (External)
-- Apply for Mollie Partner status
-- Wait for approval (typically 1-2 weeks)
-- Receive OAuth credentials
+After exploring the codebase, I found Stripe references in:
 
-### Phase 1: Database Migration (Day 1-2)
+**Edge Functions to DELETE (12 functions):**
+- `customer-portal/` - Stripe billing portal
+- `create-trainer-checkout/` - Stripe checkout for trainers  
+- `create-checkout-session/` - Stripe checkout for bookings
+- `create-club-checkout/` - Stripe club checkout
+- `club-customer-portal/` - Stripe club billing portal
+- `check-trainer-subscription/` - Stripe subscription check
+- `check-club-subscription/` - Stripe subscription check
+- `verify-payment/` - Stripe payment verification
+- `connect-trainer/` - Stripe Connect onboarding
+- `connect-club/` - Stripe Connect onboarding
+- `check-connect-status/` - Stripe Connect status
+- `check-club-connect-status/` - Stripe Connect status
 
-Rename tables and add Mollie-specific columns:
+**Database Cleanup:**
+- `academy_stripe_accounts` table → rename to `academy_mollie_accounts`
+- `subscription_plans` columns: `stripe_price_id_monthly/yearly`, `stripe_product_id_monthly/yearly` → rename to `mollie_*`
+- `academy_profiles.stripe_customer_id` → rename to `mollie_customer_id`
+- `trainer_profiles.stripe_account_id` → remove (deprecated)
 
-```sql
--- Rename trainer accounts
-ALTER TABLE trainer_stripe_accounts RENAME TO trainer_mollie_accounts;
-ALTER TABLE trainer_mollie_accounts 
-  RENAME COLUMN stripe_account_id TO mollie_organization_id;
+**Frontend/Backend Files to Update:**
+- `src/lib/subscription.ts` - Remove Stripe price/product IDs
+- `src/pages/TrainerEarnings.tsx` - Remove "Stripe" text references
+- `src/pages/TrainerSubscription.tsx` - Remove Stripe checkout flow
+- `src/components/admin/AdminStatsCards.tsx` - Update "Stripe Connect" labels
+- `supabase/functions/get-admin-stats/index.ts` - Remove Stripe balance API
+- `src/hooks/usePricingPlans.ts` - Update column references
+- Marketing translations (en/nl) - Change "Stripe" to "Mollie"
 
--- Rename club accounts  
-ALTER TABLE club_stripe_accounts RENAME TO club_mollie_accounts;
-ALTER TABLE club_mollie_accounts
-  RENAME COLUMN stripe_account_id TO mollie_organization_id;
+---
 
--- Add OAuth token storage (Mollie requires storing tokens)
-ALTER TABLE trainer_mollie_accounts
-  ADD COLUMN access_token TEXT,
-  ADD COLUMN refresh_token TEXT,
-  ADD COLUMN token_expires_at TIMESTAMPTZ;
+## Implementation Phases
 
-ALTER TABLE club_mollie_accounts
-  ADD COLUMN access_token TEXT,
-  ADD COLUMN refresh_token TEXT,
-  ADD COLUMN token_expires_at TIMESTAMPTZ;
+### Phase 1: Delete Deprecated Edge Functions
 
--- Update bookings table
-ALTER TABLE bookings
-  RENAME COLUMN stripe_session_id TO mollie_payment_id;
-ALTER TABLE bookings  
-  RENAME COLUMN stripe_payment_intent_id TO mollie_transaction_id;
+Delete the following 12 Stripe-based edge function directories:
+
+```text
+supabase/functions/customer-portal/
+supabase/functions/create-trainer-checkout/
+supabase/functions/create-checkout-session/
+supabase/functions/create-club-checkout/
+supabase/functions/club-customer-portal/
+supabase/functions/check-trainer-subscription/
+supabase/functions/check-club-subscription/
+supabase/functions/verify-payment/
+supabase/functions/connect-trainer/
+supabase/functions/connect-club/
+supabase/functions/check-connect-status/
+supabase/functions/check-club-connect-status/
 ```
 
-### Phase 2: Mollie Connect Edge Functions (Day 3-5)
+Also update cleanup functions to use Mollie table names:
+- `supabase/functions/bulk-cleanup-users/index.ts`
+- `supabase/functions/request-account-deletion/index.ts`
 
-Create new edge functions for OAuth-based onboarding:
+### Phase 2: Database Schema Migration
 
-| New Function | Purpose |
-|--------------|---------|
-| `mollie-connect-trainer` | Generate OAuth URL for trainer onboarding |
-| `mollie-connect-club` | Generate OAuth URL for club onboarding |
-| `mollie-callback` | Handle OAuth callback, store tokens |
-| `check-mollie-connect-status` | Verify trainer/club connection status |
+```sql
+-- 1. Rename academy_stripe_accounts to academy_mollie_accounts
+ALTER TABLE academy_stripe_accounts RENAME TO academy_mollie_accounts;
+ALTER TABLE academy_mollie_accounts 
+  RENAME COLUMN stripe_account_id TO mollie_organization_id;
 
-### Phase 3: Payment Edge Functions (Day 6-8)
+-- Add OAuth columns for academies (matching trainer/club tables)
+ALTER TABLE academy_mollie_accounts
+  ADD COLUMN access_token TEXT,
+  ADD COLUMN refresh_token TEXT,
+  ADD COLUMN token_expires_at TIMESTAMPTZ;
 
-| New Function | Replaces | Purpose |
-|--------------|----------|---------|
-| `create-mollie-payment` | `create-checkout-session` | Create payment with split routing |
-| `mollie-webhook` | Stripe webhook handling | Handle payment status updates |
-| `verify-mollie-payment` | `verify-payment` | Confirm payment success |
+-- 2. Rename stripe columns in subscription_plans
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_price_id_monthly TO mollie_plan_id_monthly;
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_price_id_yearly TO mollie_plan_id_yearly;
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_product_id_monthly TO mollie_product_id_monthly;
+ALTER TABLE subscription_plans
+  RENAME COLUMN stripe_product_id_yearly TO mollie_product_id_yearly;
 
-### Phase 4: Subscription Edge Functions (Day 9-12)
+-- 3. Rename academy_profiles.stripe_customer_id
+ALTER TABLE academy_profiles
+  RENAME COLUMN stripe_customer_id TO mollie_customer_id;
 
-| New Function | Replaces | Purpose |
-|--------------|----------|---------|
-| `create-mollie-subscription` | `create-trainer-checkout` | First payment + recurring setup |
-| `create-club-mollie-subscription` | `create-club-checkout` | Club subscription |
-| `check-mollie-subscription` | `check-trainer-subscription` | Verify subscription status |
-| `cancel-mollie-subscription` | `customer-portal` | Cancel recurring billing |
+-- 4. Remove deprecated trainer_profiles.stripe_account_id
+ALTER TABLE trainer_profiles
+  DROP COLUMN IF EXISTS stripe_account_id;
+```
 
-**Note:** Mollie has no hosted Customer Portal, so we'll build custom subscription management UI.
+### Phase 3: Frontend Code Cleanup
 
-### Phase 5: Frontend Updates (Day 13-14)
+**`src/lib/subscription.ts`:**
+- Remove Stripe price IDs (`price_1Spz9V...`)
+- Remove Stripe product IDs (`prod_TnaK...`)
+- Update comments to reference Mollie
 
-| File | Changes |
-|------|---------|
-| `src/lib/payments.ts` | New Mollie payment helpers |
-| `src/lib/subscription.ts` | Update tier mappings |
-| `src/pages/TrainerEarnings.tsx` | Mollie Connect button |
-| `src/pages/BookLesson.tsx` | Create Mollie payment |
-| `src/pages/BookingSuccess.tsx` | Verify Mollie payment |
-| `src/pages/TrainerSubscription.tsx` | Custom billing portal |
-| `src/pages/club/ClubSubscription.tsx` | Custom billing portal |
+**`src/pages/TrainerEarnings.tsx`:**
+- Change "Stripe" text to "payment account" or "Mollie"
 
-### Phase 6: Testing (Day 15-16)
+**`src/components/admin/AdminStatsCards.tsx`:**
+- Change "Stripe Connect" label to "Mollie Connect"
+- Change "Stripe Balance" to "Mollie Balance"
 
-Test with Mollie test mode using test API key.
+**`src/pages/admin/AdminAcademies.tsx`:**
+- Update table reference from `academy_stripe_accounts` to `academy_mollie_accounts`
+
+**`src/hooks/usePricingPlans.ts`:**
+- Update TypeScript interface to use `mollie_*` column names
+
+### Phase 4: Edge Function Updates
+
+**`supabase/functions/get-admin-stats/index.ts`:**
+- Replace Stripe import with Mollie API call
+- Rename `trainer_stripe_accounts` → `trainer_mollie_accounts`
+- Remove `stripeSecretKey` usage
+- Fetch balance from Mollie instead
+
+### Phase 5: Translation File Updates
+
+Update marketing content in:
+- `src/i18n/locales/en/marketing.json`
+- `src/i18n/locales/nl/marketing.json`
+
+Changes:
+- FAQ "How do payouts work?" - Change "Stripe Connect" to "our payment partner"
+- Privacy "Payment Information" - Change "Stripe" to "Mollie"
+- Privacy "Service Providers" - Change "Stripe" to "Mollie"
+- Terms "For Players" - Change "Stripe" to "Mollie"
+- Terms "For Trainers" - Change "Stripe-account" to "payment account"
 
 ---
 
-## Action Items Before Starting
+## Technical Notes
 
-1. **Apply for Mollie Partner** - Visit mollie.com/partners
-2. **Once approved**, add these secrets:
-   - `MOLLIE_API_KEY` (your platform API key)
-   - `MOLLIE_PROFILE_ID` (your platform profile)
-   - `MOLLIE_CLIENT_ID` (Partner OAuth)
-   - `MOLLIE_CLIENT_SECRET` (Partner OAuth)
+### Functions Already Created (Mollie)
+These already exist and will be the primary payment functions:
+- `mollie-connect-trainer` / `mollie-connect-club`
+- `mollie-callback`
+- `check-mollie-connect-status`
+- `create-mollie-payment`
+- `mollie-webhook`
+- `verify-mollie-payment`
+- `create-mollie-subscription` / `create-club-mollie-subscription`
+- `check-mollie-subscription`
+- `cancel-mollie-subscription`
 
-3. **Start implementation** once credentials are available
+### Types File
+The `src/integrations/supabase/types.ts` file will auto-regenerate after database migrations run, updating the TypeScript types automatically.
 
 ---
 
 ## Summary
 
-| Phase | Days | Status |
-|-------|------|--------|
-| 0. Partner Application | External | ✅ Complete |
-| 1. Database Migration | 1-2 | ✅ Complete |
-| 2. Mollie Connect | 3-5 | ✅ Complete |
-| 3. Payment Functions | 6-8 | ✅ Complete |
-| 4. Subscription Functions | 9-12 | ✅ Complete |
-| 5. Frontend Updates | 13-14 | ✅ Complete |
-| 6. Testing | 15-16 | ✅ Complete |
-
-## Migration Complete! 🎉
-
-All edge functions deployed and secrets configured:
-- `MOLLIE_API_KEY`, `MOLLIE_CLIENT_ID`, `MOLLIE_CLIENT_SECRET`, `MOLLIE_PROFILE_ID`
-
-### Manual Testing Checklist
-- [ ] Trainer connects Mollie account via OAuth
-- [ ] Player books lesson → Mollie checkout → payment verified
-- [ ] Trainer subscribes → first payment → recurring subscription created
-- [ ] Club subscribes with trial → 14-day trial → subscription starts
-- [ ] Cancel subscription → access until period end
+| Phase | Scope | Changes |
+|-------|-------|---------|
+| 1 | Edge Functions | Delete 12 Stripe functions |
+| 2 | Database | 1 table rename, 6 column renames |
+| 3 | Frontend | Update 5 files |
+| 4 | Admin Function | Update get-admin-stats |
+| 5 | Translations | Update 2 JSON files |
 
