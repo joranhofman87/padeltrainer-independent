@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { cn } from "@/lib/utils";
 import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
+import { logger } from "@/lib/logger";
 
 interface Lesson {
   id: string;
@@ -128,7 +129,7 @@ export function BookForPlayerDialog({
         setHourlyRate(data.hourly_rate);
       }
     } catch (error) {
-      console.error("Error fetching hourly rate:", error);
+      logger.error("Error fetching hourly rate", error as Error, { component: "BookForPlayerDialog" });
     }
   };
 
@@ -144,7 +145,7 @@ export function BookForPlayerDialog({
       if (error) throw error;
       setPlayers(data as GuestPlayer[]);
     } catch (error: any) {
-      console.error("Error fetching players:", error);
+      logger.error("Error fetching players", error as Error, { component: "BookForPlayerDialog" });
     } finally {
       setIsFetching(false);
     }
@@ -163,7 +164,7 @@ export function BookForPlayerDialog({
       setCyclusSlots(data || []);
       setCyclusSlotsCount(data?.length || 0);
     } catch (error) {
-      console.error("Error fetching cyclus slots:", error);
+      logger.error("Error fetching cyclus slots", error as Error, { component: "BookForPlayerDialog" });
     }
   };
 
@@ -297,7 +298,7 @@ export function BookForPlayerDialog({
               headers: {
                 Authorization: `Bearer ${session?.access_token}`,
               },
-            }).catch(err => console.log("Email notification failed:", err))
+            }).catch(err => logger.warn("Email notification failed", { error: err?.message }))
           )
         );
 
@@ -355,7 +356,7 @@ export function BookForPlayerDialog({
               headers: {
                 Authorization: `Bearer ${emailSession?.access_token}`,
               },
-            }).catch(err => console.log("Email notification failed:", err))
+            }).catch(err => logger.warn("Email notification failed", { error: err?.message }))
           )
         );
 
@@ -373,7 +374,7 @@ export function BookForPlayerDialog({
       onOpenChange(false);
       onBookingCreated?.();
     } catch (error: any) {
-      console.error("Error creating booking:", error);
+      logger.error("Error creating booking", error as Error, { component: "BookForPlayerDialog" });
       toast({
         title: t("common:error"),
         description: error.message,

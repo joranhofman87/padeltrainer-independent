@@ -223,6 +223,7 @@ export default function AcademyProfile() {
                   src={activeAcademy.banner_url}
                   alt="Academy banner"
                   className="object-cover w-full h-full"
+                  loading="lazy"
                 />
               </AspectRatio>
             ) : (

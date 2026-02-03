@@ -201,6 +201,7 @@ export function TrainerSidebar() {
                     to="/trainer/profile"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    data-testid="nav-trainer-profile"
                   >
                     <User className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.myProfile")}</span>}
@@ -216,6 +217,7 @@ export function TrainerSidebar() {
                     end
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    data-testid="nav-trainer-dashboard"
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.dashboard")}</span>}

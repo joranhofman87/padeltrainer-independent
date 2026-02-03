@@ -2,6 +2,7 @@ import { useLocation, Link } from "react-router-dom";
 import { LocalizedLink } from "@/components/LocalizedLink";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Home, ArrowLeft } from "lucide-react";
 import { useHostname } from "@/hooks/useHostname";
@@ -13,7 +14,7 @@ const NotFound = () => {
   const { isAppDomain, isMarketingDomain, isDevelopment } = useHostname();
 
   useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
+    logger.warn("404 Error: User attempted to access non-existent route", { path: location.pathname });
   }, [location.pathname]);
 
   // Determine the correct home link based on domain

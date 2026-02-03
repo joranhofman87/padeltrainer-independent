@@ -61,6 +61,7 @@ export function PlayerNavigation() {
           "flex items-center gap-2 whitespace-nowrap",
           isActive("/player") && "bg-secondary"
         )}
+        data-testid="nav-player-dashboard"
       >
         <LayoutDashboard className="h-4 w-4" />
         <span className="hidden sm:inline">{t("nav.dashboard")}</span>
@@ -75,6 +76,7 @@ export function PlayerNavigation() {
           "flex items-center gap-2 whitespace-nowrap",
           isActive("/player/bookings") && "bg-secondary"
         )}
+        data-testid="nav-player-bookings"
       >
         <Calendar className="h-4 w-4" />
         <span className="hidden sm:inline">{t("nav.bookings")}</span>
