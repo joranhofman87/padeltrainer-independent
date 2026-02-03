@@ -31,6 +31,7 @@ import { getTrainerAcademy, type AcademyProfile } from '@/lib/academy';
 import { toast } from 'sonner';
 import { getMarketingUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
+import { logger } from '@/lib/logger';
 import {
   ProfileLayout,
   ProfileContentGrid,
@@ -194,7 +195,7 @@ export default function TrainerProfile() {
     }
 
     if (trainerResult.error || !trainerResult.data) {
-      console.error('Error fetching trainer:', trainerResult.error);
+      logger.error('Error fetching trainer', undefined, { supabaseError: trainerResult.error });
       setLoading(false);
       return;
     }
@@ -207,7 +208,7 @@ export default function TrainerProfile() {
       .maybeSingle();
 
     if (trainerResult.error) {
-      console.error('Error fetching trainer:', trainerResult.error);
+      logger.error('Error fetching trainer', undefined, { supabaseError: trainerResult.error });
       setLoading(false);
       return;
     }
@@ -230,7 +231,7 @@ export default function TrainerProfile() {
     );
 
     if (!trainerResult.data.is_public && !hasVerifiedClubLink) {
-      console.log('Trainer is not public and not linked to verified club');
+      logger.debug('Trainer is not public and not linked to verified club');
       setLoading(false);
       return;
     }
@@ -295,7 +296,7 @@ export default function TrainerProfile() {
     setTrainerAcademy(academyData);
 
     if (profileResult.error) {
-      console.error('Error fetching profile:', profileResult.error);
+      logger.error('Error fetching profile', undefined, { supabaseError: profileResult.error });
     } else {
       setProfile(profileResult.data);
     }
