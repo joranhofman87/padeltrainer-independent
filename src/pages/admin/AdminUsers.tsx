@@ -60,6 +60,7 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
+import { logger } from "@/lib/logger";
 
 interface UserWithRole {
   user_id: string;
@@ -153,7 +154,7 @@ export default function AdminUsers() {
       setChangeRoleDialogOpen(false);
       setSelectedUser(null);
     } catch (error: any) {
-      console.error("Failed to update role:", error);
+      logger.error("Failed to update role", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
         description: error.message || "Failed to update role",
@@ -189,7 +190,7 @@ export default function AdminUsers() {
       setSelectedUser(null);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to generate impersonation link";
-      console.error("Failed to impersonate:", error);
+      logger.error("Failed to impersonate", error as Error, { component: "AdminUsers", targetUserId: selectedUser?.user_id });
       toast({
         title: "Error",
         description: errorMessage,
@@ -222,7 +223,7 @@ export default function AdminUsers() {
       setDeleteConfirmText("");
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
-      console.error("Failed to delete user:", error);
+      logger.error("Failed to delete user", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
         description: errorMessage,
@@ -252,7 +253,7 @@ export default function AdminUsers() {
         if (error) throw error;
         successCount++;
       } catch (error) {
-        console.error(`Failed to delete user ${userId}:`, error);
+        logger.error("Failed to delete user in bulk", error as Error, { component: "AdminUsers", userId });
         failCount++;
       }
       setBulkDeleteProgress({ current: i + 1, total: userIdsArray.length });
@@ -318,7 +319,7 @@ export default function AdminUsers() {
       setSelectedUser(null);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update user";
-      console.error("Failed to update user:", error);
+      logger.error("Failed to update user", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
         description: errorMessage,
@@ -359,7 +360,7 @@ export default function AdminUsers() {
       setNewPassword("");
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update password";
-      console.error("Failed to update password:", error);
+      logger.error("Failed to reset password", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
         title: "Error",
         description: errorMessage,

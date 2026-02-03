@@ -59,6 +59,7 @@ import {
   Award,
   Target,
 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 export default function AdminCertifications() {
   const navigate = useNavigate();
@@ -160,6 +161,7 @@ export default function AdminCertifications() {
       await fetchData();
       setCertDialogOpen(false);
     } catch (error: any) {
+      logger.error('Error saving certification', error as Error, { component: 'AdminCertifications', certId: editingCert?.id });
       toast({
         title: 'Error',
         description: error.message || 'Failed to save certification',
@@ -209,6 +211,7 @@ export default function AdminCertifications() {
       await fetchData();
       setSpecDialogOpen(false);
     } catch (error: any) {
+      logger.error('Error saving specialization', error as Error, { component: 'AdminCertifications', specId: editingSpec?.id });
       toast({
         title: 'Error',
         description: error.message || 'Failed to save specialization',

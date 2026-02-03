@@ -20,6 +20,7 @@ import {
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
+import { logger } from '@/lib/logger';
 
 export default function TrainerIntakeRequests() {
   const { t } = useTranslation('cycles');
@@ -70,7 +71,7 @@ export default function TrainerIntakeRequests() {
       setCycles(cyclesData);
       setRequests(requestsData);
     } catch (error: any) {
-      console.error('Error fetching data:', error);
+      logger.error('Error fetching intake requests', error as Error, { component: 'TrainerIntakeRequests', trainerId });
       toast.error(error.message);
     } finally {
       setIsLoading(false);

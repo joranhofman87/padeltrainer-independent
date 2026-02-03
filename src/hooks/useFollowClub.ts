@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 
 export function useFollowClub(clubProfileId: string | null) {
   const { user, role } = useAuth();
@@ -47,7 +48,7 @@ export function useFollowClub(clubProfileId: string | null) {
       setIsFollowing(!!follow);
       setFollowId(follow?.id || null);
     } catch (error) {
-      console.error('Error checking club follow status:', error);
+      logger.error('Error checking club follow status', error as Error, { hook: 'useFollowClub', clubProfileId });
     } finally {
       setLoading(false);
     }

@@ -19,6 +19,7 @@ import { GraduationCap } from 'lucide-react';
 import { createAcademy } from '@/lib/academy';
 import { supabase } from '@/integrations/supabase/client';
 import { COUNTRIES, type CountryCode } from '@/lib/countries';
+import { logger } from '@/lib/logger';
 
 export default function AcademyOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +52,7 @@ export default function AcademyOnboarding() {
             localStorage.removeItem('pendingRole');
           }
         } catch (err) {
-          console.error('Error assigning academy role:', err);
+          logger.error('Error assigning academy role', err as Error, { component: 'AcademyOnboarding' });
         }
       }
     };
@@ -124,7 +125,7 @@ export default function AcademyOnboarding() {
       
       navigate('/academy');
     } catch (error: any) {
-      console.error('Academy creation error:', error);
+      logger.error('Academy creation error', error as Error, { component: 'AcademyOnboarding', academyName });
       toast({
         title: t('onboarding.error', 'Error'),
         description: error.message || t('onboarding.errorDescription', 'Failed to create academy'),

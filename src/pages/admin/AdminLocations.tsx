@@ -46,6 +46,7 @@ import {
 } from '@/lib/locations';
 import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { useTableSort } from '@/hooks/useTableSort';
+import { logger } from '@/lib/logger';
 
 // Extended type to include computed fields for sorting
 interface LocationWithComputedFields extends Location {
@@ -111,7 +112,7 @@ export default function AdminLocations() {
           setVerifiedLocationIds(new Set(verifiedClubs.map(c => c.location_id)));
         }
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error as Error, { component: 'AdminLocations' });
         toast({
           title: 'Error',
           description: 'Failed to load locations',

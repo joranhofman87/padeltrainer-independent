@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useClubContext } from '@/components/club/ClubLayout';
+import { logger } from '@/lib/logger';
 import {
   getClubTournaments,
   createTournament,
@@ -159,7 +160,7 @@ export default function ClubTournaments() {
       setDialogOpen(false);
       fetchTournaments();
     } catch (error) {
-      console.error('Error saving tournament:', error);
+      logger.error('Error saving tournament', error as Error, { component: 'ClubTournaments', clubId: activeClub?.id });
       toast({
         title: t('common:error'),
         description: t('tournaments.error'),
@@ -183,7 +184,7 @@ export default function ClubTournaments() {
       setDeletingId(null);
       fetchTournaments();
     } catch (error) {
-      console.error('Error deleting tournament:', error);
+      logger.error('Error deleting tournament', error as Error, { component: 'ClubTournaments', tournamentId: deletingId });
       toast({
         title: t('common:error'),
         description: t('tournaments.error'),

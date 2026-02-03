@@ -29,6 +29,7 @@ import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
 import { supabase } from "@/integrations/supabase/client";
 import CycleForm from "@/components/cycles/CycleForm";
+import { logger } from "@/lib/logger";
 
 interface AcademySlot {
   id: string;
@@ -136,7 +137,7 @@ export default function AcademyCalendar() {
         setLessons(lessonsData || []);
       }
     } catch (error) {
-      console.error("Error loading academy data:", error);
+      logger.error("Error loading academy data", error as Error, { component: "AcademyCalendar", academyId: activeAcademy?.id });
     }
   };
 
@@ -180,7 +181,7 @@ export default function AcademyCalendar() {
         .order("start_time", { ascending: true });
 
       if (error) {
-        console.error("Error fetching slots:", error);
+        logger.error("Error fetching academy slots", error as Error, { component: "AcademyCalendar", academyId: activeAcademy?.id });
         setSlots([]);
         return;
       }
@@ -243,7 +244,7 @@ export default function AcademyCalendar() {
 
       setSlots(enrichedSlots);
     } catch (error) {
-      console.error("Error fetching slots:", error);
+      logger.error("Error fetching academy calendar slots", error as Error, { component: "AcademyCalendar" });
     } finally {
       setLoading(false);
     }

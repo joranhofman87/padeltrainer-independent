@@ -9,6 +9,7 @@ import CyclesTable from '@/components/cycles/CyclesTable';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
+import { logger } from '@/lib/logger';
 
 interface LocationData {
   id: string;
@@ -55,7 +56,7 @@ export default function AcademyCycles() {
             }))
         );
       } catch (error) {
-        console.error('Error fetching data:', error);
+        logger.error('Error fetching academy data', error as Error, { component: 'AcademyCycles', academyId: activeAcademy?.id });
       }
     };
     fetchData();
@@ -69,7 +70,7 @@ export default function AcademyCycles() {
       const data = await getCyclesWithCounts('academy', activeAcademy.id);
       setCycles(data);
     } catch (error: any) {
-      console.error('Error fetching cycles:', error);
+      logger.error('Error fetching cycles', error as Error, { component: 'AcademyCycles', academyId: activeAcademy?.id });
       toast({
         title: t('common:error'),
         description: error.message,

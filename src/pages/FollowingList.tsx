@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface FollowedTrainer {
   id: string;
@@ -103,7 +104,7 @@ export default function FollowingList() {
 
       setFollowing(enrichedFollowing);
     } catch (error: any) {
-      console.error('Error fetching following:', error);
+      logger.error('Error fetching following', error as Error, { component: 'FollowingList' });
       toast({
         title: 'Error loading data',
         description: error.message,

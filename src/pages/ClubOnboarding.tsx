@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { validatePhone } from '@/lib/validation';
+import { logger } from '@/lib/logger';
 
 export default function ClubOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
@@ -52,7 +53,7 @@ export default function ClubOnboarding() {
             sessionStorage.removeItem('pendingRole');
           }
         } catch (err) {
-          console.error('Error assigning club role:', err);
+          logger.error('Error assigning club role', err as Error, { component: 'ClubOnboarding' });
         }
       }
     };
@@ -139,7 +140,7 @@ export default function ClubOnboarding() {
       
       navigate('/club');
     } catch (error: any) {
-      console.error('Club claim error:', error);
+      logger.error('Club claim error', error as Error, { component: 'ClubOnboarding', locationId: selectedLocation?.id });
       toast({
         title: t('claim.error', 'Error'),
         description: error.message || t('claim.errorDescription', 'Failed to submit claim'),

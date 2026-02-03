@@ -36,6 +36,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { ReviewTag } from "@/lib/reviews";
+import { logger } from "@/lib/logger";
 
 interface ReviewTagFormData {
   name: string;
@@ -116,7 +117,7 @@ export default function AdminReviewTags() {
       if (error) throw error;
       setReviewTags(data as ReviewTag[]);
     } catch (error: any) {
-      console.error("Error fetching review tags:", error);
+      logger.error("Error fetching review tags", error as Error, { component: "AdminReviewTags" });
       toast({
         title: "Error",
         description: "Failed to load review tags",
@@ -191,7 +192,7 @@ export default function AdminReviewTags() {
       setDialogOpen(false);
       fetchReviewTags();
     } catch (error: any) {
-      console.error("Error saving review tag:", error);
+      logger.error("Error saving review tag", error as Error, { component: "AdminReviewTags", tagId: editingTag?.id });
       toast({
         title: "Error",
         description: error.message || "Failed to save tag",
@@ -218,7 +219,7 @@ export default function AdminReviewTags() {
         description: `${tag.name} is now ${tag.is_active ? "inactive" : "active"}.`,
       });
     } catch (error: any) {
-      console.error("Error toggling review tag:", error);
+      logger.error("Error toggling review tag", error as Error, { component: "AdminReviewTags", tagId: tag.id });
       toast({
         title: "Error",
         description: error.message,
@@ -252,7 +253,7 @@ export default function AdminReviewTags() {
         description: `${tagToDelete.name} has been removed.`,
       });
     } catch (error: any) {
-      console.error("Error deleting review tag:", error);
+      logger.error("Error deleting review tag", error as Error, { component: "AdminReviewTags", tagId: tagToDelete?.id });
       toast({
         title: "Error",
         description: error.message,

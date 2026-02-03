@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { inviteClubTrainer } from '@/lib/club';
 import { sendEmail } from '@/lib/email';
 import { getAppUrl } from '@/lib/domains';
+import { logger } from '@/lib/logger';
 
 interface InviteClubTrainerDialogProps {
   clubProfileId: string;
@@ -80,7 +81,7 @@ export function InviteClubTrainerDialog({
       setOpen(false);
       onInviteSent();
     } catch (error) {
-      console.error('Error sending invitation:', error);
+      logger.error('Error sending club trainer invitation', error as Error, { component: 'InviteClubTrainerDialog', clubProfileId, email });
       toast({
         title: t('trainerInvitation.error'),
         description: String(error),

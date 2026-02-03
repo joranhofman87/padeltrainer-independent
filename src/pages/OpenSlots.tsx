@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { BookForPlayerDialog } from '@/components/trainer/BookForPlayerDialog';
+import { logger } from '@/lib/logger';
 
 interface CyclusGroup {
   cyclus_id: string;
@@ -156,7 +157,7 @@ export default function OpenSlots() {
       setCyclusGroups(Array.from(cyclusMap.values()));
       setIndividualSlots(individual);
     } catch (error) {
-      console.error('Error fetching open slots:', error);
+      logger.error('Error fetching open slots', error as Error, { component: 'OpenSlots', trainerId: tId });
     } finally {
       setLoading(false);
     }

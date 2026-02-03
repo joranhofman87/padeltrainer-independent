@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { getAcademyInvitationByToken, respondToAcademyTrainerInvitation } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
 
 export default function AcademyTrainerInvitation() {
   const { t } = useTranslation('academy');
@@ -101,7 +102,7 @@ export default function AcademyTrainerInvitation() {
       // Redirect to trainer dashboard
       navigate('/trainer');
     } catch (error) {
-      console.error('Error responding to invitation:', error);
+      logger.error('Error responding to invitation', error as Error, { component: 'AcademyTrainerInvitation', token });
       toast({
         title: 'Error',
         description: 'Failed to respond to invitation',

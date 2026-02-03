@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { logger } from '@/lib/logger';
 
 export function useFollowedTrainerIds() {
   const { user, role, profile } = useAuth();
@@ -32,7 +33,7 @@ export function useFollowedTrainerIds() {
         setFollowCount(count || data.length);
       }
     } catch (error) {
-      console.error('Error fetching followed trainer IDs:', error);
+      logger.error('Error fetching followed trainer IDs', error as Error, { hook: 'useFollowedTrainerIds', profileId: profile?.id });
     } finally {
       setLoading(false);
     }
