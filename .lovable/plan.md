@@ -1,238 +1,112 @@
 
+# Fix Redirect Loop on Production Domain
 
-# Pricing Update with Monthly/Annual Toggle
+## Problem Analysis
 
-## Overview
+When navigating to `/auth` on `padeltrainer.ai`, users get stuck in a redirect loop. This happens because:
 
-This plan updates the subscription pricing structure and adds a monthly/annual toggle to the pricing page with 20% savings displayed for annual plans.
+1. **Route Order Issue**: In `MarketingRoutes`, the `/:lang` route (line 107) comes **before** the explicit `/auth` route (line 128)
+2. **React Router Matching**: Routes match in order, so `/:lang` catches `/auth` first, treating "auth" as a language parameter
+3. **Invalid Language Redirect**: `LanguageRouter` detects "auth" is not a valid language and redirects to `/nl/auth`
+4. **Loop Created**: `/nl/auth` has no matching nested route, causing unexpected behavior or loops
 
-## New Pricing Structure
-
-| Tier | Current Monthly | New Monthly | New Yearly (20% off) | Yearly Savings |
-|------|-----------------|-------------|----------------------|----------------|
-| Starter | €10 | €10 | €96 (was €120) | €24/year |
-| Professional | €29 | €39 | €374 (was €468) | €94/year |
-| Academy | €99 | €99 | €950 (was €1188) | €238/year |
-
-**Note:** Starter is already €10 in the database. Professional needs to change from €29 → €39. Academy is already €99.
+This works in preview because `CombinedRoutes` is used (where app routes come first), but fails in production where `MarketingRoutes` is used.
 
 ---
 
-## Database Changes
+## Solution
 
-Update the `subscription_plans` table with new prices:
-
-```text
-UPDATE subscription_plans SET 
-  monthly_price = 10, 
-  yearly_price = 96 
-WHERE tier = 'starter' AND plan_type = 'trainer';
-
-UPDATE subscription_plans SET 
-  monthly_price = 39, 
-  yearly_price = 374 
-WHERE tier = 'professional' AND plan_type = 'trainer';
-
-UPDATE subscription_plans SET 
-  monthly_price = 99, 
-  yearly_price = 950 
-WHERE tier = 'academy' AND plan_type = 'trainer';
-```
+Move the app route redirects **before** the `/:lang` catch-all route in `MarketingRoutes`.
 
 ---
 
-## Frontend Changes
+## Code Changes
 
-### 1. Add Monthly/Annual Toggle to Pricing Page
+**File: `src/components/DomainRouter.tsx`**
 
-**File: `src/pages/marketing/Pricing.tsx`**
-
-Add a billing cycle toggle in the trainer pricing section header:
+Reorder routes in `MarketingRoutes` function:
 
 ```text
-// Add state for billing cycle
-const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-
-// Add toggle UI after trainer section title
-<div className="flex justify-center mb-8">
-  <div className="inline-flex items-center gap-4 p-1 bg-muted rounded-lg">
-    <Button
-      variant={billingCycle === 'monthly' ? 'default' : 'ghost'}
-      size="sm"
-      onClick={() => setBillingCycle('monthly')}
-    >
-      {t('pricing.trainers.monthly')}
-    </Button>
-    <Button
-      variant={billingCycle === 'yearly' ? 'default' : 'ghost'}
-      size="sm"
-      onClick={() => setBillingCycle('yearly')}
-      className="gap-2"
-    >
-      {t('pricing.trainers.yearly')}
-      <Badge variant="secondary" className="bg-green-100 text-green-700">
-        {t('pricing.trainers.save20')}
-      </Badge>
-    </Button>
-  </div>
-</div>
-```
-
-Update the price display in cards to show dynamic pricing based on toggle:
-
-```text
-<span className="text-4xl font-bold">
-  €{billingCycle === 'yearly' ? plan.yearly_price : plan.monthly_price}
-</span>
-<span className="text-muted-foreground">
-  /{billingCycle === 'yearly' ? t('pricing.trainers.year') : t('pricing.trainers.month')}
-</span>
-
-{/* Show savings when yearly is selected */}
-{billingCycle === 'yearly' && plan.monthly_price > 0 && (
-  <p className="text-sm text-green-600 font-medium mt-1">
-    {t('pricing.trainers.saveAmount', { 
-      amount: Math.round(plan.monthly_price * 12 - plan.yearly_price) 
-    })}
-  </p>
-)}
-```
-
-### 2. Update lib/subscription.ts Constants
-
-**File: `src/lib/subscription.ts`**
-
-Update the hardcoded pricing constants:
-
-```text
-export const SUBSCRIPTION_TIERS = {
-  professional: {
-    name: 'Professional',
-    // ... keep Mollie IDs
-    monthlyPrice: 39,
-    yearlyPrice: 374,
-  },
-  academy: {
-    name: 'Academy',
-    // ... keep Mollie IDs
-    monthlyPrice: 99,
-    yearlyPrice: 950,
-  },
-} as const;
-
-export const TRIAL_TIER = {
-  name: 'Starter',
-  maxLessons: 3,
-  monthlyPrice: 10,
-  yearlyPrice: 96,
-};
-```
-
-### 3. Update Trainer Subscription Page
-
-**File: `src/pages/TrainerSubscription.tsx`**
-
-The toggle already exists here. Update the price display to show yearly savings more prominently:
-
-- Add savings badge next to yearly price
-- Show "Save €X/year" when yearly is selected
-
-### 4. Update Admin Pricing Page
-
-**File: `src/pages/admin/AdminPricing.tsx`**
-
-Ensure admin can update both monthly and yearly prices. The table already shows both columns.
-
----
-
-## Translation Updates
-
-### English (`src/i18n/locales/en/marketing.json`)
-
-Add new translation keys for the billing toggle:
-
-```json
-"trainers": {
-  "monthly": "Monthly",
-  "yearly": "Yearly", 
-  "month": "month",
-  "year": "year",
-  "save20": "Save 20%",
-  "saveAmount": "Save €{{amount}}/year",
-  "plans": {
-    "starter": {
-      "price": "€10"
-    },
-    "professional": {
-      "price": "€39",
-      "yearlyPrice": "€374/year (save 20%)"
-    },
-    "academy": {
-      "price": "€99",
-      "yearlyPrice": "€950/year (save 20%)"
-    }
-  }
-}
-```
-
-### Dutch (`src/i18n/locales/nl/marketing.json`)
-
-```json
-"trainers": {
-  "monthly": "Maandelijks",
-  "yearly": "Jaarlijks",
-  "month": "maand",
-  "year": "jaar",
-  "save20": "Bespaar 20%",
-  "saveAmount": "Bespaar €{{amount}}/jaar",
-  "plans": {
-    "starter": {
-      "price": "€10"
-    },
-    "professional": {
-      "price": "€39",
-      "yearlyPrice": "€374/jaar (bespaar 20%)"
-    },
-    "academy": {
-      "price": "€99",
-      "yearlyPrice": "€950/jaar (bespaar 20%)"
-    }
-  }
+function MarketingRoutes() {
+  return (
+    <Routes>
+      {/* Root redirect - detects browser language */}
+      <Route path="/" element={<RootRedirect />} />
+      
+      {/* App route redirects - MUST come before /:lang to avoid being caught */}
+      <Route path="/auth" element={<RedirectToAppDomain path="/auth" />} />
+      <Route path="/forgot-password" element={<RedirectToAppDomain path="/forgot-password" />} />
+      <Route path="/reset-password" element={<RedirectToAppDomain path="/reset-password" />} />
+      <Route path="/signup/*" element={<RedirectToAppDomain path="/signup" />} />
+      <Route path="/onboarding/*" element={<RedirectToAppDomain path="/onboarding" />} />
+      <Route path="/select-role" element={<RedirectToAppDomain path="/select-role" />} />
+      <Route path="/player/*" element={<RedirectToAppDomain path="/player" />} />
+      <Route path="/trainer/*" element={<RedirectToAppDomain path="/trainer" />} />
+      <Route path="/club/*" element={<RedirectToAppDomain path="/club" />} />
+      <Route path="/academy/*" element={<RedirectToAppDomain path="/academy" />} />
+      <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
+      <Route path="/profile/*" element={<RedirectToAppDomain path="/profile" />} />
+      <Route path="/lessons" element={<RedirectToAppDomain path="/lessons" />} />
+      <Route path="/bookings" element={<RedirectToAppDomain path="/bookings" />} />
+      <Route path="/booking-success" element={<RedirectToAppDomain path="/booking-success" />} />
+      <Route path="/earnings" element={<RedirectToAppDomain path="/earnings" />} />
+      <Route path="/subscription" element={<RedirectToAppDomain path="/subscription" />} />
+      <Route path="/analytics" element={<RedirectToAppDomain path="/analytics" />} />
+      <Route path="/settings/*" element={<RedirectToAppDomain path="/settings" />} />
+      <Route path="/availability" element={<RedirectToAppDomain path="/availability" />} />
+      <Route path="/schedule" element={<RedirectToAppDomain path="/schedule" />} />
+      <Route path="/trainer-bookings" element={<RedirectToAppDomain path="/trainer-bookings" />} />
+      
+      {/* Language-prefixed marketing routes - MUST come after app routes */}
+      <Route path="/:lang" element={<LanguageRouter />}>
+        {/* ... existing marketing routes ... */}
+      </Route>
+      
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
 }
 ```
 
 ---
 
-## Files to Modify
+## Routes to Add
 
-| File | Change |
-|------|--------|
-| **Database** | Update monthly/yearly prices for all trainer tiers |
-| `src/pages/marketing/Pricing.tsx` | Add billing toggle, dynamic price display, savings badges |
-| `src/pages/TrainerSubscription.tsx` | Enhance savings display |
-| `src/lib/subscription.ts` | Update price constants |
-| `src/i18n/locales/en/marketing.json` | Add toggle translations, update prices |
-| `src/i18n/locales/nl/marketing.json` | Add toggle translations, update prices |
+The current `MarketingRoutes` is missing redirects for several app routes that exist in `CombinedRoutes`:
+
+| Route | Description |
+|-------|-------------|
+| `/forgot-password` | Password recovery |
+| `/reset-password` | Password reset |
+| `/onboarding/*` | Role-specific onboarding |
+| `/select-role` | Role selection |
+| `/profile/*` | Profile editing |
+| `/lessons` | Lesson management |
+| `/bookings` | Player bookings |
+| `/booking-success` | Booking confirmation |
+| `/earnings` | Trainer earnings |
+| `/subscription` | Subscription management |
+| `/analytics` | Trainer analytics |
+| `/settings/*` | Notification/calendar settings |
+| `/availability` | Legacy availability route |
+| `/schedule` | Legacy schedule route |
+| `/trainer-bookings` | Trainer bookings |
 
 ---
 
-## Implementation Order
+## Why This Fixes the Issue
 
-1. **Database update** - Set new monthly/yearly prices
-2. **Add billing toggle** - Monthly/yearly switch on pricing page
-3. **Update price display** - Dynamic pricing based on toggle
-4. **Add savings indicators** - Show "Save €X/year" badges
-5. **Update constants** - lib/subscription.ts price updates
-6. **Update translations** - New keys for toggle UI
-7. **Test** - Verify pricing displays correctly in both languages
+1. **Route Priority**: App routes like `/auth` are now matched **before** the `/:lang` catch-all
+2. **Proper Redirect**: When a user visits `padeltrainer.ai/auth`, they're immediately redirected to `app.padeltrainer.ai/auth`
+3. **No Language Confusion**: The path `/auth` is never interpreted as a language parameter
 
 ---
 
-## Visual Design
+## Testing
 
-The pricing page will have:
-- A centered toggle with "Monthly" and "Yearly" buttons
-- "Save 20%" badge on the yearly button
-- When yearly is selected, each plan card shows the annual price with "Save €X/year" in green text
-- Professional plan highlighted as "Most Popular"
-
+After implementation, verify:
+1. `padeltrainer.ai/auth` → redirects to `app.padeltrainer.ai/auth`
+2. `padeltrainer.ai/signup/player` → redirects to `app.padeltrainer.ai/signup/player`
+3. `padeltrainer.ai/trainer` → redirects to `app.padeltrainer.ai/trainer`
+4. `padeltrainer.ai/nl/pricing` → works normally (marketing page)
+5. `padeltrainer.ai/en` → works normally (marketing home)
