@@ -22,6 +22,7 @@ import { useIsAdmin } from "@/hooks/useAdminData";
 import { verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
 import { sendEmail } from "@/lib/email";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from '@/lib/logger';
 
 interface PendingClaim extends ClubProfile {
   location: {
@@ -47,7 +48,7 @@ async function fetchPendingClaims(): Promise<PendingClaim[]> {
     .order('claimed_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching pending claims:', error);
+    logger.warn('Error fetching pending claims', { error, component: 'AdminClubClaims' });
     return [];
   }
 

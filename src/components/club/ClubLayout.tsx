@@ -23,6 +23,7 @@ import {
   CLUB_SUBSCRIPTION,
   type ClubSubscriptionInfo 
 } from '@/lib/clubSubscription';
+import { logger } from '@/lib/logger';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -90,7 +91,7 @@ export default function ClubLayout() {
         localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, userClubs[0].id);
       }
     } catch (error) {
-      console.error('Error fetching clubs:', error);
+      logger.error('Error fetching clubs', error as Error, { component: 'ClubLayout' });
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export default function ClubLayout() {
       const sub = await checkClubSubscription(activeClub.id);
       setSubscription(sub);
     } catch (error) {
-      console.error('Error fetching subscription:', error);
+      logger.error('Error fetching subscription', error as Error, { component: 'ClubLayout' });
       setSubscription(null);
     } finally {
       setSubscriptionLoading(false);

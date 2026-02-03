@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { logger } from '@/lib/logger';
 import { CalendarDays, AlertCircle } from 'lucide-react';
 import {
   Dialog,
@@ -61,7 +62,7 @@ export default function CycleApplicationModal({
         const applied = await hasPlayerApplied(cycle.id, profile.id);
         setHasApplied(applied);
       } catch (error) {
-        console.error('Error checking application status:', error);
+        logger.warn('Error checking application status', { error, component: 'CycleApplicationModal' });
       } finally {
         setCheckingStatus(false);
       }

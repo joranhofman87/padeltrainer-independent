@@ -12,6 +12,7 @@ import {
 import { Loader2, LogIn } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 
 interface ImpersonateUserDialogProps {
   open: boolean;
@@ -51,7 +52,7 @@ export function ImpersonateUserDialog({
         throw new Error("No magic link URL returned");
       }
     } catch (error) {
-      console.error("Impersonation error:", error);
+      logger.error('Impersonation error', error as Error, { component: 'ImpersonateUserDialog', targetUserId });
       toast({
         title: "Impersonation failed",
         description: error instanceof Error ? error.message : "Failed to generate magic link",

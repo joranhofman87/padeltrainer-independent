@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getTrialDaysRemaining, canBeVisible } from '@/lib/subscription';
+import { logger } from '@/lib/logger';
 
 export default function TrainerSettings() {
   const { user, role, loading, subscription, refreshSubscription } = useAuth();
@@ -54,7 +55,7 @@ export default function TrainerSettings() {
         : t('settings.visibilityOff', 'Your profile is now hidden')
       );
     } catch (error) {
-      console.error('Error updating visibility:', error);
+      logger.error('Error updating visibility', error as Error, { component: 'TrainerSettings' });
       toast.error(t('common:error', 'Something went wrong'));
     } finally {
       setUpdatingVisibility(false);
