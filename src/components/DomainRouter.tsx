@@ -38,7 +38,7 @@ import TrainerDashboard from '@/pages/TrainerDashboard';
 import TrainerSettings from '@/pages/TrainerSettings';
 import TrainerBookingSettings from '@/pages/TrainerBookingSettings';
 import EditProfile from '@/pages/EditProfile';
-import ManageLessons from '@/pages/ManageLessons';
+
 import PlayerBookings from '@/pages/PlayerBookings';
 import TrainerBookings from '@/pages/TrainerBookings';
 import BookingSuccess from '@/pages/BookingSuccess';
@@ -118,16 +118,7 @@ function MarketingRoutes() {
       <Route path="/academy/*" element={<RedirectToAppDomain path="/academy" />} />
       <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
       <Route path="/profile/*" element={<RedirectToAppDomain path="/profile" />} />
-      <Route path="/lessons" element={<RedirectToAppDomain path="/lessons" />} />
-      <Route path="/bookings" element={<RedirectToAppDomain path="/bookings" />} />
       <Route path="/booking-success" element={<RedirectToAppDomain path="/booking-success" />} />
-      <Route path="/earnings" element={<RedirectToAppDomain path="/earnings" />} />
-      <Route path="/subscription" element={<RedirectToAppDomain path="/subscription" />} />
-      <Route path="/analytics" element={<RedirectToAppDomain path="/analytics" />} />
-      <Route path="/settings/*" element={<RedirectToAppDomain path="/settings" />} />
-      <Route path="/availability" element={<RedirectToAppDomain path="/availability" />} />
-      <Route path="/schedule" element={<RedirectToAppDomain path="/schedule" />} />
-      <Route path="/trainer-bookings" element={<RedirectToAppDomain path="/trainer-bookings" />} />
       
       {/* Language-prefixed marketing routes - MUST come after app routes */}
       <Route path="/:lang" element={<LanguageRouter />}>
@@ -200,21 +191,15 @@ function AppRoutes() {
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
         <Route path="open-slots" element={<OpenSlots />} />
+        <Route path="profile" element={<EditProfile />} />
+        <Route path="subscription" element={<TrainerSubscription />} />
+        <Route path="earnings" element={<TrainerEarnings />} />
+        <Route path="analytics" element={<TrainerAnalytics />} />
+        <Route path="bookings" element={<TrainerBookings />} />
       </Route>
 
-      {/* Legacy route redirects */}
-      <Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
-      <Route path="/lessons" element={<Navigate to="/trainer" replace />} />
-      <Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
-      <Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
-      <Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
-      <Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
+      {/* Booking success - standalone route */}
       <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/earnings" element={<Navigate to="/trainer" replace />} />
-      <Route path="/subscription" element={<Navigate to="/trainer" replace />} />
-      <Route path="/analytics" element={<Navigate to="/trainer" replace />} />
-      <Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
-      <Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>
@@ -308,21 +293,15 @@ function CombinedRoutes() {
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
         <Route path="open-slots" element={<OpenSlots />} />
+        <Route path="profile" element={<EditProfile />} />
+        <Route path="subscription" element={<TrainerSubscription />} />
+        <Route path="earnings" element={<TrainerEarnings />} />
+        <Route path="analytics" element={<TrainerAnalytics />} />
+        <Route path="bookings" element={<TrainerBookings />} />
       </Route>
 
-      {/* Legacy route redirects */}
-      <Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
-      <Route path="/lessons" element={<Navigate to="/trainer" replace />} />
-      <Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
-      <Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
-      <Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
-      <Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
+      {/* Booking success - standalone route */}
       <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/earnings" element={<Navigate to="/trainer" replace />} />
-      <Route path="/subscription" element={<Navigate to="/trainer" replace />} />
-      <Route path="/analytics" element={<Navigate to="/trainer" replace />} />
-      <Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
-      <Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>

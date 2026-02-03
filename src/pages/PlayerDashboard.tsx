@@ -395,7 +395,7 @@ export default function PlayerDashboard() {
                   <Calendar className="h-5 w-5 text-primary" />
                   Next Up
                 </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/bookings')} className="gap-1">
+                <Button variant="ghost" size="sm" onClick={() => navigate('/player/bookings')} className="gap-1">
                   All Bookings <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -477,7 +477,7 @@ export default function PlayerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/bookings')}
+            onClick={() => navigate('/player/bookings')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
@@ -496,7 +496,7 @@ export default function PlayerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/profile/edit')}
+            onClick={() => navigate('/player/profile')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
@@ -515,7 +515,7 @@ export default function PlayerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/settings/calendar')}
+            onClick={() => navigate('/player/settings/calendar')}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
