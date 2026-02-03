@@ -115,3 +115,18 @@ verify_jwt = false
 
 [functions.verify-mollie-payment]
 verify_jwt = false
+
+[functions.create-mollie-subscription]
+verify_jwt = false
+
+[functions.create-club-mollie-subscription]
+verify_jwt = false
+
+[functions.mollie-subscription-webhook]
+verify_jwt = false
+
+[functions.check-mollie-subscription]
+verify_jwt = false
+
+[functions.cancel-mollie-subscription]
+verify_jwt = false
