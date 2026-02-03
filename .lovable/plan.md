@@ -1,175 +1,144 @@
 
+# Pre-Production Stripe Cleanup & Testing Verification
 
-# Stripe Cleanup Plan: Complete Removal
+## Audit Summary
 
-## Overview
-
-This plan removes all Stripe references from the codebase now that you've fully migrated to Mollie. This includes deleting deprecated edge functions, renaming database columns, cleaning up frontend code, and updating marketing content.
-
----
-
-## Current Stripe Footprint
-
-After exploring the codebase, I found Stripe references in:
-
-**Edge Functions to DELETE (12 functions):**
-- `customer-portal/` - Stripe billing portal
-- `create-trainer-checkout/` - Stripe checkout for trainers  
-- `create-checkout-session/` - Stripe checkout for bookings
-- `create-club-checkout/` - Stripe club checkout
-- `club-customer-portal/` - Stripe club billing portal
-- `check-trainer-subscription/` - Stripe subscription check
-- `check-club-subscription/` - Stripe subscription check
-- `verify-payment/` - Stripe payment verification
-- `connect-trainer/` - Stripe Connect onboarding
-- `connect-club/` - Stripe Connect onboarding
-- `check-connect-status/` - Stripe Connect status
-- `check-club-connect-status/` - Stripe Connect status
-
-**Database Cleanup:**
-- `academy_stripe_accounts` table → rename to `academy_mollie_accounts`
-- `subscription_plans` columns: `stripe_price_id_monthly/yearly`, `stripe_product_id_monthly/yearly` → rename to `mollie_*`
-- `academy_profiles.stripe_customer_id` → rename to `mollie_customer_id`
-- `trainer_profiles.stripe_account_id` → remove (deprecated)
-
-**Frontend/Backend Files to Update:**
-- `src/lib/subscription.ts` - Remove Stripe price/product IDs
-- `src/pages/TrainerEarnings.tsx` - Remove "Stripe" text references
-- `src/pages/TrainerSubscription.tsx` - Remove Stripe checkout flow
-- `src/components/admin/AdminStatsCards.tsx` - Update "Stripe Connect" labels
-- `supabase/functions/get-admin-stats/index.ts` - Remove Stripe balance API
-- `src/hooks/usePricingPlans.ts` - Update column references
-- Marketing translations (en/nl) - Change "Stripe" to "Mollie"
+After thoroughly exploring the codebase, I've identified the remaining Stripe references that need to be cleaned up before going to production. Good news: **E2E tests and unit tests have NO Stripe references** - they're clean!
 
 ---
 
-## Implementation Phases
+## Remaining Stripe Issues Found
 
-### Phase 1: Delete Deprecated Edge Functions
+### Critical - Will Cause Runtime Errors
 
-Delete the following 12 Stripe-based edge function directories:
+| File | Issue | Impact |
+|------|-------|--------|
+| `supabase/functions/get-admin-stats/index.ts` | References `trainer_stripe_accounts` table (now `trainer_mollie_accounts`) | **Admin dashboard will fail** |
+| `supabase/functions/get-admin-stats/index.ts` | Imports and uses Stripe SDK for balance retrieval | Unnecessary dependency, will fail without key |
+| `src/components/admin/AdminStatsCards.tsx` | Labels say "Stripe Connect" and "Stripe Balance" | Confusing UI |
 
-```text
-supabase/functions/customer-portal/
-supabase/functions/create-trainer-checkout/
-supabase/functions/create-checkout-session/
-supabase/functions/create-club-checkout/
-supabase/functions/club-customer-portal/
-supabase/functions/check-trainer-subscription/
-supabase/functions/check-club-subscription/
-supabase/functions/verify-payment/
-supabase/functions/connect-trainer/
-supabase/functions/connect-club/
-supabase/functions/check-connect-status/
-supabase/functions/check-club-connect-status/
-```
+### Translation Files - User-Facing Text
 
-Also update cleanup functions to use Mollie table names:
-- `supabase/functions/bulk-cleanup-users/index.ts`
-- `supabase/functions/request-account-deletion/index.ts`
+| File | Keys with "Stripe" | Count |
+|------|-------------------|-------|
+| `src/i18n/locales/en/trainer.json` | Lines 129, 144-145, 353, 357, 359-364, 548, 551, 554 | ~12 occurrences |
+| `src/i18n/locales/nl/trainer.json` | Lines 129, 144-145, 353, 357, 359-364, 548, 551, 554 | ~12 occurrences |
+| `src/i18n/locales/en/marketing.json` | Lines 462, 466 (Terms of Service) | 2 occurrences |
 
-### Phase 2: Database Schema Migration
+### Database - Migrations Reference Legacy Names
 
-```sql
--- 1. Rename academy_stripe_accounts to academy_mollie_accounts
-ALTER TABLE academy_stripe_accounts RENAME TO academy_mollie_accounts;
-ALTER TABLE academy_mollie_accounts 
-  RENAME COLUMN stripe_account_id TO mollie_organization_id;
+The migrations folder contains historical Stripe table creation (expected - migrations are immutable), but the TypeScript types in `src/integrations/supabase/types.ts` still reference `trainer_stripe_accounts` - this will auto-regenerate after the final migration runs.
 
--- Add OAuth columns for academies (matching trainer/club tables)
-ALTER TABLE academy_mollie_accounts
-  ADD COLUMN access_token TEXT,
-  ADD COLUMN refresh_token TEXT,
-  ADD COLUMN token_expires_at TIMESTAMPTZ;
+---
 
--- 2. Rename stripe columns in subscription_plans
-ALTER TABLE subscription_plans
-  RENAME COLUMN stripe_price_id_monthly TO mollie_plan_id_monthly;
-ALTER TABLE subscription_plans
-  RENAME COLUMN stripe_price_id_yearly TO mollie_plan_id_yearly;
-ALTER TABLE subscription_plans
-  RENAME COLUMN stripe_product_id_monthly TO mollie_product_id_monthly;
-ALTER TABLE subscription_plans
-  RENAME COLUMN stripe_product_id_yearly TO mollie_product_id_yearly;
+## Implementation Plan
 
--- 3. Rename academy_profiles.stripe_customer_id
-ALTER TABLE academy_profiles
-  RENAME COLUMN stripe_customer_id TO mollie_customer_id;
+### Phase 1: Fix Admin Stats Edge Function
 
--- 4. Remove deprecated trainer_profiles.stripe_account_id
-ALTER TABLE trainer_profiles
-  DROP COLUMN IF EXISTS stripe_account_id;
-```
+Update `supabase/functions/get-admin-stats/index.ts`:
+- Remove Stripe SDK import
+- Change `trainer_stripe_accounts` → `trainer_mollie_accounts`  
+- Change `stripeAccountsResult` → `mollieAccountsResult`
+- Remove Stripe balance retrieval code (or replace with Mollie API if needed)
+- Rename `stripeBalance` → `mollieBalance` in response
 
-### Phase 3: Frontend Code Cleanup
+### Phase 2: Fix Admin UI Labels
 
-**`src/lib/subscription.ts`:**
-- Remove Stripe price IDs (`price_1Spz9V...`)
-- Remove Stripe product IDs (`prod_TnaK...`)
-- Update comments to reference Mollie
+Update `src/components/admin/AdminStatsCards.tsx`:
+- Change "Stripe Connect" → "Mollie Connect"
+- Change "Stripe Balance" → "Mollie Balance"
+- Update `stripeBalance` property references → `mollieBalance`
 
-**`src/pages/TrainerEarnings.tsx`:**
-- Change "Stripe" text to "payment account" or "Mollie"
+Update `src/lib/admin.ts`:
+- Change `AdminStats.stripeBalance` → `mollieBalance` in type definition
 
-**`src/components/admin/AdminStatsCards.tsx`:**
-- Change "Stripe Connect" label to "Mollie Connect"
-- Change "Stripe Balance" to "Mollie Balance"
+### Phase 3: Update Trainer Translation Files
 
-**`src/pages/admin/AdminAcademies.tsx`:**
-- Update table reference from `academy_stripe_accounts` to `academy_mollie_accounts`
+**English (`src/i18n/locales/en/trainer.json`):**
+- Line 129: "Set up Stripe to receive payouts" → "Set up payment account to receive payouts"
+- Lines 144-145: "Stripe payments" → "online payments"
+- Line 353: "via Stripe" → "via Mollie"
+- Line 357: "via Stripe" → "via Mollie"
+- Section 359-365: Rename `stripeConnect` → `mollieConnect` and update all Stripe → Mollie
 
-**`src/hooks/usePricingPlans.ts`:**
-- Update TypeScript interface to use `mollie_*` column names
+**Dutch (`src/i18n/locales/nl/trainer.json`):**
+- Same translations as English, localized to Dutch
 
-### Phase 4: Edge Function Updates
+### Phase 4: Update Marketing Translation Files
 
-**`supabase/functions/get-admin-stats/index.ts`:**
-- Replace Stripe import with Mollie API call
-- Rename `trainer_stripe_accounts` → `trainer_mollie_accounts`
-- Remove `stripeSecretKey` usage
-- Fetch balance from Mollie instead
+**English (`src/i18n/locales/en/marketing.json`):**
+- Line 462: "processed through Stripe" → "processed through Mollie"
+- Line 466: "your connected Stripe account" → "your connected Mollie account"
 
-### Phase 5: Translation File Updates
+### Phase 5: Verify Tests Pass
 
-Update marketing content in:
-- `src/i18n/locales/en/marketing.json`
-- `src/i18n/locales/nl/marketing.json`
+Run existing test suites to ensure no regressions:
+- Unit tests: `src/lib/*.test.ts` (auth, pricing, calendar, etc.)
+- Edge function tests: `supabase/functions/generate-proposals/index.test.ts`
+- E2E tests: `e2e/*.spec.ts`
 
-Changes:
-- FAQ "How do payouts work?" - Change "Stripe Connect" to "our payment partner"
-- Privacy "Payment Information" - Change "Stripe" to "Mollie"
-- Privacy "Service Providers" - Change "Stripe" to "Mollie"
-- Terms "For Players" - Change "Stripe" to "Mollie"
-- Terms "For Trainers" - Change "Stripe-account" to "payment account"
+---
+
+## Test Coverage Summary
+
+### Unit Tests (No Changes Needed)
+
+| Test File | Coverage | Stripe References |
+|-----------|----------|-------------------|
+| `src/lib/auth.test.ts` | Auth flows | None |
+| `src/lib/pricing.test.ts` | Price calculations | None |
+| `src/lib/calendar.test.ts` | Calendar logic | None |
+| `src/lib/lessons.test.ts` | Lesson management | None |
+| `src/lib/utils.test.ts` | Utilities | None |
+| `src/lib/videoEmbed.test.ts` | Video embeds | None |
+| `src/lib/ratingSystems.test.ts` | Ratings | None |
+| `src/lib/logger.test.ts` | Logging | None |
+
+### E2E Tests (No Changes Needed)
+
+| Test File | Coverage | Stripe References |
+|-----------|----------|-------------------|
+| `e2e/booking.spec.ts` | Booking flows | None |
+| `e2e/auth.spec.ts` | Authentication | None |
+| `e2e/navigation.spec.ts` | Navigation | None |
+| `e2e/admin.spec.ts` | Admin features | None |
+| `e2e/roles.spec.ts` | Role management | None |
+| `e2e/i18n.spec.ts` | Internationalization | None |
+
+### Edge Function Tests
+
+| Test File | Status |
+|-----------|--------|
+| `generate-proposals/index.test.ts` | No Stripe refs - OK |
 
 ---
 
 ## Technical Notes
 
-### Functions Already Created (Mollie)
-These already exist and will be the primary payment functions:
-- `mollie-connect-trainer` / `mollie-connect-club`
-- `mollie-callback`
-- `check-mollie-connect-status`
-- `create-mollie-payment`
-- `mollie-webhook`
-- `verify-mollie-payment`
-- `create-mollie-subscription` / `create-club-mollie-subscription`
-- `check-mollie-subscription`
-- `cancel-mollie-subscription`
+### Database Types Auto-Regeneration
+The `src/integrations/supabase/types.ts` file will automatically regenerate after migrations, removing the legacy `trainer_stripe_accounts` references. No manual changes needed.
 
-### Types File
-The `src/integrations/supabase/types.ts` file will auto-regenerate after database migrations run, updating the TypeScript types automatically.
+### Secrets Configuration
+Verified secrets are configured:
+- `MOLLIE_API_KEY`
+- `MOLLIE_CLIENT_ID`
+- `MOLLIE_CLIENT_SECRET`
+- `MOLLIE_PROFILE_ID`
+
+The `STRIPE_SECRET_KEY` reference in `get-admin-stats` can be safely removed.
 
 ---
 
 ## Summary
 
-| Phase | Scope | Changes |
-|-------|-------|---------|
-| 1 | Edge Functions | Delete 12 Stripe functions |
-| 2 | Database | 1 table rename, 6 column renames |
-| 3 | Frontend | Update 5 files |
-| 4 | Admin Function | Update get-admin-stats |
-| 5 | Translations | Update 2 JSON files |
+| Phase | Scope | Files Changed |
+|-------|-------|---------------|
+| 1 | Edge Function | 1 file (get-admin-stats) |
+| 2 | Admin UI | 2 files (AdminStatsCards, admin.ts) |
+| 3 | Trainer Translations | 2 files (en/nl trainer.json) |
+| 4 | Marketing Translations | 1 file (en marketing.json) |
+| 5 | Test Verification | Run existing tests |
 
+**Total: 6 files to update + test verification**
+
+After these changes, the codebase will be 100% Stripe-free and production-ready for Mollie.
