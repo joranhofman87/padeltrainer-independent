@@ -327,7 +327,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
-                      tooltip={t("nav.settings")}
+                      tooltip={t("nav.business")}
                       className={isActive("/academy/settings") || isActive("/academy/subscription") || isActive("/academy/earnings")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
@@ -335,7 +335,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <CreditCard className="h-4 w-4" />
                       {!collapsed && (
                         <>
-                          <span className="flex-1">{t("nav.settings")}</span>
+                          <span className="flex-1">{t("nav.business")}</span>
                           <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/business:rotate-90" />
                         </>
                       )}

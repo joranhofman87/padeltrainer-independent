@@ -56,7 +56,7 @@ const groupedItems: NavGroup[] = [
     ],
   },
   {
-    key: "club",
+    key: "business",
     icon: Building2,
     items: [
       { key: "profile", path: "/club/profile", icon: Building2 },

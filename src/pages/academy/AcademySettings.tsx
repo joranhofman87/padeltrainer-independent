@@ -6,6 +6,7 @@ import { getAcademyManagers } from '@/lib/academy';
 import { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 
 export default function AcademySettings() {
   const { t } = useTranslation('academy');
@@ -67,6 +68,12 @@ export default function AcademySettings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Danger Zone */}
+        <div className="pt-6 border-t border-destructive/20">
+          <h3 className="text-lg font-semibold text-destructive mb-4">{t('settings.dangerZone', 'Danger Zone')}</h3>
+          <DeleteAccountDialog />
+        </div>
       </div>
     </div>
   );

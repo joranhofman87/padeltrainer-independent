@@ -53,6 +53,7 @@ import {
   checkClubConnectStatus,
   type ClubConnectStatus 
 } from "@/lib/clubPayments";
+import { DeleteAccountDialog } from "@/components/settings/DeleteAccountDialog";
 
 interface Manager {
   id: string;
@@ -480,6 +481,12 @@ export default function ClubSettings() {
             </div>
           </CardContent>
       </Card>
+
+      {/* Danger Zone */}
+      <div className="pt-6 border-t border-destructive/20">
+        <h3 className="text-lg font-semibold text-destructive mb-4">{t("settings.dangerZone", "Danger Zone")}</h3>
+        <DeleteAccountDialog />
+      </div>
     </div>
   );
 }
