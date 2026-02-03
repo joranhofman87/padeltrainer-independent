@@ -11,8 +11,10 @@
   "footer": {
     "tagline": "Jouw reis naar beter padel.",
     "platform": "Platform",
-    "findTrainers": "Vind Trainers",
-    "locations": "Alle Locaties",
+    "findTrainers": "Vind Padeltrainers",
+    "locations": "Padelclubs",
+    "academies": "Padelacademies",
+    "popularCities": "Padeltrainers per stad",
     "registerClub": "Registreer je club",
     "company": "Bedrijf",
     "aboutUs": "Over ons",

@@ -11,8 +11,10 @@
   "footer": {
     "tagline": "Your journey to better padel.",
     "platform": "Platform",
-    "findTrainers": "Find Trainers",
-    "locations": "All Locations",
+    "findTrainers": "Find Padel Trainers",
+    "locations": "Padel Clubs",
+    "academies": "Padel Academies",
+    "popularCities": "Padel Trainers by City",
     "registerClub": "Register your club",
     "company": "Company",
     "aboutUs": "About Us",

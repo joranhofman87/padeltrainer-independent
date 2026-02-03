@@ -169,7 +169,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </div>
 
             <div>
-              <h4 className="font-semibold mb-4">Popular Cities</h4>
+              <h4 className="font-semibold mb-4">{t('footer.popularCities')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><LocalizedLink to="/trainers/amsterdam" className="hover:text-primary transition-colors">Amsterdam</LocalizedLink></li>
                 <li><LocalizedLink to="/trainers/rotterdam" className="hover:text-primary transition-colors">Rotterdam</LocalizedLink></li>
