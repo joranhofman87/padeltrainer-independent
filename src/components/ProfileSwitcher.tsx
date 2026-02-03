@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import type { Location } from '@/lib/locations';
+import { logger } from '@/lib/logger';
 
 interface ClubWithLocation extends ClubProfile {
   role: string;
@@ -80,7 +81,7 @@ export function ProfileSwitcher({
         setClubs(userClubs);
         setAcademies(userAcademies);
       } catch (error) {
-        console.error('Error fetching profiles:', error);
+        logger.error('Error fetching profiles', error as Error, { component: 'ProfileSwitcher' });
       } finally {
         setLoading(false);
       }

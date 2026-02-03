@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
 import { SubscriptionInfo, SubscriptionTier } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';
+import { logger } from '@/lib/logger';
 import { isUserAcademyManager } from '@/lib/academy';
 
 interface AuthContextType {
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('Error fetching subscription:', error);
+        logger.error('Error fetching subscription', error as Error, { component: 'useAuth' });
         setSubscription({
           isSubscribed: false,
           tier: 'trial',
@@ -109,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isPublic: data.subscribed || data.status === 'trialing',
       });
     } catch (err) {
-      console.error('Error fetching subscription:', err);
+      logger.error('Error fetching subscription', err as Error, { component: 'useAuth' });
       setSubscription({
         isSubscribed: false,
         tier: 'trial',
@@ -163,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               },
             }).then(({ error }) => {
               if (error) {
-                console.error('Failed to trigger welcome emails:', error);
+                logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
               }
             });
           }

@@ -15,6 +15,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getActiveLocations, type Location } from '@/lib/locations';
+import { logger } from '@/lib/logger';
 
 interface OwnerInfo {
   type: 'trainer' | 'club';
@@ -141,7 +142,7 @@ export default function CycleRegistration() {
           }
         }
       } catch (error) {
-        console.error('Error fetching cycle data:', error);
+        logger.error('Error fetching cycle data', error as Error, { component: 'CycleRegistration', cycleId });
       } finally {
         setIsLoading(false);
       }

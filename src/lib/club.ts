@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 
 export interface ClubProfile {
   id: string;
@@ -45,7 +46,7 @@ export async function isLocationClaimed(locationId: string): Promise<boolean> {
     .maybeSingle();
 
   if (error) {
-    console.error('Error checking location claim:', error);
+    logger.error('Error checking location claim', undefined, { error });
     return false;
   }
 
@@ -61,7 +62,7 @@ export async function getClubProfileByLocation(locationId: string): Promise<Club
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching club profile:', error);
+    logger.error('Error fetching club profile', undefined, { error });
     return null;
   }
 
@@ -101,7 +102,7 @@ export async function claimClub(
     .single();
 
   if (profileError) {
-    console.error('Error creating club profile:', profileError);
+    logger.error('Error creating club profile', undefined, { error: profileError });
     const errorMessage = profileError.code === '23505' 
       ? 'This location has already been claimed'
       : `Failed to create club claim: ${profileError.message}`;
@@ -118,7 +119,7 @@ export async function claimClub(
     });
 
   if (managerError) {
-    console.error('Error creating club manager:', managerError);
+    logger.error('Error creating club manager', undefined, { error: managerError });
     // Clean up the club profile if manager creation fails
     await supabase.from('club_profiles').delete().eq('id', insertResult.id);
     const errorMessage = `Failed to assign ownership: ${managerError.message}. Please try again or contact support.`;
@@ -132,7 +133,7 @@ export async function claimClub(
 
   // Ignore duplicate key error (user might already have this role)
   if (roleError && roleError.code !== '23505') {
-    console.error('Error setting club role:', roleError);
+    logger.warn('Error setting club role', { error: roleError });
   }
 
   return { success: true, error: null };
@@ -152,7 +153,7 @@ export async function getUserClubProfiles(userId: string): Promise<(ClubProfile 
     .eq('user_id', userId);
 
   if (error) {
-    console.error('Error fetching user club profiles:', error);
+    logger.error('Error fetching user club profiles', undefined, { error });
     return [];
   }
 
@@ -172,7 +173,7 @@ export async function isUserClubManager(userId: string): Promise<boolean> {
     .limit(1);
 
   if (error) {
-    console.error('Error checking club manager status:', error);
+    logger.error('Error checking club manager status', undefined, { error });
     return false;
   }
 
@@ -189,7 +190,7 @@ export async function getClubTrainers(clubProfileId: string) {
     .single();
 
   if (clubError || !clubProfile) {
-    console.error('Error fetching club profile:', clubError);
+    logger.error('Error fetching club profile', undefined, { error: clubError });
     return [];
   }
 
@@ -216,7 +217,7 @@ export async function getClubTrainers(clubProfileId: string) {
     .eq('relationship_type', 'club_trainer');
 
   if (error) {
-    console.error('Error fetching club trainers:', error);
+    logger.error('Error fetching club trainers', undefined, { error });
     return [];
   }
 
@@ -234,7 +235,7 @@ export async function updateTrainerVisibility(
     .eq('id', trainerLocationId);
 
   if (error) {
-    console.error('Error updating trainer visibility:', error);
+    logger.error('Error updating trainer visibility', undefined, { error });
     return false;
   }
 
@@ -258,7 +259,7 @@ export async function getClubPlayers(
     .range(from, to);
 
   if (error) {
-    console.error('Error fetching club players:', error);
+    logger.error('Error fetching club players', undefined, { error });
     return [];
   }
 
@@ -280,7 +281,7 @@ export async function addClubPlayer(
     .single();
 
   if (error) {
-    console.error('Error adding club player:', error);
+    logger.error('Error adding club player', undefined, { error });
     return null;
   }
 
@@ -300,7 +301,7 @@ export async function updateClubPlayer(
     .single();
 
   if (error) {
-    console.error('Error updating club player:', error);
+    logger.error('Error updating club player', undefined, { error });
     return null;
   }
 
@@ -315,7 +316,7 @@ export async function deleteClubPlayer(playerId: string): Promise<boolean> {
     .eq('id', playerId);
 
   if (error) {
-    console.error('Error deleting club player:', error);
+    logger.error('Error deleting club player', undefined, { error });
     return false;
   }
 
@@ -335,7 +336,7 @@ export async function updateClubProfile(
     .single();
 
   if (error) {
-    console.error('Error updating club profile:', error);
+    logger.error('Error updating club profile', undefined, { error });
     return null;
   }
 
@@ -350,7 +351,7 @@ export async function getClubManagers(clubProfileId: string) {
     .eq('club_profile_id', clubProfileId);
 
   if (error) {
-    console.error('Error fetching club managers:', error);
+    logger.error('Error fetching club managers', undefined, { error });
     return [];
   }
 
@@ -420,7 +421,7 @@ export async function removeClubManager(managerId: string): Promise<boolean> {
     .eq('id', managerId);
 
   if (error) {
-    console.error('Error removing club manager:', error);
+    logger.error('Error removing club manager', undefined, { error });
     return false;
   }
 
@@ -444,7 +445,7 @@ export async function getPendingClubClaims(): Promise<(ClubProfile & { location:
     .order('claimed_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching pending claims:', error);
+    logger.error('Error fetching pending claims', undefined, { error });
     return [];
   }
 
@@ -462,7 +463,7 @@ export async function verifyClubClaim(clubProfileId: string): Promise<boolean> {
     .eq('id', clubProfileId);
 
   if (error) {
-    console.error('Error verifying club claim:', error);
+    logger.error('Error verifying club claim', undefined, { error });
     return false;
   }
 
@@ -484,7 +485,7 @@ export async function rejectClubClaim(clubProfileId: string): Promise<boolean> {
     .eq('id', clubProfileId);
 
   if (error) {
-    console.error('Error rejecting club claim:', error);
+    logger.error('Error rejecting club claim', undefined, { error });
     return false;
   }
 
@@ -501,7 +502,7 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
     .single();
 
   if (clubError || !clubProfile) {
-    console.error('Error fetching club profile for calendar:', clubError);
+    logger.error('Error fetching club profile for calendar', undefined, { error: clubError });
     return [];
   }
 
@@ -549,7 +550,7 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
     .order('start_time');
 
   if (error) {
-    console.error('Error fetching club trainer slots:', error);
+    logger.error('Error fetching club trainer slots', undefined, { error });
     return [];
   }
 
@@ -671,7 +672,7 @@ export async function inviteClubTrainer(
   }
 
   if (result.error) {
-    console.error('Error creating invitation:', result.error);
+    logger.error('Error creating invitation', undefined, { error: result.error });
     return { success: false, error: result.error.message };
   }
 
@@ -691,7 +692,7 @@ export async function getClubTrainerInvitations(
     .limit(limit);
 
   if (error) {
-    console.error('Error fetching invitations:', error);
+    logger.error('Error fetching invitations', undefined, { error });
     return [];
   }
 
@@ -716,7 +717,7 @@ export async function getInvitationByToken(token: string) {
     .single();
 
   if (error) {
-    console.error('Error fetching invitation by token:', error);
+    logger.error('Error fetching invitation by token', undefined, { error });
     return null;
   }
 
@@ -771,7 +772,7 @@ export async function respondToTrainerInvitation(
     .eq('token', token);
 
   if (updateError) {
-    console.error('Error updating invitation:', updateError);
+    logger.error('Error updating invitation', undefined, { error: updateError });
     return { success: false, error: updateError.message };
   }
 
@@ -818,7 +819,7 @@ export async function cancelTrainerInvitation(invitationId: string): Promise<boo
     .eq('status', 'pending');
 
   if (error) {
-    console.error('Error cancelling invitation:', error);
+    logger.error('Error cancelling invitation', undefined, { error });
     return false;
   }
 
@@ -849,7 +850,7 @@ export async function getPendingTrainerInvitationsForUser(userId: string): Promi
     .eq('status', 'pending');
 
   if (error) {
-    console.error('Error fetching pending invitations:', error);
+    logger.error('Error fetching pending invitations', undefined, { error });
     return [];
   }
 
