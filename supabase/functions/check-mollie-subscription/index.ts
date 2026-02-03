@@ -65,8 +65,22 @@ serve(async (req) => {
       profile = data;
       customerId = data.mollie_customer_id;
       trialEndsAt = data.trial_ends_at;
+    } else if (type === "academy") {
+      if (!profileId) throw new Error("Academy profile ID required");
+      
+      const { data, error } = await supabase
+        .from("academy_profiles")
+        .select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at, trial_ends_at, academy_managers!inner(user_id)")
+        .eq("id", profileId)
+        .eq("academy_managers.user_id", user.id)
+        .single();
+
+      if (error || !data) throw new Error("Academy profile not found or access denied");
+      profile = data;
+      customerId = data.mollie_customer_id;
+      trialEndsAt = data.trial_ends_at;
     } else {
-      throw new Error("Invalid type. Use 'trainer' or 'club'");
+      throw new Error("Invalid type. Use 'trainer', 'club', or 'academy'");
     }
 
     // Check if manually set to active (admin override)
@@ -84,16 +98,16 @@ serve(async (req) => {
       );
     }
 
-    // Check trial status for clubs
-    if (type === "club" && trialEndsAt) {
+    // Check trial status for clubs and academies
+    if ((type === "club" || type === "academy") && trialEndsAt) {
       const trialEnd = new Date(trialEndsAt);
       if (trialEnd > new Date()) {
-        logStep("Club is in trial period");
+        logStep(`${type} is in trial period`);
         return new Response(
           JSON.stringify({
             subscribed: true,
             status: "trialing",
-            tier: "club",
+            tier: type === "club" ? "club" : "academy",
             trialEndsAt: trialEndsAt,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -187,7 +201,7 @@ serve(async (req) => {
     }
 
     // No active subscription
-    const table = type === "trainer" ? "trainer_profiles" : "club_profiles";
+    const table = type === "trainer" ? "trainer_profiles" : type === "club" ? "club_profiles" : "academy_profiles";
     await supabase
       .from(table)
       .update({ subscription_status: "inactive" })

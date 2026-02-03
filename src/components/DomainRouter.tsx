@@ -90,6 +90,7 @@ import AcademyTrainers from '@/pages/academy/AcademyTrainers';
 import AcademyLocations from '@/pages/academy/AcademyLocations';
 import AcademyCycles from '@/pages/academy/AcademyCycles';
 import AcademyCalendar from '@/pages/academy/AcademyCalendar';
+import AcademySubscription from '@/pages/academy/AcademySubscription';
 import AcademyTrainerInvitation from '@/pages/academy/AcademyTrainerInvitation';
 import NotFound from '@/pages/NotFound';
 
@@ -252,6 +253,7 @@ function AppRoutes() {
         <Route path="cycles" element={<AcademyCycles />} />
         <Route path="calendar" element={<AcademyCalendar />} />
         <Route path="settings" element={<AcademySettings />} />
+        <Route path="subscription" element={<AcademySubscription />} />
       </Route>
       <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
       
@@ -359,6 +361,7 @@ function CombinedRoutes() {
         <Route path="cycles" element={<AcademyCycles />} />
         <Route path="calendar" element={<AcademyCalendar />} />
         <Route path="settings" element={<AcademySettings />} />
+        <Route path="subscription" element={<AcademySubscription />} />
       </Route>
       <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
       
