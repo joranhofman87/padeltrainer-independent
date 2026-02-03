@@ -15,23 +15,16 @@ export interface SubscriptionInfo {
 export const TRIAL_DURATION_DAYS = 7;
 export const TRIAL_PLATFORM_FEE_PERCENT = 10;
 
+// Subscription tier configuration (database-driven, no Stripe IDs)
 export const SUBSCRIPTION_TIERS = {
   professional: {
     name: 'Professional',
-    priceIdMonthly: 'price_1Spz9VPxAlHS6UZH9wmgdECd',
-    priceIdYearly: 'price_1Spz9uPxAlHS6UZHMaZfUTBY',
-    productIdMonthly: 'prod_TnaKMqklQL0csZ',
-    productIdYearly: 'prod_TnaK7n69g3z1go',
     platformFeePercent: 5,
     monthlyPrice: 39,
     yearlyPrice: 374,
   },
   academy: {
     name: 'Academy',
-    priceIdMonthly: 'price_1SpzA8PxAlHS6UZHKsoY94qK',
-    priceIdYearly: 'price_1SpzAdPxAlHS6UZHKjhjq8Ey',
-    productIdMonthly: 'prod_TnaKlteqteiFWb',
-    productIdYearly: 'prod_TnaLKqo3OnQCOd',
     platformFeePercent: 2.5,
     monthlyPrice: 99,
     yearlyPrice: 950,
@@ -48,24 +41,18 @@ export const STARTER_TIER = {
 
 export function getPlatformFeePercent(tier: SubscriptionTier): number {
   if (tier === 'trial') return STARTER_TIER.platformFeePercent;
-  return SUBSCRIPTION_TIERS[tier].platformFeePercent;
+  if (tier === 'professional' || tier === 'academy') {
+    return SUBSCRIPTION_TIERS[tier].platformFeePercent;
+  }
+  return STARTER_TIER.platformFeePercent;
 }
 
+/**
+ * @deprecated Tier is now determined directly from database subscription_tier field.
+ * This function is kept for backward compatibility but should not be used for new code.
+ */
 export function getTierFromProductId(productId: string | null): SubscriptionTier {
-  if (!productId) return 'trial';
-  
-  // Check Professional tier
-  if (productId === SUBSCRIPTION_TIERS.professional.productIdMonthly ||
-      productId === SUBSCRIPTION_TIERS.professional.productIdYearly) {
-    return 'professional';
-  }
-  
-  // Check Academy tier
-  if (productId === SUBSCRIPTION_TIERS.academy.productIdMonthly ||
-      productId === SUBSCRIPTION_TIERS.academy.productIdYearly) {
-    return 'academy';
-  }
-  
+  // With Mollie, tier comes directly from database - no product ID mapping needed
   return 'trial';
 }
 

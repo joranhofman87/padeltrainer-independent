@@ -65,8 +65,22 @@ serve(async (req) => {
       profile = data;
       customerId = data.mollie_customer_id;
       trialEndsAt = data.trial_ends_at;
+    } else if (type === "club") {
+      if (!profileId) throw new Error("Club profile ID required");
+      
+      const { data, error } = await supabase
+        .from("club_profiles")
+        .select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at, trial_ends_at, club_managers!inner(user_id)")
+        .eq("id", profileId)
+        .eq("club_managers.user_id", user.id)
+        .single();
+
+      if (error || !data) throw new Error("Club profile not found or access denied");
+      profile = data;
+      customerId = data.mollie_customer_id;
+      trialEndsAt = data.trial_ends_at;
     } else {
-      throw new Error("Invalid type. Use 'trainer' or 'academy'");
+      throw new Error("Invalid type. Use 'trainer', 'academy', or 'club'");
     }
 
     // Check if manually set to active (admin override)
@@ -84,16 +98,16 @@ serve(async (req) => {
       );
     }
 
-    // Check trial status for academies
-    if (type === "academy" && trialEndsAt) {
+    // Check trial status for academies and clubs
+    if ((type === "academy" || type === "club") && trialEndsAt) {
       const trialEnd = new Date(trialEndsAt);
       if (trialEnd > new Date()) {
-        logStep("Academy is in trial period");
+        logStep(`${type} is in trial period`);
         return new Response(
           JSON.stringify({
             subscribed: true,
             status: "trialing",
-            tier: "academy",
+            tier: type === "academy" ? "academy" : "club",
             trialEndsAt: trialEndsAt,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -142,7 +156,7 @@ serve(async (req) => {
     if (activeSubscription) {
       // Update database if needed
       if (profile.subscription_status !== "active" || profile.subscription_id !== activeSubscription.id) {
-        const table = type === "trainer" ? "trainer_profiles" : "academy_profiles";
+        const table = type === "trainer" ? "trainer_profiles" : type === "academy" ? "academy_profiles" : "club_profiles";
         await supabase
           .from(table)
           .update({
@@ -156,7 +170,7 @@ serve(async (req) => {
         JSON.stringify({
           subscribed: true,
           status: "active",
-          tier: profile.subscription_tier || (type === "trainer" ? "professional" : "academy"),
+          tier: profile.subscription_tier || (type === "trainer" ? "professional" : type === "academy" ? "academy" : "club"),
           subscriptionId: activeSubscription.id,
           nextPaymentDate: activeSubscription.nextPaymentDate,
           amount: activeSubscription.amount,
@@ -187,7 +201,7 @@ serve(async (req) => {
     }
 
     // No active subscription
-    const table = type === "trainer" ? "trainer_profiles" : "academy_profiles";
+    const table = type === "trainer" ? "trainer_profiles" : type === "academy" ? "academy_profiles" : "club_profiles";
     await supabase
       .from(table)
       .update({ subscription_status: "inactive" })

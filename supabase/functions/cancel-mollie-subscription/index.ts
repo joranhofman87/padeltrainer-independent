@@ -65,8 +65,22 @@ serve(async (req) => {
       profile = data;
       customerId = data.mollie_customer_id;
       subscriptionId = data.subscription_id;
+    } else if (type === "club") {
+      if (!profileId) throw new Error("Club profile ID required");
+      
+      const { data, error } = await supabase
+        .from("club_profiles")
+        .select("id, mollie_customer_id, subscription_id, subscription_ends_at, club_managers!inner(user_id)")
+        .eq("id", profileId)
+        .eq("club_managers.user_id", user.id)
+        .single();
+
+      if (error || !data) throw new Error("Club profile not found or access denied");
+      profile = data;
+      customerId = data.mollie_customer_id;
+      subscriptionId = data.subscription_id;
     } else {
-      throw new Error("Invalid type. Use 'trainer' or 'academy'");
+      throw new Error("Invalid type. Use 'trainer', 'academy', or 'club'");
     }
 
     if (!customerId || !subscriptionId) {
@@ -90,7 +104,7 @@ serve(async (req) => {
     }
 
     // Update database - subscription remains active until end date
-    const table = type === "trainer" ? "trainer_profiles" : "academy_profiles";
+    const table = type === "trainer" ? "trainer_profiles" : type === "academy" ? "academy_profiles" : "club_profiles";
     await supabase
       .from(table)
       .update({
