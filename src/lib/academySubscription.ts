@@ -11,8 +11,6 @@ export interface AcademySubscriptionInfo {
 
 export const ACADEMY_SUBSCRIPTION = {
   name: "Academy Plan",
-  priceId: "price_academy_monthly", // Update with actual Mollie price ID
-  productId: "prod_academy", // Update with actual Mollie product ID
   monthlyPrice: 199,
   yearlyPrice: 2388,
   trialDays: 14,

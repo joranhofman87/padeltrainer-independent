@@ -31,7 +31,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { CreateInvoiceDialog } from '@/components/trainer/CreateInvoiceDialog';
 import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
-import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
+import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 
 interface EarningsBooking {
   id: string;
@@ -94,7 +94,7 @@ export default function TrainerEarnings() {
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [clubPaymentInfo, setClubPaymentInfo] = useState<ClubPaymentInfo | null>(null);
+  const [academyPaymentInfo, setAcademyPaymentInfo] = useState<AcademyPaymentInfo | null>(null);
   const { t } = useTranslation('trainer');
 
   useEffect(() => {
@@ -112,11 +112,11 @@ export default function TrainerEarnings() {
       fetchEarnings();
       fetchTrainerInfo();
       checkConnectStatus();
-      fetchClubPaymentInfo();
+      fetchAcademyPaymentInfo();
     }
   }, [user, role]);
 
-  const fetchClubPaymentInfo = async () => {
+  const fetchAcademyPaymentInfo = async () => {
     const { data: trainerProfile } = await supabase
       .from('trainer_profiles')
       .select('id')
@@ -124,8 +124,8 @@ export default function TrainerEarnings() {
       .single();
 
     if (trainerProfile) {
-      const info = await getClubPaymentInfo(trainerProfile.id);
-      setClubPaymentInfo(info);
+      const info = await getAcademyPaymentInfo(trainerProfile.id);
+      setAcademyPaymentInfo(info);
     }
   };
 
@@ -353,37 +353,37 @@ export default function TrainerEarnings() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Club Payment Info Card - Show for club trainers */}
-        {clubPaymentInfo?.isClubTrainer && (
-          <Card className={`mb-6 ${clubPaymentInfo.clubChargesEnabled 
+        {academyPaymentInfo?.isAcademyTrainer && (
+          <Card className={`mb-6 ${academyPaymentInfo.academyChargesEnabled 
             ? 'border-blue-200 bg-gradient-to-r from-blue-50 to-sky-50 dark:from-blue-950/20 dark:to-sky-950/20' 
             : 'border-orange-300 bg-orange-50 dark:bg-orange-950/20'}`}>
             <CardContent className="p-4">
               <div className="flex items-start gap-4">
-                <div className={`p-2 rounded-full ${clubPaymentInfo.clubChargesEnabled ? 'bg-blue-100 dark:bg-blue-900' : 'bg-orange-100 dark:bg-orange-900'}`}>
-                  <Building2 className={`h-5 w-5 ${clubPaymentInfo.clubChargesEnabled ? 'text-blue-600' : 'text-orange-600'}`} />
+                <div className={`p-2 rounded-full ${academyPaymentInfo.academyChargesEnabled ? 'bg-blue-100 dark:bg-blue-900' : 'bg-orange-100 dark:bg-orange-900'}`}>
+                  <Building2 className={`h-5 w-5 ${academyPaymentInfo.academyChargesEnabled ? 'text-blue-600' : 'text-orange-600'}`} />
                 </div>
                 <div className="flex-1">
-                  {clubPaymentInfo.clubChargesEnabled ? (
+                  {academyPaymentInfo.academyChargesEnabled ? (
                     <>
                       <p className="font-medium text-blue-800 dark:text-blue-200">
-                        {t('clubPayments.handledByClub', { clubName: clubPaymentInfo.clubName || 'Your club' })}
+                        {t('academyPayments.handledByAcademy', { academyName: academyPaymentInfo.academyName || 'Your academy' })}
                       </p>
                       <p className="text-sm text-blue-600 dark:text-blue-300">
-                        {t('clubPayments.clubCollectsPayments')}
+                        {t('academyPayments.academyCollectsPayments')}
                       </p>
                     </>
                   ) : (
                     <>
                       <p className="font-medium text-orange-800 dark:text-orange-200">
-                        {t('clubPayments.clubNeedsSetup', { clubName: clubPaymentInfo.clubName || 'Your club' })}
+                        {t('academyPayments.academyNeedsSetup', { academyName: academyPaymentInfo.academyName || 'Your academy' })}
                       </p>
                       <p className="text-sm text-orange-600 dark:text-orange-300">
-                        {t('clubPayments.contactClubOwner')}
+                        {t('academyPayments.contactAcademyOwner')}
                       </p>
                     </>
                   )}
                 </div>
-                {clubPaymentInfo.clubChargesEnabled && (
+                {academyPaymentInfo.academyChargesEnabled && (
                   <Badge variant="outline" className="border-blue-300 text-blue-600">
                     <CheckCircle2 className="h-3 w-3 mr-1" />
                     Active
@@ -394,8 +394,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Payment Mode Toggle - Only show if NOT a club trainer (club trainers don't choose payment method) */}
-        {!clubPaymentInfo?.isClubTrainer && (
+        {/* Payment Mode Toggle - Only show if NOT an academy trainer (academy trainers don't choose payment method) */}
+        {!academyPaymentInfo?.isAcademyTrainer && (
           <Card className="mb-6">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -427,8 +427,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Invoice Settings (collapsible) - Only for non-club trainers */}
-        {!clubPaymentInfo?.isClubTrainer && showSettings && trainerInfo && (
+        {/* Invoice Settings (collapsible) - Only for non-academy trainers */}
+        {!academyPaymentInfo?.isAcademyTrainer && showSettings && trainerInfo && (
           <div className="mb-6">
             <InvoiceSettingsCard 
               userId={user!.id}
@@ -438,8 +438,8 @@ export default function TrainerEarnings() {
           </div>
         )}
 
-        {/* Manual invoicing: Business info warning - Only for non-club trainers */}
-        {!clubPaymentInfo?.isClubTrainer && useManualInvoicing && !isBusinessInfoComplete && (
+        {/* Manual invoicing: Business info warning - Only for non-academy trainers */}
+        {!academyPaymentInfo?.isAcademyTrainer && useManualInvoicing && !isBusinessInfoComplete && (
           <Card className="mb-6 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
@@ -454,8 +454,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT a club trainer */}
-        {!clubPaymentInfo?.isClubTrainer && !useManualInvoicing && connectStatus && !connectStatus.chargesEnabled && (
+        {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT an academy trainer */}
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatus && !connectStatus.chargesEnabled && (
           <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -499,8 +499,8 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
-        {/* Mollie Balance Card - only show when NOT using manual invoicing and NOT a club trainer */}
-        {!clubPaymentInfo?.isClubTrainer && !useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
+        {/* Mollie Balance Card - only show when NOT using manual invoicing and NOT an academy trainer */}
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatus?.chargesEnabled && connectStatus.balance && (
           <Card className="mb-8 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

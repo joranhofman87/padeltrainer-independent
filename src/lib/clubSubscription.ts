@@ -11,8 +11,6 @@ export interface ClubSubscriptionInfo {
 
 export const CLUB_SUBSCRIPTION = {
   name: "Club Plan",
-  priceId: "price_1SqSZBPxAlHS6UZHJHw1xUFB",
-  productId: "prod_TobiJfC96Jjf3h",
   monthlyPrice: 199,
   yearlyPrice: 2388,
   trialDays: 14,
