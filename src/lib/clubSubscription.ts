@@ -88,10 +88,5 @@ export async function cancelClubSubscription(clubProfileId: string): Promise<{ s
   return response.data;
 }
 
-export function getTrialDaysRemaining(trialEnd: string | null): number {
-  if (!trialEnd) return 0;
-  const now = new Date();
-  const end = new Date(trialEnd);
-  const diff = end.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-}
+// Re-export shared utility
+export { getTrialDaysRemaining } from './sharedSubscription';

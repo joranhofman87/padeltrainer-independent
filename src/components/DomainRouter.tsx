@@ -53,6 +53,7 @@ import TrainerIntakeRequests from '@/pages/TrainerIntakeRequests';
 import OpenSlots from '@/pages/OpenSlots';
 import TrainerLayout from '@/components/trainer/TrainerLayout';
 import PlayerLayout from '@/components/player/PlayerLayout';
+import PlayerSettings from '@/pages/PlayerSettings';
 import NotificationSettings from '@/pages/NotificationSettings';
 import CalendarSettings from '@/pages/CalendarSettings';
 import FollowingList from '@/pages/FollowingList';
@@ -183,6 +184,7 @@ function AppRoutes() {
         <Route path="bookings" element={<PlayerBookings />} />
         <Route path="following" element={<FollowingList />} />
         <Route path="profile" element={<EditProfile />} />
+        <Route path="settings" element={<PlayerSettings />} />
         <Route path="settings/notifications" element={<NotificationSettings />} />
         <Route path="settings/calendar" element={<CalendarSettings />} />
       </Route>

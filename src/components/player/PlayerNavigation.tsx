@@ -35,7 +35,7 @@ const groupedItems: NavGroup[] = [
     key: "account",
     icon: User,
     items: [
-      { key: "editProfile", path: "/player/profile", icon: User },
+      { key: "settings", path: "/player/settings", icon: User },
       { key: "notifications", path: "/player/settings/notifications", icon: Bell },
       { key: "calendarSync", path: "/player/settings/calendar", icon: CalendarSync },
     ],

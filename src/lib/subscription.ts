@@ -79,17 +79,13 @@ export function canCreateMoreLessons(tier: SubscriptionTier, currentLessonCount:
   return true; // Professional and Academy have unlimited lessons
 }
 
-export function isTrialExpired(trialEndsAt: string | null): boolean {
+// Re-export shared utilities for backward compatibility
+export { getTrialDaysRemaining, isDateExpired as isTrialExpired } from './sharedSubscription';
+
+// Legacy function kept for backward compatibility
+export function isTrialExpiredLegacy(trialEndsAt: string | null): boolean {
   if (!trialEndsAt) return true;
   return new Date(trialEndsAt) < new Date();
-}
-
-export function getTrialDaysRemaining(trialEndsAt: string | null): number {
-  if (!trialEndsAt) return 0;
-  const now = new Date();
-  const end = new Date(trialEndsAt);
-  const diff = end.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 export function canBeVisible(subscription: SubscriptionInfo): boolean {

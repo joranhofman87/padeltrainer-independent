@@ -4,9 +4,18 @@
     "bookings": "Bookings",
     "following": "Following",
     "account": "Account",
+    "settings": "Settings",
     "editProfile": "Edit Profile",
     "notifications": "Notifications",
     "calendarSync": "Calendar Sync"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account settings",
+    "profileDescription": "Update your profile information and preferences",
+    "calendarSyncDescription": "Sync your bookings with external calendars",
+    "notificationsDescription": "Manage your notification preferences",
+    "dangerZone": "Danger Zone"
   },
   "badge": "Player",
   "ratingSystem": {
