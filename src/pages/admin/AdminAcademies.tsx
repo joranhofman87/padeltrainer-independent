@@ -227,12 +227,12 @@ export default function AdminAcademies() {
 
       if (followersError) throw followersError;
 
-      const { error: stripeError } = await supabase
-        .from("academy_stripe_accounts")
+      const { error: mollieError } = await supabase
+        .from("academy_mollie_accounts")
         .delete()
         .eq("academy_profile_id", deletingAcademy.id);
 
-      if (stripeError) throw stripeError;
+      if (mollieError) throw mollieError;
 
       // Finally delete the academy profile
       const { error: profileError } = await supabase

@@ -38,7 +38,7 @@ export default function TrainerSubscription() {
   
   const { data: plans, isLoading: loadingPlans } = useTrainerPlans();
 
-  // Handle success/cancel from Stripe checkout
+  // Handle success/cancel from Mollie checkout
   useEffect(() => {
     const success = searchParams.get('success');
     const canceled = searchParams.get('canceled');

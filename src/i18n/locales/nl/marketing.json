@@ -234,7 +234,7 @@
       },
       "payouts": {
         "q": "Hoe werken uitbetalingen?",
-        "a": "Betalingen worden verwerkt via Stripe Connect. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+        "a": "Betalingen worden verwerkt via onze betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
       },
       "clubTrial": {
         "q": "Hoe werkt de gratis proefperiode voor clubs?",
@@ -330,7 +330,7 @@
           "account": "Accountgegevens: Naam, e-mailadres, telefoonnummer en profielfoto wanneer u een account aanmaakt.",
           "profile": "Profielgegevens: Voor trainers omvat dit certificeringen, ervaring, specialisaties, KNLTB-ratings en beschikbaarheidsschema's.",
           "booking": "Boekingsinformatie: Lesdetails, boekingsgeschiedenis en communicatie tussen spelers en trainers.",
-          "payment": "Betalingsinformatie: Wij gebruiken Stripe voor betalingsverwerking. Wij slaan geen volledige creditcardgegevens op onze servers op.",
+          "payment": "Betalingsinformatie: Wij gebruiken Mollie voor betalingsverwerking. Wij slaan geen volledige creditcardgegevens op onze servers op.",
           "communications": "Communicatie: Wanneer u contact met ons opneemt of reageert op enquêtes, verzamelen wij de informatie die u verstrekt."
         }
       },
@@ -353,7 +353,7 @@
         "intro": "Wij kunnen uw informatie delen in de volgende situaties:",
         "items": {
           "users": "Met Trainers/Spelers: Om boekingen te faciliteren, delen wij relevante contact- en boekingsinformatie tussen partijen.",
-          "providers": "Dienstverleners: Wij gebruiken externe diensten voor betalingsverwerking (Stripe), e-mailbezorging (Resend) en hostinginfrastructuur.",
+          "providers": "Dienstverleners: Wij gebruiken externe diensten voor betalingsverwerking (Mollie), e-mailbezorging (Resend) en hostinginfrastructuur.",
           "legal": "Wettelijke vereisten: Wij kunnen informatie openbaar maken indien wettelijk vereist of om onze rechten, privacy, veiligheid of eigendom te beschermen.",
           "business": "Bedrijfsoverdrachten: In verband met een fusie, overname of verkoop van activa."
         }

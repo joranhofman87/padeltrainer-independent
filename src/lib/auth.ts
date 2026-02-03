@@ -28,7 +28,6 @@ export interface TrainerProfile {
   specializations: string[] | null;
   is_verified: boolean;
   subscription_status: string;
-  stripe_account_id: string | null;
   created_at: string;
   updated_at: string;
 }

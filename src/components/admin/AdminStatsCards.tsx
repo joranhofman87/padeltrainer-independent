@@ -83,7 +83,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
     {
       title: "Active Trainers",
       value: stats.overview.activeTrainers.toString(),
-      description: `${stats.overview.connectedAccounts} connected to Stripe`,
+      description: `${stats.overview.connectedAccounts} connected to Mollie`,
       icon: UserCheck,
       color: "text-blue-500",
       onClick: () => navigate("/admin/users?role=trainer"),

@@ -487,7 +487,7 @@ export default function BookLesson() {
 
         setBooked(true);
       } else {
-        // Auto-accept with Stripe payment (existing flow)
+        // Auto-accept with Mollie payment (existing flow)
         // First, check if trainer/club has valid payment setup
         const paymentSetup = await hasValidPaymentSetup(
           trainerId!,
