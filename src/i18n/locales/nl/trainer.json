@@ -127,8 +127,8 @@
         "payments": {
           "title": "Betalingen Koppelen",
           "description": "Stel betaalaccount in om uitbetalingen te ontvangen",
-          "clubManaged": "Beheerd door {{clubName}}",
-          "clubManagedDescription": "Je club ontvangt betalingen voor je lessen"
+          "academyManaged": "Beheerd door {{academyName}}",
+          "academyManagedDescription": "Je academie ontvangt betalingen voor je lessen"
         },
         "players": {
           "title": "Spelers Toevoegen",
@@ -137,15 +137,15 @@
       }
     }
   },
-  "clubPayments": {
-    "handledByClub": "Betalingen worden afgehandeld door {{clubName}}",
-    "clubCollectsPayments": "Je club ontvangt betalingen voor lessen op deze locatie",
-    "clubNeedsSetup": "{{clubName}} moet de betalingsinstellingen voltooien",
-    "contactClubOwner": "Neem contact op met je clubeigenaar om Mollie-betalingen in te stellen",
+  "academyPayments": {
+    "handledByAcademy": "Betalingen worden afgehandeld door {{academyName}}",
+    "academyCollectsPayments": "Je academie ontvangt betalingen voor lessen",
+    "academyNeedsSetup": "{{academyName}} moet de betalingsinstellingen voltooien",
+    "contactAcademyOwner": "Neem contact op met je academie-eigenaar om Mollie-betalingen in te stellen",
     "independentLessons": "Koppel voor zelfstandige lessen je eigen Mollie-account",
-    "clubEarnings": "Club Inkomsten",
-    "paidToClub": "Betaald aan {{clubName}}",
-    "viewClubDashboard": "Bekijk in club dashboard"
+    "academyEarnings": "Academie Inkomsten",
+    "paidToAcademy": "Betaald aan {{academyName}}",
+    "viewAcademyDashboard": "Bekijk in academie dashboard"
   },
   "lessons": {
     "title": "Mijn Lessen",

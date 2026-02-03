@@ -46,11 +46,8 @@ export const STARTER_TIER = {
   yearlyPrice: 96,
 };
 
-// Keep TRIAL_TIER as alias for backward compatibility
-export const TRIAL_TIER = STARTER_TIER;
-
 export function getPlatformFeePercent(tier: SubscriptionTier): number {
-  if (tier === 'trial') return TRIAL_TIER.platformFeePercent;
+  if (tier === 'trial') return STARTER_TIER.platformFeePercent;
   return SUBSCRIPTION_TIERS[tier].platformFeePercent;
 }
 
@@ -74,19 +71,13 @@ export function getTierFromProductId(productId: string | null): SubscriptionTier
 
 export function canCreateMoreLessons(tier: SubscriptionTier, currentLessonCount: number): boolean {
   if (tier === 'trial') {
-    return currentLessonCount < TRIAL_TIER.maxLessons;
+    return currentLessonCount < STARTER_TIER.maxLessons;
   }
   return true; // Professional and Academy have unlimited lessons
 }
 
-// Re-export shared utilities for backward compatibility
-export { getTrialDaysRemaining, isDateExpired as isTrialExpired } from './sharedSubscription';
-
-// Legacy function kept for backward compatibility
-export function isTrialExpiredLegacy(trialEndsAt: string | null): boolean {
-  if (!trialEndsAt) return true;
-  return new Date(trialEndsAt) < new Date();
-}
+// Re-export shared utilities
+export { getTrialDaysRemaining, isDateExpired } from './sharedSubscription';
 
 export function canBeVisible(subscription: SubscriptionInfo): boolean {
   // Trainer can be visible if they have an active subscription OR are still in trial

@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
-import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, TRIAL_TIER } from '@/lib/subscription';
+import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');

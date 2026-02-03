@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
-import { hasValidPaymentSetup } from '@/lib/clubTrainerPayments';
+import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 
 interface BookedPlayerInfo {
   skillRating: number | null;

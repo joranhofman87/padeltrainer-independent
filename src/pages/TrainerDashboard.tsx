@@ -19,7 +19,7 @@ import {
   addMonths, subMonths, addDays, subDays, format
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { getClubPaymentInfo, type ClubPaymentInfo } from '@/lib/clubTrainerPayments';
+import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
 import { getTrialDaysRemaining } from '@/lib/subscription';
@@ -48,7 +48,7 @@ interface SetupStatus {
   hasAvailability: boolean;
   paymentsComplete: boolean;
   hasPlayers: boolean;
-  clubPaymentInfo?: ClubPaymentInfo;
+  academyPaymentInfo?: AcademyPaymentInfo;
 }
 
 interface Lesson {
@@ -83,7 +83,7 @@ export default function TrainerDashboard() {
     hasAvailability: false,
     paymentsComplete: false,
     hasPlayers: false,
-    clubPaymentInfo: undefined,
+    academyPaymentInfo: undefined,
   });
   const [setupLoading, setSetupLoading] = useState(true);
   const [isSetupExpanded, setIsSetupExpanded] = useState(() => {
@@ -509,12 +509,12 @@ export default function TrainerDashboard() {
         .eq('trainer_id', currentTrainerId)
         .maybeSingle();
 
-      const clubPaymentInfo = await getClubPaymentInfo(currentTrainerId);
+      const academyPaymentInfo = await getAcademyPaymentInfo(currentTrainerId);
 
       const paymentsComplete = 
         !!(mollieData?.onboarding_complete && mollieData?.charges_enabled) || 
         !!trainerProfile.use_manual_invoicing ||
-        (clubPaymentInfo.isClubTrainer && clubPaymentInfo.clubChargesEnabled);
+        (academyPaymentInfo.isAcademyTrainer && academyPaymentInfo.academyChargesEnabled);
 
       const { count: playerCount } = await supabase
         .from('guest_players')
@@ -529,7 +529,7 @@ export default function TrainerDashboard() {
         hasAvailability,
         paymentsComplete,
         hasPlayers,
-        clubPaymentInfo,
+        academyPaymentInfo,
       });
     } catch (error) {
       console.error('Error fetching setup status:', error);
@@ -1050,23 +1050,23 @@ interface SetupChecklistProps {
 
 function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: SetupChecklistProps) {
   const { t } = useTranslation('trainer');
-  const clubInfo = setupStatus.clubPaymentInfo;
+  const academyInfo = setupStatus.academyPaymentInfo;
   
   let paymentLabel = 'Connect payment account or setup manual payments';
   let paymentSubLabel = '';
   
-  if (clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled) {
-    paymentLabel = t('dashboard.setup.steps.payments.clubManaged', { clubName: clubInfo.clubName || 'Your club' });
-    paymentSubLabel = t('dashboard.setup.steps.payments.clubManagedDescription');
-  } else if (clubInfo?.isClubTrainer && !clubInfo?.clubChargesEnabled) {
-    paymentLabel = t('clubPayments.clubNeedsSetup', { clubName: clubInfo.clubName || 'Your club' });
+  if (academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled) {
+    paymentLabel = t('dashboard.setup.steps.payments.academyManaged', { academyName: academyInfo.academyName || 'Your academy' });
+    paymentSubLabel = t('dashboard.setup.steps.payments.academyManagedDescription');
+  } else if (academyInfo?.isAcademyTrainer && !academyInfo?.academyChargesEnabled) {
+    paymentLabel = t('academyPayments.academyNeedsSetup', { academyName: academyInfo.academyName || 'Your academy' });
   }
   
   const steps = [
     { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
     { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
     { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
-    { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/earnings', complete: setupStatus.paymentsComplete, isClubManaged: clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled },
+    { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/earnings', complete: setupStatus.paymentsComplete, isAcademyManaged: academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled },
     { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
   ];
 
