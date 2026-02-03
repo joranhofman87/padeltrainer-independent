@@ -136,10 +136,10 @@ Test with Mollie test mode using test API key.
 | 0. Partner Application | External | ✅ Complete |
 | 1. Database Migration | 1-2 | ✅ Complete |
 | 2. Mollie Connect | 3-5 | ✅ Complete |
-| 3. Payment Functions | 6-8 | 🔄 Next |
-| 4. Subscription Functions | 9-12 | Pending |
+| 3. Payment Functions | 6-8 | ✅ Complete |
+| 4. Subscription Functions | 9-12 | 🔄 Next |
 | 5. Frontend Updates | 13-14 | Pending |
 | 6. Testing | 15-16 | Final phase |
 
-**Next Step:** Implement Phase 3 - Create Mollie payment edge functions (`create-mollie-payment`, `mollie-webhook`, `verify-mollie-payment`).
+**Next Step:** Implement Phase 4 - Subscription edge functions (`create-mollie-subscription`, `create-club-mollie-subscription`, `check-mollie-subscription`, `cancel-mollie-subscription`).
 

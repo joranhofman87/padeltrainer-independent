@@ -94,3 +94,24 @@ verify_jwt = false
 
 [functions.fetch-location-logos]
 verify_jwt = false
+
+[functions.mollie-connect-trainer]
+verify_jwt = false
+
+[functions.mollie-connect-club]
+verify_jwt = false
+
+[functions.mollie-callback]
+verify_jwt = false
+
+[functions.check-mollie-connect-status]
+verify_jwt = false
+
+[functions.create-mollie-payment]
+verify_jwt = false
+
+[functions.mollie-webhook]
+verify_jwt = false
+
+[functions.verify-mollie-payment]
+verify_jwt = false
