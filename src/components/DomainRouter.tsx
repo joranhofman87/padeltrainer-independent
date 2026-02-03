@@ -390,6 +390,10 @@ function CombinedRoutes() {
 /**
  * Helper component to redirect to app subdomain.
  * Used on marketing domain when users try to access app routes.
+ * 
+ * This component handles the case where users land on app routes
+ * while on the marketing domain (padeltrainer.ai) and need to be
+ * redirected to the app domain (app.padeltrainer.ai).
  */
 function RedirectToAppDomain({ path }: { path: string }) {
   const hostname = window.location.hostname;
@@ -400,24 +404,48 @@ function RedirectToAppDomain({ path }: { path: string }) {
   // Check if we're in local development only
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
   
-  // Log for debugging
-  logger.debug('RedirectToAppDomain', { path, hostname, isProductionMarketing, isLocalhost });
+  // Build the target URL
+  const targetUrl = `https://app.padeltrainer.ai${path}`;
+  
+  // Log for debugging - this will show in browser console
+  console.log('[RedirectToAppDomain]', { 
+    path, 
+    hostname, 
+    isProductionMarketing, 
+    isLocalhost,
+    targetUrl,
+    currentUrl: window.location.href 
+  });
   
   // PRODUCTION: On padeltrainer.ai, immediately redirect to app.padeltrainer.ai
   if (isProductionMarketing) {
-    // Use direct assignment for immediate redirect before React can interfere
-    window.location.href = `https://app.padeltrainer.ai${path}`;
-    // Return loading state while redirect happens
-    return <div>Redirecting...</div>;
+    // Use useEffect to ensure redirect happens after component mounts
+    // This is more reliable than synchronous redirect in render
+    useEffect(() => {
+      console.log('[RedirectToAppDomain] Executing redirect to:', targetUrl);
+      try {
+        // Try multiple methods to ensure redirect works
+        window.location.replace(targetUrl);
+      } catch (error) {
+        console.error('[RedirectToAppDomain] Redirect failed:', error);
+        // Fallback: try href assignment
+        window.location.href = targetUrl;
+      }
+    }, []);
+    
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center">
+          <p className="text-lg">Redirecting to app...</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            If you are not redirected, <a href={targetUrl} className="underline">click here</a>
+          </p>
+        </div>
+      </div>
+    );
   }
   
-  // LOCALHOST: Use React Router navigation for local development
-  if (isLocalhost) {
-    return <Navigate to={path} replace />;
-  }
-  
-  // LOVABLE PREVIEW: Use React Router navigation (all routes available)
-  // This catches *.lovable.app and *.lovableproject.com
+  // LOCALHOST or LOVABLE PREVIEW: Use React Router navigation
   return <Navigate to={path} replace />;
 }
 
