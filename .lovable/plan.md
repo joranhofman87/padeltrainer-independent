@@ -1,137 +1,190 @@
 
+# Phase 1: Console Statement Migration to Logger Utility
 
-# Pre-Launch Code Quality & Polish Plan
-
-A comprehensive plan to ensure the application is in the best possible shape before going live. This covers code hygiene, testing infrastructure, performance optimizations, and component refactoring.
-
----
-
-## Priority 1: Migrate Remaining Console Statements to Logger
-
-**Issue**: The LAUNCH_CHECKLIST states "No production console.log statements" but there are still ~1,725 instances across 130 files.
-
-**Action**: Focus on the most critical user-facing components first:
-
-| File | Lines | Change |
-|------|-------|--------|
-| `src/pages/NotFound.tsx` | 16 | Replace `console.error` with `logger.warn` |
-| `src/components/trainer/BookForPlayerDialog.tsx` | 131, 147, 166, 300, 358, 376 | Replace `console.error/log` with `logger.error` |
-| `src/components/trainer/AddSlotDialog.tsx` | Throughout | Replace `console.error` with `logger.error` |
-
-**Note**: Edge functions (`supabase/functions/*`) can retain `console.log` as they run server-side with proper logging infrastructure.
+A systematic migration of `console.log/error` statements to the structured `logger` utility across all core library and hook files. This ensures clean production logs, structured error tracking, and a consistent logging pattern across the codebase.
 
 ---
 
-## Priority 2: Add data-testid Attributes for E2E Testing
+## Overview
 
-**Issue**: Zero `data-testid` attributes found. E2E tests rely on fragile text/class selectors.
-
-**Action**: Add attributes to critical interactive elements:
-
-| Component | Elements | testid Pattern |
-|-----------|----------|----------------|
-| Auth forms | Login/signup buttons, inputs | `auth-login-button`, `auth-email-input` |
-| Navigation | Sidebar links, header items | `nav-trainer-dashboard`, `nav-player-bookings` |
-| Booking flow | Book button, player selects | `booking-confirm-button`, `booking-player-select` |
-| Calendar | Add slot button, slot cards | `calendar-add-slot`, `calendar-slot-{id}` |
-
-**Files to modify**:
-- `src/pages/Auth.tsx`
-- `src/components/trainer/TrainerSidebar.tsx`
-- `src/components/player/PlayerNavigation.tsx`
-- `src/pages/BookLesson.tsx`
-- `src/pages/TrainerDashboard.tsx`
+**Files to modify**: 10 files
+**Total console statements to migrate**: ~55 statements
+**Approach**: Replace `console.error` → `logger.error`, `console.warn` → `logger.warn`, remove debug `console.log`
 
 ---
 
-## Priority 3: Add Image Lazy Loading
+## File-by-File Changes
 
-**Issue**: 115 `<img>` tags across 18 files without `loading="lazy"`.
+### 1. `src/hooks/useAuth.tsx`
 
-**Action**: Add lazy loading to all non-critical images:
+| Line | Current | Replace With |
+|------|---------|--------------|
+| 86 | `console.error('Error fetching subscription:', error)` | `logger.error('Error fetching subscription', error as Error, { component: 'useAuth' })` |
+| 112 | `console.error('Error fetching subscription:', err)` | `logger.error('Error fetching subscription', err as Error, { component: 'useAuth' })` |
+| 166 | `console.error('Failed to trigger welcome emails:', error)` | `logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error })` |
 
-| File | Count | Notes |
-|------|-------|-------|
-| `src/pages/marketing/Blog.tsx` | 2 | Featured/post images |
-| `src/pages/marketing/BlogPost.tsx` | 2 | Post content images |
-| `src/pages/academy/AcademyProfile.tsx` | 1 | Banner image |
-| `src/components/profiles/ProfileLayout.tsx` | 1 | Banner image |
-| `src/pages/admin/AdminLocations.tsx` | 1 | Logo thumbnails |
-| `src/pages/admin/AdminAcademies.tsx` | 1 | Logo thumbnails |
-| All other admin preview images | ~15 | Preview thumbnails |
-
-**Exception**: Keep eager loading for above-the-fold hero images.
+**Add import**: `import { logger } from '@/lib/logger';`
 
 ---
 
-## Priority 4: Extract TrainerDashboard Components
+### 2. `src/lib/club.ts` (~25 statements)
 
-**Issue**: At 1,156 lines, `TrainerDashboard.tsx` is 6x larger than other dashboards and harder to maintain.
+All `console.error` statements will be converted to `logger.error` with appropriate context:
 
-**Action**: Extract embedded components to separate files:
+| Function | Change Pattern |
+|----------|---------------|
+| `isLocationClaimed` | `console.error('Error checking location claim:', error)` → `logger.error('Error checking location claim', undefined, { error })` |
+| `getClubProfileByLocation` | `console.error('Error fetching club profile:', error)` → `logger.error('Error fetching club profile', undefined, { error })` |
+| `claimClub` | Multiple errors → `logger.error` with context `{ component: 'club', action: 'claimClub' }` |
+| All other functions | Same pattern |
 
-| New File | Lines | Source |
-|----------|-------|--------|
-| `src/components/trainer/TrainerTrialBanner.tsx` | ~30 | Lines 1012-1040 |
-| `src/components/trainer/TrainerSetupChecklist.tsx` | ~110 | Lines 1043-1156 |
-
-**Benefits**:
-- Dashboard reduced to ~1,000 lines
-- Components reusable in other contexts
-- Easier to test in isolation
+**Add import**: `import { logger } from '@/lib/logger';`
 
 ---
 
-## Priority 5: Update Launch Checklist
+### 3. `src/lib/academy.ts` (~30 statements)
 
-**Issue**: Some items are marked complete but aren't fully accurate.
+Same pattern as club.ts:
 
-**Updates needed**:
-```markdown
-### Code Quality
-- [x] All Stripe references removed and replaced with Mollie
-- [x] Translation files complete for EN and NL
-- [ ] No production console.log statements (converted to logger) ← CHANGE TO INCOMPLETE
-- [x] Error boundaries implemented for graceful failure
-...
+| Function | Context |
+|----------|---------|
+| `createAcademy` | `{ component: 'academy', action: 'createAcademy' }` |
+| `getAcademyBySlug` | `{ component: 'academy', action: 'getBySlug' }` |
+| `inviteAcademyTrainer` | `{ component: 'academy', action: 'inviteTrainer' }` |
+| All other functions | Similar structured context |
 
-### Testing Infrastructure
-- [ ] data-testid attributes on critical UI elements ← ADD NEW
-- [ ] Image lazy loading implemented ← ADD NEW
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 4. `src/lib/trainer.ts` (2 statements)
+
+| Line | Change |
+|------|--------|
+| 27 | `console.error('Error fetching trainer clubs:', error)` → `logger.error('Error fetching trainer clubs', undefined, { error })` |
+| 44 | `console.error('Error fetching club profiles:', clubError)` → `logger.error('Error fetching club profiles', undefined, { error: clubError })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 5. `src/lib/locations.ts` (~12 statements)
+
+| Function | Change |
+|----------|--------|
+| `getActiveLocations` | `console.error('Error fetching locations:', error)` → `logger.error('Error fetching locations', undefined, { error })` |
+| `getAllLocations` | Same pattern |
+| `getLocationBySlug` | Same pattern |
+| All others | Same pattern with function-specific context |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 6. `src/lib/reviews.ts` (1 statement)
+
+| Line | Change |
+|------|--------|
+| 102 | `console.error('Error inserting review tags:', tagsError)` → `logger.error('Error inserting review tags', undefined, { error: tagsError })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 7. `src/pages/CycleRegistration.tsx` (1 statement)
+
+| Line | Change |
+|------|--------|
+| 144 | `console.error('Error fetching cycle data:', error)` → `logger.error('Error fetching cycle data', error as Error, { component: 'CycleRegistration', cycleId })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 8. `src/components/ProfileSwitcher.tsx` (1 statement)
+
+| Line | Change |
+|------|--------|
+| 83 | `console.error('Error fetching profiles:', error)` → `logger.error('Error fetching profiles', error as Error, { component: 'ProfileSwitcher' })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 9. `src/lib/profileViews.ts` (1 statement)
+
+| Line | Change |
+|------|--------|
+| 30 | `console.error('Failed to record profile view:', err)` → `logger.warn('Failed to record profile view', { error: err })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+### 10. `src/lib/clubProfileViews.ts` (1 statement)
+
+| Line | Change |
+|------|--------|
+| 30 | `console.error('Failed to record club profile view:', err)` → `logger.warn('Failed to record club profile view', { error: err })` |
+
+**Add import**: `import { logger } from '@/lib/logger';`
+
+---
+
+## Logger Usage Patterns
+
+### Error with Exception
+```typescript
+// For caught errors where we have an Error object
+logger.error('Operation failed', error as Error, { component: 'componentName', action: 'actionName' });
+```
+
+### Error without Exception
+```typescript
+// For Supabase errors (not Error instances)
+logger.error('Operation failed', undefined, { error: supabaseError, component: 'componentName' });
+```
+
+### Warning (non-critical failures)
+```typescript
+// For failures that don't break functionality (e.g., analytics)
+logger.warn('Non-critical operation failed', { error, component: 'componentName' });
 ```
 
 ---
 
-## Priority 6: Address Remaining TODOs
+## Files NOT Being Changed
 
-| Location | TODO | Action |
-|----------|------|--------|
-| `src/lib/logger.ts:68` | Sentry integration | Add placeholder comment with priority |
-| `src/components/cycles/ProposalCard.tsx:194` | Slot picker | Either implement or remove button |
-
----
-
-## Summary of Files to Modify
-
-| Category | Files | Effort |
-|----------|-------|--------|
-| Logger migration | 3 files | Low |
-| data-testid | 5 files | Low |
-| Lazy loading | 18 files | Low |
-| Component extraction | 1 file → 3 files | Medium |
-| Checklist update | 1 file | Low |
-| TODO cleanup | 2 files | Low |
-
-**Total estimated changes**: ~30 files with mostly small, mechanical updates.
+| File/Directory | Reason |
+|----------------|--------|
+| `supabase/functions/*` | Edge functions run server-side with proper logging infrastructure |
+| `src/lib/logger.ts` | The logger itself uses console internally (correct) |
+| Test files | Test console output is expected |
 
 ---
 
-## What This Won't Cover
+## Update to Launch Checklist
 
-1. **RLS Policy Review**: Already documented in security memories; requires database expertise
-2. **Sentry Integration**: Requires account setup and secrets configuration
-3. **Mobile Testing**: Manual verification needed per LAUNCH_CHECKLIST
-4. **Payment Flow Testing**: Requires Mollie test credentials
+After these changes, update `.lovable/LAUNCH_CHECKLIST.md`:
 
-These are marked in the checklist for manual verification before launch.
+```markdown
+### Code Quality
+- [x] No production console.log statements (converted to logger)
+```
 
+---
+
+## Summary
+
+| Category | Count |
+|----------|-------|
+| Files modified | 10 |
+| Console statements migrated | ~55 |
+| New imports added | 10 |
+| Patterns established | Error with context, Warning for non-critical |
+
+This migration establishes a consistent logging pattern that will:
+1. Keep production logs clean (debug statements only show in development)
+2. Provide structured error context for future Sentry integration
+3. Store critical errors in sessionStorage for debugging
+4. Make it easy to add centralized monitoring later
