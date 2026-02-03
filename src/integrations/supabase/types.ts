@@ -320,6 +320,7 @@ export type Database = {
           mollie_customer_id: string | null
           name: string
           phone: string | null
+          platform_fee_override: number | null
           slug: string
           social_facebook: string | null
           social_instagram: string | null
@@ -348,6 +349,7 @@ export type Database = {
           mollie_customer_id?: string | null
           name: string
           phone?: string | null
+          platform_fee_override?: number | null
           slug: string
           social_facebook?: string | null
           social_instagram?: string | null
@@ -376,6 +378,7 @@ export type Database = {
           mollie_customer_id?: string | null
           name?: string
           phone?: string | null
+          platform_fee_override?: number | null
           slug?: string
           social_facebook?: string | null
           social_instagram?: string | null
@@ -2668,6 +2671,7 @@ export type Database = {
           monthly_price: number
           name: string
           plan_type: string
+          platform_fee_flat: number | null
           platform_fee_percent: number
           tier: string
           updated_at: string
@@ -2690,6 +2694,7 @@ export type Database = {
           monthly_price?: number
           name: string
           plan_type?: string
+          platform_fee_flat?: number | null
           platform_fee_percent?: number
           tier: string
           updated_at?: string
@@ -2712,6 +2717,7 @@ export type Database = {
           monthly_price?: number
           name?: string
           plan_type?: string
+          platform_fee_flat?: number | null
           platform_fee_percent?: number
           tier?: string
           updated_at?: string
@@ -2943,6 +2949,7 @@ export type Database = {
           knltb_rating: number | null
           kvk_number: string | null
           payment_terms_days: number | null
+          platform_fee_override: number | null
           preferred_max_rating: number | null
           preferred_min_rating: number | null
           preferred_rating_system: string | null
@@ -2984,6 +2991,7 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          platform_fee_override?: number | null
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
@@ -3025,6 +3033,7 @@ export type Database = {
           knltb_rating?: number | null
           kvk_number?: string | null
           payment_terms_days?: number | null
+          platform_fee_override?: number | null
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null

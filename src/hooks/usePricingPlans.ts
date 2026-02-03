@@ -9,6 +9,7 @@ export interface SubscriptionPlan {
   monthly_price: number;
   yearly_price: number;
   platform_fee_percent: number;
+  platform_fee_flat: number | null;
   mollie_plan_id_monthly: string | null;
   mollie_plan_id_yearly: string | null;
   mollie_product_id_monthly: string | null;

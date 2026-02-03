@@ -209,7 +209,7 @@ export default function Pricing() {
                         )}
                       </div>
                       <div className="pt-2 flex items-center justify-center gap-1">
-                        <Badge variant="outline">{plan.platform_fee_percent}% {t('pricing.trainers.platformFee')}</Badge>
+                        <Badge variant="outline">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} {t('pricing.trainers.platformFee')}</Badge>
                         <Tooltip>
                           <TooltipTrigger>
                             <HelpCircle className="h-4 w-4 text-muted-foreground" />

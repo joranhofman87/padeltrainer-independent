@@ -132,6 +132,7 @@ export function TrainerEditDialog({
   );
   const [isPublic, setIsPublic] = useState(trainer.is_public);
   const [isVerified, setIsVerified] = useState(trainer.is_verified || false);
+  const [platformFeeOverride, setPlatformFeeOverride] = useState("");
 
   // File upload
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -173,6 +174,16 @@ export function TrainerEditDialog({
       setIsPublic(trainer.is_public);
       setIsVerified(trainer.is_verified || false);
       setActiveTab("profile");
+      
+      // Fetch platform fee override
+      supabase
+        .from("trainer_profiles")
+        .select("platform_fee_override")
+        .eq("id", trainer.id)
+        .single()
+        .then(({ data }) => {
+          setPlatformFeeOverride(data?.platform_fee_override?.toString() || "");
+        });
     }
   }, [open, trainer]);
 
@@ -268,6 +279,7 @@ export function TrainerEditDialog({
           trial_ends_at: status === "active" ? null : (trialEndsAt?.toISOString() || null),
           is_public: isPublic,
           is_verified: isVerified,
+          platform_fee_override: platformFeeOverride ? parseFloat(platformFeeOverride) : null,
         })
         .eq("id", trainer.id);
 
@@ -701,6 +713,22 @@ export function TrainerEditDialog({
                   </Popover>
                 </div>
               )}
+
+              <div className="grid gap-2 border-t pt-4">
+                <Label htmlFor="platformFeeOverride">Platform Fee Override (€)</Label>
+                <Input
+                  id="platformFeeOverride"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={platformFeeOverride}
+                  onChange={(e) => setPlatformFeeOverride(e.target.value)}
+                  placeholder="Leave empty for tier default"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set a custom fee for this trainer. Leave empty to use tier default (€1.00 Starter, €0.75 Professional).
+                </p>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
