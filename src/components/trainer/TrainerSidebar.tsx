@@ -81,8 +81,8 @@ export function TrainerSidebar() {
   const [clubsOpen, setClubsOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.startsWith("/trainer/settings") ||
-    location.pathname.startsWith("/subscription") ||
-    location.pathname.startsWith("/earnings")
+    location.pathname.startsWith("/trainer/subscription") ||
+    location.pathname.startsWith("/trainer/earnings")
   );
 
   // Fetch trainer profile, clubs, and academy status
@@ -198,7 +198,7 @@ export function TrainerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
                   <NavLink
-                    to="/profile/edit"
+                    to="/trainer/profile"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
@@ -418,7 +418,7 @@ export function TrainerSidebar() {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
-                      className={isActive("/trainer/settings") || isActive("/subscription") || isActive("/earnings")
+                      className={isActive("/trainer/settings") || isActive("/trainer/subscription") || isActive("/trainer/earnings")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -448,7 +448,7 @@ export function TrainerSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/subscription"
+                            to="/trainer/subscription"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -456,12 +456,11 @@ export function TrainerSidebar() {
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
-                      {/* Only show Earnings if not managed by academy */}
                       {!hasAcademy && (
                         <SidebarMenuSubItem>
                           <SidebarMenuSubButton asChild>
                             <NavLink
-                              to="/earnings"
+                              to="/trainer/earnings"
                               className="flex items-center gap-2"
                               activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                             >
