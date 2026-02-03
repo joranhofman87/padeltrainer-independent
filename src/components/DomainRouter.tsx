@@ -387,7 +387,6 @@ function CombinedRoutes() {
     </Routes>
   );
 }
-
 /**
  * Helper component to redirect to app subdomain.
  * Used on marketing domain when users try to access app routes.
@@ -395,30 +394,31 @@ function CombinedRoutes() {
 function RedirectToAppDomain({ path }: { path: string }) {
   const hostname = window.location.hostname;
   
-  // Check if we're on a custom domain (production marketing site)
-  const isCustomDomain = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
+  // Check if we're on the production marketing domain
+  const isProductionMarketing = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
   
-  // Check if we're in development/preview mode
+  // Check if we're in local development only
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  const isLovablePreview = hostname.includes('.lovable.app') || hostname.includes('.lovableproject.com');
-  const isDev = isLocalhost || isLovablePreview;
   
   // Log for debugging
-  logger.debug('RedirectToAppDomain', { path, hostname, isCustomDomain, isDev });
+  logger.debug('RedirectToAppDomain', { path, hostname, isProductionMarketing, isLocalhost });
   
-  // In development (but NOT custom domains), use React Router navigation
-  if (isDev && !isCustomDomain) {
+  // PRODUCTION: On padeltrainer.ai, immediately redirect to app.padeltrainer.ai
+  if (isProductionMarketing) {
+    // Use direct assignment for immediate redirect before React can interfere
+    window.location.href = `https://app.padeltrainer.ai${path}`;
+    // Return loading state while redirect happens
+    return <div>Redirecting...</div>;
+  }
+  
+  // LOCALHOST: Use React Router navigation for local development
+  if (isLocalhost) {
     return <Navigate to={path} replace />;
   }
   
-  // For production or custom domains, do an immediate hard redirect
-  // This happens synchronously before any useEffect
-  if (typeof window !== 'undefined') {
-    window.location.replace(`https://app.padeltrainer.ai${path}`);
-  }
-  
-  // Return null while redirecting
-  return null;
+  // LOVABLE PREVIEW: Use React Router navigation (all routes available)
+  // This catches *.lovable.app and *.lovableproject.com
+  return <Navigate to={path} replace />;
 }
 
 /**
