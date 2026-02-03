@@ -32,6 +32,7 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
     platform_fee_percent: plan.platform_fee_percent,
+    platform_fee_flat: plan.platform_fee_flat ?? 1.00,
     max_lessons: plan.max_lessons,
     mollie_plan_id_monthly: plan.mollie_plan_id_monthly || "",
     mollie_plan_id_yearly: plan.mollie_plan_id_yearly || "",
@@ -212,21 +213,24 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="platform_fee">Platform Fee (%)</Label>
+                <Label htmlFor="platform_fee_flat">Platform Fee (€)</Label>
                 <Input
-                  id="platform_fee"
+                  id="platform_fee_flat"
                   type="number"
                   min="0"
-                  max="100"
-                  step="0.1"
-                  value={formData.platform_fee_percent}
+                  step="0.01"
+                  value={formData.platform_fee_flat}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      platform_fee_percent: parseFloat(e.target.value) || 0,
+                      platform_fee_flat: parseFloat(e.target.value) || 0,
                     }))
                   }
+                  placeholder="e.g. 1.00"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Flat fee deducted per booking (€1.00 Starter, €0.75 Professional, €0.50 Academy)
+                </p>
               </div>
 
               <div className="space-y-2">

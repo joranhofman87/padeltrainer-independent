@@ -85,8 +85,41 @@ serve(async (req) => {
 
     // If trainer has connected Mollie account, use routing for split payments
     if (mollieAccount?.mollie_organization_id) {
-      // Calculate platform fee (5%)
-      const platformFee = Math.round(amount * 0.05 * 100) / 100;
+      // Get trainer's fee override or tier-based default
+      const { data: trainerProfile } = await supabase
+        .from("trainer_profiles")
+        .select("platform_fee_override, subscription_status")
+        .eq("user_id", trainerId)
+        .single();
+
+      let platformFee = 1.00; // Default to starter fee (€1.00)
+
+      if (trainerProfile?.platform_fee_override !== null && trainerProfile?.platform_fee_override !== undefined) {
+        // Use trainer's custom override
+        platformFee = Number(trainerProfile.platform_fee_override);
+        logStep("Using trainer fee override", { platformFee });
+      } else {
+        // Look up fee from subscription_plans based on status
+        const tier = trainerProfile?.subscription_status === "active" 
+          ? "professional" 
+          : "starter";
+          
+        const { data: plan } = await supabase
+          .from("subscription_plans")
+          .select("platform_fee_flat")
+          .eq("tier", tier)
+          .eq("plan_type", "trainer")
+          .eq("is_active", true)
+          .single();
+          
+        if (plan?.platform_fee_flat !== null && plan?.platform_fee_flat !== undefined) {
+          platformFee = Number(plan.platform_fee_flat);
+        }
+        logStep("Using tier-based fee", { tier, platformFee });
+      }
+
+      // Ensure fee doesn't exceed payment amount
+      platformFee = Math.min(platformFee, amount);
       
       paymentData.routing = [
         {
@@ -102,7 +135,8 @@ serve(async (req) => {
       ];
       logStep("Payment routing configured", { 
         trainerAmount: amount - platformFee, 
-        platformFee 
+        platformFee,
+        hasOverride: trainerProfile?.platform_fee_override !== null
       });
     }
 

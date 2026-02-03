@@ -139,8 +139,8 @@
       "badge": "For Trainers",
       "title": "Choose your plan",
       "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
-      "platformFee": "platform fee",
-      "feeTooltip": "Fee deducted from each lesson payment",
+      "platformFee": "per booking",
+      "feeTooltip": "A flat fee is deducted from each lesson payment. Higher tiers pay less.",
       "mostPopular": "Most Popular",
       "plans": {
         "starter": {
@@ -222,7 +222,7 @@
     "questions": {
       "platformFee": {
         "q": "How does the platform fee work?",
-        "a": "The platform fee is automatically deducted from each lesson payment. For example, if you charge €50 for a lesson on the Professional plan (5% fee), you receive €47.50."
+        "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
       },
       "changePlans": {
         "q": "Can I change plans later?",

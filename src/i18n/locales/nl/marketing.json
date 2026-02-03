@@ -139,8 +139,8 @@
       "badge": "Voor Trainers",
       "title": "Kies je abonnement",
       "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. Lagere platformkosten bij hogere niveaus.",
-      "platformFee": "platformkosten",
-      "feeTooltip": "Kosten worden afgetrokken van elke lesbetaling",
+      "platformFee": "per boeking",
+      "feeTooltip": "Een vast bedrag wordt afgetrokken van elke lesbetaling. Hogere abonnementen betalen minder.",
       "mostPopular": "Meest Populair",
       "plans": {
         "starter": {
@@ -222,7 +222,7 @@
     "questions": {
       "platformFee": {
         "q": "Hoe werken de platformkosten?",
-        "a": "De platformkosten worden automatisch afgetrokken van elke lesbetaling. Als je bijvoorbeeld €50 vraagt voor een les met het Professional-abonnement (5% kosten), ontvang je €47,50."
+        "a": "Een vast bedrag wordt afgetrokken van elke lesbetaling op basis van je abonnementsniveau. Starter betaalt €1,00 per boeking, Professional betaalt €0,75 en Academy betaalt €0,50."
       },
       "changePlans": {
         "q": "Kan ik later van abonnement wisselen?",

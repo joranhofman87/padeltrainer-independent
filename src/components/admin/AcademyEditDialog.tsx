@@ -183,6 +183,7 @@ export function AcademyEditDialog({
   );
   const [isVerified, setIsVerified] = useState(academy.is_verified);
   const [isPublic, setIsPublic] = useState(academy.is_public);
+  const [platformFeeOverride, setPlatformFeeOverride] = useState("");
 
   // Related data
   const [locations, setLocations] = useState<AcademyLocation[]>([]);
@@ -223,6 +224,16 @@ export function AcademyEditDialog({
       loadAllLocations();
       loadAllTrainers();
       loadAllUsers();
+      
+      // Fetch platform fee override
+      supabase
+        .from("academy_profiles")
+        .select("platform_fee_override")
+        .eq("id", academy.id)
+        .single()
+        .then(({ data }) => {
+          setPlatformFeeOverride(data?.platform_fee_override?.toString() || "");
+        });
     }
   }, [open, academy.id]);
 
@@ -755,6 +766,7 @@ export function AcademyEditDialog({
           is_verified: isVerified,
           is_public: isPublic,
           country,
+          platform_fee_override: platformFeeOverride ? parseFloat(platformFeeOverride) : null,
         })
         .eq("id", academy.id);
 
@@ -1463,6 +1475,22 @@ export function AcademyEditDialog({
                     </Popover>
                   </div>
                 )}
+
+                <div className="grid gap-2 pt-4">
+                  <Label htmlFor="platformFeeOverride">Platform Fee Override (€)</Label>
+                  <Input
+                    id="platformFeeOverride"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={platformFeeOverride}
+                    onChange={(e) => setPlatformFeeOverride(e.target.value)}
+                    placeholder="Leave empty for tier default"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Set a custom fee for this academy. Leave empty to use tier default (€0.50 Academy).
+                  </p>
+                </div>
               </div>
             </div>
           </TabsContent>
