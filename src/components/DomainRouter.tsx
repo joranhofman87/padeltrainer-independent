@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useHostname } from '@/hooks/useHostname';
 import { LanguageRouter, RootRedirect } from '@/components/LanguageRouter';
 import { useEffect } from 'react';
+import { logger } from '@/lib/logger';
 
 // Marketing pages
 import Home from '@/pages/marketing/Home';
@@ -397,10 +398,7 @@ export function DomainRouter() {
   
   // Debug logging for production diagnostics
   useEffect(() => {
-    console.log('[DomainRouter] hostname:', hostname, 
-      'isAppDomain:', isAppDomain, 
-      'isMarketingDomain:', isMarketingDomain,
-      'isDevelopment:', isDevelopment);
+    logger.debug('DomainRouter routing', { hostname, isAppDomain, isMarketingDomain, isDevelopment });
   }, [hostname, isAppDomain, isMarketingDomain, isDevelopment]);
   
   // In development, show all routes
