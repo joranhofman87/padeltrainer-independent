@@ -1,65 +1,170 @@
-# Legacy Code Cleanup - COMPLETED
 
-## Summary of Changes Made
+# Remove Legacy Routes and Simplify Navigation
 
-All critical and high-priority cleanup tasks have been implemented.
-
----
-
-## ✅ Completed Tasks
-
-### 1. Fixed Missing Edge Functions (CRITICAL)
-- **`useAuth.tsx`**: Changed from `check-trainer-subscription` to `check-mollie-subscription` with `type: "trainer"`
-- **Created `create-academy-mollie-subscription`**: New edge function for academy subscription checkout
-
-### 2. Restored Club Subscription Support (CRITICAL)
-- **`check-mollie-subscription`**: Added `type === "club"` case for club subscriptions
-- **`cancel-mollie-subscription`**: Added `type === "club"` case for club subscriptions
-
-### 3. Cleaned Up config.toml
-- Removed all 14+ orphaned references to deleted Stripe functions
-- Only active Mollie functions remain
-
-### 4. Removed Stripe Product IDs
-- **`src/lib/subscription.ts`**: Removed hardcoded Stripe `priceId` and `productId` values
-- **`getTierFromProductId`**: Deprecated function (returns 'trial' - tier now comes from database)
-- Subscription tier is now database-driven via `subscription_tier` field
-
-### 5. Removed Unused Club Payment Translations
-- **`en/club.json`**: Removed `settings.mollieConnect*` keys (23 keys removed)
-- **`nl/club.json`**: Removed same keys in Dutch
-
-### 6. Converted Legacy Routes to Redirects
-- **`DomainRouter.tsx`**: Changed legacy routes from duplicating components to using `<Navigate>` redirects
-- Routes now redirect to their canonical paths under `/trainer/*` or `/player/*`
+Since the app hasn't gone live yet, there's no need for backwards compatibility redirects. This cleanup will remove all legacy route handling and update navigation to use proper namespaced paths.
 
 ---
 
-## Remaining Items (Lower Priority)
+## Changes Overview
 
-These items were identified but not addressed in this cleanup:
+### 1. Remove Legacy Route Redirects from DomainRouter.tsx
 
-### Technical Debt
-1. **TrainerDashboard Complexity** (1156 lines) - Could be refactored into smaller components
-2. **ManageSchedule.tsx / ManageAvailability.tsx** - May be unused, consider removal after audit
-3. **Database foreign key names** - Still named `*_stripe_accounts_*` (cosmetic only)
+**Remove these redirect blocks entirely:**
 
-### Manual Action Required
-- **STRIPE_SECRET_KEY**: Still present in secrets (marked "cannot be deleted" - must be removed manually via workspace settings)
+**In `AppRoutes()` function (lines 205-217):**
+```tsx
+{/* Legacy route redirects */}
+<Route path="/profile/edit" element={<Navigate to="/player/profile" replace />} />
+<Route path="/lessons" element={<Navigate to="/trainer" replace />} />
+<Route path="/availability" element={<Navigate to="/trainer/calendar" replace />} />
+<Route path="/schedule" element={<Navigate to="/trainer/calendar" replace />} />
+<Route path="/bookings" element={<Navigate to="/player/bookings" replace />} />
+<Route path="/trainer-bookings" element={<Navigate to="/trainer" replace />} />
+<Route path="/earnings" element={<Navigate to="/trainer" replace />} />
+<Route path="/subscription" element={<Navigate to="/trainer" replace />} />
+<Route path="/analytics" element={<Navigate to="/trainer" replace />} />
+<Route path="/settings/notifications" element={<Navigate to="/player/settings/notifications" replace />} />
+<Route path="/settings/calendar" element={<Navigate to="/player/settings/calendar" replace />} />
+```
+
+**In `CombinedRoutes()` function (lines 313-325):**
+Same block to be removed.
+
+**In `MarketingRoutes()` function (lines 121-130):**
+Remove these app-path redirects:
+```tsx
+<Route path="/lessons" element={<RedirectToAppDomain path="/lessons" />} />
+<Route path="/bookings" element={<RedirectToAppDomain path="/bookings" />} />
+<Route path="/earnings" element={<RedirectToAppDomain path="/earnings" />} />
+<Route path="/subscription" element={<RedirectToAppDomain path="/subscription" />} />
+<Route path="/analytics" element={<RedirectToAppDomain path="/analytics" />} />
+<Route path="/availability" element={<RedirectToAppDomain path="/availability" />} />
+<Route path="/schedule" element={<RedirectToAppDomain path="/schedule" />} />
+<Route path="/trainer-bookings" element={<RedirectToAppDomain path="/trainer-bookings" />} />
+```
+
+Also remove the `ManageLessons` import since it's no longer used.
 
 ---
 
-## Files Modified
+### 2. Update TrainerSidebar.tsx to Use Proper Paths
+
+**Update navigation links:**
+
+| Current Path | New Path |
+|--------------|----------|
+| `/profile/edit` | `/trainer/profile` |
+| `/subscription` | `/trainer/subscription` |
+| `/earnings` | `/trainer/earnings` |
+
+**Update path checks for `businessOpen` state:**
+```tsx
+// Line 82-86: Change from
+location.pathname.startsWith("/subscription") ||
+location.pathname.startsWith("/earnings")
+
+// To
+location.pathname.startsWith("/trainer/subscription") ||
+location.pathname.startsWith("/trainer/earnings")
+```
+
+---
+
+### 3. Update PlayerDashboard.tsx to Use Proper Paths
+
+| Current Path | New Path |
+|--------------|----------|
+| `/bookings` (line 398, 480) | `/player/bookings` |
+| `/profile/edit` (line 499) | `/player/profile` |
+
+---
+
+### 4. Update TrainerSettings.tsx to Use Proper Path
+
+| Current Path | New Path |
+|--------------|----------|
+| `/profile/edit` (line 122) | `/trainer/profile` |
+
+---
+
+### 5. Update TrainerDashboard.tsx Setup Steps
+
+| Current Path | New Path |
+|--------------|----------|
+| `/profile/edit` (line 1066) | `/trainer/profile` |
+| `/lessons` (line 1067) | `/trainer/calendar` |
+
+---
+
+### 6. Add Missing Trainer Routes to DomainRouter.tsx
+
+Add these routes inside the `/trainer` layout:
+
+```tsx
+<Route path="profile" element={<EditProfile />} />
+<Route path="subscription" element={<TrainerSubscription />} />
+<Route path="earnings" element={<TrainerEarnings />} />
+<Route path="analytics" element={<TrainerAnalytics />} />
+<Route path="bookings" element={<TrainerBookings />} />
+```
+
+---
+
+### 7. Delete Unused Pages
+
+These pages are no longer accessible or needed:
+
+| File | Reason |
+|------|--------|
+| `src/pages/ManageSchedule.tsx` | Replaced by TrainerCalendar |
+| `src/pages/ManageAvailability.tsx` | Replaced by TrainerCalendar |
+| `src/pages/ManageLessons.tsx` | Functionality merged into TrainerCalendar |
+
+---
+
+## Summary of Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useAuth.tsx` | Use `check-mollie-subscription` with `type: "trainer"` |
-| `supabase/functions/check-mollie-subscription/index.ts` | Added club support |
-| `supabase/functions/cancel-mollie-subscription/index.ts` | Added club support |
-| `supabase/functions/create-academy-mollie-subscription/index.ts` | NEW - Academy checkout |
-| `supabase/config.toml` | Removed orphaned function configs |
-| `src/lib/subscription.ts` | Removed Stripe IDs, updated tier detection |
-| `src/i18n/locales/en/club.json` | Removed unused mollieConnect keys |
-| `src/i18n/locales/nl/club.json` | Removed unused mollieConnect keys |
-| `src/components/DomainRouter.tsx` | Legacy routes → redirects |
+| `src/components/DomainRouter.tsx` | Remove legacy redirects, add proper trainer routes, remove ManageLessons import |
+| `src/components/trainer/TrainerSidebar.tsx` | Update paths from legacy to `/trainer/*` namespace |
+| `src/pages/PlayerDashboard.tsx` | Update `/bookings` → `/player/bookings`, `/profile/edit` → `/player/profile` |
+| `src/pages/TrainerSettings.tsx` | Update `/profile/edit` → `/trainer/profile` |
+| `src/pages/TrainerDashboard.tsx` | Update setup step paths to proper routes |
 
+## Files to Delete
+
+| File | Reason |
+|------|--------|
+| `src/pages/ManageSchedule.tsx` | Unused - replaced by TrainerCalendar |
+| `src/pages/ManageAvailability.tsx` | Unused - replaced by TrainerCalendar |
+| `src/pages/ManageLessons.tsx` | Unused - no longer in routes |
+
+---
+
+## Route Structure After Cleanup
+
+**Trainer Routes (`/trainer/*`):**
+- `/trainer` → Dashboard
+- `/trainer/profile` → Edit Profile
+- `/trainer/settings` → Settings
+- `/trainer/settings/bookings` → Booking Settings
+- `/trainer/calendar` → Calendar
+- `/trainer/players` → Players
+- `/trainer/subscription` → Subscription
+- `/trainer/earnings` → Earnings
+- `/trainer/analytics` → Analytics
+- `/trainer/bookings` → Bookings
+- `/trainer/cyclus` → Cyclus
+- `/trainer/cycles` → Cycles
+- `/trainer/intake-requests` → Intake Requests
+- `/trainer/open-slots` → Open Slots
+
+**Player Routes (`/player/*`):**
+- `/player` → Dashboard
+- `/player/bookings` → Bookings
+- `/player/following` → Following
+- `/player/profile` → Edit Profile
+- `/player/settings` → Settings
+- `/player/settings/notifications` → Notification Settings
+- `/player/settings/calendar` → Calendar Settings
