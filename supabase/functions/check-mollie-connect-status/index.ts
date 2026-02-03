@@ -20,7 +20,7 @@ interface MollieBalance {
 async function refreshTokenIfNeeded(
   supabaseClient: any,
   accountData: any,
-  entityType: 'trainer' | 'club',
+  entityType: 'trainer' | 'academy',
   entityId: string
 ): Promise<string | null> {
   const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
@@ -70,8 +70,8 @@ async function refreshTokenIfNeeded(
     const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
     // Update tokens in database
-    const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'club_mollie_accounts';
-    const idColumn = entityType === 'trainer' ? 'trainer_id' : 'club_profile_id';
+    const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'academy_mollie_accounts';
+    const idColumn = entityType === 'trainer' ? 'trainer_id' : 'academy_profile_id';
 
     await supabaseClient
       .from(tableName)
@@ -142,23 +142,23 @@ serve(async (req) => {
         .maybeSingle();
       
       accountData = data;
-    } else if (entityType === 'club') {
-      // Verify user is a manager of this club
-      const { data: clubManager } = await supabaseClient
-        .from('club_managers')
+    } else if (entityType === 'academy') {
+      // Verify user is a manager of this academy
+      const { data: academyManager } = await supabaseClient
+        .from('academy_managers')
         .select('role')
-        .eq('club_profile_id', entityId)
+        .eq('academy_profile_id', entityId)
         .eq('user_id', user.id)
         .single();
 
-      if (!clubManager) {
-        throw new Error("You are not a manager of this club");
+      if (!academyManager) {
+        throw new Error("You are not a manager of this academy");
       }
 
       const { data } = await supabaseClient
-        .from('club_mollie_accounts')
+        .from('academy_mollie_accounts')
         .select('*')
-        .eq('club_profile_id', entityId)
+        .eq('academy_profile_id', entityId)
         .maybeSingle();
       
       accountData = data;

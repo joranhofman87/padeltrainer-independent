@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[MOLLIE-CONNECT-CLUB] ${step}${detailsStr}`);
+  console.log(`[MOLLIE-CONNECT-ACADEMY] ${step}${detailsStr}`);
 };
 
 // Generate a random state string for CSRF protection
@@ -44,34 +44,34 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { clubProfileId } = await req.json();
-    if (!clubProfileId) throw new Error("Club profile ID is required");
-    logStep("Request payload", { clubProfileId });
+    const { academyProfileId } = await req.json();
+    if (!academyProfileId) throw new Error("Academy profile ID is required");
+    logStep("Request payload", { academyProfileId });
 
-    // Verify user is a manager of this club
-    const { data: clubManager } = await supabaseClient
-      .from('club_managers')
+    // Verify user is a manager of this academy
+    const { data: academyManager } = await supabaseClient
+      .from('academy_managers')
       .select('role')
-      .eq('club_profile_id', clubProfileId)
+      .eq('academy_profile_id', academyProfileId)
       .eq('user_id', user.id)
       .single();
 
-    if (!clubManager) {
-      throw new Error("You are not a manager of this club");
+    if (!academyManager) {
+      throw new Error("You are not a manager of this academy");
     }
-    logStep("Club manager verified", { role: clubManager.role });
+    logStep("Academy manager verified", { role: academyManager.role });
 
     const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
 
-    // Check if club already has a Mollie account with valid tokens
+    // Check if academy already has a Mollie account with valid tokens
     const { data: existingAccount } = await supabaseClient
-      .from('club_mollie_accounts')
+      .from('academy_mollie_accounts')
       .select('mollie_organization_id, onboarding_complete, access_token, token_expires_at')
-      .eq('club_profile_id', clubProfileId)
+      .eq('academy_profile_id', academyProfileId)
       .maybeSingle();
 
     if (existingAccount?.mollie_organization_id && existingAccount?.onboarding_complete) {
-      logStep("Club already connected to Mollie", { 
+      logStep("Academy already connected to Mollie", { 
         organizationId: existingAccount.mollie_organization_id 
       });
       return new Response(JSON.stringify({ 
@@ -88,15 +88,15 @@ serve(async (req) => {
     
     // Store state in database for verification on callback
     const { error: stateError } = await supabaseClient
-      .from('club_mollie_accounts')
+      .from('academy_mollie_accounts')
       .upsert({
-        club_profile_id: clubProfileId,
+        academy_profile_id: academyProfileId,
         mollie_organization_id: `pending_${state}`, // Temporary placeholder
         onboarding_complete: false,
         charges_enabled: false,
         payouts_enabled: false,
       }, {
-        onConflict: 'club_profile_id'
+        onConflict: 'academy_profile_id'
       });
 
     if (stateError) {
@@ -118,7 +118,7 @@ serve(async (req) => {
     const authUrl = new URL('https://my.mollie.com/oauth2/authorize');
     authUrl.searchParams.set('client_id', mollieClientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('state', `club_${clubProfileId}_${state}`);
+    authUrl.searchParams.set('state', `academy_${academyProfileId}_${state}`);
     authUrl.searchParams.set('scope', scopes);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('approval_prompt', 'auto');
