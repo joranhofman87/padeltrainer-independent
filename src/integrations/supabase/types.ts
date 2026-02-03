@@ -198,6 +198,70 @@ export type Database = {
           },
         ]
       }
+      academy_mollie_accounts: {
+        Row: {
+          academy_profile_id: string
+          access_token: string | null
+          charges_enabled: boolean
+          created_at: string
+          id: string
+          mollie_organization_id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          access_token?: string | null
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          mollie_organization_id: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          access_token?: string | null
+          charges_enabled?: boolean
+          created_at?: string
+          id?: string
+          mollie_organization_id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       academy_profile_views: {
         Row: {
           academy_profile_id: string
@@ -253,6 +317,7 @@ export type Database = {
           is_public: boolean
           is_verified: boolean
           logo_url: string | null
+          mollie_customer_id: string | null
           name: string
           phone: string | null
           slug: string
@@ -261,7 +326,6 @@ export type Database = {
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
-          stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
           subscription_status: string | null
@@ -281,6 +345,7 @@ export type Database = {
           is_public?: boolean
           is_verified?: boolean
           logo_url?: string | null
+          mollie_customer_id?: string | null
           name: string
           phone?: string | null
           slug: string
@@ -289,7 +354,6 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -309,6 +373,7 @@ export type Database = {
           is_public?: boolean
           is_verified?: boolean
           logo_url?: string | null
+          mollie_customer_id?: string | null
           name?: string
           phone?: string | null
           slug?: string
@@ -317,7 +382,6 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
-          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -327,61 +391,6 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: []
-      }
-      academy_stripe_accounts: {
-        Row: {
-          academy_profile_id: string
-          charges_enabled: boolean
-          created_at: string
-          id: string
-          onboarding_complete: boolean
-          payouts_enabled: boolean
-          stripe_account_id: string
-          updated_at: string
-        }
-        Insert: {
-          academy_profile_id: string
-          charges_enabled?: boolean
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id: string
-          updated_at?: string
-        }
-        Update: {
-          academy_profile_id?: string
-          charges_enabled?: boolean
-          created_at?: string
-          id?: string
-          onboarding_complete?: boolean
-          payouts_enabled?: boolean
-          stripe_account_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: true
-            referencedRelation: "academy_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: true
-            referencedRelation: "academy_profiles_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: true
-            referencedRelation: "academy_profiles_safe"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       academy_trainer_invitations: {
         Row: {
@@ -2652,14 +2661,14 @@ export type Database = {
           is_active: boolean
           is_highlighted: boolean
           max_lessons: number | null
+          mollie_plan_id_monthly: string | null
+          mollie_plan_id_yearly: string | null
+          mollie_product_id_monthly: string | null
+          mollie_product_id_yearly: string | null
           monthly_price: number
           name: string
           plan_type: string
           platform_fee_percent: number
-          stripe_price_id_monthly: string | null
-          stripe_price_id_yearly: string | null
-          stripe_product_id_monthly: string | null
-          stripe_product_id_yearly: string | null
           tier: string
           updated_at: string
           yearly_price: number
@@ -2674,14 +2683,14 @@ export type Database = {
           is_active?: boolean
           is_highlighted?: boolean
           max_lessons?: number | null
+          mollie_plan_id_monthly?: string | null
+          mollie_plan_id_yearly?: string | null
+          mollie_product_id_monthly?: string | null
+          mollie_product_id_yearly?: string | null
           monthly_price?: number
           name: string
           plan_type?: string
           platform_fee_percent?: number
-          stripe_price_id_monthly?: string | null
-          stripe_price_id_yearly?: string | null
-          stripe_product_id_monthly?: string | null
-          stripe_product_id_yearly?: string | null
           tier: string
           updated_at?: string
           yearly_price?: number
@@ -2696,14 +2705,14 @@ export type Database = {
           is_active?: boolean
           is_highlighted?: boolean
           max_lessons?: number | null
+          mollie_plan_id_monthly?: string | null
+          mollie_plan_id_yearly?: string | null
+          mollie_product_id_monthly?: string | null
+          mollie_product_id_yearly?: string | null
           monthly_price?: number
           name?: string
           plan_type?: string
           platform_fee_percent?: number
-          stripe_price_id_monthly?: string | null
-          stripe_price_id_yearly?: string | null
-          stripe_product_id_monthly?: string | null
-          stripe_product_id_yearly?: string | null
           tier?: string
           updated_at?: string
           yearly_price?: number
@@ -2947,7 +2956,6 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
-          stripe_account_id: string | null
           subscription_status: string | null
           trainer_rating_system: string | null
           trial_ends_at: string | null
@@ -2989,7 +2997,6 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
-          stripe_account_id?: string | null
           subscription_status?: string | null
           trainer_rating_system?: string | null
           trial_ends_at?: string | null
@@ -3031,7 +3038,6 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
-          stripe_account_id?: string | null
           subscription_status?: string | null
           trainer_rating_system?: string | null
           trial_ends_at?: string | null

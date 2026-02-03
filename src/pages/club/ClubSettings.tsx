@@ -78,7 +78,7 @@ export default function ClubSettings() {
   const [inviting, setInviting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   
-  // Stripe Connect state
+  // Mollie Connect state
   const [connectStatus, setConnectStatus] = useState<ClubConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
@@ -91,7 +91,7 @@ export default function ClubSettings() {
         const managersData = await getClubManagers(activeClub.id);
         setManagers(managersData as Manager[]);
         
-        // Check Stripe connect status
+        // Check Mollie connect status
         setCheckingStatus(true);
         try {
           const status = await checkClubConnectStatus(activeClub.id);
@@ -108,25 +108,25 @@ export default function ClubSettings() {
     loadData();
   }, [activeClub]);
 
-  // Handle Stripe redirect callbacks
+  // Handle Mollie redirect callbacks
   useEffect(() => {
-    if (searchParams.get("stripe_success") === "true" && activeClub) {
+    if (searchParams.get("mollie_success") === "true" && activeClub) {
       toast({
-        title: t("settings.stripeConnectSuccess", "Stripe Connected"),
-        description: t("settings.stripeConnectSuccessDescription", "Your Stripe account has been connected successfully."),
+        title: t("settings.mollieConnectSuccess", "Payment Account Connected"),
+        description: t("settings.mollieConnectSuccessDescription", "Your payment account has been connected successfully."),
       });
       // Refresh status
       checkClubConnectStatus(activeClub.id).then(setConnectStatus).catch(console.error);
-    } else if (searchParams.get("stripe_refresh") === "true") {
+    } else if (searchParams.get("mollie_refresh") === "true") {
       toast({
-        title: t("settings.stripeConnectRefresh", "Complete Setup"),
-        description: t("settings.stripeConnectRefreshDescription", "Please complete your Stripe account setup."),
+        title: t("settings.mollieConnectRefresh", "Complete Setup"),
+        description: t("settings.mollieConnectRefreshDescription", "Please complete your payment account setup."),
         variant: "destructive",
       });
     }
   }, [searchParams, activeClub, toast, t]);
 
-  const handleConnectStripe = async () => {
+  const handleConnectMollie = async () => {
     if (!activeClub) return;
     
     setConnectLoading(true);
@@ -235,17 +235,17 @@ export default function ClubSettings() {
         <h2 className="text-xl font-semibold">{t("settings.title")}</h2>
         <p className="text-sm text-muted-foreground">{t("settings.description")}</p>
       </div>
-        {/* Stripe Connect Card */}
+        {/* Payment Connect Card */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-lg">
-                {t("settings.stripeConnect", "Payment Setup")}
+                {t("settings.mollieConnect", "Payment Setup")}
               </CardTitle>
             </div>
             <CardDescription>
-              {t("settings.stripeConnectDescription", "Connect your Stripe account to receive payments from club trainer bookings.")}
+              {t("settings.mollieConnectDescription", "Connect your payment account to receive payments from club trainer bookings.")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -320,14 +320,14 @@ export default function ClubSettings() {
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>{t("settings.setupIncomplete", "Setup Incomplete")}</AlertTitle>
                     <AlertDescription>
-                      {t("settings.setupIncompleteDescription", "Please complete your Stripe account setup to start receiving payments.")}
+                      {t("settings.setupIncompleteDescription", "Please complete your payment account setup to start receiving payments.")}
                     </AlertDescription>
                   </Alert>
                 )}
 
                 <div className="flex gap-2">
                   {(!connectStatus.chargesEnabled || !connectStatus.payoutsEnabled) && (
-                    <Button onClick={handleConnectStripe} disabled={connectLoading}>
+                    <Button onClick={handleConnectMollie} disabled={connectLoading}>
                       {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                       {t("settings.completeSetup", "Complete Setup")}
                     </Button>
@@ -339,10 +339,10 @@ export default function ClubSettings() {
                   {connectStatus.chargesEnabled && (
                     <Button 
                       variant="outline" 
-                      onClick={() => window.open("https://dashboard.stripe.com", "_blank")}
+                      onClick={() => window.open("https://my.mollie.com/dashboard", "_blank")}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      {t("settings.stripeDashboard", "Stripe Dashboard")}
+                      {t("settings.mollieDashboard", "Payment Dashboard")}
                     </Button>
                   )}
                 </div>
@@ -353,14 +353,14 @@ export default function ClubSettings() {
                   <CreditCard className="h-4 w-4" />
                   <AlertTitle>{t("settings.notConnected", "Not Connected")}</AlertTitle>
                   <AlertDescription>
-                    {t("settings.notConnectedDescription", "Connect your Stripe account to receive payments when players book with your club trainers.")}
+                    {t("settings.notConnectedDescription", "Connect your payment account to receive payments when players book with your club trainers.")}
                   </AlertDescription>
                 </Alert>
                 
-                <Button onClick={handleConnectStripe} disabled={connectLoading}>
+                <Button onClick={handleConnectMollie} disabled={connectLoading}>
                   {connectLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   <CreditCard className="h-4 w-4 mr-2" />
-                  {t("settings.connectStripe", "Connect Stripe")}
+                  {t("settings.connectMollie", "Connect Payment Account")}
                 </Button>
               </>
             )}

@@ -234,7 +234,7 @@
       },
       "payouts": {
         "q": "How do payouts work?",
-        "a": "Payments are processed through Stripe Connect. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+        "a": "Payments are processed through our payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
       },
       "clubTrial": {
         "q": "How does the club free trial work?",
@@ -330,7 +330,7 @@
           "account": "Account Information: Name, email address, phone number, and profile photo when you create an account.",
           "profile": "Profile Data: For trainers, this includes certifications, experience, specializations, KNLTB ratings, and availability schedules.",
           "booking": "Booking Information: Lesson details, booking history, and communication between players and trainers.",
-          "payment": "Payment Information: We use Stripe for payment processing. We do not store your full credit card details on our servers.",
+          "payment": "Payment Information: We use Mollie for payment processing. We do not store your full credit card details on our servers.",
           "communications": "Communications: When you contact us or respond to surveys, we collect the information you provide."
         }
       },
@@ -353,7 +353,7 @@
         "intro": "We may share your information in the following situations:",
         "items": {
           "users": "With Trainers/Players: To facilitate bookings, we share relevant contact and booking information between parties.",
-          "providers": "Service Providers: We use third-party services for payment processing (Stripe), email delivery (Resend), and hosting infrastructure.",
+          "providers": "Service Providers: We use third-party services for payment processing (Mollie), email delivery (Resend), and hosting infrastructure.",
           "legal": "Legal Requirements: We may disclose information if required by law or to protect our rights, privacy, safety, or property.",
           "business": "Business Transfers: In connection with a merger, acquisition, or sale of assets."
         }

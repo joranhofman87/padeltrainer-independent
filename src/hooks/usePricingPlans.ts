@@ -9,10 +9,10 @@ export interface SubscriptionPlan {
   monthly_price: number;
   yearly_price: number;
   platform_fee_percent: number;
-  stripe_price_id_monthly: string | null;
-  stripe_price_id_yearly: string | null;
-  stripe_product_id_monthly: string | null;
-  stripe_product_id_yearly: string | null;
+  mollie_plan_id_monthly: string | null;
+  mollie_plan_id_yearly: string | null;
+  mollie_product_id_monthly: string | null;
+  mollie_product_id_yearly: string | null;
   max_lessons: number | null;
   features: string[];
   is_active: boolean;

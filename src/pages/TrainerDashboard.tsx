@@ -46,7 +46,7 @@ interface SetupStatus {
   profileComplete: boolean;
   hasLessons: boolean;
   hasAvailability: boolean;
-  stripeComplete: boolean;
+  paymentsComplete: boolean;
   hasPlayers: boolean;
   clubPaymentInfo?: ClubPaymentInfo;
 }
@@ -81,7 +81,7 @@ export default function TrainerDashboard() {
     profileComplete: false,
     hasLessons: false,
     hasAvailability: false,
-    stripeComplete: false,
+    paymentsComplete: false,
     hasPlayers: false,
     clubPaymentInfo: undefined,
   });
@@ -527,7 +527,7 @@ export default function TrainerDashboard() {
         profileComplete,
         hasLessons,
         hasAvailability,
-        stripeComplete: paymentsComplete,
+        paymentsComplete,
         hasPlayers,
         clubPaymentInfo,
       });
@@ -659,7 +659,7 @@ export default function TrainerDashboard() {
         )}
 
         {/* Setup Checklist - Only show if not all complete */}
-        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.stripeComplete && setupStatus.hasPlayers) && (
+        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.paymentsComplete && setupStatus.hasPlayers) && (
           <SetupChecklist
             setupStatus={setupStatus}
             isExpanded={isSetupExpanded}
@@ -1052,7 +1052,7 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
   const { t } = useTranslation('trainer');
   const clubInfo = setupStatus.clubPaymentInfo;
   
-  let paymentLabel = 'Connect Stripe or setup manual payments';
+  let paymentLabel = 'Connect payment account or setup manual payments';
   let paymentSubLabel = '';
   
   if (clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled) {
@@ -1066,7 +1066,7 @@ function SetupChecklist({ setupStatus, isExpanded, onToggle, onNavigate }: Setup
     { key: 'profileComplete', label: 'Complete your profile information', route: '/profile/edit', complete: setupStatus.profileComplete },
     { key: 'hasLessons', label: 'Create your first lesson', route: '/lessons', complete: setupStatus.hasLessons },
     { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
-    { key: 'stripeComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/earnings', complete: setupStatus.stripeComplete, isClubManaged: clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled },
+    { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/earnings', complete: setupStatus.paymentsComplete, isClubManaged: clubInfo?.isClubTrainer && clubInfo?.clubChargesEnabled },
     { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
   ];
 

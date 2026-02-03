@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
         .in("club_profile_id", clubIds);
 
       await supabaseAdmin
-        .from("club_stripe_accounts")
+        .from("club_mollie_accounts")
         .delete()
         .in("club_profile_id", clubIds);
 

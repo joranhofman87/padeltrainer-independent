@@ -262,9 +262,9 @@ export default function AdminPricing() {
                 <Shield className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold mb-1">{t("pricing.stripeNoteTitle")}</h3>
+                <h3 className="font-semibold mb-1">{t("pricing.mollieNoteTitle")}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("pricing.stripeNote")}
+                  {t("pricing.mollieNote")}
                 </p>
               </div>
             </div>

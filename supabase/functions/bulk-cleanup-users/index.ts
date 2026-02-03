@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
           const clubIds = userClubProfiles.map((c) => c.id);
           await supabaseAdmin.from("club_trainer_invitations").delete().in("club_profile_id", clubIds);
           await supabaseAdmin.from("club_players").delete().in("club_profile_id", clubIds);
-          await supabaseAdmin.from("club_stripe_accounts").delete().in("club_profile_id", clubIds);
+          await supabaseAdmin.from("club_mollie_accounts").delete().in("club_profile_id", clubIds);
           await supabaseAdmin.from("club_managers").delete().in("club_profile_id", clubIds);
           await supabaseAdmin.from("club_profiles").delete().in("id", clubIds);
         }

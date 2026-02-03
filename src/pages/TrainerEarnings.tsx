@@ -241,7 +241,7 @@ export default function TrainerEarnings() {
         title: checked ? 'Manual invoicing enabled' : 'Automatic payments enabled',
         description: checked 
           ? 'You create invoices and handle payments yourself' 
-          : 'Players pay online via Stripe when booking'
+          : 'Players pay online via Mollie when booking'
       });
     }
   };
@@ -408,7 +408,7 @@ export default function TrainerEarnings() {
                     <p className="text-sm text-muted-foreground max-w-md">
                       {useManualInvoicing 
                         ? 'You create invoices and players pay you directly (bank transfer, cash, etc.)' 
-                        : 'Players pay you online via Stripe when booking. Money goes to your bank automatically.'}
+                        : 'Players pay you online via Mollie when booking. Money goes to your bank automatically.'}
                     </p>
                   </div>
                 </div>
