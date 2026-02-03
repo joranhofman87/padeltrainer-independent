@@ -59,13 +59,13 @@ serve(async (req) => {
     logStep("Callback received", { state: state.substring(0, 20) + '...' });
 
     // Parse state to determine entity type and ID
-    // Format: "trainer_{trainerId}_{randomState}" or "club_{clubId}_{randomState}"
+    // Format: "trainer_{trainerId}_{randomState}" or "academy_{academyId}_{randomState}"
     const stateParts = state.split('_');
     if (stateParts.length < 3) {
       throw new Error("Invalid state format");
     }
 
-    const entityType = stateParts[0]; // 'trainer' or 'club'
+    const entityType = stateParts[0]; // 'trainer' or 'academy'
     const entityId = stateParts[1];
     logStep("Parsed state", { entityType, entityId });
 
@@ -141,9 +141,9 @@ serve(async (req) => {
         throw new Error('Failed to save Mollie connection');
       }
       logStep("Trainer account updated successfully");
-    } else if (entityType === 'club') {
+    } else if (entityType === 'academy') {
       const { error: updateError } = await supabaseClient
-        .from('club_mollie_accounts')
+        .from('academy_mollie_accounts')
         .update({
           mollie_organization_id: organization.id,
           access_token: tokens.access_token,
@@ -154,13 +154,13 @@ serve(async (req) => {
           payouts_enabled: true,
           updated_at: new Date().toISOString(),
         })
-        .eq('club_profile_id', entityId);
+        .eq('academy_profile_id', entityId);
 
       if (updateError) {
-        logStep("Error updating club account", { error: updateError });
+        logStep("Error updating academy account", { error: updateError });
         throw new Error('Failed to save Mollie connection');
       }
-      logStep("Club account updated successfully");
+      logStep("Academy account updated successfully");
     } else {
       throw new Error("Invalid entity type in state");
     }

@@ -41,13 +41,119 @@ serve(async (req) => {
       throw new Error("Missing required fields: slotId, amount, trainerId");
     }
 
-    // Get trainer's Mollie account for routing
-    const { data: mollieAccount } = await supabase
-      .from("trainer_mollie_accounts")
-      .select("mollie_organization_id, access_token")
-      .eq("trainer_id", trainerId)
-      .eq("onboarding_complete", true)
+    // Get trainer profile ID from user ID
+    const { data: trainerProfile } = await supabase
+      .from("trainer_profiles")
+      .select("id")
+      .eq("user_id", trainerId)
       .single();
+
+    const trainerProfileId = trainerProfile?.id;
+    logStep("Trainer profile lookup", { trainerId, trainerProfileId });
+
+    // Check if trainer is part of an active academy
+    let recipientMollieId: string | null = null;
+    let recipientType: 'trainer' | 'academy' | null = null;
+    let platformFee = 1.00; // Default to starter fee (€1.00)
+
+    if (trainerProfileId) {
+      // First check if trainer is part of an active academy
+      const { data: academyTrainer } = await supabase
+        .from("academy_trainers")
+        .select(`
+          academy_profile_id,
+          status,
+          academy:academy_profiles(id, platform_fee_override)
+        `)
+        .eq("trainer_profile_id", trainerProfileId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (academyTrainer?.academy_profile_id) {
+        logStep("Trainer is part of academy", { academyId: academyTrainer.academy_profile_id });
+        
+        // Get academy's Mollie account
+        const { data: academyMollie } = await supabase
+          .from("academy_mollie_accounts")
+          .select("mollie_organization_id, charges_enabled")
+          .eq("academy_profile_id", academyTrainer.academy_profile_id)
+          .eq("onboarding_complete", true)
+          .single();
+
+        if (academyMollie?.mollie_organization_id && academyMollie?.charges_enabled) {
+          recipientMollieId = academyMollie.mollie_organization_id;
+          recipientType = 'academy';
+          logStep("Using academy Mollie account", { organizationId: recipientMollieId });
+
+          // Check academy's platform fee override
+          const academy = academyTrainer.academy as { platform_fee_override?: number | null };
+          if (academy?.platform_fee_override !== null && academy?.platform_fee_override !== undefined) {
+            platformFee = Number(academy.platform_fee_override);
+            logStep("Using academy fee override", { platformFee });
+          } else {
+            // Use academy tier fee (€0.50 for academies)
+            const { data: plan } = await supabase
+              .from("subscription_plans")
+              .select("platform_fee_flat")
+              .eq("tier", "academy")
+              .eq("plan_type", "trainer")
+              .eq("is_active", true)
+              .single();
+
+            if (plan?.platform_fee_flat !== null && plan?.platform_fee_flat !== undefined) {
+              platformFee = Number(plan.platform_fee_flat);
+            }
+            logStep("Using academy tier fee", { platformFee });
+          }
+        }
+      }
+    }
+
+    // If not routed to academy, check trainer's own Mollie account
+    if (!recipientMollieId && trainerProfileId) {
+      const { data: trainerMollie } = await supabase
+        .from("trainer_mollie_accounts")
+        .select("mollie_organization_id, access_token")
+        .eq("trainer_id", trainerProfileId)
+        .eq("onboarding_complete", true)
+        .single();
+
+      if (trainerMollie?.mollie_organization_id) {
+        recipientMollieId = trainerMollie.mollie_organization_id;
+        recipientType = 'trainer';
+        logStep("Using trainer Mollie account", { organizationId: recipientMollieId });
+
+        // Get trainer's fee override or tier-based default
+        const { data: trainerProfileData } = await supabase
+          .from("trainer_profiles")
+          .select("platform_fee_override, subscription_status")
+          .eq("id", trainerProfileId)
+          .single();
+
+        if (trainerProfileData?.platform_fee_override !== null && trainerProfileData?.platform_fee_override !== undefined) {
+          platformFee = Number(trainerProfileData.platform_fee_override);
+          logStep("Using trainer fee override", { platformFee });
+        } else {
+          // Look up fee from subscription_plans based on status
+          const tier = trainerProfileData?.subscription_status === "active" 
+            ? "professional" 
+            : "starter";
+            
+          const { data: plan } = await supabase
+            .from("subscription_plans")
+            .select("platform_fee_flat")
+            .eq("tier", tier)
+            .eq("plan_type", "trainer")
+            .eq("is_active", true)
+            .single();
+            
+          if (plan?.platform_fee_flat !== null && plan?.platform_fee_flat !== undefined) {
+            platformFee = Number(plan.platform_fee_flat);
+          }
+          logStep("Using tier-based fee", { tier, platformFee });
+        }
+      }
+    }
 
     // Create booking record first
     const { data: booking, error: bookingError } = await supabase
@@ -80,44 +186,12 @@ serve(async (req) => {
         booking_id: booking.id,
         player_id: user.id,
         trainer_id: trainerId,
+        recipient_type: recipientType,
       },
     };
 
-    // If trainer has connected Mollie account, use routing for split payments
-    if (mollieAccount?.mollie_organization_id) {
-      // Get trainer's fee override or tier-based default
-      const { data: trainerProfile } = await supabase
-        .from("trainer_profiles")
-        .select("platform_fee_override, subscription_status")
-        .eq("user_id", trainerId)
-        .single();
-
-      let platformFee = 1.00; // Default to starter fee (€1.00)
-
-      if (trainerProfile?.platform_fee_override !== null && trainerProfile?.platform_fee_override !== undefined) {
-        // Use trainer's custom override
-        platformFee = Number(trainerProfile.platform_fee_override);
-        logStep("Using trainer fee override", { platformFee });
-      } else {
-        // Look up fee from subscription_plans based on status
-        const tier = trainerProfile?.subscription_status === "active" 
-          ? "professional" 
-          : "starter";
-          
-        const { data: plan } = await supabase
-          .from("subscription_plans")
-          .select("platform_fee_flat")
-          .eq("tier", tier)
-          .eq("plan_type", "trainer")
-          .eq("is_active", true)
-          .single();
-          
-        if (plan?.platform_fee_flat !== null && plan?.platform_fee_flat !== undefined) {
-          platformFee = Number(plan.platform_fee_flat);
-        }
-        logStep("Using tier-based fee", { tier, platformFee });
-      }
-
+    // If we have a recipient Mollie account, use routing for split payments
+    if (recipientMollieId) {
       // Ensure fee doesn't exceed payment amount
       platformFee = Math.min(platformFee, amount);
       
@@ -129,15 +203,17 @@ serve(async (req) => {
           },
           destination: {
             type: "organization",
-            organizationId: mollieAccount.mollie_organization_id,
+            organizationId: recipientMollieId,
           },
         },
       ];
       logStep("Payment routing configured", { 
-        trainerAmount: amount - platformFee, 
+        recipientType,
+        recipientAmount: amount - platformFee, 
         platformFee,
-        hasOverride: trainerProfile?.platform_fee_override !== null
       });
+    } else {
+      logStep("No Mollie account found, payment goes to platform");
     }
 
     // Create payment via Mollie API
