@@ -134,6 +134,27 @@ export function ImportLocationsDialog({
       .replace(/^-|-$/g, "");
   };
 
+  // Haversine formula to calculate distance between two GPS points in meters
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371000; // Earth radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) ** 2 +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  };
+
   const normalizeCoordinate = (value: string): number | null => {
     if (!value || value.trim() === "") return null;
     
@@ -309,29 +330,87 @@ export function ImportLocationsDialog({
       });
     }
 
-    // Check for duplicates against existing database slugs
-    const slugsToCheck = locations.filter(l => l.isValid).map(l => l.slug);
-    if (slugsToCheck.length > 0) {
-      const { data: existingSlugs } = await supabase
-        .from("locations")
-        .select("slug")
-        .in("slug", slugsToCheck);
+    // Fetch existing locations with coordinates for proximity check
+    const { data: existingLocations } = await supabase
+      .from("locations")
+      .select("id, name, city, slug, latitude, longitude")
+      .not("latitude", "is", null);
 
-      if (existingSlugs && existingSlugs.length > 0) {
-        const existingSet = new Set(existingSlugs.map(s => s.slug));
-        for (const location of locations) {
-          if (existingSet.has(location.slug)) {
+    const existingWithCoords = existingLocations?.filter(
+      (loc) => loc.latitude !== null && loc.longitude !== null
+    ) || [];
+
+    // Build a set of existing slugs for fallback matching
+    const existingSlugs = new Set(existingLocations?.map((loc) => loc.slug) || []);
+
+    const PROXIMITY_THRESHOLD_METERS = 50; // Same venue if < 50m away
+
+    // Check for duplicates: coordinate-based first, then slug fallback
+    for (const location of locations) {
+      if (!location.isValid || location.isDuplicate) continue;
+
+      // If imported location has coordinates, check proximity
+      if (location.latitude !== null && location.longitude !== null) {
+        for (const existing of existingWithCoords) {
+          const distance = calculateDistance(
+            location.latitude,
+            location.longitude,
+            existing.latitude!,
+            existing.longitude!
+          );
+
+          if (distance < PROXIMITY_THRESHOLD_METERS) {
             location.isDuplicate = true;
-            location.errors.push(t("locations.import.errors.duplicateSlug", "Already exists"));
+            location.errors.push(
+              t("locations.import.errors.nearbyMatch", 
+                `Matches "{{name}}" ({{distance}}m away)`, 
+                { name: existing.name, distance: Math.round(distance) }
+              )
+            );
+            break;
           }
+        }
+      } else {
+        // Fallback: slug-based check if no coordinates
+        if (existingSlugs.has(location.slug)) {
+          location.isDuplicate = true;
+          location.errors.push(t("locations.import.errors.duplicateSlug", "Already exists (by name)"));
         }
       }
     }
 
-    // Check for duplicates within the file itself
+    // Check for duplicates within the file itself (coordinate-based first, then slug)
+    const seenCoords: Array<{ lat: number; lng: number; name: string }> = [];
     const seenSlugs = new Set<string>();
+
     for (const location of locations) {
-      if (location.isValid && !location.isDuplicate) {
+      if (!location.isValid || location.isDuplicate) continue;
+
+      if (location.latitude !== null && location.longitude !== null) {
+        // Check against already-seen coordinates in this file
+        for (const seen of seenCoords) {
+          const distance = calculateDistance(
+            location.latitude,
+            location.longitude,
+            seen.lat,
+            seen.lng
+          );
+          if (distance < PROXIMITY_THRESHOLD_METERS) {
+            location.isDuplicate = true;
+            location.errors.push(
+              t("locations.import.errors.duplicateInFile", 
+                `Duplicate of "{{name}}" in file`, 
+                { name: seen.name }
+              )
+            );
+            break;
+          }
+        }
+        if (!location.isDuplicate) {
+          seenCoords.push({ lat: location.latitude, lng: location.longitude, name: location.name });
+        }
+      } else {
+        // Fallback: slug check within file
         if (seenSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateInFile", "Duplicate in file"));
