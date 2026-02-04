@@ -1,68 +1,47 @@
 
 
-# Add "Padel" to Footer Text for SEO
+# Fix Subscription Overlay Race Condition & Path
 
-Update footer translations to increase "padel" keyword density across the site footer, improving local SEO signals on every page.
-
----
-
-## Current vs Proposed
-
-| Element | Current (EN) | Proposed (EN) | SEO Benefit |
-|---------|-------------|---------------|-------------|
-| Find Trainers | "Find Trainers" | "Find Padel Trainers" | +keyword |
-| All Locations | "All Locations" | "Padel Clubs" | +keyword, clearer intent |
-| Academies | "Academies" | "Padel Academies" | +keyword |
-| Popular Cities header | "Popular Cities" (hardcoded) | "Padel Trainers by City" | +keyword, +i18n fix |
-
-**Note**: The tagline already contains "padel" ("Your journey to better padel.") - no change needed there.
+Two issues need fixing in `TrainerLayout.tsx`:
 
 ---
 
-## Changes Required
+## Issue 1: Overlay Shows for Non-Trainers
 
-### 1. English Translation (`src/i18n/locales/en/marketing.json`)
+The overlay renders immediately (sync) before the `useEffect` redirect (async) can navigate non-trainer users away.
 
-```json
-// Lines 14-15, add new key for cities header
-"findTrainers": "Find Padel Trainers",      // was: "Find Trainers"
-"locations": "Padel Clubs",                  // was: "All Locations"
-"academies": "Padel Academies",              // new key (currently fallback)
-"popularCities": "Padel Trainers by City",   // new key (currently hardcoded)
-```
+**Fix**: Add `role === 'trainer'` guard to overlay condition
 
-### 2. Dutch Translation (`src/i18n/locales/nl/marketing.json`)
-
-```json
-"findTrainers": "Vind Padeltrainers",        // was: "Vind Trainers"
-"locations": "Padelclubs",                    // was: "Alle Locaties"
-"academies": "Padelacademies",                // new key
-"popularCities": "Padeltrainers per stad",    // new key
-```
-
-### 3. Component Fix (`src/components/marketing/MarketingLayout.tsx`)
-
-Replace hardcoded "Popular Cities" with translation key:
 ```tsx
-// Line 172: Replace hardcoded string
-<h4 className="font-semibold mb-4">{t('footer.popularCities')}</h4>
+// Line 92: Add role check
+{!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && (
 ```
 
 ---
 
-## Impact Summary
+## Issue 2: Wrong Subscription Path
 
-| Metric | Before | After |
-|--------|--------|-------|
-| "Padel" mentions in footer | 1 (tagline only) | 5 (tagline + 4 links) |
-| Hardcoded strings fixed | 1 | 0 |
-| Pages affected | All marketing pages | Same |
+The subscription path points to `/subscription` which causes a 404.
+
+**Fix**: Change to `/trainer/subscription`
+
+```tsx
+// Line 95: Fix path
+subscriptionPath="/trainer/subscription"
+```
+
+---
+
+## Changes Summary
+
+| Line | Current | Fixed |
+|------|---------|-------|
+| 92 | `{!loading && isSubscriptionExpired && ...}` | `{!loading && role === 'trainer' && isSubscriptionExpired && ...}` |
+| 95 | `subscriptionPath="/subscription"` | `subscriptionPath="/trainer/subscription"` |
 
 ---
 
 ## Files Modified
 
-- `src/i18n/locales/en/marketing.json` (4 string updates)
-- `src/i18n/locales/nl/marketing.json` (4 string updates)
-- `src/components/marketing/MarketingLayout.tsx` (1 line - i18n fix)
+- `src/components/trainer/TrainerLayout.tsx` (2 line changes)
 
