@@ -89,10 +89,10 @@ export default function TrainerLayout() {
       </div>
       
       {/* Subscription Paywall Overlay */}
-      {!loading && isSubscriptionExpired && !isOnSubscriptionPage && (
+      {!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && (
         <SubscriptionOverlay
           roleName="trainer"
-          subscriptionPath="/subscription"
+          subscriptionPath="/trainer/subscription"
           pricing={{
             monthly: SUBSCRIPTION_TIERS.professional.monthlyPrice,
             yearly: SUBSCRIPTION_TIERS.professional.yearlyPrice,
