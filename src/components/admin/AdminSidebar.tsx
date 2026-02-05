@@ -43,6 +43,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Mail,
+  ImageIcon,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -61,6 +62,7 @@ const settingsNavItems = [
   { title: "Review Tags", url: "/admin/review-tags", icon: Tags },
   { title: "Pricing Plans", url: "/admin/pricing", icon: CreditCard },
   { title: "Onboarding Emails", url: "/admin/onboarding-emails", icon: Mail },
+  { title: "Partner Banners", url: "/admin/banners", icon: ImageIcon },
 ];
 
 export function AdminSidebar() {

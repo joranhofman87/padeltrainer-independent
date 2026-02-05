@@ -2189,6 +2189,76 @@ export type Database = {
         }
         Relationships: []
       }
+      partner_banners: {
+        Row: {
+          click_count: number
+          club_profile_id: string | null
+          created_at: string
+          display_order: number
+          end_date: string | null
+          id: string
+          image_url: string
+          impression_count: number
+          is_active: boolean
+          link_url: string | null
+          name: string
+          start_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          click_count?: number
+          club_profile_id?: string | null
+          created_at?: string
+          display_order?: number
+          end_date?: string | null
+          id?: string
+          image_url: string
+          impression_count?: number
+          is_active?: boolean
+          link_url?: string | null
+          name: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          click_count?: number
+          club_profile_id?: string | null
+          created_at?: string
+          display_order?: number
+          end_date?: string | null
+          id?: string
+          image_url?: string
+          impression_count?: number
+          is_active?: boolean
+          link_url?: string | null
+          name?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_banners_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_banners_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_banners_club_profile_id_fkey"
+            columns: ["club_profile_id"]
+            isOneToOne: false
+            referencedRelation: "club_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_locations: {
         Row: {
           created_at: string

@@ -69,6 +69,7 @@ import AdminTrainers from '@/pages/admin/AdminTrainers';
 import AdminAcademies from '@/pages/admin/AdminAcademies';
 import AdminPricing from '@/pages/admin/AdminPricing';
 import AdminOnboardingEmails from '@/pages/admin/AdminOnboardingEmails';
+import AdminBanners from '@/pages/admin/AdminBanners';
 import AdminClubClaims from '@/pages/admin/AdminClubClaims';
 import ClubDashboard from '@/pages/club/ClubDashboard';
 import ClubLayout from '@/components/club/ClubLayout';
@@ -216,6 +217,7 @@ function AppRoutes() {
         <Route path="academies" element={<AdminAcademies />} />
         <Route path="pricing" element={<AdminPricing />} />
         <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
+        <Route path="banners" element={<AdminBanners />} />
       </Route>
       
       {/* Club routes */}
@@ -319,6 +321,7 @@ function CombinedRoutes() {
         <Route path="academies" element={<AdminAcademies />} />
         <Route path="pricing" element={<AdminPricing />} />
         <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
+        <Route path="banners" element={<AdminBanners />} />
       </Route>
       
       {/* Club routes */}
