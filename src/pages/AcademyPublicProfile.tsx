@@ -104,8 +104,8 @@ export default function AcademyPublicProfile() {
           return;
         }
 
-        // Only show if public or verified
-        if (!academyData.is_public && !academyData.is_verified) {
+        // Only show if public
+        if (!academyData.is_public) {
           navigate(localizePath('/academies'));
           return;
         }
