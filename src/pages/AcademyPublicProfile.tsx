@@ -36,6 +36,7 @@ import {
   type AcademyProfile 
 } from '@/lib/academy';
 import { AcademyOpenCycles } from '@/components/academy/AcademyOpenCycles';
+import { WaitingListCard } from '@/components/waitingList';
 import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
@@ -449,6 +450,14 @@ export default function AcademyPublicProfile() {
             academyId={academy.id!}
             academyName={academy.name || 'Academy'}
           />
+          {/* Waiting List Card - shows below cycles section */}
+          <div className="mt-6">
+            <WaitingListCard
+              ownerType="academy"
+              ownerId={academy.id!}
+              ownerName={academy.name || 'Academy'}
+            />
+          </div>
         </ProfileFullWidthSection>
 
         {/* Full Width - Reviews Section */}

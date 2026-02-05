@@ -13,6 +13,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
+import { MyWaitingListEntries } from '@/components/waitingList';
 
 interface FollowedTrainer {
   id: string;
@@ -454,6 +455,10 @@ export default function PlayerDashboard() {
           </Card>
         )}
 
+        {/* Waiting List Entries */}
+        <div className="mb-8">
+          <MyWaitingListEntries />
+        </div>
         {/* Quick Actions */}
         <div className="grid md:grid-cols-3 gap-4 mb-8">
           <Card 

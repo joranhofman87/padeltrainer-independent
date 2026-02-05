@@ -1,0 +1,52 @@
+{
+  "title": "Waiting List",
+  "joinWaitingList": "Join Waiting List",
+  "noSpotsAvailable": "No training spots available right now",
+  "getNotified": "Join the waiting list and we'll notify you when a spot opens up.",
+  "alreadyOnList": "You're already on the waiting list",
+  "form": {
+    "lessonType": "What type of training are you looking for?",
+    "lessonTypes": {
+      "private": "Private lesson",
+      "duo": "Duo lesson (2 players)",
+      "group": "Group training",
+      "kids": "Kids training"
+    },
+    "hasGroup": "Do you already have training partners?",
+    "groupSize": "How many people in your group?",
+    "rating": "Your skill level",
+    "ratingSystem": "Rating system",
+    "availability": "When are you available?",
+    "notes": "Anything else we should know?",
+    "notesPlaceholder": "e.g., preferred trainer, specific goals, schedule constraints...",
+    "submit": "Add to Waiting List",
+    "submitting": "Adding..."
+  },
+  "success": {
+    "title": "You're on the list!",
+    "message": "We'll reach out when a spot becomes available."
+  },
+  "myEntries": {
+    "title": "My Waiting List",
+    "empty": "You're not on any waiting lists",
+    "active": "Active",
+    "contacted": "Contacted",
+    "archived": "Archived",
+    "remove": "Remove",
+    "removeConfirm": "Are you sure you want to remove yourself from this waiting list?",
+    "joinedOn": "Joined"
+  },
+  "management": {
+    "title": "Waiting List",
+    "empty": "No one on the waiting list yet",
+    "markContacted": "Mark Contacted",
+    "archive": "Archive",
+    "contactPlayer": "Contact Player",
+    "filters": {
+      "all": "All",
+      "active": "Active",
+      "contacted": "Contacted",
+      "archived": "Archived"
+    }
+  }
+}

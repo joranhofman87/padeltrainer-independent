@@ -3176,6 +3176,85 @@ export type Database = {
         }
         Relationships: []
       }
+      waiting_list_entries: {
+        Row: {
+          contacted_at: string | null
+          created_at: string
+          group_size: number | null
+          has_group: boolean
+          id: string
+          lesson_type: string
+          notes: string | null
+          owner_id: string
+          owner_type: string
+          player_id: string
+          preferred_days: string[] | null
+          preferred_time_windows: Json | null
+          rating: number | null
+          rating_system: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          contacted_at?: string | null
+          created_at?: string
+          group_size?: number | null
+          has_group?: boolean
+          id?: string
+          lesson_type: string
+          notes?: string | null
+          owner_id: string
+          owner_type: string
+          player_id: string
+          preferred_days?: string[] | null
+          preferred_time_windows?: Json | null
+          rating?: number | null
+          rating_system?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          contacted_at?: string | null
+          created_at?: string
+          group_size?: number | null
+          has_group?: boolean
+          id?: string
+          lesson_type?: string
+          notes?: string | null
+          owner_id?: string
+          owner_type?: string
+          player_id?: string
+          preferred_days?: string[] | null
+          preferred_time_windows?: Json | null
+          rating?: number | null
+          rating_system?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waiting_list_entries_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waiting_list_entries_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waiting_list_entries_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       academy_profiles_public: {
