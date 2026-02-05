@@ -20,7 +20,7 @@ export default function TrainerLayout() {
       if (!user) {
         navigate('/auth');
       } else if (!role) {
-        navigate('/select-role');
+        navigate('/auth');
       } else if (role !== 'trainer') {
         navigate('/player');
       }

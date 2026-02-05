@@ -144,10 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Use setTimeout to avoid potential deadlock with Supabase client
-          setTimeout(() => {
-            fetchUserData(session.user.id);
-          }, 0);
+          // Await fetchUserData to ensure role is loaded before setting loading to false
+          await fetchUserData(session.user.id);
 
           // Trigger welcome emails when user signs in with confirmed email
           // This handles the case where user just confirmed their email
@@ -181,12 +179,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserData(session.user.id);
+        await fetchUserData(session.user.id);
       }
       setLoading(false);
     });

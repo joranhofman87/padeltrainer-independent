@@ -67,15 +67,6 @@ test.describe('Dashboard Access Control', () => {
     });
   });
 
-  test.describe('Role Selection', () => {
-    test('should display select role page', async ({ page }) => {
-      await page.goto('/select-role');
-      await waitForNavigation(page);
-      
-      // Should show role selection or redirect
-      await expect(page.locator('body')).toBeVisible();
-    });
-  });
 });
 
 test.describe('Dashboard UI Elements (when accessible)', () => {

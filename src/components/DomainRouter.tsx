@@ -30,7 +30,7 @@ import MollieCallback from '@/pages/MollieCallback';
 import Auth from '@/pages/Auth';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import SelectRole from '@/pages/SelectRole';
+
 import PlayerSignup from '@/pages/PlayerSignup';
 import TrainerSignup from '@/pages/TrainerSignup';
 import ClubSignup from '@/pages/ClubSignup';
@@ -116,7 +116,7 @@ function MarketingRoutes() {
       <Route path="/reset-password" element={<RedirectToAppDomain path="/reset-password" />} />
       <Route path="/signup/*" element={<RedirectToAppDomain path="/signup" />} />
       <Route path="/onboarding/*" element={<RedirectToAppDomain path="/onboarding" />} />
-      <Route path="/select-role" element={<RedirectToAppDomain path="/select-role" />} />
+      
       <Route path="/player/*" element={<RedirectToAppDomain path="/player" />} />
       <Route path="/trainer/*" element={<RedirectToAppDomain path="/trainer" />} />
       <Route path="/club/*" element={<RedirectToAppDomain path="/club" />} />
@@ -175,7 +175,6 @@ function AppRoutes() {
       <Route path="/onboarding/club" element={<ClubOnboarding />} />
       <Route path="/onboarding/:role" element={<Onboarding />} />
       <Route path="/academy/onboarding" element={<AcademyOnboarding />} />
-      <Route path="/select-role" element={<SelectRole />} />
       
       {/* Player routes */}
       <Route path="/player" element={<PlayerLayout />}>
@@ -283,7 +282,7 @@ function CombinedRoutes() {
       <Route path="/onboarding/club" element={<ClubOnboarding />} />
       <Route path="/onboarding/:role" element={<Onboarding />} />
       <Route path="/academy/onboarding" element={<AcademyOnboarding />} />
-      <Route path="/select-role" element={<SelectRole />} />
+      
       
       {/* Player routes */}
       <Route path="/player" element={<PlayerLayout />}>
