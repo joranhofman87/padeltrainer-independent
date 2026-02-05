@@ -308,6 +308,7 @@
     "trainerPayments": "Trainer Payment Routing",
     "trainerPaymentsDescription": "How payments are distributed to your trainers",
     "trainerPaymentsInfo1": "When your academy is connected to a payment account, all lesson bookings from your trainers will be processed through your academy account.",
-    "trainerPaymentsInfo2": "You can manage payment splits for each trainer in the Trainers section. Trainers will see on their earnings page that payments are handled by your academy."
+    "trainerPaymentsInfo2": "You can manage payment splits for each trainer in the Trainers section. Trainers will see on their earnings page that payments are handled by your academy.",
+    "connectMollieAccount": "Connect Mollie"
   }
 }
