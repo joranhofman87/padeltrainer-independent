@@ -1,65 +1,100 @@
 
 
-# Fix Mollie Connection: Full Reconnection Flow
+# Add Auto-Logout on Invalid Session Token
 
-## Overview
+## Problem
 
-Reset the stuck trainer record and fix the redirect URI mismatch so the OAuth flow works correctly on retry.
+When a user's refresh token becomes invalid (expired, revoked, or corrupted), the application gets stuck in an infinite loading state because:
+1. `getSession()` may return a stale session object from localStorage
+2. Subsequent API calls fail silently or the session can't be refreshed
+3. The loading state never resolves, leaving users stuck
 
-## Changes
+## Solution
 
-### 1. Database Migration - Reset Trainer's Mollie Account
+Add error handling in the `useAuth` hook to detect invalid session errors and automatically sign out the user, clearing the corrupted session and redirecting to login.
 
-Clear the pending state so the trainer can reconnect:
+## Technical Changes
 
-```sql
-UPDATE trainer_mollie_accounts 
-SET 
-  mollie_organization_id = NULL,
-  access_token = NULL,
-  refresh_token = NULL,
-  token_expires_at = NULL,
-  onboarding_complete = false,
-  charges_enabled = false,
-  payouts_enabled = false,
-  updated_at = NOW()
-WHERE trainer_id = 'dc4abd48-3b65-477e-a2fe-aa512217115e';
-```
+### File: `src/hooks/useAuth.tsx`
 
-### 2. Fix Redirect URI in Edge Function
+**1. Handle TOKEN_REFRESHED failures in onAuthStateChange**
 
-**File:** `supabase/functions/mollie-callback/index.ts`
-
-The current code dynamically builds the redirect URI from the request origin header, which may not match what was registered with Mollie. Hardcode the production URI:
+The `onAuthStateChange` listener receives a `TOKEN_REFRESH_FAILED` event when refresh fails. We need to catch this and sign out:
 
 ```typescript
-// Before (line 74):
-const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
-const redirectUri = `${origin}/api/mollie-callback`;
-
-// After:
-const redirectUri = 'https://app.padeltrainer.ai/api/mollie-callback';
+// Inside onAuthStateChange callback (around line 142)
+if (event === 'TOKEN_REFRESHED' && !session) {
+  // Token refresh failed - sign out to clear invalid session
+  logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
+  await supabase.auth.signOut();
+  return;
+}
 ```
 
-### 3. Add Debug Logging to Callback Page
+**2. Add error handling to getSession()**
 
-**File:** `src/pages/MollieCallback.tsx`
-
-Add logging before the edge function call to help debug future issues:
+Wrap the `getSession()` call to catch errors and handle invalid sessions:
 
 ```typescript
-// Add after line 23 (before the try block):
-console.log('[MollieCallback] Processing callback:', { 
-  hasCode: !!code, 
-  statePrefix: state?.substring(0, 30),
-  origin: window.location.origin 
+// Replace the getSession call (lines 182-190)
+supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+  // If there's an error getting the session, sign out to clear corrupted state
+  if (error) {
+    logger.warn('Failed to get session, signing out', { component: 'useAuth', error });
+    await supabase.auth.signOut();
+    setLoading(false);
+    return;
+  }
+  
+  setSession(session);
+  setUser(session?.user ?? null);
+  
+  if (session?.user) {
+    await fetchUserData(session.user.id);
+  }
+  setLoading(false);
+}).catch(async (error) => {
+  logger.error('Session retrieval error', error, { component: 'useAuth' });
+  await supabase.auth.signOut();
+  setLoading(false);
 });
 ```
 
+**3. Add periodic session validation**
+
+Add a check that validates the session periodically and signs out if invalid:
+
+```typescript
+// Add new useEffect after line 211
+useEffect(() => {
+  // Periodically validate session is still valid (every 5 minutes)
+  const interval = setInterval(async () => {
+    if (!session) return;
+    
+    const { error } = await supabase.auth.getUser();
+    if (error?.message?.includes('Invalid Refresh Token') || 
+        error?.message?.includes('Refresh Token Not Found')) {
+      logger.warn('Invalid session detected, signing out', { component: 'useAuth' });
+      await supabase.auth.signOut();
+    }
+  }, 300000); // 5 minutes
+
+  return () => clearInterval(interval);
+}, [session]);
+```
+
+## Summary of Changes
+
+| Location | Change |
+|----------|--------|
+| Line ~142 | Handle `TOKEN_REFRESHED` event with null session |
+| Lines 182-190 | Add error handling to `getSession()` |
+| After line 211 | Add periodic session validation |
+
 ## Expected Result
 
-1. Trainer's record is reset to allow fresh OAuth connection
-2. Redirect URI will always match Mollie's registered callback URL
-3. Future debugging will be easier with console logs
-4. Trainer can retry connecting Mollie from `/trainer/earnings`
+- Invalid/expired sessions are automatically detected
+- User is signed out and session is cleared from localStorage
+- User can then log in fresh without manual localStorage clearing
+- Loading states will properly resolve even with invalid sessions
 
