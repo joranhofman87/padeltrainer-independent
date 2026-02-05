@@ -1,67 +1,50 @@
 
+# Fix: Trainer Trial Status Not Being Recognized
 
-# Mollie OAuth Callback URL Configuration
+## Problem
 
-## Current Behavior
+The trainer `joranhofman87+trainermollie@gmail.com` has an active trial (until Feb 12th) but sees the subscription paywall because:
 
-The edge functions already correctly build the redirect URI:
+1. The `check-mollie-subscription` edge function checks trial status for academies/clubs but **not for trainers**
+2. The function returns `{ subscribed: false, status: "none" }` for trainers without a Mollie customer ID, even if they're in a trial
+3. The frontend sets `isInTrial: data.status === 'trialing'`, but the backend never returns that status for trainers
 
-```typescript
-const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
-const redirectUri = `${origin}/api/mollie-callback`;
-```
+## Solution
 
-- **From preview**: Uses `https://id-preview--*.lovable.app/api/mollie-callback`
-- **From production**: Uses `https://app.padeltrainer.ai/api/mollie-callback`
+Add trainer trial checking logic to the edge function, matching the existing pattern for academies/clubs.
 
-## Implementation Required
-
-### 1. Create Frontend Callback Page
-
-**File:** `src/pages/MollieCallback.tsx`
-
-Handles the OAuth return, calls the edge function, and redirects to settings.
-
-### 2. Register Route
-
-**File:** `src/components/DomainRouter.tsx`
-
-Add `/api/mollie-callback` route for both app and development modes.
-
----
-
-## Mollie Dashboard Configuration Required
-
-You must register **all** redirect URIs in your Mollie Dashboard (App Settings → Redirect URIs):
-
-| Environment | Redirect URI |
-|------------|--------------|
-| **Production** | `https://app.padeltrainer.ai/api/mollie-callback` |
-| **Preview** | `https://id-preview--f04c6cfe-e2a8-41a5-974c-e82c2372539e.lovable.app/api/mollie-callback` |
-
-Mollie requires exact URL matching - each preview URL needs to be registered if you want to test there.
-
----
-
-## Files to Create/Modify
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/MollieCallback.tsx` | **Create** - Handle OAuth callback |
-| `src/components/DomainRouter.tsx` | Add `/api/mollie-callback` route |
+| `supabase/functions/check-mollie-subscription/index.ts` | Add trial period check for trainers |
 
----
+## Technical Changes
 
-## Alternative: Fixed Production-Only Callback
+### check-mollie-subscription Edge Function
 
-If you prefer to **always** use the production URL (even when testing from preview), we can modify the edge functions to hardcode the redirect URI:
+Add trial_ends_at to the trainer query and check it before the "no Mollie customer" fallback:
 
 ```typescript
-// Always use production URL regardless of origin
-const redirectUri = "https://app.padeltrainer.ai/api/mollie-callback";
+// In the trainer section, update the select to include trial_ends_at
+.select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at, trial_ends_at")
+
+// After fetching trainer profile, check trial status (before the customerId check)
+if (type === "trainer" && profile.trial_ends_at) {
+  const trialEnd = new Date(profile.trial_ends_at);
+  if (trialEnd > new Date()) {
+    logStep("Trainer is in trial period");
+    return new Response(
+      JSON.stringify({
+        subscribed: false,  // Not technically subscribed, but in trial
+        status: "trialing",
+        tier: "trial",
+        trialEndsAt: profile.trial_ends_at,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
 ```
 
-This simplifies Mollie configuration (only one URL to register) but means you'd need to test OAuth flows against production.
-
-**Recommendation**: Keep dynamic origin for flexibility in development, and register both URLs in Mollie.
-
+This ensures the frontend receives `status: "trialing"` and `trialEndsAt`, which correctly sets `isInTrial: true` and prevents the paywall overlay.
