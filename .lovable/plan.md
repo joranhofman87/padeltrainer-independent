@@ -1,33 +1,67 @@
 
 
-# Fix Academy Earnings Page - UI Improvements
+# Mollie OAuth Callback URL Configuration
 
-## Changes to Apply
+## Current Behavior
 
-### 1. Add Container Padding
-**File:** `src/pages/academy/AcademyEarnings.tsx`
+The edge functions already correctly build the redirect URI:
 
-Update the outer wrapper from `<div className="space-y-6">` to `<div className="container mx-auto px-4 py-8 space-y-6">` to match other academy pages.
+```typescript
+const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
+const redirectUri = `${origin}/api/mollie-callback`;
+```
 
-### 2. Update Button Text
-**File:** `src/pages/academy/AcademyEarnings.tsx`
+- **From preview**: Uses `https://id-preview--*.lovable.app/api/mollie-callback`
+- **From production**: Uses `https://app.padeltrainer.ai/api/mollie-callback`
 
-Change the Connect Mollie button text from `t('settings.connectMollie')` to `t('earnings.connectMollieAccount')`.
+## Implementation Required
 
-### 3. Add Translation Keys
-**Files:** `src/i18n/locales/en/academy.json` and `src/i18n/locales/nl/academy.json`
+### 1. Create Frontend Callback Page
 
-Add the new translation key:
-- English: `"connectMollieAccount": "Connect Mollie"`
-- Dutch: `"connectMollieAccount": "Koppel Mollie"`
+**File:** `src/pages/MollieCallback.tsx`
+
+Handles the OAuth return, calls the edge function, and redirects to settings.
+
+### 2. Register Route
+
+**File:** `src/components/DomainRouter.tsx`
+
+Add `/api/mollie-callback` route for both app and development modes.
 
 ---
 
-## Files to Modify
+## Mollie Dashboard Configuration Required
+
+You must register **all** redirect URIs in your Mollie Dashboard (App Settings → Redirect URIs):
+
+| Environment | Redirect URI |
+|------------|--------------|
+| **Production** | `https://app.padeltrainer.ai/api/mollie-callback` |
+| **Preview** | `https://id-preview--f04c6cfe-e2a8-41a5-974c-e82c2372539e.lovable.app/api/mollie-callback` |
+
+Mollie requires exact URL matching - each preview URL needs to be registered if you want to test there.
+
+---
+
+## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/academy/AcademyEarnings.tsx` | Add container padding, update button translation key |
-| `src/i18n/locales/en/academy.json` | Add `connectMollieAccount` key in earnings section |
-| `src/i18n/locales/nl/academy.json` | Add `connectMollieAccount` key in earnings section |
+| `src/pages/MollieCallback.tsx` | **Create** - Handle OAuth callback |
+| `src/components/DomainRouter.tsx` | Add `/api/mollie-callback` route |
+
+---
+
+## Alternative: Fixed Production-Only Callback
+
+If you prefer to **always** use the production URL (even when testing from preview), we can modify the edge functions to hardcode the redirect URI:
+
+```typescript
+// Always use production URL regardless of origin
+const redirectUri = "https://app.padeltrainer.ai/api/mollie-callback";
+```
+
+This simplifies Mollie configuration (only one URL to register) but means you'd need to test OAuth flows against production.
+
+**Recommendation**: Keep dynamic origin for flexibility in development, and register both URLs in Mollie.
 
