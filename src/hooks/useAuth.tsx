@@ -140,6 +140,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set up auth state listener FIRST
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // Handle token refresh failures - sign out to clear invalid session
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
+          await supabase.auth.signOut();
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -179,13 +186,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      // If there's an error getting the session, sign out to clear corrupted state
+      if (error) {
+        logger.warn('Failed to get session, signing out', { component: 'useAuth', error });
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         await fetchUserData(session.user.id);
       }
+      setLoading(false);
+    }).catch(async (error) => {
+      logger.error('Session retrieval error', error as Error, { component: 'useAuth' });
+      await supabase.auth.signOut();
       setLoading(false);
     });
 
@@ -209,6 +228,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(interval);
   }, [role, session?.access_token, fetchSubscription]);
+
+  // Periodically validate session is still valid (every 5 minutes)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!session) return;
+      
+      const { error } = await supabase.auth.getUser();
+      if (error?.message?.includes('Invalid Refresh Token') || 
+          error?.message?.includes('Refresh Token Not Found')) {
+        logger.warn('Invalid session detected, signing out', { component: 'useAuth' });
+        await supabase.auth.signOut();
+      }
+    }, 300000); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, [session]);
 
   return (
     <AuthContext.Provider value={{ 
