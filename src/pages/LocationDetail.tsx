@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
+import { WaitingListCard } from '@/components/waitingList';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { Button } from '@/components/ui/button';
@@ -478,6 +479,13 @@ export default function LocationDetail() {
             <LocationOpenCycles
               locationId={location.id}
               locationName={location.name}
+            />
+
+            {/* Waiting List Card */}
+            <WaitingListCard
+              ownerType="location"
+              ownerId={location.id}
+              ownerName={location.name}
             />
 
             {/* Upcoming Tournaments */}

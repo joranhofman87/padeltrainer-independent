@@ -1,0 +1,52 @@
+{
+  "title": "Wachtlijst",
+  "joinWaitingList": "Zet jezelf op de wachtlijst",
+  "noSpotsAvailable": "Er zijn momenteel geen trainingsplekken beschikbaar",
+  "getNotified": "Zet jezelf op de wachtlijst en we laten het je weten zodra er plek is.",
+  "alreadyOnList": "Je staat al op de wachtlijst",
+  "form": {
+    "lessonType": "Welk type training zoek je?",
+    "lessonTypes": {
+      "private": "Privéles",
+      "duo": "Duoles (2 spelers)",
+      "group": "Groepstraining",
+      "kids": "Kindertraining"
+    },
+    "hasGroup": "Heb je al trainingspartners?",
+    "groupSize": "Hoeveel personen in je groep?",
+    "rating": "Je speelniveau",
+    "ratingSystem": "Ratingsysteem",
+    "availability": "Wanneer ben je beschikbaar?",
+    "notes": "Is er nog iets dat we moeten weten?",
+    "notesPlaceholder": "bijv. voorkeur trainer, specifieke doelen, schema beperkingen...",
+    "submit": "Zet op wachtlijst",
+    "submitting": "Bezig met toevoegen..."
+  },
+  "success": {
+    "title": "Je staat op de lijst!",
+    "message": "We nemen contact met je op zodra er plek is."
+  },
+  "myEntries": {
+    "title": "Mijn wachtlijst",
+    "empty": "Je staat niet op een wachtlijst",
+    "active": "Actief",
+    "contacted": "Gecontacteerd",
+    "archived": "Gearchiveerd",
+    "remove": "Verwijderen",
+    "removeConfirm": "Weet je zeker dat je jezelf van deze wachtlijst wilt verwijderen?",
+    "joinedOn": "Aangemeld op"
+  },
+  "management": {
+    "title": "Wachtlijst",
+    "empty": "Niemand op de wachtlijst",
+    "markContacted": "Markeer gecontacteerd",
+    "archive": "Archiveren",
+    "contactPlayer": "Neem contact op",
+    "filters": {
+      "all": "Alle",
+      "active": "Actief",
+      "contacted": "Gecontacteerd",
+      "archived": "Gearchiveerd"
+    }
+  }
+}
