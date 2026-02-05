@@ -254,3 +254,119 @@ export async function bulkCleanupUsers(): Promise<{
 
   return response.data;
 }
+
+// Background logo fetching cron job management
+export interface BackgroundLogoJobStatus {
+  isEnabled: boolean;
+  jobId: number | null;
+  pendingCount: number;
+  processedCount: number;
+  withLogosCount: number;
+}
+
+export async function getBackgroundLogoJobStatus(): Promise<BackgroundLogoJobStatus> {
+  // Check if cron job exists
+  const { data: cronJob } = await supabase
+    .from("cron.job" as any)
+    .select("jobid")
+    .eq("jobname", "fetch-location-logos-background")
+    .single();
+
+  // Get location stats
+  const { count: pendingCount } = await supabase
+    .from("locations")
+    .select("*", { count: "exact", head: true })
+    .not("website_url", "is", null)
+    .is("logo_fetched_at", null);
+
+  const { count: processedCount } = await supabase
+    .from("locations")
+    .select("*", { count: "exact", head: true })
+    .not("website_url", "is", null)
+    .not("logo_fetched_at", "is", null);
+
+  const { count: withLogosCount } = await supabase
+    .from("locations")
+    .select("*", { count: "exact", head: true })
+    .not("logo_url", "is", null);
+
+  return {
+    isEnabled: !!cronJob,
+    jobId: cronJob?.jobid || null,
+    pendingCount: pendingCount || 0,
+    processedCount: processedCount || 0,
+    withLogosCount: withLogosCount || 0,
+  };
+}
+
+export async function enableBackgroundLogoJob(): Promise<{ success: boolean; jobId?: number }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  // Check if job already exists
+  const { data: existingJob } = await supabase
+    .from("cron.job" as any)
+    .select("jobid")
+    .eq("jobname", "fetch-location-logos-background")
+    .single();
+
+  if (existingJob) {
+    return { success: true, jobId: existingJob.jobid };
+  }
+
+  // Create the cron job via RPC
+  const { data, error } = await supabase.rpc("schedule_logo_fetch_job" as any);
+  
+  if (error) {
+    throw new Error(error.message || "Failed to enable background job");
+  }
+
+  return { success: true, jobId: data };
+}
+
+export async function disableBackgroundLogoJob(): Promise<{ success: boolean }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const { error } = await supabase.rpc("unschedule_logo_fetch_job" as any);
+  
+  if (error) {
+    throw new Error(error.message || "Failed to disable background job");
+  }
+
+  return { success: true };
+}
+
+export async function resetLogoFetchedAt(options: { 
+  onlyWithoutLogos?: boolean;
+}): Promise<{ count: number }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  let query = supabase
+    .from("locations")
+    .update({ logo_fetched_at: null })
+    .not("website_url", "is", null)
+    .not("logo_fetched_at", "is", null);
+
+  if (options.onlyWithoutLogos) {
+    query = query.is("logo_url", null);
+  }
+
+  const { data, error } = await query.select("id");
+  
+  if (error) {
+    throw new Error(error.message || "Failed to reset logo_fetched_at");
+  }
+
+  return { count: data?.length || 0 };
+}
