@@ -1,70 +1,56 @@
 
 
-# Background Logo Fetching for Locations
+# Improve Location Search in Admin Panel
 
-Enable automatic logo fetching using a scheduled database job that runs independently of the admin browser session.
-
----
-
-## Current State
-
-| Metric | Count |
-|--------|-------|
-| Total locations | 1,703 |
-| Pending first fetch | 275 |
-| Already processed | 1,400 |
-| Have logos | 1,149 |
-
-The current approach requires the admin to keep the dialog open while scraping runs.
+Enhance the location search functionality when connecting locations to academies so users can search by any part of the name or city, across all 1,700+ locations.
 
 ---
 
-## Solution: Database-Scheduled Background Job
+## Current Problem
 
-Use the existing `pg_cron` infrastructure (already used for onboarding emails) to schedule the logo fetch edge function to run automatically.
+The admin panel's `AcademyEditDialog` limits loaded locations to the first 500 for performance. While the search logic already filters by name and city, it can only search within this limited subset - locations outside the first 500 are invisible to the search.
+
+---
+
+## Solution: Server-Side Search
+
+Replace the client-side search with server-side search that queries the full database when the user types a search term.
 
 ---
 
 ## Implementation
 
-### 1. Create Database Migration for Cron Job
+### 1. Add Server-Side Location Search Function
 
-Schedule the `fetch-location-logos` edge function to run every 15 minutes, processing 10 locations per run:
+Create a new function in `src/lib/locations.ts` that searches locations directly in the database:
 
-```sql
--- Schedule background logo fetching (runs every 15 minutes)
-SELECT cron.schedule(
-  'fetch-location-logos-background',
-  '*/15 * * * *',  -- Every 15 minutes
-  $$
-  SELECT
-    net.http_post(
-      url := 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/fetch-location-logos',
-      headers := '{"Content-Type": "application/json", "Authorization": "Bearer ..."}'::jsonb,
-      body := '{"batch_size": 10}'::jsonb
-    ) as request_id;
-  $$
-);
+```text
+searchLocations(query: string, limit: number)
+  - Uses ilike for partial matching on name
+  - Uses ilike for partial matching on city
+  - Returns matching locations up to the limit
+  - Handles empty query by returning first N locations
 ```
 
-### 2. Add Admin Controls to Enable/Disable
+### 2. Update Admin Academy Edit Dialog
 
-Update the `ScrapeLogosDialog` to include:
+Modify `src/components/admin/AcademyEditDialog.tsx`:
 
-| Control | Action |
-|---------|--------|
-| Enable Background Fetch | Creates the cron job |
-| Disable Background Fetch | Removes the cron job |
-| Status indicator | Shows if job is running |
-| Retry All toggle | Allow re-processing locations that already have `logo_fetched_at` set |
+| Change | Description |
+|--------|-------------|
+| Add debounced search | Prevent excessive API calls while typing |
+| Load initial 100 locations | Show some options before user searches |
+| Trigger server search on input | Call `searchLocations` when user types 2+ characters |
+| Show loading state | Indicate when search is in progress |
+| Remove 500-slice limit | Full search happens server-side |
 
-### 3. Edge Function Already Supports This
+### 3. Update LocationPicker Component
 
-The `fetch-location-logos` function already:
-- Skips locations with `logo_fetched_at` set (unless `retry_previous: true`)
-- Processes in batches
-- Tracks progress via `logo_fetched_at` timestamp
-- Handles errors gracefully
+Apply the same pattern to `src/components/locations/LocationPicker.tsx` so all location pickers benefit:
+
+- Add optional `serverSearch` mode prop
+- When enabled, use debounced server-side search
+- Fall back to existing client-side search for smaller datasets
 
 ---
 
@@ -72,23 +58,30 @@ The `fetch-location-logos` function already:
 
 | File | Changes |
 |------|---------|
-| `supabase/migrations/new_migration.sql` | Add cron job schedule/unschedule functions |
-| `src/components/admin/ScrapeLogosDialog.tsx` | Add background mode toggle, status display, and retry option |
-| `src/lib/admin.ts` | Add functions to enable/disable background job |
+| `src/lib/locations.ts` | Add `searchLocations(query, limit)` function with ilike queries |
+| `src/components/admin/AcademyEditDialog.tsx` | Implement debounced server-side location search |
+| `src/components/locations/LocationPicker.tsx` | Add optional server-side search mode |
 
 ---
 
-## Processing Timeline
+## Search Behavior
 
-With 275 pending locations at 10 per 15 minutes:
-- **~7 hours** to complete all pending locations
-- Runs completely in background without browser
+```text
+User types: "amst"
+  -> Server query: WHERE name ILIKE '%amst%' OR city ILIKE '%amst%'
+  -> Returns: All locations in Amsterdam, plus "Sportcenter Amstelveen", etc.
+
+User types: "sunset"
+  -> Server query: WHERE name ILIKE '%sunset%' OR city ILIKE '%sunset%'  
+  -> Returns: "Sunset Padel" in Alphen a/d Rijn
+```
 
 ---
 
-## Optional: Retry Previously Fetched
+## Technical Details
 
-Add a button to reset `logo_fetched_at` for locations that:
-- Have a website URL but no logo found
-- Allow the system to try again with improved scraping
+- Debounce delay: 300ms to avoid excessive queries
+- Minimum search length: 2 characters before triggering server search
+- Initial load: 100 most relevant locations (alphabetically by city/name)
+- Search results limit: 100 locations per search
 
