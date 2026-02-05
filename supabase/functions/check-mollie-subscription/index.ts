@@ -44,13 +44,14 @@ serve(async (req) => {
     if (type === "trainer") {
       const { data, error } = await supabase
         .from("trainer_profiles")
-        .select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at")
+        .select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at, trial_ends_at")
         .eq("user_id", user.id)
         .single();
 
       if (error || !data) throw new Error("Trainer profile not found");
       profile = data;
       customerId = data.mollie_customer_id;
+      trialEndsAt = data.trial_ends_at;
     } else if (type === "academy") {
       if (!profileId) throw new Error("Academy profile ID required");
       
@@ -98,8 +99,8 @@ serve(async (req) => {
       );
     }
 
-    // Check trial status for academies and clubs
-    if ((type === "academy" || type === "club") && trialEndsAt) {
+    // Check trial status for all profile types
+    if (trialEndsAt) {
       const trialEnd = new Date(trialEndsAt);
       if (trialEnd > new Date()) {
         logStep(`${type} is in trial period`);
@@ -107,7 +108,7 @@ serve(async (req) => {
           JSON.stringify({
             subscribed: true,
             status: "trialing",
-            tier: type === "academy" ? "academy" : "club",
+            tier: type === "trainer" ? "trial" : type === "academy" ? "academy" : "club",
             trialEndsAt: trialEndsAt,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
