@@ -213,7 +213,6 @@ export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyPro
     .from('academy_profiles_public' as any)
     .select('*')
     .eq('slug', slug)
-    .eq('is_verified', true)
     .maybeSingle();
 
   if (error) {
