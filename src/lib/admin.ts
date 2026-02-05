@@ -265,13 +265,6 @@ export interface BackgroundLogoJobStatus {
 }
 
 export async function getBackgroundLogoJobStatus(): Promise<BackgroundLogoJobStatus> {
-  // Check if cron job exists
-  const { data: cronJob } = await supabase
-    .from("cron.job" as any)
-    .select("jobid")
-    .eq("jobname", "fetch-location-logos-background")
-    .single();
-
   // Get location stats
   const { count: pendingCount } = await supabase
     .from("locations")
@@ -290,9 +283,12 @@ export async function getBackgroundLogoJobStatus(): Promise<BackgroundLogoJobSta
     .select("*", { count: "exact", head: true })
     .not("logo_url", "is", null);
 
+  // Check if cron job exists via RPC (can't query cron schema directly from client)
+  const { data: jobStatus } = await supabase.rpc("check_logo_fetch_job_status" as any);
+
   return {
-    isEnabled: !!cronJob,
-    jobId: cronJob?.jobid || null,
+    isEnabled: jobStatus?.is_enabled || false,
+    jobId: jobStatus?.job_id || null,
     pendingCount: pendingCount || 0,
     processedCount: processedCount || 0,
     withLogosCount: withLogosCount || 0,
@@ -304,17 +300,6 @@ export async function enableBackgroundLogoJob(): Promise<{ success: boolean; job
   
   if (!session) {
     throw new Error("Not authenticated");
-  }
-
-  // Check if job already exists
-  const { data: existingJob } = await supabase
-    .from("cron.job" as any)
-    .select("jobid")
-    .eq("jobname", "fetch-location-logos-background")
-    .single();
-
-  if (existingJob) {
-    return { success: true, jobId: existingJob.jobid };
   }
 
   // Create the cron job via RPC
