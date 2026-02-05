@@ -23,6 +23,9 @@ import AcademyPublicProfile from '@/pages/AcademyPublicProfile';
 import BookLesson from '@/pages/BookLesson';
 import CycleRegistration from '@/pages/CycleRegistration';
 
+// API callback pages
+import MollieCallback from '@/pages/MollieCallback';
+
 // App pages
 import Auth from '@/pages/Auth';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -155,6 +158,9 @@ function MarketingRoutes() {
 function AppRoutes() {
   return (
     <Routes>
+      {/* API callback routes */}
+      <Route path="/api/mollie-callback" element={<MollieCallback />} />
+      
       {/* Redirect root to auth or dashboard based on login state */}
       <Route path="/" element={<Navigate to="/auth" replace />} />
       
@@ -260,6 +266,9 @@ function AppRoutes() {
 function CombinedRoutes() {
   return (
     <Routes>
+      {/* API callback routes */}
+      <Route path="/api/mollie-callback" element={<MollieCallback />} />
+      
       {/* Root redirect - detects browser language */}
       <Route path="/" element={<RootRedirect />} />
       
