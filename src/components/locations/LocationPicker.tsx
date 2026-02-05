@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Check, ChevronsUpDown, MapPin, Star, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Check, ChevronsUpDown, MapPin, Star, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { getActiveLocations, type Location } from '@/lib/locations';
+import { getActiveLocations, searchLocations, type Location } from '@/lib/locations';
 import { useTranslation } from 'react-i18next';
 
 interface LocationPickerProps {
@@ -36,6 +36,7 @@ interface LocationPickerProps {
   placeholder?: string;
   disabled?: boolean;
   showCountryFilter?: boolean;
+  serverSearch?: boolean;
 }
 
 // Country codes to names mapping
@@ -53,6 +54,7 @@ export function LocationPicker({
   placeholder,
   disabled = false,
   showCountryFilter = true,
+  serverSearch = false,
 }: LocationPickerProps) {
   const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
@@ -60,12 +62,20 @@ export function LocationPicker({
   const [loading, setLoading] = useState(true);
   const [searchValue, setSearchValue] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('NL');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function fetchLocations() {
       try {
-        const data = await getActiveLocations();
-        setLocations(data);
+        if (serverSearch) {
+          // For server search mode, load initial 100 locations
+          const data = await searchLocations('', 100);
+          setLocations(data);
+        } else {
+          const data = await getActiveLocations();
+          setLocations(data);
+        }
       } catch (error) {
         console.error('Error fetching locations:', error);
       } finally {
@@ -73,6 +83,40 @@ export function LocationPicker({
       }
     }
     fetchLocations();
+  }, [serverSearch]);
+
+  // Debounced server-side search
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchValue(value);
+    
+    if (!serverSearch) return;
+    
+    // Clear any pending timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Debounce the search
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const data = await searchLocations(value, 100);
+        setLocations(data);
+      } catch (error) {
+        console.error('Error searching locations:', error);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+  }, [serverSearch]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Get unique countries from locations
@@ -92,8 +136,8 @@ export function LocationPicker({
     const filtered = locations.filter(l => {
       // Filter by country first
       if (selectedCountry && l.country !== selectedCountry) return false;
-      // Then filter by search
-      if (searchValue) {
+      // Then filter by search (client-side only if not using server search)
+      if (searchValue && !serverSearch) {
         return (
           l.name.toLowerCase().includes(searchValue.toLowerCase()) ||
           l.city.toLowerCase().includes(searchValue.toLowerCase())
@@ -111,7 +155,7 @@ export function LocationPicker({
     });
 
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [locations, searchValue, selectedCountry]);
+  }, [locations, searchValue, selectedCountry, serverSearch]);
 
   const toggleLocation = (locationId: string) => {
     if (selectedLocationIds.includes(locationId)) {
@@ -193,10 +237,17 @@ export function LocationPicker({
             <CommandInput
               placeholder={t('locations.searchPlaceholder', 'Search by name or city...')}
               value={searchValue}
-              onValueChange={setSearchValue}
+              onValueChange={handleSearchChange}
             />
-            <CommandList className="max-h-[300px]">
-              <CommandEmpty>{t('locations.noResults', 'No locations found.')}</CommandEmpty>
+            <CommandList className="max-h-[300px] relative">
+              {searchLoading && (
+                <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              <CommandEmpty>
+                {searchLoading ? t('common.searching', 'Searching...') : t('locations.noResults', 'No locations found.')}
+              </CommandEmpty>
               {groupedLocations.map(([city, cityLocations]) => (
                 <CommandGroup key={city} heading={city}>
                   {cityLocations.map(location => {

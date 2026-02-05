@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +61,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { getActiveLocations, type Location } from "@/lib/locations";
+import { searchLocations, type Location } from "@/lib/locations";
 import { COUNTRIES } from "@/lib/countries";
 
 interface AcademyEditData {
@@ -196,6 +196,8 @@ export function AcademyEditDialog({
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
   const [addingLocation, setAddingLocation] = useState(false);
+  const [locationSearchLoading, setLocationSearchLoading] = useState(false);
+  const locationSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Trainer picker state
   const [availableTrainers, setAvailableTrainers] = useState<AvailableTrainer[]>([]);
@@ -221,7 +223,7 @@ export function AcademyEditDialog({
   useEffect(() => {
     if (open) {
       loadRelatedData();
-      loadAllLocations();
+      loadInitialLocations();
       loadAllTrainers();
       loadAllUsers();
       
@@ -237,17 +239,50 @@ export function AcademyEditDialog({
     }
   }, [open, academy.id]);
 
-  const loadAllLocations = async () => {
+  const loadInitialLocations = async () => {
+    setLocationSearchLoading(true);
     try {
-      // Only fetch a limited number of locations for the picker 
-      // (search will filter further). Full list could be 1400+ items.
-      const data = await getActiveLocations();
-      // Limit to first 500 for performance - search/filter handles the rest
-      setAllLocations(data.slice(0, 500));
+      // Load initial set of locations (first 100)
+      const data = await searchLocations("", 100);
+      setAllLocations(data);
     } catch (error) {
       console.error("Error loading locations:", error);
+    } finally {
+      setLocationSearchLoading(false);
     }
   };
+
+  // Debounced location search
+  const handleLocationSearchChange = useCallback((value: string) => {
+    setLocationSearch(value);
+    
+    // Clear any pending timeout
+    if (locationSearchTimeoutRef.current) {
+      clearTimeout(locationSearchTimeoutRef.current);
+    }
+    
+    // Debounce the search
+    locationSearchTimeoutRef.current = setTimeout(async () => {
+      setLocationSearchLoading(true);
+      try {
+        const data = await searchLocations(value, 100);
+        setAllLocations(data);
+      } catch (error) {
+        console.error("Error searching locations:", error);
+      } finally {
+        setLocationSearchLoading(false);
+      }
+    }, 300);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (locationSearchTimeoutRef.current) {
+        clearTimeout(locationSearchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const loadAllTrainers = async () => {
     try {
@@ -393,17 +428,9 @@ export function AcademyEditDialog({
   // Filter locations not already linked
   const filteredLocations = useMemo(() => {
     const linkedIds = new Set(locations.map(l => l.location?.id));
-    return allLocations.filter(l => {
-      if (linkedIds.has(l.id)) return false;
-      if (locationSearch) {
-        return (
-          l.name.toLowerCase().includes(locationSearch.toLowerCase()) ||
-          l.city.toLowerCase().includes(locationSearch.toLowerCase())
-        );
-      }
-      return true;
-    });
-  }, [allLocations, locations, locationSearch]);
+    // Server-side search already filters by name/city, just exclude linked ones
+    return allLocations.filter(l => !linkedIds.has(l.id));
+  }, [allLocations, locations]);
 
   // Filter trainers not already linked
   const filteredTrainers = useMemo(() => {
@@ -1034,10 +1061,17 @@ export function AcademyEditDialog({
                   <CommandInput
                     placeholder="Search locations..."
                     value={locationSearch}
-                    onValueChange={setLocationSearch}
+                    onValueChange={handleLocationSearchChange}
                   />
-                  <CommandList className="max-h-[300px]">
-                    <CommandEmpty>No locations found.</CommandEmpty>
+                  <CommandList className="max-h-[300px] relative">
+                    {locationSearchLoading && (
+                      <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                    <CommandEmpty>
+                      {locationSearchLoading ? "Searching..." : "No locations found."}
+                    </CommandEmpty>
                     {groupedLocations.map(([city, cityLocations]) => (
                       <CommandGroup key={city} heading={city}>
                         {cityLocations.map(location => (
