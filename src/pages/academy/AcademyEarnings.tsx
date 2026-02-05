@@ -127,7 +127,7 @@ export default function AcademyEarnings() {
   const needsOnboarding = connectStatus?.connected && !connectStatus?.onboardingComplete;
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -202,7 +202,7 @@ export default function AcademyEarnings() {
                 ) : (
                   <>
                     <CreditCard className="h-4 w-4 mr-2" />
-                    {t('settings.connectMollie')}
+                    {t('earnings.connectMollieAccount')}
                   </>
                 )}
               </Button>
