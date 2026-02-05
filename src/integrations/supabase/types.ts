@@ -3626,6 +3626,7 @@ export type Database = {
         Args: { _academy_profile_id: string }
         Returns: boolean
       }
+      check_logo_fetch_job_status: { Args: never; Returns: Json }
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
@@ -3691,6 +3692,8 @@ export type Database = {
         }
         Returns: undefined
       }
+      schedule_logo_fetch_job: { Args: never; Returns: number }
+      unschedule_logo_fetch_job: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role:

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Image, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Image, AlertCircle, CheckCircle2, XCircle, Play, Square, RefreshCw, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -18,7 +21,15 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { fetchLocationLogos, type LogoResult } from "@/lib/admin";
+import { 
+  fetchLocationLogos, 
+  type LogoResult,
+  getBackgroundLogoJobStatus,
+  enableBackgroundLogoJob,
+  disableBackgroundLogoJob,
+  resetLogoFetchedAt,
+  type BackgroundLogoJobStatus,
+} from "@/lib/admin";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ScrapeLogosDialogProps {
@@ -48,6 +59,9 @@ export function ScrapeLogosDialog({
   const [currentBatch, setCurrentBatch] = useState(0);
   const shouldStopRef = useRef(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [backgroundStatus, setBackgroundStatus] = useState<BackgroundLogoJobStatus | null>(null);
+  const [togglingBackground, setTogglingBackground] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Timer for elapsed time during processing
   useEffect(() => {
@@ -64,12 +78,22 @@ export function ScrapeLogosDialog({
   useEffect(() => {
     if (open) {
       fetchLocationsWithoutLogos();
+      fetchBackgroundStatus();
       setResults([]);
       setProgress(0);
       setCurrentBatch(0);
       shouldStopRef.current = false;
     }
   }, [open]);
+
+  async function fetchBackgroundStatus() {
+    try {
+      const status = await getBackgroundLogoJobStatus();
+      setBackgroundStatus(status);
+    } catch (error) {
+      console.error("Error fetching background status:", error);
+    }
+  }
 
   async function fetchLocationsWithoutLogos() {
     setLoading(true);
@@ -93,6 +117,57 @@ export function ScrapeLogosDialog({
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleToggleBackground(enabled: boolean) {
+    setTogglingBackground(true);
+    try {
+      if (enabled) {
+        await enableBackgroundLogoJob();
+        toast({
+          title: "Background Fetch Enabled",
+          description: "Logos will be fetched automatically every 15 minutes",
+        });
+      } else {
+        await disableBackgroundLogoJob();
+        toast({
+          title: "Background Fetch Disabled",
+          description: "Automatic logo fetching has been stopped",
+        });
+      }
+      await fetchBackgroundStatus();
+    } catch (error) {
+      console.error("Error toggling background job:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to toggle background job",
+        variant: "destructive",
+      });
+    } finally {
+      setTogglingBackground(false);
+    }
+  }
+
+  async function handleRetryFailed() {
+    setResetting(true);
+    try {
+      const { count } = await resetLogoFetchedAt({ onlyWithoutLogos: true });
+      toast({
+        title: "Reset Complete",
+        description: `${count} locations will be retried on the next background run`,
+      });
+      await fetchBackgroundStatus();
+      await fetchLocationsWithoutLogos();
+    } catch (error) {
+      console.error("Error resetting:", error);
+      toast({
+        title: "Error",
+        description: "Failed to reset locations for retry",
+        variant: "destructive",
+      });
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -184,14 +259,77 @@ export function ScrapeLogosDialog({
           </div>
         ) : (
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            {/* Background Mode Controls */}
+            {backgroundStatus && (
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="background-mode" className="font-medium">
+                      Background Mode
+                    </Label>
+                  </div>
+                  <Switch
+                    id="background-mode"
+                    checked={backgroundStatus.isEnabled}
+                    onCheckedChange={handleToggleBackground}
+                    disabled={togglingBackground}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {backgroundStatus.isEnabled
+                    ? "Running every 15 minutes, processing 10 locations per batch"
+                    : "Enable to automatically fetch logos in the background"}
+                </p>
+                
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-3 pt-2">
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">{backgroundStatus.pendingCount}</div>
+                    <div className="text-xs text-muted-foreground">Pending</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">{backgroundStatus.processedCount}</div>
+                    <div className="text-xs text-muted-foreground">Processed</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold text-green-600">{backgroundStatus.withLogosCount}</div>
+                    <div className="text-xs text-muted-foreground">Have Logos</div>
+                  </div>
+                </div>
+
+                {/* Retry Failed */}
+                {backgroundStatus.processedCount > backgroundStatus.withLogosCount && (
+                  <div className="pt-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRetryFailed}
+                      disabled={resetting}
+                      className="w-full"
+                    >
+                      {resetting ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      Retry {backgroundStatus.processedCount - backgroundStatus.withLogosCount} Failed Locations
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Separator />
+
             {/* Summary */}
             <div className="bg-muted/50 rounded-lg p-4">
               <div className="flex items-center gap-2 text-lg font-medium">
                 <AlertCircle className="h-5 w-5 text-amber-500" />
-                {locationsWithoutLogos.length} locations have websites but no logo
+                {locationsWithoutLogos.length} locations ready for manual scraping
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                These locations will be processed to extract their logos from their websites.
+                Use manual mode for immediate processing, or enable background mode above.
               </p>
             </div>
 
