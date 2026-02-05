@@ -69,8 +69,8 @@ serve(async (req) => {
     const entityId = stateParts[1];
     logStep("Parsed state", { entityType, entityId });
 
-    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
-    const redirectUri = `${origin}/api/mollie-callback`;
+    // Use fixed production redirect URI - Mollie requires exact match with registered callback
+    const redirectUri = 'https://app.padeltrainer.ai/api/mollie-callback';
 
     // Exchange authorization code for access token
     const tokenResponse = await fetch('https://api.mollie.com/oauth2/tokens', {

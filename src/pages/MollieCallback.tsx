@@ -23,16 +23,24 @@ export default function MollieCallback() {
 
       // Handle OAuth error from Mollie
       if (oauthError) {
+        console.log('[MollieCallback] OAuth error from Mollie:', { error: oauthError, description: errorDescription });
         setStatus('error');
         setErrorMessage(errorDescription || oauthError);
         return;
       }
 
       if (!code || !state) {
+        console.log('[MollieCallback] Missing parameters:', { hasCode: !!code, hasState: !!state });
         setStatus('error');
         setErrorMessage('Missing authorization code or state parameter');
         return;
       }
+
+      console.log('[MollieCallback] Processing callback:', { 
+        hasCode: !!code, 
+        statePrefix: state?.substring(0, 30),
+        origin: window.location.origin 
+      });
 
       try {
         // Call the edge function to exchange the code for tokens
