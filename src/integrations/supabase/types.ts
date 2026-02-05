@@ -2201,6 +2201,7 @@ export type Database = {
           impression_count: number
           is_active: boolean
           link_url: string | null
+          location_id: string | null
           name: string
           start_date: string | null
           updated_at: string
@@ -2216,6 +2217,7 @@ export type Database = {
           impression_count?: number
           is_active?: boolean
           link_url?: string | null
+          location_id?: string | null
           name: string
           start_date?: string | null
           updated_at?: string
@@ -2231,6 +2233,7 @@ export type Database = {
           impression_count?: number
           is_active?: boolean
           link_url?: string | null
+          location_id?: string | null
           name?: string
           start_date?: string | null
           updated_at?: string
@@ -2255,6 +2258,13 @@ export type Database = {
             columns: ["club_profile_id"]
             isOneToOne: false
             referencedRelation: "club_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_banners_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]

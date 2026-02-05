@@ -67,7 +67,7 @@ interface PartnerBanner {
   name: string;
   image_url: string;
   link_url: string | null;
-  club_profile_id: string | null;
+  location_id: string | null;
   is_active: boolean;
   display_order: number;
   start_date: string | null;
@@ -76,21 +76,17 @@ interface PartnerBanner {
   impression_count: number;
   created_at: string;
   updated_at: string;
-  club_profile?: {
+  location?: {
     id: string;
-    location: {
-      name: string;
-      city: string;
-    } | null;
+    name: string;
+    city: string;
   } | null;
 }
 
-interface ClubOption {
+interface LocationOption {
   id: string;
-  location: {
-    name: string;
-    city: string;
-  };
+  name: string;
+  city: string;
 }
 
 export default function AdminBanners() {
@@ -105,7 +101,7 @@ export default function AdminBanners() {
     name: "",
     image_url: "",
     link_url: "",
-    club_profile_id: "",
+    location_id: "",
     is_active: true,
     display_order: 0,
     start_date: "",
@@ -120,12 +116,10 @@ export default function AdminBanners() {
         .from("partner_banners")
         .select(`
           *,
-          club_profile:club_profiles (
+          location:locations (
             id,
-            location:locations (
-              name,
-              city
-            )
+            name,
+            city
           )
         `)
         .order("display_order", { ascending: true });
@@ -135,23 +129,18 @@ export default function AdminBanners() {
     },
   });
 
-  // Fetch clubs for dropdown
-  const { data: clubs = [] } = useQuery({
-    queryKey: ["admin-clubs-for-banners"],
+  // Fetch locations for dropdown
+  const { data: locations = [] } = useQuery({
+    queryKey: ["admin-locations-for-banners"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("club_profiles")
-        .select(`
-          id,
-          location:locations (
-            name,
-            city
-          )
-        `)
-        .order("created_at", { ascending: false });
+        .from("locations")
+        .select("id, name, city")
+        .order("name", { ascending: true })
+        .limit(500);
       
       if (error) throw error;
-      return data as ClubOption[];
+      return data as LocationOption[];
     },
   });
 
@@ -162,7 +151,7 @@ export default function AdminBanners() {
         name: data.name,
         image_url: data.image_url,
         link_url: data.link_url || null,
-        club_profile_id: data.club_profile_id || null,
+        location_id: data.location_id || null,
         is_active: data.is_active,
         display_order: data.display_order,
         start_date: data.start_date || null,
@@ -233,7 +222,7 @@ export default function AdminBanners() {
         name: editingBanner.name,
         image_url: editingBanner.image_url,
         link_url: editingBanner.link_url || "",
-        club_profile_id: editingBanner.club_profile_id || "",
+        location_id: editingBanner.location_id || "",
         is_active: editingBanner.is_active,
         display_order: editingBanner.display_order,
         start_date: editingBanner.start_date || "",
@@ -244,7 +233,7 @@ export default function AdminBanners() {
         name: "",
         image_url: "",
         link_url: "",
-        club_profile_id: "",
+        location_id: "",
         is_active: true,
         display_order: banners.length,
         start_date: "",
@@ -407,13 +396,13 @@ export default function AdminBanners() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {banner.club_profile?.location ? (
+                      {banner.location ? (
                         <div className="text-sm">
-                          <div>{banner.club_profile.location.name}</div>
-                          <div className="text-muted-foreground text-xs">{banner.club_profile.location.city}</div>
+                          <div>{banner.location.name}</div>
+                          <div className="text-muted-foreground text-xs">{banner.location.city}</div>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
+                        <span className="text-muted-foreground text-sm">All locations</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -564,22 +553,22 @@ export default function AdminBanners() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="club">Associate with Club (optional)</Label>
+                <Label htmlFor="location">Target Location (optional)</Label>
                 <Select
-                  value={formData.club_profile_id}
+                  value={formData.location_id}
                   onValueChange={(value) => setFormData(prev => ({ 
                     ...prev, 
-                    club_profile_id: value === "none" ? "" : value 
+                    location_id: value === "none" ? "" : value 
                   }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a club..." />
+                    <SelectValue placeholder="All locations (no targeting)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No club association</SelectItem>
-                    {clubs.map((club) => (
-                      <SelectItem key={club.id} value={club.id}>
-                        {club.location?.name} ({club.location?.city})
+                    <SelectItem value="none">All locations (no targeting)</SelectItem>
+                    {locations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name} ({loc.city})
                       </SelectItem>
                     ))}
                   </SelectContent>
