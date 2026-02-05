@@ -1,120 +1,94 @@
 
 
-# Enhance Location Import: Lat/Lng Duplicate Detection
+# Background Logo Fetching for Locations
 
-Replace the current slug-based duplicate detection with coordinate-based matching for more accurate identification of existing locations.
-
----
-
-## Current Behavior
-
-The import dialog checks for duplicates using **name + city slug matching**:
-```
-"Padel Club Amsterdam" + "Amsterdam" → "padel-club-amsterdam-amsterdam"
-```
-
-**Problem**: Same physical venue with different name spellings gets imported as duplicate.
+Enable automatic logo fetching using a scheduled database job that runs independently of the admin browser session.
 
 ---
 
-## Proposed Solution
+## Current State
 
-Add **proximity-based matching** using latitude/longitude coordinates:
+| Metric | Count |
+|--------|-------|
+| Total locations | 1,703 |
+| Pending first fetch | 275 |
+| Already processed | 1,400 |
+| Have logos | 1,149 |
 
-| Detection Method | Threshold | Purpose |
-|-----------------|-----------|---------|
-| Exact coordinates | < 50 meters | Same venue (GPS variance) |
-| Nearby location | < 200 meters | Likely same venue, flag for review |
-
----
-
-## Implementation Changes
-
-### 1. Fetch Existing Coordinates on Parse
-
-When CSV is parsed, query database for all locations with coordinates:
-
-```typescript
-// Fetch existing locations with coordinates
-const { data: existingLocations } = await supabase
-  .from("locations")
-  .select("id, name, city, latitude, longitude")
-  .not("latitude", "is", null);
-```
-
-### 2. Add Distance Calculation Function
-
-```typescript
-// Haversine formula for distance between two GPS points
-function calculateDistance(
-  lat1: number, lon1: number, 
-  lat2: number, lon2: number
-): number {
-  const R = 6371000; // Earth radius in meters
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-  const a = Math.sin(Δφ/2) ** 2 + 
-            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c; // Distance in meters
-}
-```
-
-### 3. Update Duplicate Detection Logic
-
-After parsing each row, check:
-
-1. **If imported row has lat/lng** → Check proximity to existing locations
-2. **Fallback to slug matching** → For rows without coordinates
-
-```typescript
-// Check coordinate-based duplicates
-if (latitude !== null && longitude !== null) {
-  for (const existing of existingLocations) {
-    if (existing.latitude && existing.longitude) {
-      const distance = calculateDistance(
-        latitude, longitude,
-        existing.latitude, existing.longitude
-      );
-      
-      if (distance < 50) {
-        location.isDuplicate = true;
-        location.errors.push(`Matches "${existing.name}" (${Math.round(distance)}m away)`);
-        break;
-      }
-    }
-  }
-}
-```
-
-### 4. Enhanced Preview Display
-
-Show match details in the preview table:
-
-| Status | Badge | Message Example |
-|--------|-------|-----------------|
-| Exact match | 🟡 Yellow | `Matches "TC Rotterdam" (12m away)` |
-| Valid new | 🟢 Green | Ready to import |
-| Missing coords | 🔵 Blue | Falls back to slug check |
+The current approach requires the admin to keep the dialog open while scraping runs.
 
 ---
 
-## Files Modified
+## Solution: Database-Scheduled Background Job
+
+Use the existing `pg_cron` infrastructure (already used for onboarding emails) to schedule the logo fetch edge function to run automatically.
+
+---
+
+## Implementation
+
+### 1. Create Database Migration for Cron Job
+
+Schedule the `fetch-location-logos` edge function to run every 15 minutes, processing 10 locations per run:
+
+```sql
+-- Schedule background logo fetching (runs every 15 minutes)
+SELECT cron.schedule(
+  'fetch-location-logos-background',
+  '*/15 * * * *',  -- Every 15 minutes
+  $$
+  SELECT
+    net.http_post(
+      url := 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/fetch-location-logos',
+      headers := '{"Content-Type": "application/json", "Authorization": "Bearer ..."}'::jsonb,
+      body := '{"batch_size": 10}'::jsonb
+    ) as request_id;
+  $$
+);
+```
+
+### 2. Add Admin Controls to Enable/Disable
+
+Update the `ScrapeLogosDialog` to include:
+
+| Control | Action |
+|---------|--------|
+| Enable Background Fetch | Creates the cron job |
+| Disable Background Fetch | Removes the cron job |
+| Status indicator | Shows if job is running |
+| Retry All toggle | Allow re-processing locations that already have `logo_fetched_at` set |
+
+### 3. Edge Function Already Supports This
+
+The `fetch-location-logos` function already:
+- Skips locations with `logo_fetched_at` set (unless `retry_previous: true`)
+- Processes in batches
+- Tracks progress via `logo_fetched_at` timestamp
+- Handles errors gracefully
+
+---
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/admin/ImportLocationsDialog.tsx` | Add distance calculation, coordinate-based duplicate check, enhanced error messages |
+| `supabase/migrations/new_migration.sql` | Add cron job schedule/unschedule functions |
+| `src/components/admin/ScrapeLogosDialog.tsx` | Add background mode toggle, status display, and retry option |
+| `src/lib/admin.ts` | Add functions to enable/disable background job |
 
 ---
 
-## Edge Cases Handled
+## Processing Timeline
 
-- **No coordinates in CSV**: Falls back to existing slug-based matching
-- **No coordinates in database**: Only new locations with coords are checked
-- **Multiple close matches**: First match under threshold is flagged
-- **Performance**: Single DB query fetches all existing coordinates upfront
+With 275 pending locations at 10 per 15 minutes:
+- **~7 hours** to complete all pending locations
+- Runs completely in background without browser
+
+---
+
+## Optional: Retry Previously Fetched
+
+Add a button to reset `logo_fetched_at` for locations that:
+- Have a website URL but no logo found
+- Allow the system to try again with improved scraping
 
