@@ -1,56 +1,46 @@
 
 
-# Improve Location Search in Admin Panel
+# Show Academy Connections Without Active Subscription
 
-Enhance the location search functionality when connecting locations to academies so users can search by any part of the name or city, across all 1,700+ locations.
-
----
-
-## Current Problem
-
-The admin panel's `AcademyEditDialog` limits loaded locations to the first 500 for performance. While the search logic already filters by name and city, it can only search within this limited subset - locations outside the first 500 are invisible to the search.
+Allow academy-location connections to be visible on location pages regardless of subscription status, while restricting full profile access and editing capabilities to subscribed academies.
 
 ---
 
-## Solution: Server-Side Search
+## Current Behavior
 
-Replace the client-side search with server-side search that queries the full database when the user types a search term.
+| Feature | Current State |
+|---------|---------------|
+| Academy on location page | Shows only if `is_public: true` (working for Dutch Padel School) |
+| Academy public profile | Requires `is_verified: true` (blocking access) |
+| Academy dashboard editing | Blocked by SubscriptionOverlay if trial expired |
 
 ---
 
-## Implementation
+## Identified Issue
 
-### 1. Add Server-Side Location Search Function
+The `getAcademyBySlug` function in `src/lib/academy.ts` filters for `is_verified: true` on line 216. This means:
+- Dutch Padel School appears on location pages (via `getAcademiesAtLocation`)
+- But clicking on the academy leads to a 404 because their own profile page requires verification
 
-Create a new function in `src/lib/locations.ts` that searches locations directly in the database:
+---
+
+## Proposed Changes
+
+### 1. Show Academy Profile Without is_verified Requirement
+
+Update `getAcademyBySlug` to allow unverified but public academies to be visible. The verified checkmark will still only show for verified academies.
 
 ```text
-searchLocations(query: string, limit: number)
-  - Uses ilike for partial matching on name
-  - Uses ilike for partial matching on city
-  - Returns matching locations up to the limit
-  - Handles empty query by returning first N locations
+Current: .eq('is_verified', true)
+New: Remove this filter - rely only on is_public: true from the view
 ```
 
-### 2. Update Admin Academy Edit Dialog
+### 2. Add Subscription Status Awareness to Profile Page
 
-Modify `src/components/admin/AcademyEditDialog.tsx`:
-
-| Change | Description |
-|--------|-------------|
-| Add debounced search | Prevent excessive API calls while typing |
-| Load initial 100 locations | Show some options before user searches |
-| Trigger server search on input | Call `searchLocations` when user types 2+ characters |
-| Show loading state | Indicate when search is in progress |
-| Remove 500-slice limit | Full search happens server-side |
-
-### 3. Update LocationPicker Component
-
-Apply the same pattern to `src/components/locations/LocationPicker.tsx` so all location pickers benefit:
-
-- Add optional `serverSearch` mode prop
-- When enabled, use debounced server-side search
-- Fall back to existing client-side search for smaller datasets
+On the academy public profile page (`AcademyPublicProfile.tsx`), display a notice or limited view for academies without an active subscription:
+- Still show the academy card, name, logo, locations
+- Hide contact buttons or booking options if trial expired
+- Optionally show "Coming soon" or "Not yet active" badge
 
 ---
 
@@ -58,30 +48,33 @@ Apply the same pattern to `src/components/locations/LocationPicker.tsx` so all l
 
 | File | Changes |
 |------|---------|
-| `src/lib/locations.ts` | Add `searchLocations(query, limit)` function with ilike queries |
-| `src/components/admin/AcademyEditDialog.tsx` | Implement debounced server-side location search |
-| `src/components/locations/LocationPicker.tsx` | Add optional server-side search mode |
+| `src/lib/academy.ts` | Remove `is_verified` filter from `getAcademyBySlug` |
+| `src/pages/AcademyPublicProfile.tsx` | Add subscription-aware UI (optional) |
 
 ---
 
-## Search Behavior
+## Visibility Rules After Change
 
-```text
-User types: "amst"
-  -> Server query: WHERE name ILIKE '%amst%' OR city ILIKE '%amst%'
-  -> Returns: All locations in Amsterdam, plus "Sportcenter Amstelveen", etc.
-
-User types: "sunset"
-  -> Server query: WHERE name ILIKE '%sunset%' OR city ILIKE '%sunset%'  
-  -> Returns: "Sunset Padel" in Alphen a/d Rijn
-```
+| Academy State | Location Page | Academy Profile | Editing |
+|---------------|---------------|-----------------|---------|
+| Trial (active, is_public) | Visible | Accessible | Allowed |
+| Trial expired, is_public | Visible | Accessible (limited) | Blocked |
+| is_public: false | Hidden | Hidden | N/A |
+| Subscribed + is_public | Visible + Featured | Full access | Allowed |
 
 ---
 
-## Technical Details
+## Verification Badge Logic
 
-- Debounce delay: 300ms to avoid excessive queries
-- Minimum search length: 2 characters before triggering server search
-- Initial load: 100 most relevant locations (alphabetically by city/name)
-- Search results limit: 100 locations per search
+The verified checkmark on academy cards will continue to show only when:
+- `is_verified: true` (manually verified by admin), OR
+- `subscription_status: 'active'` (paid subscription)
+
+This is already handled in the existing memory: "The verified checkmark is displayed on an academy profile if it is either manually verified by an administrator or has an 'active' paid subscription status."
+
+---
+
+## Implementation
+
+This is a minimal change - simply removing one filter line in `getAcademyBySlug`. The `is_public` check in the view already provides the necessary visibility control.
 
