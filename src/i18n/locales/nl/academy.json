@@ -286,5 +286,21 @@
     "trialDaysRemaining": "Nog {{days}} dagen in proefperiode",
     "perMonth": "/maand",
     "billedAnnually": "Jaarlijks gefactureerd voor €{{amount}}"
+  },
+  "earnings": {
+    "title": "Inkomsten & Betalingen",
+    "description": "Beheer het betaalaccount van je academy en bekijk inkomsten",
+    "howItWorks": "Hoe Academy Betalingen Werken",
+    "howItWorksDescription": "Wanneer een speler een les boekt bij een van je trainers, wordt de betaling via het gekoppelde betaalaccount van je academy verwerkt. Je kunt vervolgens inkomsten verdelen onder je trainers op basis van de afgesproken verdeling.",
+    "connectionStatus": "Verbindingsstatus",
+    "balance": "Saldo",
+    "noBalanceData": "Saldo informatie niet beschikbaar",
+    "benefit1": "Ontvang betalingen direct van lesbookingen",
+    "benefit2": "Automatische betalingsverdelingen met trainers",
+    "benefit3": "Professionele facturatie en rapportage",
+    "trainerPayments": "Trainer Betalingsroutering",
+    "trainerPaymentsDescription": "Hoe betalingen worden verdeeld onder je trainers",
+    "trainerPaymentsInfo1": "Wanneer je academy gekoppeld is aan een betaalaccount, worden alle lesbookingen van je trainers via je academy account verwerkt.",
+    "trainerPaymentsInfo2": "Je kunt betalingsverdelingen per trainer beheren in de Trainers sectie. Trainers zien op hun inkomstenpagina dat betalingen door je academy worden afgehandeld."
   }
 }

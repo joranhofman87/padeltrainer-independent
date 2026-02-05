@@ -293,5 +293,21 @@
     "trialDaysRemaining": "{{days}} days left in trial",
     "perMonth": "/month",
     "billedAnnually": "Billed annually at €{{amount}}"
+  },
+  "earnings": {
+    "title": "Earnings & Payments",
+    "description": "Manage your academy's payment account and view earnings",
+    "howItWorks": "How Academy Payments Work",
+    "howItWorksDescription": "When a player books a lesson with one of your trainers, the payment is routed through your academy's connected payment account. You can then distribute earnings to your trainers based on your agreed payment splits.",
+    "connectionStatus": "Connection Status",
+    "balance": "Balance",
+    "noBalanceData": "Balance information not available",
+    "benefit1": "Receive payments directly from lesson bookings",
+    "benefit2": "Automatic payment splits with trainers",
+    "benefit3": "Professional invoicing and reporting",
+    "trainerPayments": "Trainer Payment Routing",
+    "trainerPaymentsDescription": "How payments are distributed to your trainers",
+    "trainerPaymentsInfo1": "When your academy is connected to a payment account, all lesson bookings from your trainers will be processed through your academy account.",
+    "trainerPaymentsInfo2": "You can manage payment splits for each trainer in the Trainers section. Trainers will see on their earnings page that payments are handled by your academy."
   }
 }
