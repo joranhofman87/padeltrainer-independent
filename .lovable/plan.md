@@ -1,50 +1,94 @@
 
-# Fix: Trainer Trial Status Not Being Recognized
+
+# Cleanup: Remove SelectRole Page
 
 ## Problem
 
-The trainer `joranhofman87+trainermollie@gmail.com` has an active trial (until Feb 12th) but sees the subscription paywall because:
+The `SelectRole` page (`/select-role`) is legacy functionality that's no longer needed since all signup flows now use dedicated paths (`/signup/player`, `/signup/trainer`, etc.) that automatically set the user's intended role.
 
-1. The `check-mollie-subscription` edge function checks trial status for academies/clubs but **not for trainers**
-2. The function returns `{ subscribed: false, status: "none" }` for trainers without a Mollie customer ID, even if they're in a trial
-3. The frontend sets `isInTrial: data.status === 'trialing'`, but the backend never returns that status for trainers
+Currently, users see this page briefly on refresh due to a race condition where `role` is null before `fetchUserData` completes.
 
 ## Solution
 
-Add trainer trial checking logic to the edge function, matching the existing pattern for academies/clubs.
+1. Remove the SelectRole page and route entirely
+2. Update Auth.tsx to default to player onboarding for edge cases (user without `pendingRole`)
+3. Fix the race condition in `useAuth` so layouts wait for role data before evaluating guards
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/check-mollie-subscription/index.ts` | Add trial period check for trainers |
+| `src/hooks/useAuth.tsx` | Await `fetchUserData` before setting `loading: false` |
+| `src/pages/Auth.tsx` | Replace `/select-role` fallback with `/onboarding/player` |
+| `src/components/DomainRouter.tsx` | Remove SelectRole import and all `/select-role` routes |
+| `src/components/trainer/TrainerLayout.tsx` | Remove redirect to `/select-role` (will be handled by loading state) |
+| `src/components/player/PlayerLayout.tsx` | Remove redirect to `/select-role` |
+| `src/pages/SelectRole.tsx` | Delete this file |
+| `e2e/dashboard.spec.ts` | Update or remove tests referencing `/select-role` |
 
 ## Technical Changes
 
-### check-mollie-subscription Edge Function
-
-Add trial_ends_at to the trainer query and check it before the "no Mollie customer" fallback:
+### 1. useAuth.tsx - Fix Race Condition
 
 ```typescript
-// In the trainer section, update the select to include trial_ends_at
-.select("id, mollie_customer_id, subscription_status, subscription_tier, subscription_id, subscription_ends_at, trial_ends_at")
-
-// After fetching trainer profile, check trial status (before the customerId check)
-if (type === "trainer" && profile.trial_ends_at) {
-  const trialEnd = new Date(profile.trial_ends_at);
-  if (trialEnd > new Date()) {
-    logStep("Trainer is in trial period");
-    return new Response(
-      JSON.stringify({
-        subscribed: false,  // Not technically subscribed, but in trial
-        status: "trialing",
-        tier: "trial",
-        trialEndsAt: profile.trial_ends_at,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+// Change getSession handler to await fetchUserData
+supabase.auth.getSession().then(async ({ data: { session } }) => {
+  setSession(session);
+  setUser(session?.user ?? null);
+  
+  if (session?.user) {
+    await fetchUserData(session.user.id);
   }
+  setLoading(false);
+});
+
+// Similarly in onAuthStateChange - await before setLoading(false)
+```
+
+### 2. Auth.tsx - Default to Player Onboarding
+
+```typescript
+// Line 109-110: Change fallback from /select-role to /onboarding/player
+} else {
+  // Default to player onboarding for edge cases (e.g., OAuth without pendingRole)
+  navigate('/onboarding/player');
 }
 ```
 
-This ensures the frontend receives `status: "trialing"` and `trialEndsAt`, which correctly sets `isInTrial: true` and prevents the paywall overlay.
+### 3. DomainRouter.tsx - Remove Routes
+
+- Remove `import SelectRole from '@/pages/SelectRole';`
+- Remove `<Route path="/select-role" element={<SelectRole />} />` from all route sections
+- Remove `<Route path="/select-role" element={<RedirectToAppDomain path="/select-role" />} />` from marketing routes
+
+### 4. Layout Guards - Remove /select-role Redirects
+
+**TrainerLayout.tsx:**
+```typescript
+// Change from:
+} else if (!role) {
+  navigate('/select-role');
+}
+
+// To:
+} else if (!role) {
+  navigate('/auth');  // User needs to log in again or complete onboarding
+}
+```
+
+**PlayerLayout.tsx:** Same change
+
+### 5. Delete SelectRole.tsx
+
+Remove the file entirely.
+
+### 6. E2E Tests
+
+Update `e2e/dashboard.spec.ts` to remove or update the "Role Selection" test block.
+
+## Expected Result
+
+- No more `/select-role` page appearing during navigation
+- Users who somehow end up without a role default to player onboarding
+- Loading states properly wait for role data before rendering
+
