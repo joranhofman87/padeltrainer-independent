@@ -26,7 +26,7 @@ export default function PlayerLayout() {
       if (!user) {
         navigate('/auth');
       } else if (!role) {
-        navigate('/select-role');
+        navigate('/auth');
       } else if (role !== 'player' && role !== 'admin') {
         // Allow admins to access player dashboard (they may also be players)
         navigate('/trainer');

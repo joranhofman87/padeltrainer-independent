@@ -106,8 +106,8 @@ export default function Auth() {
           localStorage.removeItem('pendingRole'); // Clean up after use
           navigate(`/onboarding/${pendingRole}`);
         } else {
-          // Fallback to select-role for edge cases
-          navigate('/select-role');
+          // Default to player onboarding for edge cases (e.g., OAuth without pendingRole)
+          navigate('/onboarding/player');
         }
       }
     }
