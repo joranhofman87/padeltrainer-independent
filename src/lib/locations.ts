@@ -1,6 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 
+// Re-export Location type for convenience
+
 export interface Location {
   id: string;
   name: string;
@@ -342,6 +344,45 @@ export async function updateLocation(id: string, updates: Partial<Location>): Pr
   }
 
   return data;
+}
+
+// Search locations by name or city (server-side search for large datasets)
+export async function searchLocations(query: string, limit: number = 100): Promise<Location[]> {
+  if (!query || query.length < 2) {
+    // Return first N locations when no search query
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .eq('is_active', true)
+      .order('city', { ascending: true })
+      .order('name', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      logger.error('Error fetching initial locations', undefined, { error });
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  const searchPattern = `%${query}%`;
+  
+  const { data, error } = await supabase
+    .from('locations')
+    .select('*')
+    .eq('is_active', true)
+    .or(`name.ilike.${searchPattern},city.ilike.${searchPattern}`)
+    .order('city', { ascending: true })
+    .order('name', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    logger.error('Error searching locations', undefined, { error });
+    throw error;
+  }
+
+  return data || [];
 }
 
 // Get unique cities from locations - handles >1000 rows
