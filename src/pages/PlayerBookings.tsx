@@ -120,7 +120,9 @@ export default function PlayerBookings() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="secondary">Pending</Badge>;
+        return <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Pending Payment</Badge>;
+      case 'pending_approval':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Awaiting Approval</Badge>;
       case 'confirmed':
         return <Badge className="bg-green-500">Confirmed</Badge>;
       case 'cancelled':
