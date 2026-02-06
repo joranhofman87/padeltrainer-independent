@@ -174,6 +174,7 @@ export default function TrainerEarnings() {
         payment_amount,
         paid_at,
         created_at,
+        player_id,
         availability_slots!inner(start_time, end_time, trainer_id),
         lessons(title, price, payment_timing),
         player:profiles!bookings_player_id_fkey(full_name, email)
@@ -282,6 +283,7 @@ export default function TrainerEarnings() {
       lessonTitle: booking.lessons?.title || 'Training Session',
       playerName: booking.player?.full_name || 'Unknown',
       playerEmail: booking.player?.email || '',
+      playerId: (booking as any).player_id || undefined,
       date: format(parseISO(booking.availability_slots.start_time), 'yyyy-MM-dd'),
       time: format(parseISO(booking.availability_slots.start_time), 'HH:mm'),
       price: booking.lessons?.price || 0,

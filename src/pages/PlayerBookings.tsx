@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Calendar, Clock, MapPin, User, Star } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, User, Star, FileText } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';
+import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 
 interface BookingWithDetails {
   id: string;
@@ -196,6 +197,10 @@ export default function PlayerBookings() {
           <TabsTrigger value="past">
             Past ({pastBookings.length})
           </TabsTrigger>
+          <TabsTrigger value="invoices" className="gap-1">
+            <FileText className="h-4 w-4" />
+            Facturen
+          </TabsTrigger>
         </TabsList>
 
           <TabsContent value="upcoming">
@@ -347,6 +352,10 @@ export default function PlayerBookings() {
                 })}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="invoices">
+            {profile?.id && <PlayerInvoicesTab profileId={profile.id} />}
           </TabsContent>
       </Tabs>
     </main>
