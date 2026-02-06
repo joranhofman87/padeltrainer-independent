@@ -287,15 +287,42 @@ serve(async (req) => {
     };
 
     if (recipientAccessToken) {
-      platformFee = Math.min(platformFee, amount);
-      paymentData.applicationFee = {
-        amount: {
-          currency: "EUR",
-          value: platformFee.toFixed(2),
-        },
-        description: "Platform fee",
-      };
-      logStep("Application fee configured", { recipientType, platformFee });
+      // Fetch the connected account's profile ID (required by Mollie for OAuth payments)
+      // Note: /v2/profiles/me only works with API keys, so we use /v2/profiles (list) instead
+      let mollieProfileId: string | null = null;
+      try {
+        const profileResp = await fetch('https://api.mollie.com/v2/profiles', {
+          headers: { 'Authorization': `Bearer ${recipientAccessToken}` },
+        });
+        if (profileResp.ok) {
+          const profileData = await profileResp.json();
+          if (profileData._embedded?.profiles?.length > 0) {
+            mollieProfileId = profileData._embedded.profiles[0].id;
+            logStep("Mollie profile found via list", { profileId: mollieProfileId });
+          }
+        } else {
+          const profileError = await profileResp.text();
+          logStep("Could not fetch Mollie profiles", { status: profileResp.status, error: profileError });
+        }
+      } catch (err) {
+        logStep("Error fetching Mollie profiles", { error: String(err) });
+      }
+
+      if (mollieProfileId) {
+        platformFee = Math.min(platformFee, amount);
+        paymentData.profileId = mollieProfileId;
+        paymentData.applicationFee = {
+          amount: {
+            currency: "EUR",
+            value: platformFee.toFixed(2),
+          },
+          description: "Platform fee",
+        };
+        logStep("Application fee configured", { recipientType, platformFee, profileId: mollieProfileId });
+      } else {
+        logStep("No Mollie profile found, falling back to platform");
+        recipientAccessToken = null;
+      }
     } else {
       logStep("No Mollie account found, payment goes to platform");
     }
