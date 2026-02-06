@@ -230,107 +230,108 @@ export default function Trainers() {
   const fetchTrainers = async () => {
     setLoading(true);
     
-    // Fetch trainer profiles with visibility and trial filters
-    // Only show trainers who are: is_public=true AND (subscription_status='active' OR trial_ends_at > now())
-    const now = new Date().toISOString();
-    const { data: trainerProfiles, error: trainerError } = await supabase
-      .from('trainer_profiles_safe')
-      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
-      .eq('is_public', true)
-      .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
-    
-    if (trainerError) {
-      console.error('Error fetching trainers:', trainerError);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch profiles for all trainers (using public view to protect PII)
-    const userIds = trainerProfiles.map(t => t.user_id);
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles_public')
-      .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
-      .in('user_id', userIds);
-
-    if (profilesError) {
-      console.error('Error fetching profiles:', profilesError);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch trainer locations (which clubs they teach at)
-    const trainerIds = trainerProfiles.map(t => t.id);
-    const { data: trainerLocationData, error: tlError } = await supabase
-      .from('trainer_locations')
-      .select(`
-        trainer_id,
-        location:locations(id, name, city, country, slug)
-      `)
-      .in('trainer_id', trainerIds);
-
-    if (tlError) {
-      console.error('Error fetching trainer locations:', tlError);
-    }
-
-    // Build a map of trainer_id -> location_ids
-    const locationMap = new Map<string, string[]>();
-    const uniqueLocationsMap = new Map<string, Location>();
-    
-    trainerLocationData?.forEach(tl => {
-      if (tl.location) {
-        const loc = tl.location as unknown as Location;
-        const existing = locationMap.get(tl.trainer_id) || [];
-        existing.push(loc.id);
-        locationMap.set(tl.trainer_id, existing);
-        uniqueLocationsMap.set(loc.id, loc);
+    try {
+      // Fetch trainer profiles with visibility and trial filters
+      // Only show trainers who are: is_public=true AND (subscription_status='active' OR trial_ends_at > now())
+      const now = new Date().toISOString();
+      const { data: trainerProfiles, error: trainerError } = await supabase
+        .from('trainer_profiles_safe')
+        .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
+        .eq('is_public', true)
+        .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
+      
+      if (trainerError) {
+        console.error('Error fetching trainers:', trainerError);
+        return;
       }
-    });
-    
-    setTrainerLocationMap(locationMap);
-    setClubLocations(Array.from(uniqueLocationsMap.values()).sort((a, b) => 
-      a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
-    ));
 
-    // Batch fetch ratings for all trainers (single query instead of N+1)
-    const ratingsMap = await getBatchTrainerRatings(trainerIds);
+      // Fetch profiles for all trainers (using public view to protect PII)
+      const userIds = trainerProfiles.map(t => t.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles_public')
+        .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
+        .in('user_id', userIds);
 
-    // Fetch availability data to check which trainers have upcoming open slots
-    const availabilityNow = new Date().toISOString();
-    const { data: availabilityData } = await supabase
-      .from('availability_slots')
-      .select('trainer_id')
-      .in('trainer_id', trainerIds)
-      .gt('start_time', availabilityNow)
-      .is('lesson_id', null);
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+      }
 
-    // Build a Set of trainer IDs with availability
-    const trainersWithAvailability = new Set(
-      availabilityData?.map(a => a.trainer_id) || []
-    );
+      // Fetch trainer locations (which clubs they teach at)
+      const trainerIds = trainerProfiles.map(t => t.id);
+      const { data: trainerLocationData, error: tlError } = await supabase
+        .from('trainer_locations')
+        .select(`
+          trainer_id,
+          location:locations(id, name, city, country, slug)
+        `)
+        .in('trainer_id', trainerIds);
 
-    const trainersWithRatings = trainerProfiles.map(trainer => {
-      const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
-      return {
-        ...trainer,
-        profile: profiles.find(p => p.user_id === trainer.user_id) || null,
-        averageRating: ratings.average,
-        reviewCount: ratings.count,
-        hasAvailability: trainersWithAvailability.has(trainer.id),
-      };
-    });
+      if (tlError) {
+        console.error('Error fetching trainer locations:', tlError);
+      }
 
-    setTrainers(trainersWithRatings);
+      // Build a map of trainer_id -> location_ids
+      const locationMap = new Map<string, string[]>();
+      const uniqueLocationsMap = new Map<string, Location>();
+      
+      trainerLocationData?.forEach(tl => {
+        if (tl.location) {
+          const loc = tl.location as unknown as Location;
+          const existing = locationMap.get(tl.trainer_id) || [];
+          existing.push(loc.id);
+          locationMap.set(tl.trainer_id, existing);
+          uniqueLocationsMap.set(loc.id, loc);
+        }
+      });
+      
+      setTrainerLocationMap(locationMap);
+      setClubLocations(Array.from(uniqueLocationsMap.values()).sort((a, b) => 
+        a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
+      ));
 
-    // Extract unique specializations and certifications
-    const specs = trainerProfiles.flatMap(t => t.specializations || []);
-    const uniqueSpecs = [...new Set(specs)].sort();
-    setAllSpecializations(uniqueSpecs);
-    
-    const certs = trainerProfiles.flatMap(t => t.certifications || []);
-    const uniqueCerts = [...new Set(certs)].sort();
-    setAllCertifications(uniqueCerts);
-    
-    setLoading(false);
+      // Batch fetch ratings for all trainers (single query instead of N+1)
+      const ratingsMap = await getBatchTrainerRatings(trainerIds);
+
+      // Fetch availability data to check which trainers have upcoming open slots
+      const availabilityNow = new Date().toISOString();
+      const { data: availabilityData } = await supabase
+        .from('availability_slots')
+        .select('trainer_id')
+        .in('trainer_id', trainerIds)
+        .gt('start_time', availabilityNow)
+        .is('lesson_id', null);
+
+      // Build a Set of trainer IDs with availability
+      const trainersWithAvailability = new Set(
+        availabilityData?.map(a => a.trainer_id) || []
+      );
+
+      const trainersWithRatings = trainerProfiles.map(trainer => {
+        const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
+        return {
+          ...trainer,
+          profile: (profiles || []).find(p => p.user_id === trainer.user_id) || null,
+          averageRating: ratings.average,
+          reviewCount: ratings.count,
+          hasAvailability: trainersWithAvailability.has(trainer.id),
+        };
+      });
+
+      setTrainers(trainersWithRatings);
+
+      // Extract unique specializations and certifications
+      const specs = trainerProfiles.flatMap(t => t.specializations || []);
+      const uniqueSpecs = [...new Set(specs)].sort();
+      setAllSpecializations(uniqueSpecs);
+      
+      const certs = trainerProfiles.flatMap(t => t.certifications || []);
+      const uniqueCerts = [...new Set(certs)].sort();
+      setAllCertifications(uniqueCerts);
+    } catch (err) {
+      console.error('Unexpected error fetching trainers:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const activeFilterCount = useMemo(() => {
