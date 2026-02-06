@@ -149,7 +149,7 @@ const handler = async (req: Request): Promise<Response> => {
       email,
       password,
       options: {
-        redirectTo: redirectTo || "https://app.padeltrainer.ai/auth",
+        redirectTo: redirectTo || "https://padeltrainer.ai/app/auth",
       },
     });
 
