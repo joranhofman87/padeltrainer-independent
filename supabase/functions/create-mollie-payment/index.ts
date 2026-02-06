@@ -57,7 +57,7 @@ serve(async (req) => {
     const { data: trainerProfile } = await supabase
       .from("trainer_profiles")
       .select("id")
-      .eq("user_id", trainerId)
+      .eq("id", trainerId)
       .single();
 
     const trainerProfileId = trainerProfile?.id;
