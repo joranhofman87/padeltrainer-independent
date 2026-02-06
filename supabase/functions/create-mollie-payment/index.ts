@@ -10,6 +10,77 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CREATE-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+async function refreshTokenIfNeeded(
+  supabaseClient: any,
+  accountData: any,
+  entityType: 'trainer' | 'academy',
+  entityId: string
+): Promise<string | null> {
+  const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
+  const mollieClientSecret = Deno.env.get("MOLLIE_CLIENT_SECRET");
+
+  if (!mollieClientId || !mollieClientSecret) {
+    logStep("Mollie credentials not configured for refresh");
+    return accountData.access_token;
+  }
+
+  const tokenExpiresAt = new Date(accountData.token_expires_at);
+  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+
+  if (tokenExpiresAt > fiveMinutesFromNow) {
+    return accountData.access_token;
+  }
+
+  logStep("Token expired or expiring soon, refreshing", { expiresAt: tokenExpiresAt.toISOString() });
+
+  if (!accountData.refresh_token) {
+    logStep("No refresh token available");
+    return accountData.access_token;
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.mollie.com/oauth2/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${btoa(`${mollieClientId}:${mollieClientSecret}`)}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: accountData.refresh_token,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      logStep("Token refresh failed", errorData);
+      return accountData.access_token;
+    }
+
+    const tokens = await tokenResponse.json();
+    const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+    const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'academy_mollie_accounts';
+    const idColumn = entityType === 'trainer' ? 'trainer_id' : 'academy_profile_id';
+
+    await supabaseClient
+      .from(tableName)
+      .update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: newExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq(idColumn, entityId);
+
+    logStep("Token refreshed successfully");
+    return tokens.access_token;
+  } catch (error) {
+    logStep("Error refreshing token", { error: String(error) });
+    return accountData.access_token;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -87,13 +158,13 @@ serve(async (req) => {
         // Get academy's Mollie account (need access_token for Platform model)
         const { data: academyMollie } = await supabase
           .from("academy_mollie_accounts")
-          .select("mollie_organization_id, charges_enabled, access_token")
+          .select("mollie_organization_id, charges_enabled, access_token, refresh_token, token_expires_at")
           .eq("academy_profile_id", academyTrainer.academy_profile_id)
           .eq("onboarding_complete", true)
           .single();
 
         if (academyMollie?.access_token && academyMollie?.charges_enabled) {
-          recipientAccessToken = academyMollie.access_token;
+          recipientAccessToken = await refreshTokenIfNeeded(supabase, academyMollie, 'academy', academyTrainer.academy_profile_id);
           recipientType = 'academy';
           logStep("Using academy Mollie account", { organizationId: academyMollie.mollie_organization_id });
 
@@ -125,13 +196,13 @@ serve(async (req) => {
     if (!recipientAccessToken && trainerProfileId) {
       const { data: trainerMollie } = await supabase
         .from("trainer_mollie_accounts")
-        .select("mollie_organization_id, access_token")
+        .select("mollie_organization_id, access_token, refresh_token, token_expires_at")
         .eq("trainer_id", trainerProfileId)
         .eq("onboarding_complete", true)
         .single();
 
       if (trainerMollie?.access_token) {
-        recipientAccessToken = trainerMollie.access_token;
+        recipientAccessToken = await refreshTokenIfNeeded(supabase, trainerMollie, 'trainer', trainerProfileId);
         recipientType = 'trainer';
         logStep("Using trainer Mollie account", { organizationId: trainerMollie.mollie_organization_id });
 
