@@ -67,16 +67,16 @@ export default function Onboarding() {
     if (!loading) {
       // If user signed up as club, redirect to club onboarding
       if (storedPendingRole === 'club') {
-        navigate('/onboarding/club');
+        navigate('/app/onboarding/club');
         return;
       }
       
       if (!user) {
         // Not logged in - redirect to appropriate signup
-        navigate(pendingRole === 'trainer' ? '/signup/trainer' : '/signup/player');
+        navigate(pendingRole === 'trainer' ? '/app/signup/trainer' : '/app/signup/player');
       } else if (role) {
         // Already has a role - redirect to dashboard
-        navigate(role === 'trainer' ? '/trainer' : '/player');
+        navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
       }
     }
   }, [user, role, loading, navigate, pendingRole, storedPendingRole]);
@@ -172,7 +172,7 @@ export default function Onboarding() {
         navigate(redirectUrl);
       } else {
         // Default: go to dashboard
-        navigate(pendingRole === 'trainer' ? '/trainer' : '/player');
+        navigate(pendingRole === 'trainer' ? '/app/trainer' : '/app/player');
       }
     } catch (error: any) {
       toast({

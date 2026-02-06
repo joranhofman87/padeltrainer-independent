@@ -118,7 +118,7 @@ export function TrainerSidebar() {
         variant: "destructive",
       });
     } else {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   };
 

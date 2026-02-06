@@ -86,7 +86,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
         variant: "destructive",
       });
     } else {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   };
 

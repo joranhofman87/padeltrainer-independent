@@ -35,10 +35,10 @@ export default function ClubSignup() {
     if (!loading && user) {
       if (role) {
         // User already has a role - check if they're a club manager
-        navigate('/onboarding/club');
+        navigate('/app/onboarding/club');
       } else {
         // New user - redirect to club onboarding
-        navigate('/onboarding/club');
+        navigate('/app/onboarding/club');
       }
     }
   }, [user, role, loading, navigate]);
@@ -84,7 +84,7 @@ export default function ClubSignup() {
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
       });
-      navigate('/onboarding/club');
+      navigate('/app/onboarding/club');
     } else {
       // No immediate session - email verification required
       localStorage.setItem('pendingRole', 'club');
@@ -259,14 +259,14 @@ export default function ClubSignup() {
 
           <p className="text-center text-sm text-muted-foreground">
             {t('clubSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('clubSignup.lookingForTraining', 'Looking for training instead?')}{' '}
-            <Link to="/signup/player" className="text-primary hover:underline">
+            <Link to="/app/signup/player" className="text-primary hover:underline">
               {t('clubSignup.joinAsPlayer', 'Join as Player')}
             </Link>
           </p>

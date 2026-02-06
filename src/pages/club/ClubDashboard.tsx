@@ -64,7 +64,7 @@ export default function ClubDashboard() {
           <AlertTitle>{t('subscription.trialActive')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/club/subscription')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/club/subscription')}>
               {t('subscription.upgradeNow')}
             </Button>
           </AlertDescription>
@@ -78,7 +78,7 @@ export default function ClubDashboard() {
           <AlertTitle>{t('subscription.trialExpired')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{t('subscription.subscribeToAccess')}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/club/subscription')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/club/subscription')}>
               {t('subscription.upgradeNow')}
             </Button>
           </AlertDescription>
@@ -98,7 +98,7 @@ export default function ClubDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/club/trainers')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/trainers')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.trainers')}</CardDescription>
             <CardTitle className="text-3xl">{stats.trainers}</CardTitle>
@@ -110,7 +110,7 @@ export default function ClubDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/club/players')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/players')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.players')}</CardDescription>
             <CardTitle className="text-3xl">{stats.players}</CardTitle>
@@ -122,7 +122,7 @@ export default function ClubDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/club/calendar')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/calendar')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.upcomingSessions')}</CardDescription>
             <CardTitle className="text-3xl">-</CardTitle>
@@ -162,7 +162,7 @@ export default function ClubDashboard() {
             <CardDescription>{t('trainers.description')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/club/trainers')}>
+            <Button onClick={() => navigate('/app/club/trainers')}>
               {t('trainers.title')} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
@@ -177,7 +177,7 @@ export default function ClubDashboard() {
             <CardDescription>{t('players.description')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/club/players')}>
+            <Button onClick={() => navigate('/app/club/players')}>
               {t('players.title')} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>

@@ -150,7 +150,7 @@ export default function TrainerIntakeRequests() {
         {/* Header */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/trainer/cycles')}>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/cycles')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex-1">

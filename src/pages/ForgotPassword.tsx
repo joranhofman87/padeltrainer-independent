@@ -53,7 +53,7 @@ export default function ForgotPassword() {
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full">
-              <Link to="/auth">
+              <Link to="/app/auth">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {t('forgotPassword.backToLogin', 'Back to login')}
               </Link>
@@ -69,7 +69,7 @@ export default function ForgotPassword() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Link 
-            to="/auth" 
+            to="/app/auth" 
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 self-start"
           >
             <ArrowLeft className="h-4 w-4" />

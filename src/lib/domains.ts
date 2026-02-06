@@ -10,11 +10,6 @@
 export const MARKETING_DOMAIN = 'https://padeltrainer.ai';
 
 /**
- * @deprecated No longer needed. Kept as alias for MARKETING_DOMAIN for backward compat in SEO.
- */
-export const APP_DOMAIN = MARKETING_DOMAIN;
-
-/**
  * Get the path for an app route.
  * All app routes are prefixed with /app.
  */
@@ -52,25 +47,4 @@ export function getMarketingPath(path: string, lang: string = 'nl'): string {
  */
 export function getAuthRedirectUrl(path: string = '/app/auth'): string {
   return `${window.location.origin}${path}`;
-}
-
-/**
- * @deprecated No longer needed — everything is same-origin.
- */
-export function isOnAppDomain(): boolean {
-  return true;
-}
-
-/**
- * @deprecated No longer needed — everything is same-origin.
- */
-export function isOnMarketingDomain(): boolean {
-  return true;
-}
-
-/**
- * @deprecated No longer needed — everything is same-origin.
- */
-export function isInDevelopment(): boolean {
-  return true;
 }

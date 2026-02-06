@@ -228,7 +228,7 @@ export default function CycleRegistration() {
                 </div>
               </CardContent>
             </Card>
-            <Button onClick={() => navigate('/player')}>
+            <Button onClick={() => navigate('/app/player')}>
               {t('application.success.backToProfile')}
             </Button>
           </div>

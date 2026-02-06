@@ -89,7 +89,7 @@ export default function AdminCertifications() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [authLoading, user, navigate]);
 

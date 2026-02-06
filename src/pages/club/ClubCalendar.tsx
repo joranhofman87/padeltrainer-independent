@@ -89,7 +89,7 @@ export default function ClubCalendar() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   }, [authLoading, user, navigate]);
 

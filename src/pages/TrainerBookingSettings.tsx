@@ -80,7 +80,7 @@ export default function TrainerBookingSettings() {
       {/* Sub-page Header */}
       <div className="border-b bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/trainer/settings')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/settings')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>

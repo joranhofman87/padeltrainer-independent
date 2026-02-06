@@ -201,7 +201,7 @@ export default function TrainerPlayers() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/trainer")}>
+            <Button variant="ghost" size="icon" onClick={() => navigate("/app/trainer")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>

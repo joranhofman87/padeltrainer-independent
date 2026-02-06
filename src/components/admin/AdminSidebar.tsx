@@ -50,19 +50,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 
 const mainNavItems = [
-  { title: "Dashboard", url: "/admin", icon: LayoutDashboard, end: true },
-  { title: "Users", url: "/admin/users", icon: Users },
-  { title: "Trainers", url: "/admin/trainers", icon: GraduationCap },
-  { title: "Academies", url: "/admin/academies", icon: School },
+  { title: "Dashboard", url: "/app/admin", icon: LayoutDashboard, end: true },
+  { title: "Users", url: "/app/admin/users", icon: Users },
+  { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
+  { title: "Academies", url: "/app/admin/academies", icon: School },
 ];
 
 const settingsNavItems = [
-  { title: "Certifications", url: "/admin/certifications", icon: Award },
-  { title: "Rating Systems", url: "/admin/rating-systems", icon: Scale },
-  { title: "Review Tags", url: "/admin/review-tags", icon: Tags },
-  { title: "Pricing Plans", url: "/admin/pricing", icon: CreditCard },
-  { title: "Onboarding Emails", url: "/admin/onboarding-emails", icon: Mail },
-  { title: "Partner Banners", url: "/admin/banners", icon: ImageIcon },
+  { title: "Certifications", url: "/app/admin/certifications", icon: Award },
+  { title: "Rating Systems", url: "/app/admin/rating-systems", icon: Scale },
+  { title: "Review Tags", url: "/app/admin/review-tags", icon: Tags },
+  { title: "Pricing Plans", url: "/app/admin/pricing", icon: CreditCard },
+  { title: "Onboarding Emails", url: "/app/admin/onboarding-emails", icon: Mail },
+  { title: "Partner Banners", url: "/app/admin/banners", icon: ImageIcon },
 ];
 
 export function AdminSidebar() {
@@ -74,8 +74,8 @@ export function AdminSidebar() {
 
   // Track which collapsibles are open
   const [locationsOpen, setLocationsOpen] = useState(
-    location.pathname.startsWith("/admin/locations") || 
-    location.pathname.startsWith("/admin/club")
+    location.pathname.startsWith("/app/admin/locations") || 
+    location.pathname.startsWith("/app/admin/club")
   );
   const [settingsOpen, setSettingsOpen] = useState(
     settingsNavItems.some(item => location.pathname.startsWith(item.url))
@@ -86,9 +86,9 @@ export function AdminSidebar() {
     navigate("/");
   };
 
-  const isLocationActive = location.pathname.startsWith("/admin/locations") || 
-                           location.pathname.startsWith("/admin/clubs") ||
-                           location.pathname.startsWith("/admin/club-claims");
+   const isLocationActive = location.pathname.startsWith("/app/admin/locations") || 
+                            location.pathname.startsWith("/app/admin/clubs") ||
+                            location.pathname.startsWith("/app/admin/club-claims");
 
   return (
     <Sidebar collapsible="icon">
@@ -183,7 +183,7 @@ export function AdminSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/admin/locations"
+                            to="/app/admin/locations"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -194,7 +194,7 @@ export function AdminSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/admin/clubs"
+                            to="/app/admin/clubs"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -205,7 +205,7 @@ export function AdminSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/admin/club-claims"
+                            to="/app/admin/club-claims"
                             className="flex items-center justify-between"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >

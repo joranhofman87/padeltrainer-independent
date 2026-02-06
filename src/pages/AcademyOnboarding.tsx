@@ -34,7 +34,7 @@ export default function AcademyOnboarding() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/signup/academy');
+      navigate('/app/signup/academy');
     }
   }, [user, loading, navigate]);
 

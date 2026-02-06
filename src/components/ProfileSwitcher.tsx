@@ -121,14 +121,14 @@ export function ProfileSwitcher({
     : activeClub?.location?.name?.substring(0, 2).toUpperCase() || 'CL';
 
   const handleSwitchToTrainer = () => {
-    navigate('/trainer');
+    navigate('/app/trainer');
   };
 
   const handleSwitchToClub = (club?: ClubWithLocation) => {
     if (context === 'club' && club && onClubChange) {
       onClubChange(club);
     } else {
-      navigate('/club');
+      navigate('/app/club');
     }
   };
 
@@ -137,7 +137,7 @@ export function ProfileSwitcher({
       onClubChange(club);
     } else {
       // Navigate to club dashboard when switching from trainer/academy context
-      navigate('/club');
+      navigate('/app/club');
     }
   };
 
@@ -146,7 +146,7 @@ export function ProfileSwitcher({
       onAcademyChange(academy);
     } else {
       // Navigate to academy dashboard when switching from trainer/club context
-      navigate('/academy');
+      navigate('/app/academy');
     }
   };
 

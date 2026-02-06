@@ -80,7 +80,7 @@ export default function AdminRatingSystems() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   }, [user, authLoading, navigate]);
 

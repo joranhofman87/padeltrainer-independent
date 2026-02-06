@@ -34,7 +34,7 @@ export default function TrainerSignup() {
 
   useEffect(() => {
     if (!loading && user && role) {
-      navigate(role === 'trainer' ? '/trainer' : '/player');
+      navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
     }
   }, [user, role, loading, navigate]);
 
@@ -84,7 +84,7 @@ export default function TrainerSignup() {
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
       });
-      navigate('/onboarding/trainer');
+      navigate('/app/onboarding/trainer');
     } else {
       // No immediate session - email verification required
       localStorage.setItem('pendingRole', 'trainer');
@@ -250,21 +250,21 @@ export default function TrainerSignup() {
 
           <p className="text-center text-sm text-muted-foreground">
             {t('trainerSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('trainerSignup.wantToPlay', 'Looking for a trainer instead?')}{' '}
-            <Link to="/signup/player" className="text-primary hover:underline">
+            <Link to="/app/signup/player" className="text-primary hover:underline">
               {t('trainerSignup.joinAsPlayer', 'Join as Player')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('signIn.clubOwner', 'Are you a club owner?')}{' '}
-            <Link to="/signup/club" className="text-primary hover:underline font-medium">
+            <Link to="/app/signup/club" className="text-primary hover:underline font-medium">
               {t('signIn.registerClub', 'Register your club')}
             </Link>
           </p>

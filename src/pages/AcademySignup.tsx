@@ -33,7 +33,7 @@ export default function AcademySignup() {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/academy/onboarding');
+      navigate('/app/academy/onboarding');
     }
   }, [user, role, loading, navigate]);
 
@@ -250,14 +250,14 @@ export default function AcademySignup() {
 
           <p className="text-center text-sm text-muted-foreground">
             {t('academySignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('academySignup.lookingForTraining', 'Looking for training instead?')}{' '}
-            <Link to="/signup/player" className="text-primary hover:underline">
+            <Link to="/app/signup/player" className="text-primary hover:underline">
               {t('academySignup.joinAsPlayer', 'Join as Player')}
             </Link>
           </p>

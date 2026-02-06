@@ -33,7 +33,7 @@ export default function NotificationSettings() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [user, loading, navigate]);
 

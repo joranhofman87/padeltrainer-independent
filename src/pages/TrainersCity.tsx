@@ -311,7 +311,7 @@ export default function TrainersCity() {
                   <LocalizedLink to="/trainers">View All Trainers</LocalizedLink>
                 </Button>
                 <Button asChild>
-                  <Link to="/signup/trainer">Become a Trainer</Link>
+                  <Link to="/app/signup/trainer">Become a Trainer</Link>
                 </Button>
               </div>
             </CardContent>
