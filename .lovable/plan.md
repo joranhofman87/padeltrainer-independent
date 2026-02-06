@@ -1,59 +1,63 @@
 
 
-# Add Trainer Lessons Management Page
+# Fix Trainer Profile Visibility Toggle
 
 ## Problem
 
-Trainers currently have no way to create or manage lessons. The setup checklist says "Create your first lesson" but links to the calendar page, which only handles slots and cycluses. Clubs have a full lesson management page (`ClubLessons.tsx`), but trainers have nothing equivalent.
+The visibility toggle appears to work but doesn't stick because of a state management bug in the subscription/auth flow:
 
-Lessons are required prerequisites for creating slots and cycluses (they define the title, price, duration, max participants, etc.).
+1. **`check-mollie-subscription` edge function** doesn't return the `is_public` field from the database
+2. **`useAuth.tsx`** hardcodes `isPublic` based on subscription status (`data.subscribed || data.status === 'trialing'`) instead of the actual DB value
+3. **`TrainerSettings.tsx`** syncs its local toggle state from `subscription.isPublic`, so every 60-second subscription refresh overwrites whatever the user toggled
 
-## Solution
+The admin panel update likely succeeds at the DB level, but the trainer dashboard never reflects it because of this same loop.
 
-Create a dedicated `/trainer/lessons` page following the same pattern as `ClubLessons.tsx`, adapted for individual trainer use (no trainer selector needed).
+## Fix
 
-## Changes
+### 1. Edge Function: `supabase/functions/check-mollie-subscription/index.ts`
 
-### 1. New Page: `src/pages/TrainerLessons.tsx`
+Include `is_public` in the SELECT query and in every response payload for trainers:
 
-A lesson management page with:
-- List of existing lessons (title, price, duration, max participants, active status)
-- "Create Lesson" button opening a dialog/form
-- Edit and delete actions per lesson
-- Form fields: title, description, duration (minutes), price, max participants, location (optional), active toggle, payment timing (upfront/after)
-- Uses the existing `createLesson`, `getTrainerLessons`, `updateLesson`, `deleteLesson` functions from `src/lib/lessons.ts`
+```text
+Before (line 47):
+  .select("id, mollie_customer_id, subscription_status, ...")
 
-### 2. Route Registration: `src/components/DomainRouter.tsx`
-
-Add a new route inside the trainer layout:
-```
-<Route path="lessons" element={<TrainerLessons />} />
+After:
+  .select("id, mollie_customer_id, subscription_status, ..., is_public")
 ```
 
-### 3. Navigation Updates
+Add `isPublic: profile.is_public ?? false` to each JSON response for the trainer type.
 
-**`src/components/trainer/TrainerSidebar.tsx`**
-- Add "Lessons" as a sub-item under the **Schedule** group (alongside Calendar and Open Slots)
+### 2. Auth Hook: `src/hooks/useAuth.tsx`
 
-**`src/components/trainer/TrainerNavigation.tsx`**
-- Add "Lessons" item to the schedule group
+Change line 114 from:
 
-### 4. Setup Checklist Fix: `src/components/trainer/TrainerSetupChecklist.tsx`
+```typescript
+isPublic: data.subscribed || data.status === 'trialing',
+```
 
-Update the "Create your first lesson" step route from `/trainer/calendar` to `/trainer/lessons`.
+to:
 
-### 5. Translation Keys
+```typescript
+isPublic: data.isPublic ?? false,
+```
 
-Add entries to both `src/i18n/locales/en/trainer.json` and `src/i18n/locales/nl/trainer.json` for:
-- `nav.lessons` - navigation label
-- `lessons.title`, `lessons.create`, `lessons.edit`, `lessons.delete`
-- `lessons.form.*` - form field labels
-- `lessons.empty` - empty state message
+This makes the auth context reflect the actual database value instead of a computed guess.
 
-## Technical Notes
+### 3. TrainerSettings.tsx - No changes needed
 
-- Reuses existing CRUD functions from `src/lib/lessons.ts`
-- Follows the sub-page header pattern used by `OpenSlots.tsx` and `TrainerBookingSettings.tsx` (back arrow + title)
-- Uses the same lesson interface/form fields as `ClubLessons.tsx` but without the trainer-selection dropdown
-- The `SlotLocationPicker` component can be reused for location selection
+The settings page already reads from `subscription.isPublic` and updates via direct DB call. Once the above two fixes are in place, the data flow becomes correct:
+
+```text
+Toggle ON --> DB update (is_public = true) --> refreshSubscription()
+--> edge function returns is_public: true --> useAuth sets isPublic: true
+--> TrainerSettings syncs from subscription.isPublic --> UI shows ON
+```
+
+## Summary
+
+| File | Change |
+|------|--------|
+| `supabase/functions/check-mollie-subscription/index.ts` | Add `is_public` to SELECT and include in all trainer responses |
+| `src/hooks/useAuth.tsx` | Read `isPublic` from API response instead of computing from subscription status |
 
