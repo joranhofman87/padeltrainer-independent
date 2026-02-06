@@ -118,9 +118,9 @@ export function EditClubTrainerDialog({
       const country = await getTrainerCountry(userId);
       setTrainerCountry(country);
 
-      // Fetch profile data from profiles_public view (bypasses RLS for club managers)
+      // Fetch profile data from profiles table (club managers have RLS access via policies)
       const { data: profile } = await supabase
-        .from('profiles_public')
+        .from('profiles')
         .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
         .eq('user_id', userId)
         .single();

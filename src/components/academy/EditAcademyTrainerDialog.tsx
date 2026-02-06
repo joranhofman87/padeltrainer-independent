@@ -111,9 +111,9 @@ export function EditAcademyTrainerDialog({
       const country = await getTrainerCountry(userId);
       setTrainerCountry(country);
 
-      // Fetch profile data from profiles_public view (bypasses RLS for academy managers)
+      // Fetch profile data from profiles table (academy managers have RLS access)
       const { data: profile } = await supabase
-        .from('profiles_public')
+        .from('profiles')
         .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
         .eq('user_id', userId)
         .single();

@@ -3601,7 +3601,6 @@ export type Database = {
           full_name: string | null
           id: string | null
           location: string | null
-          phone: string | null
           rating_member_id: string | null
           rating_system: string | null
           skill_rating: number | null
@@ -3615,7 +3614,6 @@ export type Database = {
           full_name?: string | null
           id?: string | null
           location?: string | null
-          phone?: string | null
           rating_member_id?: string | null
           rating_system?: string | null
           skill_rating?: number | null
@@ -3629,7 +3627,6 @@ export type Database = {
           full_name?: string | null
           id?: string | null
           location?: string | null
-          phone?: string | null
           rating_member_id?: string | null
           rating_system?: string | null
           skill_rating?: number | null
