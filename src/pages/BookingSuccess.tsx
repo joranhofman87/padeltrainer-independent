@@ -59,7 +59,7 @@ export default function BookingSuccess() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
 
-    const checkDatabase = async (): Promise<boolean> => {
+    const checkDatabase = async (): Promise<'paid' | 'terminal' | 'pending'> => {
       const { data, error: dbError } = await supabase
         .from('bookings')
         .select('payment_status, availability_slots(start_time, end_time, trainer_id)')
@@ -68,7 +68,13 @@ export default function BookingSuccess() {
 
       if (dbError) {
         logger.warn('DB poll error', { component: 'BookingSuccess', bookingId, error: dbError.message });
-        return false;
+        return 'pending';
+      }
+
+      // Detect terminal failure states early
+      if (data?.payment_status && ['failed', 'canceled', 'expired'].includes(data.payment_status)) {
+        logger.info('Payment terminal status detected', { component: 'BookingSuccess', bookingId, status: data.payment_status });
+        return 'terminal';
       }
 
       if (data?.payment_status === 'paid') {
@@ -98,10 +104,10 @@ export default function BookingSuccess() {
             trainerSlug: trainer?.slug || '',
           });
         }
-        return true;
+        return 'paid';
       }
 
-      return false;
+      return 'pending';
     };
 
     const callVerifyFallback = async (): Promise<boolean> => {
@@ -120,12 +126,18 @@ export default function BookingSuccess() {
     const poll = async () => {
       if (cancelled) return;
 
-      const isPaid = await checkDatabase();
+      const result = await checkDatabase();
 
-      if (isPaid) {
+      if (result === 'paid') {
         setVerified(true);
         setVerifying(false);
         toast({ title: 'Payment Successful', description: 'Your booking has been confirmed!' });
+        return;
+      }
+
+      if (result === 'terminal') {
+        setError('Payment was not completed. Please try again or contact support.');
+        setVerifying(false);
         return;
       }
 
