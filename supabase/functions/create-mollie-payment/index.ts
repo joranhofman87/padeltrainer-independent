@@ -34,6 +34,18 @@ serve(async (req) => {
     const user = userData.user;
     logStep("User authenticated", { userId: user.id, email: user.email });
 
+    // Look up the player's profile ID (profiles.id != auth user ID)
+    const { data: playerProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profileError || !playerProfile) {
+      throw new Error("Player profile not found");
+    }
+    logStep("Player profile found", { profileId: playerProfile.id });
+
     const { slotId, amount, description, trainerId, redirectUrl, bookingIds } = await req.json();
     logStep("Request payload", { slotId, amount, trainerId, bookingIds });
 
@@ -169,7 +181,7 @@ serve(async (req) => {
         .from("bookings")
         .insert({
           slot_id: slotId,
-          player_id: user.id,
+          player_id: playerProfile.id,
           payment_status: "pending",
           status: "pending",
           payment_amount: amount,
@@ -197,7 +209,7 @@ serve(async (req) => {
       metadata: {
         booking_id: bookingId,
         booking_ids: allBookingIds,
-        player_id: user.id,
+        player_id: playerProfile.id,
         trainer_id: trainerId,
         recipient_type: recipientType,
       },
