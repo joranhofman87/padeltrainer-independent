@@ -1,103 +1,112 @@
 
 
-# Auth Simplification: Remove Accumulated Complexity
+# Cleanup: Fix Leftover Non-Prefixed Routes from Old Subdomain Setup
 
-## Current Situation
+## What's Wrong
 
-Your app used to have two domains (`app.padeltrainer.ai` and `padeltrainer.ai`), but you've since consolidated to a **single domain** with path-based routing (`/app/*` for authenticated pages, `/:lang/*` for marketing). However, the auth code still carries baggage from the two-domain era, plus multiple incremental fixes that have piled up.
+When you consolidated from two domains (`app.padeltrainer.ai` + `padeltrainer.ai`) to a single domain with path-based routing (`/app/*`), many `navigate()` calls and `Link` components across the codebase were **never updated** to use the `/app/` prefix. They still point to paths like `/auth`, `/trainer`, `/club/subscription`, etc.
 
-## Problems Found
+These technically "work" because `DomainRouter.tsx` has legacy redirect routes that catch them and redirect to `/app/*`. But this causes:
+- **Unnecessary double-navigation** (navigate to `/auth` -> redirect to `/app/auth`)
+- **Lost query parameters** on some redirects (the booking-success bug you already hit)
+- **Confusion** about which paths are correct
+- **Dead code** in `domains.ts` (deprecated functions nobody calls)
 
-### 1. `useAuth` has no safety net -- `loading` can stay `true` forever
-The `loading` state starts as `true` and only becomes `false` inside `onAuthStateChange`. If the callback never fires, or if `fetchUserData` hangs (network issue, Supabase connection pool), the entire app is stuck on skeleton loaders permanently. This is the "nothing loads on refresh" issue you're seeing.
+## Scope of the Problem
 
-### 2. `BookingSuccess` requires auth to verify a payment
-When returning from Mollie's external checkout, the browser reloads the app from scratch. The auth session may not restore in time (or at all if tokens expired). The page redirects to `/auth` (line 27-29), losing the `booking_id`. Even if auth restores, the verify call depends on `user` being truthy.
+**~22 files** use `navigate('/auth')` instead of `navigate('/app/auth')`
 
-### 3. Redundant auth guards everywhere
-Every layout (`TrainerLayout`, `PlayerLayout`, `ClubLayout`, `AcademyLayout`, `AdminLayout`) independently checks `!user` and redirects to `/app/auth`. This duplicated logic creates inconsistency and makes debugging harder.
+**~19 files** use non-prefixed app paths like:
+- `navigate('/trainer')` instead of `navigate('/app/trainer')`
+- `navigate('/club/subscription')` instead of `navigate('/app/club/subscription')`
+- `navigate('/admin/users')` instead of `navigate('/app/admin/users')`
+- `navigate('/onboarding/club')` instead of `navigate('/app/onboarding/club')`
 
-### 4. `BookingSuccess` navigates to wrong routes
-The "View My Bookings" button navigates to `/bookings` (line 135) which doesn't exist -- it should be `/app/player/bookings`.
+**~5 files** use non-prefixed `Link to="/auth"` or `Link to="/signup/..."` paths
 
-## Proposed Changes
+**1 test file** has an outdated expected redirect URL
 
-### A. Add a safety timeout to `useAuth` (prevents infinite loading)
+**1 file (`domains.ts`)** has 3 deprecated functions and 1 deprecated constant that are never imported anywhere
 
-Add a 10-second timeout that forces `loading = false` if auth hasn't initialized. Also fix the `TOKEN_REFRESHED` early return that skips `setLoading(false)`. Wrap `fetchUserData` in a 5-second `Promise.race` so a hanging database query can't block the whole app.
+## Plan
 
-**File: `src/hooks/useAuth.tsx`**
+### 1. Fix all `navigate('/auth')` calls (22 files)
+Replace with `navigate('/app/auth')`. Files include:
+- `TrainerBookings.tsx`, `TrainerDashboard.tsx`, `TrainerAnalytics.tsx`, `TrainerEarnings.tsx`, `TrainerSubscription.tsx`, `TrainerLessons.tsx`
+- `ClubCalendar.tsx`, `ClubLessons.tsx`, `ClubPlayers.tsx`, `ClubSubscription.tsx`
+- `AdminDashboard.tsx`, `AdminCertifications.tsx`, `AdminRatingSystems.tsx`, `AdminReviewTags.tsx`
+- `NotificationSettings.tsx`, `EditProfile.tsx`, `CalendarSettings.tsx`, `ResetPassword.tsx`
+- `AcademySidebar.tsx`, `TrainerSidebar.tsx`
+- `CycleApplicationModal.tsx`, `CycleRegistration.tsx`
 
-### B. Make `BookingSuccess` auth-independent (fixes payment verification)
+### 2. Fix all non-prefixed app `navigate()` calls (~19 files)
+Replace `/trainer`, `/club`, `/admin`, `/player`, `/onboarding` with `/app/trainer`, `/app/club`, etc. Files include:
+- `ProfileSwitcher.tsx` -- `/trainer` and `/club` to `/app/trainer` and `/app/club`
+- `AdminStatsCards.tsx` -- `/admin/users`, `/admin/clubs` to `/app/admin/...`
+- `OpenSlots.tsx` -- `/trainer/calendar` to `/app/trainer/calendar`
+- `TrainerDashboard.tsx` -- `/trainer/subscription`, `/trainer/players` etc.
+- `TrainerBookingSettings.tsx`, `TrainerCyclus.tsx`, `TrainerSettings.tsx`, `PlayerSettings.tsx`
+- `ClubDashboard.tsx`, `ClubProfile.tsx`
+- `ClubTrainerInvitation.tsx` -- `/trainer` to `/app/trainer`
+- `Onboarding.tsx` -- `/onboarding/club` to `/app/onboarding/club`
+- `PlayerSignup.tsx`, `TrainerSignup.tsx`, `ClubSignup.tsx` -- `/onboarding/*` to `/app/onboarding/*`
 
-The webhook already marks bookings as `paid` in the database. The page should:
-- Check the `bookings` table directly (no auth needed for reading with proper RLS or using the edge function without auth)
-- Poll every 2 seconds for up to 30 seconds
-- Fall back to calling `verify-mollie-payment` 
-- Never redirect to `/auth`
-- Fix the broken navigation links
+### 3. Fix non-prefixed `Link` components (~5 files)
+- `AcademySignup.tsx` -- `to="/auth"` and `to="/signup/player"` to `/app/auth` and `/app/signup/player`
+- `VerificationPending.tsx` -- `to="/auth"` to `/app/auth`
+- `TrainersCity.tsx` -- `to="/signup/trainer"` to `/app/signup/trainer`
+- `AdminSidebar.tsx` -- all `/admin/*` links to `/app/admin/*`
 
-**File: `src/pages/BookingSuccess.tsx`**
+### 4. Clean up dead code in `domains.ts`
+Remove the 3 deprecated functions (`isOnAppDomain`, `isOnMarketingDomain`, `isInDevelopment`) and the deprecated `APP_DOMAIN` constant -- none are imported anywhere.
 
-### C. No other changes needed right now
+### 5. Update test file
+- `auth.test.ts` -- fix expected redirect URL from `/auth` to `/app/auth`
 
-The rest of the auth architecture is actually sound:
-- Single `onAuthStateChange` listener (good)
-- `Auth.tsx` role-check logic with `hasCheckedRoles` ref (good)
-- OAuth vs magic link separation (good)
-- Single-domain routing (good)
-
-The layout auth guards are duplicated but they work fine and aren't causing the current issues. Consolidating them would be a nice-to-have but isn't urgent.
-
-## Technical Details
-
-### `useAuth.tsx` changes:
-
-```typescript
-// 1. Safety timeout in the main useEffect
-const safetyTimeout = setTimeout(() => {
-  setLoading((current) => {
-    if (current) {
-      logger.warn('Auth safety timeout - forcing loading=false', { component: 'useAuth' });
-    }
-    return false;
-  });
-}, 10_000);
-
-// 2. Fix TOKEN_REFRESHED early return
-if (event === 'TOKEN_REFRESHED' && !session) {
-  logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
-  setLoading(false); // ADD THIS
-  await supabase.auth.signOut();
-  return;
-}
-
-// 3. Wrap fetchUserData with deadline
-if (session?.user) {
-  await Promise.race([
-    fetchUserData(session.user.id),
-    new Promise(resolve => setTimeout(resolve, 5000)),
-  ]);
-}
-
-// 4. Cleanup
-return () => {
-  clearTimeout(safetyTimeout);
-  authSubscription.unsubscribe();
-};
-```
-
-### `BookingSuccess.tsx` changes:
-
-- Remove `useAuth` dependency entirely
-- On mount, query `bookings` table by ID for `payment_status`
-- If `paid`, show success immediately
-- If not, poll every 2s up to 15 times
-- If still not paid, call `verify-mollie-payment` as fallback (without auth header)
-- Fix button navigation to `/app/player/bookings`
+### 6. Keep legacy redirects (for now)
+The legacy redirect routes in `DomainRouter.tsx` should stay as a safety net for any external links or bookmarks pointing to old URLs. They now correctly preserve query params thanks to the earlier `LegacyRedirect` fix.
 
 ## Files to Change
 
-1. **`src/hooks/useAuth.tsx`** -- safety timeout, fetchUserData deadline, TOKEN_REFRESHED fix
-2. **`src/pages/BookingSuccess.tsx`** -- remove auth dependency, database-first polling, fix navigation links
-
+1. `src/pages/TrainerBookings.tsx`
+2. `src/pages/TrainerDashboard.tsx`
+3. `src/pages/TrainerAnalytics.tsx`
+4. `src/pages/TrainerEarnings.tsx`
+5. `src/pages/TrainerSubscription.tsx`
+6. `src/pages/TrainerLessons.tsx`
+7. `src/pages/TrainerBookingSettings.tsx`
+8. `src/pages/TrainerCyclus.tsx`
+9. `src/pages/TrainerSettings.tsx`
+10. `src/pages/OpenSlots.tsx`
+11. `src/pages/club/ClubCalendar.tsx`
+12. `src/pages/club/ClubLessons.tsx`
+13. `src/pages/club/ClubPlayers.tsx`
+14. `src/pages/club/ClubSubscription.tsx`
+15. `src/pages/club/ClubDashboard.tsx`
+16. `src/pages/club/ClubProfile.tsx`
+17. `src/pages/club/ClubTrainerInvitation.tsx`
+18. `src/pages/AdminDashboard.tsx`
+19. `src/pages/admin/AdminCertifications.tsx`
+20. `src/pages/admin/AdminRatingSystems.tsx`
+21. `src/pages/admin/AdminReviewTags.tsx`
+22. `src/pages/NotificationSettings.tsx`
+23. `src/pages/EditProfile.tsx`
+24. `src/pages/CalendarSettings.tsx`
+25. `src/pages/ResetPassword.tsx`
+26. `src/pages/PlayerSettings.tsx`
+27. `src/pages/PlayerSignup.tsx`
+28. `src/pages/TrainerSignup.tsx`
+29. `src/pages/ClubSignup.tsx`
+30. `src/pages/AcademySignup.tsx`
+31. `src/pages/Onboarding.tsx`
+32. `src/pages/CycleRegistration.tsx`
+33. `src/components/ProfileSwitcher.tsx`
+34. `src/components/admin/AdminSidebar.tsx`
+35. `src/components/admin/AdminStatsCards.tsx`
+36. `src/components/academy/AcademySidebar.tsx`
+37. `src/components/trainer/TrainerSidebar.tsx`
+38. `src/components/auth/VerificationPending.tsx`
+39. `src/components/cycles/CycleApplicationModal.tsx`
+40. `src/pages/TrainersCity.tsx`
+41. `src/lib/domains.ts`
+42. `src/lib/auth.test.ts`
