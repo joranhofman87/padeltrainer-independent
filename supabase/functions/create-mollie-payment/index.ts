@@ -286,51 +286,16 @@ serve(async (req) => {
       },
     };
 
-    // If we have a recipient access token, fetch actual profile ID and use application fees
     if (recipientAccessToken) {
-      // Fetch the connected account's actual Mollie profile ID
-      let mollieProfileId: string | null = null;
-      try {
-        const profileResp = await fetch('https://api.mollie.com/v2/profiles/me', {
-          headers: { 'Authorization': `Bearer ${recipientAccessToken}` },
-        });
-        if (profileResp.ok) {
-          const profile = await profileResp.json();
-          mollieProfileId = profile.id;
-          logStep("Mollie profile found", { profileId: mollieProfileId });
-        } else {
-          const profileError = await profileResp.text();
-          logStep("Could not fetch Mollie profile, falling back to platform", { 
-            status: profileResp.status, error: profileError 
-          });
-          recipientAccessToken = null;
-        }
-      } catch (profileFetchError) {
-        logStep("Error fetching Mollie profile", { error: String(profileFetchError) });
-        recipientAccessToken = null;
-      }
-
-      if (recipientAccessToken && mollieProfileId) {
-        // Ensure fee doesn't exceed payment amount
-        platformFee = Math.min(platformFee, amount);
-
-        paymentData.profileId = mollieProfileId;
-        
-        paymentData.applicationFee = {
-          amount: {
-            currency: "EUR",
-            value: platformFee.toFixed(2),
-          },
-          description: "Platform fee",
-        };
-        logStep("Application fee configured", { 
-          recipientType,
-          platformFee,
-          profileId: mollieProfileId,
-        });
-      } else {
-        logStep("Falling back to platform payment (no valid profile)");
-      }
+      platformFee = Math.min(platformFee, amount);
+      paymentData.applicationFee = {
+        amount: {
+          currency: "EUR",
+          value: platformFee.toFixed(2),
+        },
+        description: "Platform fee",
+      };
+      logStep("Application fee configured", { recipientType, platformFee });
     } else {
       logStep("No Mollie account found, payment goes to platform");
     }
