@@ -21,7 +21,6 @@ export default function BookingSuccess() {
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sessionId = searchParams.get('session_id');
   const bookingId = searchParams.get('booking_id');
 
   useEffect(() => {
@@ -31,17 +30,16 @@ export default function BookingSuccess() {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (sessionId && bookingId && user) {
+    if (bookingId && user) {
       verifyPayment();
     }
-  }, [sessionId, bookingId, user]);
+  }, [bookingId, user]);
 
   const verifyPayment = async () => {
     try {
       logger.info('Starting payment verification', { 
         component: 'BookingSuccess', 
-        bookingId, 
-        sessionId 
+        bookingId,
       });
 
       const { data, error: fnError } = await supabase.functions.invoke('verify-mollie-payment', {
@@ -70,8 +68,7 @@ export default function BookingSuccess() {
     } catch (err: any) {
       logger.error('Payment verification failed', err, { 
         component: 'BookingSuccess', 
-        bookingId, 
-        sessionId 
+        bookingId,
       });
       setError(err.message || 'Failed to verify payment');
     } finally {
