@@ -1,50 +1,63 @@
 
-# Fix BookingSuccess: Calendar Link + Book Another Lesson Route
 
-## Two Issues
+# Fix: Bookings Not Loading (Missing Database Relationship)
 
-### 1. "Add to your calendar" is not clickable
-Currently it's just static text inside a `<li>`. It needs to be a clickable element that generates a Google Calendar / ICS link. To do this properly, we need the booking's slot details (date/time, trainer name). The component will fetch this data alongside the payment status check.
+## Root Cause
 
-### 2. "Book Another Lesson" goes to `/app/trainers` (trainer listing) instead of the specific trainer's booking page
-The user wants to return to the trainer they just booked with. We need to fetch the trainer's slug from the booking and navigate to `/:lang/book/:slug`.
+The error `"Could not find a relationship between 'trainer_profiles' and 'profiles'"` means there is **no foreign key** between the `trainer_profiles` table and the `profiles` table. Both tables have a `user_id` column, but PostgREST (the API layer) needs an explicit foreign key constraint to allow nested joins like `trainer_profiles(profiles(...))`.
 
-## Changes
+Three places use this broken nested join pattern:
 
-### File: `src/pages/BookingSuccess.tsx`
+1. **`src/pages/PlayerBookings.tsx`** (line 73-76) -- causes "Failed to load bookings" error
+2. **`src/pages/PlayerDashboard.tsx`** (line 150-153) -- causes dashboard stats to show 0
+3. **`src/lib/lessons.ts`** (line 174) -- `getPlayerBookings` function (unused currently since PlayerBookings has its own inline query, but still broken)
 
-**a) Fetch booking details alongside payment status**
+## Fix Approach
 
-When polling the `bookings` table, expand the query to also retrieve:
-- `availability_slots.start_time`, `availability_slots.end_time`, `availability_slots.trainer_id`
-- `trainer_profiles.slug`, `trainer_profiles.full_name` (via the trainer_id)
+Instead of adding a FK constraint (which could have side effects on cascade deletes), we'll **restructure the queries** to fetch trainer info in a separate step -- the same pattern `BookingSuccess.tsx` already uses successfully.
 
-Store this data in state so both buttons can use it.
+### File 1: `src/pages/PlayerBookings.tsx`
 
-**b) Make "Add to your calendar" a clickable link**
-
-Generate a Google Calendar URL using the slot's start/end times and trainer name. Format:
+**Current (broken):**
 ```
-https://calendar.google.com/calendar/render?action=TEMPLATE&text=Padel+Lesson+with+TrainerName&dates=START/END&details=...
+availability_slots(
+  trainer_profiles(
+    profiles(full_name, avatar_url, email)
+  )
+)
 ```
 
-Wrap the list item in an `<a>` tag that opens this URL in a new tab.
+**Fixed:** Query `availability_slots(start_time, end_time, trainer_id)` and `lessons(...)` only. Then fetch trainer info (name, avatar) with a second query joining `trainer_profiles` + `profiles_public` by `user_id`.
 
-**c) Fix "Book Another Lesson" to navigate to the trainer's booking page**
+Update the interface and all references to `booking.availability_slots.trainer_profiles.profiles.full_name` to use the enriched data instead.
 
-Use the fetched trainer slug to navigate to `/:lang/book/:slug` (the public booking page). Fall back to `/app/trainers` if the slug isn't available.
+### File 2: `src/pages/PlayerDashboard.tsx`
 
-### File: `supabase/functions/create-mollie-payment/index.ts`
+**Current (broken):**
+```
+availability_slots(
+  trainer_id,
+  trainer_profiles(
+    user_id,
+    profiles(full_name)
+  )
+)
+```
 
-No changes needed -- all data can be fetched client-side from the booking ID.
+**Fixed:** Query only `availability_slots(start_time, trainer_id)` and `lessons(title, location)`. Then do a separate lookup for trainer names via `trainer_profiles` + `profiles_public`.
 
-## Technical Details
+### File 3: `src/lib/lessons.ts`
 
-- The booking query becomes: `bookings(payment_status, availability_slots(start_time, end_time, trainer_id, trainer_profiles(slug, full_name)))`
-- Google Calendar URL format uses ISO dates without dashes/colons (e.g., `20250206T140000Z`)
-- Language prefix for the booking link will use `i18next` current language or default to `nl`
-- The "Add to your calendar" item will visually change to look clickable (underline/hover effect)
+**Current (broken):**
+```
+availability_slots(*, trainer_profiles(*, profiles(*)))
+```
+
+**Fixed:** Simplify the select to `availability_slots(*), lessons(*)` and remove the nested join. The calling code should handle trainer enrichment separately if needed.
 
 ## Files to Change
 
-1. `src/pages/BookingSuccess.tsx` -- fetch booking details, add calendar link, fix trainer navigation
+1. **`src/pages/PlayerBookings.tsx`** -- restructure query, enrich trainer data separately, update template references
+2. **`src/pages/PlayerDashboard.tsx`** -- restructure query, enrich trainer data separately
+3. **`src/lib/lessons.ts`** -- remove broken nested join from `getPlayerBookings`
+
