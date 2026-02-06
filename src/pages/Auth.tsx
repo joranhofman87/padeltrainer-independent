@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +77,8 @@ export default function Auth() {
     }
   }, [searchParams, toast, t]);
 
+  const hasCheckedRoles = useRef(false);
+
   useEffect(() => {
     if (!loading && user) {
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
@@ -89,7 +91,6 @@ export default function Auth() {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
         } else {
-          // Priority: admin > trainer > club > player
           if (role === 'admin') {
             navigate('/admin');
           } else if (role === 'trainer') {
@@ -100,9 +101,9 @@ export default function Auth() {
             navigate('/player');
           }
         }
-      } else {
-        // Role is null - could be new user OR roles haven't loaded yet
-        // Double-check by querying the database directly
+      } else if (!hasCheckedRoles.current) {
+        // Role is null - check DB once to distinguish race condition from new user
+        hasCheckedRoles.current = true;
         const checkExistingRoles = async () => {
           const { data } = await supabase
             .from('user_roles')
@@ -111,16 +112,12 @@ export default function Auth() {
             .limit(1);
           
           if (data && data.length > 0) {
-            // User has roles in DB - this was a race condition
-            // Clear pendingRole and refresh auth to get the correct role
             localStorage.removeItem('pendingRole');
             await refreshAuth();
           } else {
-            // Genuinely new user - proceed with onboarding
             if (redirectUrl) {
               sessionStorage.removeItem('redirectAfterLogin');
             }
-            
             const pendingRole = localStorage.getItem('pendingRole');
             if (pendingRole) {
               localStorage.removeItem('pendingRole');
@@ -130,11 +127,10 @@ export default function Auth() {
             }
           }
         };
-        
         checkExistingRoles();
       }
     }
-  }, [user, role, loading, navigate, refreshAuth]);
+  }, [user, role, loading, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();

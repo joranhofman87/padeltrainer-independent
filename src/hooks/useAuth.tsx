@@ -138,13 +138,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
-    // Track if we've already triggered welcome emails for this session
     let hasTriggeredWelcomeEmails = false;
 
-    // Set up auth state listener FIRST
+    // Single source of truth: onAuthStateChange handles INITIAL_SESSION + all state changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Handle token refresh failures - sign out to clear invalid session
+        // Handle token refresh failures
         if (event === 'TOKEN_REFRESHED' && !session) {
           logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
           await supabase.auth.signOut();
@@ -155,22 +154,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Await fetchUserData to ensure role is loaded before setting loading to false
           await fetchUserData(session.user.id);
 
-          // Trigger welcome emails when user signs in with confirmed email
-          // This handles the case where user just confirmed their email
+          // Trigger welcome emails on confirmed sign-in
           if (
             !hasTriggeredWelcomeEmails &&
             session.user.email_confirmed_at &&
             (event === 'SIGNED_IN' || event === 'USER_UPDATED')
           ) {
             hasTriggeredWelcomeEmails = true;
-            // Fire and forget - don't block auth flow
             supabase.functions.invoke('trigger-welcome-emails', {
-              headers: {
-                Authorization: `Bearer ${session.access_token}`,
-              },
+              headers: { Authorization: `Bearer ${session.access_token}` },
             }).then(({ error }) => {
               if (error) {
                 logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
@@ -189,54 +183,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      // AbortError is normal (React StrictMode, navigation) - don't treat as auth failure
-      if (error?.name === 'AbortError') {
-        logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
-        setLoading(false);
-        return;
-      }
-      // If there's an error getting the session, sign out to clear corrupted state
-      if (error) {
-        logger.warn('Failed to get session, signing out', { component: 'useAuth', error });
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchUserData(session.user.id);
-      }
-      setLoading(false);
-    }).catch(async (error) => {
-      // AbortError is normal (React StrictMode, navigation) - don't treat as auth failure
-      if (error?.name === 'AbortError') {
-        logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
-        setLoading(false);
-        return;
-      }
-      logger.error('Session retrieval error', error as Error, { component: 'useAuth' });
-      await supabase.auth.signOut();
-      setLoading(false);
-    });
-
-    // Safety timeout: if loading hasn't resolved after 10 seconds, force it
-    const safetyTimeout = setTimeout(() => {
-      setLoading((current) => {
-        if (current) {
-          logger.warn('Auth loading safety timeout triggered', { component: 'useAuth' });
-        }
-        return false;
-      });
-    }, 10000);
-
     return () => {
       authSubscription.unsubscribe();
-      clearTimeout(safetyTimeout);
     };
   }, []);
 
@@ -258,21 +206,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [role, session?.access_token, fetchSubscription]);
 
-  // Periodically validate session is still valid (every 5 minutes)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (!session) return;
-      
-      const { error } = await supabase.auth.getUser();
-      if (error?.message?.includes('Invalid Refresh Token') || 
-          error?.message?.includes('Refresh Token Not Found')) {
-        logger.warn('Invalid session detected, signing out', { component: 'useAuth' });
-        await supabase.auth.signOut();
-      }
-    }, 300000); // 5 minutes
-
-    return () => clearInterval(interval);
-  }, [session]);
 
   return (
     <AuthContext.Provider value={{ 
