@@ -1,49 +1,45 @@
 
 
-# Fix Payment Availability Check Using Secure Database Views
+# Fix "Booking Failed" - Foreign Key Mismatch in create-mollie-payment
 
 ## Problem
-Players cannot book sessions with Mollie-connected trainers because RLS policies on `trainer_mollie_accounts` and `academy_mollie_accounts` block players from reading the trainer's payment status. The `hasValidPaymentSetup()` function returns `valid: false`, showing "Payment Not Available."
 
-## Solution
+The `create-mollie-payment` edge function sets `player_id` to the **auth user ID** (`user.id`), but the `bookings` table has a foreign key constraint `bookings_player_id_fkey` referencing `profiles.id` -- which is a **separate UUID** from the auth user ID.
 
-### 1. Database Migration -- Create two secure views
+For the user `joran@getreditus.com`:
+- Auth user ID: `d3f3ced7-25bf-4ae6-a2f1-820da140355e`
+- Profile ID: `9938e067-30e1-4ec3-b896-68322fb02c57`
 
-Create `trainer_mollie_status` and `academy_mollie_status` views that expose only non-sensitive fields (no tokens, no secrets) to any authenticated user.
+The insert fails because there's no `profiles` row with `id = d3f3ced7...`.
 
-```sql
--- Trainer view
-CREATE VIEW public.trainer_mollie_status AS
-SELECT 
-  trainer_id,
-  charges_enabled,
-  onboarding_complete,
-  (mollie_organization_id IS NOT NULL 
-   AND NOT mollie_organization_id LIKE 'pending_%') AS is_connected
-FROM public.trainer_mollie_accounts;
+## Fix
 
--- Academy view
-CREATE VIEW public.academy_mollie_status AS
-SELECT 
-  academy_profile_id,
-  charges_enabled,
-  onboarding_complete,
-  (mollie_organization_id IS NOT NULL 
-   AND NOT mollie_organization_id LIKE 'pending_%') AS is_connected
-FROM public.academy_mollie_accounts;
+### `supabase/functions/create-mollie-payment/index.ts`
+
+Before inserting the booking, look up the player's `profiles.id` from their auth user ID:
+
+```typescript
+// After user authentication, before the booking insert:
+const { data: playerProfile, error: profileError } = await supabase
+  .from("profiles")
+  .select("id")
+  .eq("user_id", user.id)
+  .single();
+
+if (profileError || !playerProfile) {
+  throw new Error("Player profile not found");
+}
 ```
 
-### 2. `src/lib/academyTrainerPayments.ts` -- Query views instead of raw tables
+Then change line 172 from:
+```typescript
+player_id: user.id,
+```
+to:
+```typescript
+player_id: playerProfile.id,
+```
 
-Update `getAcademyPaymentInfo` (line ~39) and `hasValidPaymentSetup` (line ~105) to use the new views:
+Also update the metadata on line 199 to use the correct profile ID for consistency.
 
-- `academy_mollie_accounts` becomes `academy_mollie_status`
-- `trainer_mollie_accounts` becomes `trainer_mollie_status`
-- Check `charges_enabled` directly instead of casting through `mollie_organization_id`
-
-### 3. Security
-
-- Views exclude `access_token`, `refresh_token`, `token_expires_at`, and raw `mollie_organization_id`
-- RLS on the underlying tables remains unchanged (trainers/academies still own their full records)
-- Any authenticated user can read the view to check if payment is available -- which is required for the booking flow
-
+This is a one-line data fix plus a profile lookup -- no schema changes needed.
