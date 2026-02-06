@@ -42,7 +42,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         password,
         fullName,
         phone,
-        redirectTo: getAuthRedirectUrl('/auth'),
+        redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
 
@@ -90,7 +90,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: getAuthRedirectUrl('/auth'),
+      redirectTo: getAuthRedirectUrl('/app/auth'),
     },
   });
   return { data, error };
@@ -194,7 +194,7 @@ export async function sendPasswordResetEmail(email: string) {
       body: {
         type: 'password_reset',
         email,
-        redirectTo: getAuthRedirectUrl('/reset-password'),
+        redirectTo: getAuthRedirectUrl('/app/reset-password'),
       },
     });
     
@@ -207,7 +207,7 @@ export async function sendPasswordResetEmail(email: string) {
     console.error('Failed to send password reset email:', error);
     // Fallback to Supabase default if custom email fails
     const { data, error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: getAuthRedirectUrl('/reset-password'),
+      redirectTo: getAuthRedirectUrl('/app/reset-password'),
     });
     return { data, error: supabaseError };
   }
