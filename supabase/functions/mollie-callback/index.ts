@@ -1,15 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[MOLLIE-CALLBACK] ${step}${detailsStr}`);
 };
+
+const FRONTEND_BASE_URL = 'https://app.padeltrainer.ai';
 
 interface MollieTokenResponse {
   access_token: string;
@@ -25,18 +22,47 @@ interface MollieOrganization {
   email: string;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+function redirectToFrontend(status: 'success' | 'error', params: Record<string, string> = {}) {
+  const url = new URL(`${FRONTEND_BASE_URL}/api/mollie-callback`);
+  url.searchParams.set('status', status);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
   }
+  logStep("Redirecting to frontend", { url: url.toString() });
+  return new Response(null, {
+    status: 302,
+    headers: { 'Location': url.toString() },
+  });
+}
 
+serve(async (req) => {
   try {
-    logStep("Function started");
+    logStep("Function started", { method: req.method, url: req.url });
+
+    // Parse query parameters from Mollie's GET redirect
+    const url = new URL(req.url);
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    const oauthError = url.searchParams.get('error');
+    const errorDescription = url.searchParams.get('error_description');
+
+    // Handle OAuth error from Mollie
+    if (oauthError) {
+      logStep("OAuth error received", { error: oauthError, description: errorDescription });
+      return redirectToFrontend('error', { message: errorDescription || oauthError });
+    }
+
+    if (!code || !state) {
+      logStep("Missing parameters", { hasCode: !!code, hasState: !!state });
+      return redirectToFrontend('error', { message: 'Missing authorization code or state' });
+    }
+
+    logStep("Callback received", { state: state.substring(0, 30) + '...' });
 
     const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
     const mollieClientSecret = Deno.env.get("MOLLIE_CLIENT_SECRET");
     if (!mollieClientId || !mollieClientSecret) {
-      throw new Error("Mollie OAuth credentials not configured");
+      return redirectToFrontend('error', { message: 'Mollie OAuth credentials not configured' });
     }
 
     const supabaseClient = createClient(
@@ -44,33 +70,20 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Parse the callback parameters
-    const { code, state, error: oauthError, error_description } = await req.json();
-    
-    if (oauthError) {
-      logStep("OAuth error received", { error: oauthError, description: error_description });
-      throw new Error(error_description || oauthError);
-    }
-
-    if (!code || !state) {
-      throw new Error("Missing authorization code or state");
-    }
-
-    logStep("Callback received", { state: state.substring(0, 20) + '...' });
-
     // Parse state to determine entity type and ID
     // Format: "trainer_{trainerId}_{randomState}" or "academy_{academyId}_{randomState}"
     const stateParts = state.split('_');
     if (stateParts.length < 3) {
-      throw new Error("Invalid state format");
+      return redirectToFrontend('error', { message: 'Invalid state format' });
     }
 
     const entityType = stateParts[0]; // 'trainer' or 'academy'
     const entityId = stateParts[1];
     logStep("Parsed state", { entityType, entityId });
 
-    // Use fixed production redirect URI - Mollie requires exact match with registered callback
-    const redirectUri = 'https://app.padeltrainer.ai/api/mollie-callback';
+    // The redirect URI must match exactly what was used when creating the authorization URL
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const redirectUri = `${supabaseUrl}/functions/v1/mollie-callback`;
 
     // Exchange authorization code for access token
     const tokenResponse = await fetch('https://api.mollie.com/oauth2/tokens', {
@@ -89,33 +102,27 @@ serve(async (req) => {
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json();
       logStep("Token exchange failed", errorData);
-      throw new Error(errorData.error_description || 'Failed to exchange authorization code');
+      return redirectToFrontend('error', { 
+        message: errorData.error_description || 'Failed to exchange authorization code' 
+      });
     }
 
     const tokens: MollieTokenResponse = await tokenResponse.json();
-    logStep("Tokens received", { 
-      expiresIn: tokens.expires_in, 
-      scope: tokens.scope 
-    });
+    logStep("Tokens received", { expiresIn: tokens.expires_in, scope: tokens.scope });
 
     // Get the organization ID from Mollie
     const orgResponse = await fetch('https://api.mollie.com/v2/organizations/me', {
-      headers: {
-        'Authorization': `Bearer ${tokens.access_token}`,
-      },
+      headers: { 'Authorization': `Bearer ${tokens.access_token}` },
     });
 
     if (!orgResponse.ok) {
       const errorData = await orgResponse.json();
       logStep("Failed to get organization", errorData);
-      throw new Error('Failed to retrieve Mollie organization');
+      return redirectToFrontend('error', { message: 'Failed to retrieve Mollie organization' });
     }
 
     const organization: MollieOrganization = await orgResponse.json();
-    logStep("Organization retrieved", { 
-      organizationId: organization.id, 
-      name: organization.name 
-    });
+    logStep("Organization retrieved", { organizationId: organization.id, name: organization.name });
 
     // Calculate token expiration time
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
@@ -130,7 +137,7 @@ serve(async (req) => {
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt,
           onboarding_complete: true,
-          charges_enabled: true, // Assume enabled after successful OAuth
+          charges_enabled: true,
           payouts_enabled: true,
           updated_at: new Date().toISOString(),
         })
@@ -138,7 +145,7 @@ serve(async (req) => {
 
       if (updateError) {
         logStep("Error updating trainer account", { error: updateError });
-        throw new Error('Failed to save Mollie connection');
+        return redirectToFrontend('error', { message: 'Failed to save Mollie connection' });
       }
       logStep("Trainer account updated successfully");
     } else if (entityType === 'academy') {
@@ -158,27 +165,20 @@ serve(async (req) => {
 
       if (updateError) {
         logStep("Error updating academy account", { error: updateError });
-        throw new Error('Failed to save Mollie connection');
+        return redirectToFrontend('error', { message: 'Failed to save Mollie connection' });
       }
       logStep("Academy account updated successfully");
     } else {
-      throw new Error("Invalid entity type in state");
+      return redirectToFrontend('error', { message: 'Invalid entity type' });
     }
 
-    return new Response(JSON.stringify({ 
-      success: true,
-      organizationId: organization.id,
-      organizationName: organization.name,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
+    return redirectToFrontend('success', {
+      name: organization.name,
+      entity: entityType,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+    return redirectToFrontend('error', { message: errorMessage });
   }
 });

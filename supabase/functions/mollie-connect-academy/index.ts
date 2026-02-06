@@ -61,50 +61,10 @@ serve(async (req) => {
     }
     logStep("Academy manager verified", { role: academyManager.role });
 
-    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
-
-    // Check if academy already has a Mollie account with valid tokens
-    const { data: existingAccount } = await supabaseClient
-      .from('academy_mollie_accounts')
-      .select('mollie_organization_id, onboarding_complete, access_token, token_expires_at')
-      .eq('academy_profile_id', academyProfileId)
-      .maybeSingle();
-
-    if (existingAccount?.mollie_organization_id && existingAccount?.onboarding_complete) {
-      logStep("Academy already connected to Mollie", { 
-        organizationId: existingAccount.mollie_organization_id 
-      });
-      return new Response(JSON.stringify({ 
-        alreadyConnected: true,
-        message: "Already connected to Mollie"
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    // Generate state for CSRF protection
-    const state = generateState();
-    
-    // Store state in database for verification on callback
-    const { error: stateError } = await supabaseClient
-      .from('academy_mollie_accounts')
-      .upsert({
-        academy_profile_id: academyProfileId,
-        mollie_organization_id: `pending_${state}`, // Temporary placeholder
-        onboarding_complete: false,
-        charges_enabled: false,
-        payouts_enabled: false,
-      }, {
-        onConflict: 'academy_profile_id'
-      });
-
-    if (stateError) {
-      logStep("Error storing OAuth state", { error: stateError });
-    }
-
     // Build Mollie OAuth authorization URL
-    const redirectUri = `${origin}/api/mollie-callback`;
+    // Redirect directly to the edge function so the token exchange happens server-to-server
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const redirectUri = `${supabaseUrl}/functions/v1/mollie-callback`;
     const scopes = [
       'organizations.read',
       'organizations.write',

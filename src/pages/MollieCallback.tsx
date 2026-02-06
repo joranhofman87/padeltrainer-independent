@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,85 +14,50 @@ export default function MollieCallback() {
   const [organizationName, setOrganizationName] = useState<string>('');
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
-      const oauthError = searchParams.get('error');
-      const errorDescription = searchParams.get('error_description');
+    const callbackStatus = searchParams.get('status');
+    const name = searchParams.get('name');
+    const message = searchParams.get('message');
+    const entity = searchParams.get('entity');
+    const code = searchParams.get('code');
 
-      // Handle OAuth error from Mollie
-      if (oauthError) {
-        console.log('[MollieCallback] OAuth error from Mollie:', { error: oauthError, description: errorDescription });
-        setStatus('error');
-        setErrorMessage(errorDescription || oauthError);
-        return;
-      }
+    // If we have a status param, the backend already processed the callback
+    if (callbackStatus === 'success') {
+      setOrganizationName(name || '');
+      setStatus('success');
 
-      if (!code || !state) {
-        console.log('[MollieCallback] Missing parameters:', { hasCode: !!code, hasState: !!state });
-        setStatus('error');
-        setErrorMessage('Missing authorization code or state parameter');
-        return;
-      }
-
-      console.log('[MollieCallback] Processing callback:', { 
-        hasCode: !!code, 
-        statePrefix: state?.substring(0, 30),
-        origin: window.location.origin 
-      });
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      try {
-        // Call the edge function to exchange the code for tokens
-        const { data, error } = await supabase.functions.invoke('mollie-callback', {
-          body: { code, state, error: oauthError, error_description: errorDescription },
-        });
-        clearTimeout(timeout);
-
-        if (error) {
-          throw new Error(error.message || 'Failed to complete Mollie connection');
+      // Redirect after short delay to show success message
+      setTimeout(() => {
+        if (entity === 'academy') {
+          navigate('/academy/earnings?mollie_connected=true');
+        } else {
+          navigate('/trainer/earnings?mollie_connected=true');
         }
+      }, 2000);
+      return;
+    }
 
-        if (data?.error) {
-          throw new Error(data.error);
-        }
+    if (callbackStatus === 'error') {
+      setStatus('error');
+      setErrorMessage(message || 'Something went wrong while connecting your Mollie account.');
+      return;
+    }
 
-        setOrganizationName(data.organizationName || '');
-        setStatus('success');
+    // If there's a code param but no status, Mollie redirected here directly
+    // (shouldn't happen with the new architecture, but handle gracefully)
+    if (code) {
+      setStatus('error');
+      setErrorMessage('The connection flow encountered an unexpected redirect. Please try again.');
+      return;
+    }
 
-        // Parse state to determine redirect path
-        const entityType = state.split('_')[0];
-
-        // Redirect after short delay to show success message
-        setTimeout(() => {
-          if (entityType === 'academy') {
-            navigate('/academy/earnings?mollie_connected=true');
-          } else {
-            navigate('/trainer/earnings?mollie_connected=true');
-          }
-        }, 2000);
-      } catch (err) {
-        clearTimeout(timeout);
-        setStatus('error');
-        setErrorMessage(
-          err instanceof DOMException && err.name === 'AbortError'
-            ? 'The connection timed out. Please try again.'
-            : err instanceof Error ? err.message : 'An unexpected error occurred'
-        );
-      }
-    };
-
-    handleCallback();
+    // No recognized params - show error
+    setStatus('error');
+    setErrorMessage('Missing connection parameters. Please try again.');
   }, [searchParams, navigate]);
 
   const handleRetry = () => {
-    // Parse state to determine where to redirect for retry
-    const state = searchParams.get('state');
-    const entityType = state?.split('_')[0];
-    
-    if (entityType === 'academy') {
+    const entity = searchParams.get('entity') || searchParams.get('state')?.split('_')[0];
+    if (entity === 'academy') {
       navigate('/academy/earnings');
     } else {
       navigate('/trainer/earnings');
@@ -119,7 +83,7 @@ export default function MollieCallback() {
               <CheckCircle className="h-12 w-12 mx-auto text-green-500" />
               <h2 className="text-xl font-semibold">Successfully connected!</h2>
               <p className="text-muted-foreground">
-                {organizationName 
+                {organizationName
                   ? `Your Mollie account "${organizationName}" has been connected.`
                   : 'Your Mollie account has been connected successfully.'}
               </p>
@@ -134,7 +98,7 @@ export default function MollieCallback() {
               <XCircle className="h-12 w-12 mx-auto text-destructive" />
               <h2 className="text-xl font-semibold">Connection failed</h2>
               <p className="text-muted-foreground">
-                {errorMessage || 'Something went wrong while connecting your Mollie account.'}
+                {errorMessage}
               </p>
               <Button onClick={handleRetry} className="mt-4">
                 Try again
