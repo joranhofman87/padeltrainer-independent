@@ -544,6 +544,32 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
+        {/* Mollie Connected (no balance data) */}
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && 
+          connectStatus?.chargesEnabled && !connectStatus.balance && (
+          <Card className="mb-8 border-green-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
+                    <Wallet className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Mollie Connected</p>
+                    <p className="text-sm text-muted-foreground">
+                      Your account is set up to receive payments
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="border-green-300 text-green-600">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Active
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Pending onboarding warning - only show when NOT using manual invoicing */}
         {!useManualInvoicing && connectStatus?.connected && !connectStatus.onboardingComplete && (
           <Card className="mb-8 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
