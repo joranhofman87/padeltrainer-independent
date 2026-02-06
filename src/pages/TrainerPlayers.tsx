@@ -50,14 +50,32 @@ import { AddPlayerDialog, GuestPlayer } from "@/components/trainer/AddPlayerDial
 import { EditPlayerDialog } from "@/components/trainer/EditPlayerDialog";
 import { ImportPlayersDialog } from "@/components/trainer/ImportPlayersDialog";
 
+// Unified player type for the list
+type UnifiedPlayer = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  skill_rating: number | null;
+  rating_system: string;
+  has_trained: boolean;
+  notes: string | null;
+  created_at: string;
+  type: "guest" | "registered";
+  // Only for guest players
+  originalGuest?: GuestPlayer;
+};
+
 export default function TrainerPlayers() {
   const { t } = useTranslation("trainer");
   const { user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [players, setPlayers] = useState<GuestPlayer[]>([]);
-  const [filteredPlayers, setFilteredPlayers] = useState<GuestPlayer[]>([]);
+  const [guestPlayers, setGuestPlayers] = useState<GuestPlayer[]>([]);
+  const [registeredPlayers, setRegisteredPlayers] = useState<UnifiedPlayer[]>([]);
+  const [filteredPlayers, setFilteredPlayers] = useState<UnifiedPlayer[]>([]);
+  const [allPlayers, setAllPlayers] = useState<UnifiedPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,21 +105,94 @@ export default function TrainerPlayers() {
     if (user) fetchTrainerId();
   }, [user]);
 
+  // Convert guest player to unified format
+  const guestToUnified = (g: GuestPlayer): UnifiedPlayer => ({
+    id: g.id,
+    full_name: g.full_name,
+    email: g.email || "",
+    phone: g.phone || "",
+    skill_rating: g.skill_rating ?? null,
+    rating_system: (g as any).rating_system || "knltb",
+    has_trained: (g as any).has_trained ?? true,
+    notes: g.notes || null,
+    created_at: g.created_at,
+    type: "guest",
+    originalGuest: g,
+  });
+
   useEffect(() => {
     const fetchPlayers = async () => {
       if (!trainerId) return;
 
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
+        // Fetch guest players
+        const { data: guestData, error: guestError } = await supabase
           .from("guest_players")
           .select("*")
           .eq("trainer_id", trainerId)
           .order("full_name");
 
-        if (error) throw error;
-        setPlayers(data as GuestPlayer[]);
-        setFilteredPlayers(data as GuestPlayer[]);
+        if (guestError) throw guestError;
+        setGuestPlayers(guestData as GuestPlayer[]);
+
+        // Fetch registered players who booked with this trainer
+        // Use two-step query to avoid deep type instantiation
+        let regPlayers: UnifiedPlayer[] = [];
+        const { data: slotIds } = await supabase
+          .from("availability_slots")
+          .select("id")
+          .eq("trainer_id", trainerId);
+
+        if (slotIds && slotIds.length > 0) {
+          const { data: bookings } = await supabase
+            .from("bookings")
+            .select("player_id, created_at")
+            .in("slot_id", slotIds.map(s => s.id))
+            .not("player_id", "is", null);
+
+          if (bookings && bookings.length > 0) {
+            // Deduplicate player_ids
+            const playerMap = new Map<string, string>();
+            bookings.forEach(b => {
+              if (b.player_id && !playerMap.has(b.player_id)) {
+                playerMap.set(b.player_id, b.created_at);
+              }
+            });
+
+            const playerIds = Array.from(playerMap.keys());
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, full_name, email, phone, skill_rating, rating_system")
+              .in("id", playerIds);
+
+            if (profiles) {
+              // Exclude players that are already in guest_players (by linked_profile_id)
+              const linkedIds = new Set(
+                (guestData as GuestPlayer[])
+                  .filter(g => (g as any).linked_profile_id)
+                  .map(g => (g as any).linked_profile_id)
+              );
+
+              regPlayers = profiles
+                .filter(p => !linkedIds.has(p.id))
+                .map(p => ({
+                  id: `reg-${p.id}`,
+                  full_name: p.full_name || "Unknown",
+                  email: p.email || "",
+                  phone: (p as any).phone || "",
+                  skill_rating: (p as any).skill_rating ?? null,
+                  rating_system: (p as any).rating_system || "knltb",
+                  has_trained: true,
+                  notes: null,
+                  created_at: playerMap.get(p.id) || new Date().toISOString(),
+                  type: "registered" as const,
+                }));
+            }
+          }
+        }
+
+        setRegisteredPlayers(regPlayers);
       } catch (error: any) {
         console.error("Error fetching players:", error);
         toast({
@@ -117,13 +208,23 @@ export default function TrainerPlayers() {
     if (trainerId) fetchPlayers();
   }, [trainerId]);
 
+  // Merge guest + registered players
+  useEffect(() => {
+    const unified = [
+      ...guestPlayers.map(guestToUnified),
+      ...registeredPlayers,
+    ].sort((a, b) => a.full_name.localeCompare(b.full_name));
+    setAllPlayers(unified);
+  }, [guestPlayers, registeredPlayers]);
+
+  // Filter
   useEffect(() => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) {
-      setFilteredPlayers(players);
+      setFilteredPlayers(allPlayers);
     } else {
       setFilteredPlayers(
-        players.filter(
+        allPlayers.filter(
           (player) =>
             player.full_name.toLowerCase().includes(query) ||
             player.email.toLowerCase().includes(query) ||
@@ -131,26 +232,26 @@ export default function TrainerPlayers() {
         )
       );
     }
-  }, [searchQuery, players]);
+  }, [searchQuery, allPlayers]);
 
   const handlePlayerCreated = (player: GuestPlayer) => {
-    setPlayers([...players, player].sort((a, b) =>
+    setGuestPlayers(prev => [...prev, player].sort((a, b) =>
       a.full_name.localeCompare(b.full_name)
     ));
     setShowAddPlayer(false);
   };
 
   const handlePlayersImported = (importedPlayers: GuestPlayer[]) => {
-    setPlayers(
-      [...players, ...importedPlayers].sort((a, b) =>
+    setGuestPlayers(prev =>
+      [...prev, ...importedPlayers].sort((a, b) =>
         a.full_name.localeCompare(b.full_name)
       )
     );
   };
 
   const handlePlayerUpdated = (updatedPlayer: GuestPlayer) => {
-    setPlayers(
-      players
+    setGuestPlayers(prev =>
+      prev
         .map((p) => (p.id === updatedPlayer.id ? updatedPlayer : p))
         .sort((a, b) => a.full_name.localeCompare(b.full_name))
     );
@@ -169,7 +270,7 @@ export default function TrainerPlayers() {
 
       if (error) throw error;
 
-      setPlayers(players.filter((p) => p.id !== deletingPlayer.id));
+      setGuestPlayers(prev => prev.filter((p) => p.id !== deletingPlayer.id));
       toast({
         title: t("players.playerDeleted"),
         description: t("players.playerDeletedDescription"),
@@ -305,7 +406,7 @@ export default function TrainerPlayers() {
                               {player.skill_rating.toFixed(1)}
                             </Badge>
                             <span className="text-xs text-muted-foreground uppercase">
-                              {(player as any).rating_system || 'knltb'}
+                              {player.rating_system || 'knltb'}
                             </span>
                           </div>
                         ) : (
@@ -313,8 +414,12 @@ export default function TrainerPlayers() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {(player as any).has_trained === false ? (
-                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                        {player.type === "registered" ? (
+                          <Badge variant="default">
+                            {t("players.registered", "Registered")}
+                          </Badge>
+                        ) : player.has_trained === false ? (
+                          <Badge variant="outline">
                             {t("players.prospect")}
                           </Badge>
                         ) : (
@@ -327,32 +432,34 @@ export default function TrainerPlayers() {
                         {format(new Date(player.created_at), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditingPlayer(player)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              {t("players.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => navigate(`/trainer/calendar`)}
-                            >
-                              <Calendar className="mr-2 h-4 w-4" />
-                              {t("players.bookLesson")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeletingPlayer(player)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {t("players.delete")}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {player.type === "guest" && player.originalGuest ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setEditingPlayer(player.originalGuest!)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                {t("players.edit")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => navigate(`/trainer/calendar`)}
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {t("players.bookLesson")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setDeletingPlayer(player.originalGuest!)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                {t("players.delete")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
