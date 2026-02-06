@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         subscriptionEnd: data.endsAt || null,
         trialEndsAt: data.trialEndsAt || null,
         isInTrial: data.status === 'trialing',
-        isPublic: data.subscribed || data.status === 'trialing',
+        isPublic: data.isPublic ?? false,
       });
     } catch (err) {
       logger.error('Error fetching subscription', err as Error, { component: 'useAuth' });
