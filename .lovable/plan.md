@@ -1,34 +1,59 @@
 
-# Fix: Trainer Dashboard Not Showing Mollie Connection Status
+
+# Add Trainer Lessons Management Page
 
 ## Problem
 
-The `check-mollie-connect-status` edge function expects `{ entityType, entityId }` in the request body, but the trainer earnings page sends `{ type: 'trainer' }` -- wrong parameter name and missing trainer ID entirely. This causes the edge function to throw "Entity type and ID are required", which the frontend catches silently and defaults to `{ connected: false }`.
+Trainers currently have no way to create or manage lessons. The setup checklist says "Create your first lesson" but links to the calendar page, which only handles slots and cycluses. Clubs have a full lesson management page (`ClubLessons.tsx`), but trainers have nothing equivalent.
 
-## Fix
+Lessons are required prerequisites for creating slots and cycluses (they define the title, price, duration, max participants, etc.).
 
-### `src/pages/TrainerEarnings.tsx`
+## Solution
 
-Change the `checkConnectStatus` function call from:
+Create a dedicated `/trainer/lessons` page following the same pattern as `ClubLessons.tsx`, adapted for individual trainer use (no trainer selector needed).
 
-```typescript
-body: { type: 'trainer' }
+## Changes
+
+### 1. New Page: `src/pages/TrainerLessons.tsx`
+
+A lesson management page with:
+- List of existing lessons (title, price, duration, max participants, active status)
+- "Create Lesson" button opening a dialog/form
+- Edit and delete actions per lesson
+- Form fields: title, description, duration (minutes), price, max participants, location (optional), active toggle, payment timing (upfront/after)
+- Uses the existing `createLesson`, `getTrainerLessons`, `updateLesson`, `deleteLesson` functions from `src/lib/lessons.ts`
+
+### 2. Route Registration: `src/components/DomainRouter.tsx`
+
+Add a new route inside the trainer layout:
+```
+<Route path="lessons" element={<TrainerLessons />} />
 ```
 
-to:
+### 3. Navigation Updates
 
-```typescript
-body: { entityType: 'trainer', entityId: trainerProfile.id }
-```
+**`src/components/trainer/TrainerSidebar.tsx`**
+- Add "Lessons" as a sub-item under the **Schedule** group (alongside Calendar and Open Slots)
 
-This is a one-line fix. The trainer profile ID is already available in the component. Once fixed, the edge function will correctly look up the `trainer_mollie_accounts` record (which already has `charges_enabled: true` and `onboarding_complete: true` from the successful connection) and return the connected status.
+**`src/components/trainer/TrainerNavigation.tsx`**
+- Add "Lessons" item to the schedule group
 
-### Admin Panel
+### 4. Setup Checklist Fix: `src/components/trainer/TrainerSetupChecklist.tsx`
 
-The admin panel likely reads from the database directly. Let me note the admin check may be a separate issue -- but fixing the trainer dashboard status check is the primary fix needed here.
+Update the "Create your first lesson" step route from `/trainer/calendar` to `/trainer/lessons`.
 
-## Summary
+### 5. Translation Keys
 
-| File | Change |
-|------|--------|
-| `src/pages/TrainerEarnings.tsx` | Fix request body: `{ type: 'trainer' }` to `{ entityType: 'trainer', entityId: trainerProfile.id }` |
+Add entries to both `src/i18n/locales/en/trainer.json` and `src/i18n/locales/nl/trainer.json` for:
+- `nav.lessons` - navigation label
+- `lessons.title`, `lessons.create`, `lessons.edit`, `lessons.delete`
+- `lessons.form.*` - form field labels
+- `lessons.empty` - empty state message
+
+## Technical Notes
+
+- Reuses existing CRUD functions from `src/lib/lessons.ts`
+- Follows the sub-page header pattern used by `OpenSlots.tsx` and `TrainerBookingSettings.tsx` (back arrow + title)
+- Uses the same lesson interface/form fields as `ClubLessons.tsx` but without the trainer-selection dropdown
+- The `SlotLocationPicker` component can be reused for location selection
+
