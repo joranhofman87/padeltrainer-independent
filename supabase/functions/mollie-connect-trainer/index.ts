@@ -70,6 +70,7 @@ serve(async (req) => {
       'onboarding.write',
     ].join(' ');
 
+    const state = generateState();
     const authUrl = new URL('https://my.mollie.com/oauth2/authorize');
     authUrl.searchParams.set('client_id', mollieClientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
