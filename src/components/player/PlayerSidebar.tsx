@@ -55,7 +55,7 @@ export function PlayerSidebar() {
   const { toast } = useToast();
 
   const [accountOpen, setAccountOpen] = useState(
-    location.pathname.startsWith("/player/settings")
+    location.pathname.startsWith("/app/player/settings")
   );
 
   const handleLogout = async () => {
@@ -67,11 +67,11 @@ export function PlayerSidebar() {
         variant: "destructive",
       });
     } else {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   };
 
-  const isActive = (path: string) => location.pathname.startsWith(path);
+  const isActive = (path: string) => location.pathname.startsWith(`/app${path}`);
 
   const initials =
     profile?.full_name
@@ -143,7 +143,7 @@ export function PlayerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
                   <NavLink
-                    to="/player"
+                    to="/app/player"
                     end
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
@@ -159,7 +159,7 @@ export function PlayerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.bookings")}>
                   <NavLink
-                    to="/player/bookings"
+                    to="/app/player/bookings"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                     data-testid="nav-player-bookings"
@@ -174,7 +174,7 @@ export function PlayerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.following")}>
                   <NavLink
-                    to="/player/following"
+                    to="/app/player/following"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
@@ -214,8 +214,8 @@ export function PlayerSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/player/settings"
-                            end
+                    to="/app/player/settings"
+                    end
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -226,7 +226,7 @@ export function PlayerSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/player/settings/notifications"
+                            to="/app/player/settings/notifications"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -237,7 +237,7 @@ export function PlayerSidebar() {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/player/settings/calendar"
+                            to="/app/player/settings/calendar"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
