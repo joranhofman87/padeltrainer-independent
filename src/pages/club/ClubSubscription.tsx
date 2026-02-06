@@ -45,7 +45,7 @@ export default function ClubSubscription() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth?redirect=/club/subscription");
+      navigate("/app/auth?redirect=/app/club/subscription");
     }
   }, [user, authLoading, navigate]);
 

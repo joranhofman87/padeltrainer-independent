@@ -216,13 +216,13 @@ export default function OpenSlots() {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/trainer')}>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer')}>
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <h1 className="font-bold text-lg">{t('openSlots.title', 'Open Slots')}</h1>
               <Badge variant="secondary">{totalOpenSlots}</Badge>
             </div>
-            <Button variant="outline" size="sm" onClick={() => navigate('/trainer/calendar')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>
               <Calendar className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">{t('openSlots.calendar', 'Calendar')}</span>
             </Button>
@@ -248,7 +248,7 @@ export default function OpenSlots() {
               <p className="text-muted-foreground mb-6">
                 {t('openSlots.noOpenSlotsDescription', 'All your training slots are either fully booked or marked as private.')}
               </p>
-              <Button onClick={() => navigate('/trainer/calendar')}>
+              <Button onClick={() => navigate('/app/trainer/calendar')}>
                 {t('openSlots.createSlots', 'Create new slots')}
               </Button>
             </CardContent>

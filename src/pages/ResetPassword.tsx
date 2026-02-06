@@ -86,7 +86,7 @@ export default function ResetPassword() {
     // Sign out and redirect to login after a short delay
     setTimeout(async () => {
       await supabase.auth.signOut();
-      navigate('/auth');
+      navigate('/app/auth');
     }, 2000);
   };
 

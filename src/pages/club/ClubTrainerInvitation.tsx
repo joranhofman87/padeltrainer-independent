@@ -99,7 +99,7 @@ export default function ClubTrainerInvitation() {
       }
 
       // Redirect to trainer dashboard
-      navigate('/trainer');
+      navigate('/app/trainer');
     } catch (error) {
       console.error('Error responding to invitation:', error);
       toast({

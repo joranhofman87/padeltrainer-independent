@@ -634,7 +634,7 @@ export default function TrainerDashboard() {
         variant: 'destructive',
       });
     } else {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   };
 
@@ -653,7 +653,7 @@ export default function TrainerDashboard() {
         {subscription && !subscription.isSubscribed && (
           <TrainerTrialBanner 
             trialEndsAt={subscription.trialEndsAt}
-            onUpgrade={() => navigate('/trainer/subscription')}
+            onUpgrade={() => navigate('/app/trainer/subscription')}
           />
         )}
 
@@ -669,7 +669,7 @@ export default function TrainerDashboard() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/analytics')}>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -686,7 +686,7 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/analytics')}>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/app/trainer/analytics')}>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -705,7 +705,7 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => navigate('/trainer/players')}
+            onClick={() => navigate('/app/trainer/players')}
           >
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
@@ -725,7 +725,7 @@ export default function TrainerDashboard() {
 
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => navigate('/trainer/open-slots')}
+            onClick={() => navigate('/app/trainer/open-slots')}
           >
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
@@ -743,7 +743,7 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow col-span-2 sm:col-span-1" onClick={() => navigate('/earnings')}>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow col-span-2 sm:col-span-1" onClick={() => navigate('/app/trainer/earnings')}>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>

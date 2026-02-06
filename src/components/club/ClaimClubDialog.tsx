@@ -78,7 +78,7 @@ export function ClaimClubDialog({
       });
 
       onOpenChange(false);
-      navigate('/club');
+      navigate('/app/club');
     } catch (error: any) {
       console.error('Error claiming club:', error);
       toast({

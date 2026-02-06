@@ -88,7 +88,7 @@ export function VerificationPending({ email, onBack }: VerificationPendingProps)
 
           <p className="text-center text-sm text-muted-foreground">
             {t('verification.alreadyVerified', 'Already verified?')}{' '}
-            <Link to="/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>

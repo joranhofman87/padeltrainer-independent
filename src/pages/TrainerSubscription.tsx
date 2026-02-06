@@ -63,9 +63,9 @@ export default function TrainerSubscription() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate('/auth');
+        navigate('/app/auth');
       } else if (role !== 'trainer') {
-        navigate('/player');
+        navigate('/app/player');
       }
     }
   }, [user, role, loading, navigate]);

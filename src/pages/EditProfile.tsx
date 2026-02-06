@@ -112,7 +112,7 @@ export default function EditProfile() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [user, loading, navigate]);
 

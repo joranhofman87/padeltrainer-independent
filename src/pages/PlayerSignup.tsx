@@ -34,7 +34,7 @@ export default function PlayerSignup() {
 
   useEffect(() => {
     if (!loading && user && role) {
-      navigate(role === 'trainer' ? '/trainer' : '/player');
+      navigate(role === 'trainer' ? '/app/trainer' : '/app/player');
     }
   }, [user, role, loading, navigate]);
 
@@ -250,21 +250,21 @@ export default function PlayerSignup() {
 
           <p className="text-center text-sm text-muted-foreground">
             {t('playerSignup.alreadyHaveAccount', 'Already have an account?')}{' '}
-            <Link to="/auth" className="text-primary hover:underline">
+            <Link to="/app/auth" className="text-primary hover:underline">
               {t('signIn.button')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('playerSignup.wantToTrain', 'Want to offer training instead?')}{' '}
-            <Link to="/signup/trainer" className="text-primary hover:underline">
+            <Link to="/app/signup/trainer" className="text-primary hover:underline">
               {t('playerSignup.joinAsTrainer', 'Join as Trainer')}
             </Link>
           </p>
           
           <p className="text-center text-sm text-muted-foreground">
             {t('signIn.clubOwner', 'Are you a club owner?')}{' '}
-            <Link to="/signup/club" className="text-primary hover:underline font-medium">
+            <Link to="/app/signup/club" className="text-primary hover:underline font-medium">
               {t('signIn.registerClub', 'Register your club')}
             </Link>
           </p>

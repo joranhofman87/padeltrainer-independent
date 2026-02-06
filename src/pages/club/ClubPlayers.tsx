@@ -73,7 +73,7 @@ export default function ClubPlayers() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [user, authLoading, navigate]);
 
@@ -84,7 +84,7 @@ export default function ClubPlayers() {
       try {
         const userClubs = await getUserClubProfiles(user.id);
         if (userClubs.length === 0) {
-          navigate('/club');
+          navigate('/app/club');
           return;
         }
 

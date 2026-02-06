@@ -35,7 +35,7 @@ export default function ClubOnboarding() {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/signup/club');
+      navigate('/app/signup/club');
     }
   }, [user, loading, navigate]);
 
@@ -138,7 +138,7 @@ export default function ClubOnboarding() {
         description: t('claim.successDescription', 'Your claim is pending verification. We will review it shortly.'),
       });
       
-      navigate('/club');
+      navigate('/app/club');
     } catch (error: any) {
       logger.error('Club claim error', error as Error, { component: 'ClubOnboarding', locationId: selectedLocation?.id });
       toast({

@@ -86,7 +86,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.connectedAccounts} connected to Mollie`,
       icon: UserCheck,
       color: "text-blue-500",
-      onClick: () => navigate("/admin/users?role=trainer"),
+      onClick: () => navigate("/app/admin/users?role=trainer"),
     },
     {
       title: "Active Players",
@@ -94,7 +94,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.totalBookings} total bookings`,
       icon: Users,
       color: "text-violet-500",
-      onClick: () => navigate("/admin/users?role=player"),
+      onClick: () => navigate("/app/admin/users?role=player"),
     },
     {
       title: "Total Clubs",
@@ -102,7 +102,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
       description: `${stats.overview.verifiedClubs || 0} verified, ${stats.overview.subscribedClubs || 0} subscribed`,
       icon: Building2,
       color: "text-teal-500",
-      onClick: () => navigate("/admin/clubs"),
+      onClick: () => navigate("/app/admin/clubs"),
     },
     {
       title: "Club Trials",

@@ -100,7 +100,7 @@ export default function AcademyTrainerInvitation() {
       }
 
       // Redirect to trainer dashboard
-      navigate('/trainer');
+      navigate('/app/trainer');
     } catch (error) {
       logger.error('Error responding to invitation', error as Error, { component: 'AcademyTrainerInvitation', token });
       toast({
@@ -259,7 +259,7 @@ export default function AcademyTrainerInvitation() {
               </p>
             </div>
             <Button asChild className="w-full">
-              <Link to="/signup/trainer">{t('trainerInvitation.becomeTrainer')}</Link>
+              <Link to="/app/signup/trainer">{t('trainerInvitation.becomeTrainer')}</Link>
             </Button>
           </CardContent>
         </Card>
