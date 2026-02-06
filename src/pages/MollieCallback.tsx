@@ -42,11 +42,15 @@ export default function MollieCallback() {
         origin: window.location.origin 
       });
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
       try {
         // Call the edge function to exchange the code for tokens
         const { data, error } = await supabase.functions.invoke('mollie-callback', {
           body: { code, state, error: oauthError, error_description: errorDescription },
         });
+        clearTimeout(timeout);
 
         if (error) {
           throw new Error(error.message || 'Failed to complete Mollie connection');
@@ -60,7 +64,6 @@ export default function MollieCallback() {
         setStatus('success');
 
         // Parse state to determine redirect path
-        // Format: "trainer_{trainerId}_{randomState}" or "academy_{academyId}_{randomState}"
         const entityType = state.split('_')[0];
 
         // Redirect after short delay to show success message
@@ -72,8 +75,13 @@ export default function MollieCallback() {
           }
         }, 2000);
       } catch (err) {
+        clearTimeout(timeout);
         setStatus('error');
-        setErrorMessage(err instanceof Error ? err.message : 'An unexpected error occurred');
+        setErrorMessage(
+          err instanceof DOMException && err.name === 'AbortError'
+            ? 'The connection timed out. Please try again.'
+            : err instanceof Error ? err.message : 'An unexpected error occurred'
+        );
       }
     };
 
