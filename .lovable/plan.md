@@ -1,63 +1,23 @@
 
 
-# Fix: Mollie Callback Still Hanging
+# Fix: Admin Dashboard "No data available"
 
 ## Problem
 
-The CORS header fix was applied to `mollie-callback/index.ts` earlier, but the user is still stuck. The edge function logs show **zero calls** to `mollie-callback`, confirming the browser is still blocking the request.
+The `get-admin-stats` backend function has never been deployed. The admin dashboard calls it to fetch platform statistics, but since it doesn't exist on the server, the call fails silently and the dashboard shows "No data available."
 
-Two issues need to be addressed:
+## Solution
 
-1. **Deploy the edge function** -- the CORS fix in the code needs to be deployed so it takes effect
-2. **Add error resilience to the callback page** -- even with the CORS fix, the page should never hang indefinitely
+1. **Deploy the `get-admin-stats` edge function** so the admin dashboard can fetch statistics.
+
+2. **Add error visibility to `AdminDashboard.tsx`** -- currently when the query fails, it shows "No data available" with no error details. We should show the actual error message so issues are easier to diagnose in the future.
 
 ## Changes
 
-### 1. Deploy `mollie-callback` edge function
-
-Force a redeployment so the updated CORS headers are live.
-
-### 2. `src/pages/MollieCallback.tsx` -- Add timeout and better error handling
-
-Add a safety timeout so the page never hangs forever:
-
-- Add a 15-second timeout around the `supabase.functions.invoke()` call
-- If it times out, show the error state with a helpful message instead of spinning forever
-- Wrap the invoke in a try/catch that properly catches network/CORS errors
-
-```typescript
-// Add timeout wrapper around the invoke call
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 15000);
-
-try {
-  const { data, error } = await supabase.functions.invoke('mollie-callback', {
-    body: { code, state, error: oauthError, error_description: errorDescription },
-  });
-  clearTimeout(timeout);
-  // ... handle response
-} catch (err) {
-  clearTimeout(timeout);
-  setStatus('error');
-  setErrorMessage(
-    err instanceof DOMException && err.name === 'AbortError'
-      ? 'The connection timed out. Please try again.'
-      : err instanceof Error ? err.message : 'An unexpected error occurred'
-  );
-}
-```
-
-## Summary
-
 | Item | Change |
 |------|--------|
-| Edge function deployment | Redeploy `mollie-callback` with the CORS fix |
-| `src/pages/MollieCallback.tsx` | Add 15-second timeout so the page never hangs indefinitely |
+| Deploy `get-admin-stats` | Deploy the existing backend function so the dashboard can call it |
+| `src/pages/AdminDashboard.tsx` | Show error state with message when the stats query fails, instead of silent "No data available" |
 
-## After Publishing
-
-The trainer should:
-1. Navigate to `/trainer/earnings`
-2. Click "Connect Mollie" again to restart the flow
-3. The callback should now complete successfully (or show an error within 15 seconds if something else is wrong)
+The dashboard code change is small: use the `error` property from `useAdminStats()` and display it when present.
 
