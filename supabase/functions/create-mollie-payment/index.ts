@@ -309,22 +309,34 @@ serve(async (req) => {
       }
 
       if (mollieProfileId) {
-        platformFee = Math.min(platformFee, amount);
+        // Cap fee: must be strictly less than amount minus Mollie's transaction costs
+        const maxFee = Math.max(0, amount - 0.30);
+        const effectiveFee = Math.min(platformFee, maxFee);
+
         paymentData.profileId = mollieProfileId;
-        paymentData.applicationFee = {
-          amount: {
-            currency: "EUR",
-            value: platformFee.toFixed(2),
-          },
-          description: "Platform fee",
-        };
-        logStep("Application fee configured", { recipientType, platformFee, profileId: mollieProfileId });
+        if (effectiveFee > 0) {
+          paymentData.applicationFee = {
+            amount: {
+              currency: "EUR",
+              value: effectiveFee.toFixed(2),
+            },
+            description: "Platform fee",
+          };
+        }
+        logStep("Application fee configured", { recipientType, effectiveFee, profileId: mollieProfileId });
       } else {
         logStep("No Mollie profile found, falling back to platform");
         recipientAccessToken = null;
       }
     } else {
       logStep("No Mollie account found, payment goes to platform");
+    }
+
+    // Detect test mode and add testmode flag for OAuth tokens
+    const isTestMode = mollieApiKey.startsWith("test_");
+    if (recipientAccessToken && isTestMode) {
+      paymentData.testmode = true;
+      logStep("Test mode enabled for OAuth payment");
     }
 
     // Use connected account's access token if available, otherwise platform key
