@@ -35,14 +35,14 @@ export async function getAcademyPaymentInfo(trainerId: string): Promise<AcademyP
 
   const academyData = academyTrainer.academy as { id: string; name: string } | null;
 
-  // Get academy's Mollie account status
-  const { data: academyMollieAccount, error: mollieError } = await supabase
-    .from('academy_mollie_accounts' as any)
-    .select('mollie_organization_id, charges_enabled, onboarding_complete')
+  // Get academy's Mollie account status via secure view
+  const { data: academyMollieStatus, error: mollieError } = await supabase
+    .from('academy_mollie_status' as any)
+    .select('is_connected, charges_enabled')
     .eq('academy_profile_id', academyTrainer.academy_profile_id)
     .maybeSingle();
 
-  if (mollieError || !academyMollieAccount) {
+  if (mollieError || !academyMollieStatus) {
     return {
       isAcademyTrainer: true,
       academyProfileId: academyTrainer.academy_profile_id,
@@ -52,14 +52,14 @@ export async function getAcademyPaymentInfo(trainerId: string): Promise<AcademyP
     };
   }
 
-  const typedAccount = academyMollieAccount as unknown as { mollie_organization_id: string; charges_enabled: boolean };
+  const typedStatus = academyMollieStatus as unknown as { is_connected: boolean; charges_enabled: boolean };
 
   return {
     isAcademyTrainer: true,
     academyProfileId: academyTrainer.academy_profile_id,
     academyName: academyData?.name,
-    academyMollieConnected: !!typedAccount.mollie_organization_id,
-    academyChargesEnabled: !!typedAccount.charges_enabled,
+    academyMollieConnected: typedStatus.is_connected,
+    academyChargesEnabled: typedStatus.charges_enabled,
   };
 }
 
@@ -101,16 +101,16 @@ export async function hasValidPaymentSetup(
     }
   }
 
-  // Check trainer's personal Mollie account
-  const { data: mollieAccount } = await supabase
-    .from('trainer_mollie_accounts' as any)
-    .select('mollie_organization_id, charges_enabled, onboarding_complete')
+  // Check trainer's personal Mollie account via secure view
+  const { data: mollieStatus } = await supabase
+    .from('trainer_mollie_status' as any)
+    .select('is_connected, charges_enabled')
     .eq('trainer_id', trainerProfileId)
     .maybeSingle();
 
-  const typedAccount = mollieAccount as unknown as { charges_enabled: boolean } | null;
+  const typedStatus = mollieStatus as unknown as { is_connected: boolean; charges_enabled: boolean } | null;
 
-  if (typedAccount?.charges_enabled) {
+  if (typedStatus?.charges_enabled) {
     return { valid: true };
   }
 

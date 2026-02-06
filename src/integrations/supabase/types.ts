@@ -3337,6 +3337,49 @@ export type Database = {
       }
     }
     Views: {
+      academy_mollie_status: {
+        Row: {
+          academy_profile_id: string | null
+          charges_enabled: boolean | null
+          is_connected: boolean | null
+          onboarding_complete: boolean | null
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          charges_enabled?: boolean | null
+          is_connected?: never
+          onboarding_complete?: boolean | null
+        }
+        Update: {
+          academy_profile_id?: string | null
+          charges_enabled?: boolean | null
+          is_connected?: never
+          onboarding_complete?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_stripe_accounts_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: true
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       academy_profiles_public: {
         Row: {
           banner_url: string | null
@@ -3676,6 +3719,42 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      trainer_mollie_status: {
+        Row: {
+          charges_enabled: boolean | null
+          is_connected: boolean | null
+          onboarding_complete: boolean | null
+          trainer_id: string | null
+        }
+        Insert: {
+          charges_enabled?: boolean | null
+          is_connected?: never
+          onboarding_complete?: boolean | null
+          trainer_id?: string | null
+        }
+        Update: {
+          charges_enabled?: boolean | null
+          is_connected?: never
+          onboarding_complete?: boolean | null
+          trainer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_stripe_accounts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: true
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trainer_profiles_safe: {
         Row: {
