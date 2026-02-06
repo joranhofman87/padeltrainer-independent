@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { getPublicAcademies, type AcademyProfile } from '@/lib/academy';
 import { getActiveLocations, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { getBatchTrainerRatings } from '@/lib/reviews';

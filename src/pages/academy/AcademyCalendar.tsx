@@ -27,7 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import CycleForm from "@/components/cycles/CycleForm";
 import { logger } from "@/lib/logger";
 

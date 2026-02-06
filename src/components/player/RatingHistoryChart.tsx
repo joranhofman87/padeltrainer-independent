@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { getRatingSystemByCode, RatingSystemConfig } from '@/lib/ratingSystems';

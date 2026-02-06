@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsAdmin } from "@/hooks/useAdminData";
 import { verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
 import { sendEmail } from "@/lib/email";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { logger } from '@/lib/logger';
 
 interface PendingClaim extends ClubProfile {

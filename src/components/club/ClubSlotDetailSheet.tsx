@@ -24,7 +24,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
 

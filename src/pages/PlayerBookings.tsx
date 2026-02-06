@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Calendar, Clock, MapPin, User, Star } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';

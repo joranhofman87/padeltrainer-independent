@@ -11,7 +11,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 describe('Lesson interface', () => {
   it('has correct structure for basic lesson', () => {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useFollowTrainer } from '@/hooks/useFollowTrainer';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
@@ -416,12 +416,10 @@ export default function TrainerProfile() {
           }
         >
           {/* Action Buttons */}
-          {user && role === 'player' && (
-            <Button size="lg" className="w-full" onClick={() => { window.location.href = getAppUrl(`/book/${trainerId}`); }}>
-              <Calendar className="h-4 w-4 mr-2" />
-              {t('common:bookLesson', 'Book Lesson')}
-            </Button>
-          )}
+          <Button size="lg" className="w-full" onClick={() => { window.location.href = getAppUrl(`/book/${trainerId}`); }}>
+            <Calendar className="h-4 w-4 mr-2" />
+            {t('common:bookLesson', 'Book Lesson')}
+          </Button>
           {canFollow && (
             <Button
               variant={isFollowing ? 'secondary' : 'outline'}
@@ -735,10 +733,10 @@ export default function TrainerProfile() {
                     ))}
                   </div>
                 )}
-                {user && role === 'player' && lessons.length > 0 && (
+                {lessons.length > 0 && (
                   <Button 
                     className="w-full mt-4" 
-                    onClick={() => navigate(localizePath(`/book/${trainerId}`))}
+                    onClick={() => { window.location.href = getAppUrl(`/book/${trainerId}`); }}
                   >
                     <Calendar className="h-4 w-4 mr-2" />
                     {t('common:bookALesson', 'Book a Lesson')}
@@ -774,17 +772,15 @@ export default function TrainerProfile() {
               title={t('common:contactInfo', 'Contact Info')}
               description={t('common:contactSharedAfterBooking', 'Contact details are shared after booking a lesson.')}
               action={
-                user && role === 'player' ? (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={() => navigate(localizePath(`/book/${trainerId}`))}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {t('common:bookToConnect', 'Book to Connect')}
-                  </Button>
-                ) : null
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => { window.location.href = getAppUrl(`/book/${trainerId}`); }}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {t('common:bookToConnect', 'Book to Connect')}
+                </Button>
               }
             />
 

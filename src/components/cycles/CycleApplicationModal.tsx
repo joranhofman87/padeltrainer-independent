@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPlayerApplied, type Cycle } from '@/lib/cycles';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import CycleApplicationForm from './CycleApplicationForm';
 import { format } from 'date-fns';
 

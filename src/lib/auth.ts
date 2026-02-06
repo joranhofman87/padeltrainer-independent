@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
 
 export type UserRole = 'player' | 'trainer' | 'admin' | 'club';

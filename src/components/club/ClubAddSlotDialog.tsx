@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {

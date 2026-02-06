@@ -18,7 +18,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { updateAcademyProfile } from '@/lib/academy';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { COUNTRIES } from '@/lib/countries';
 
 export default function AcademyProfile() {

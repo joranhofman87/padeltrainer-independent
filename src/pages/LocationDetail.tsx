@@ -24,7 +24,7 @@ import { isLocationClaimed, isUserClubManager } from '@/lib/club';
 import { getAcademiesAtLocation } from '@/lib/academy';
 import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';

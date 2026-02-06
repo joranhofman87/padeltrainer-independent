@@ -14,7 +14,7 @@ import { claimClub, isLocationClaimed } from '@/lib/club';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
 import { logger } from '@/lib/logger';
 

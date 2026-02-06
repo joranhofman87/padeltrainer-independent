@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { getAdminStats, isUserAdmin, type AdminStats } from "@/lib/admin";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 // Cache times
 const STALE_TIME = 1000 * 60 * 2; // 2 minutes - show cached data instantly

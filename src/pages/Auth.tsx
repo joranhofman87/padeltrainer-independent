@@ -9,7 +9,7 @@ import { signInWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();

@@ -11,7 +11,7 @@ import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHoriz
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 
 interface BookedPlayerInfo {

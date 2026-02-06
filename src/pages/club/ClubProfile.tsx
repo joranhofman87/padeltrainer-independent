@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { updateClubProfile } from '@/lib/club';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ClubProfile() {
   const { t } = useTranslation('club');

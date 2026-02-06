@@ -11,7 +11,7 @@ import {
   Bell, Eye, CalendarDays,
   ChevronLeft, ChevronRight, LayoutGrid, Plus, Repeat, Copy
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { 
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, addWeeks, subWeeks,
   addMonths, subMonths, addDays, subDays, format

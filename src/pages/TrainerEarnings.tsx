@@ -27,7 +27,7 @@ import {
   Info
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { CreateInvoiceDialog } from '@/components/trainer/CreateInvoiceDialog';
 import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';

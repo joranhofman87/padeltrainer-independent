@@ -31,7 +31,7 @@ import { AdminTrainerReviewsTab } from "./AdminTrainerReviewsTab";
 import { MollieDisconnectSection } from "./MollieDisconnectSection";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getRatingSystems, type RatingSystemConfig } from "@/lib/ratingSystems";
 import { logger } from '@/lib/logger';

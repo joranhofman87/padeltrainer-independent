@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';

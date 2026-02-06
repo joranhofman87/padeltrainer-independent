@@ -30,7 +30,7 @@ import {
   resetLogoFetchedAt,
   type BackgroundLogoJobStatus,
 } from "@/lib/admin";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface ScrapeLogosDialogProps {
   open: boolean;

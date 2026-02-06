@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
 import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,

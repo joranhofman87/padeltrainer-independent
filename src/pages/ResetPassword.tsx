@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { updatePassword } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, CheckCircle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);

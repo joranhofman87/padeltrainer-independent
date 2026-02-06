@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 export type UserType = "player" | "trainer" | "club" | "academy";
 export type TriggerType = "signup" | "paid_plan";

@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { getAppUrl } from '@/lib/domains';
+import { useAuth } from '@/hooks/useAuth';
 
 interface MarketingLayoutProps {
   children: React.ReactNode;
@@ -18,6 +19,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useTranslation('marketing');
+  const { user } = useAuth();
   
   // Get localized paths
   const homePath = useLocalizedPath('/');
@@ -76,12 +78,20 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             <div className="hidden md:flex items-center gap-3">
               <LanguageSwitcher />
               <ThemeToggle />
-              <Button variant="ghost" asChild>
-                <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
-              </Button>
-              <Button asChild className="bg-primary hover:bg-primary/90">
-                <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
-              </Button>
+              {user ? (
+                <Button asChild className="bg-primary hover:bg-primary/90">
+                  <a href={getAppUrl('/dashboard')}>{t('nav.dashboard', 'Dashboard')}</a>
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" asChild>
+                    <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                  </Button>
+                  <Button asChild className="bg-primary hover:bg-primary/90">
+                    <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Mobile Menu Button */}
@@ -122,12 +132,20 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <LanguageSwitcher />
                     <ThemeToggle />
                   </div>
-                  <Button variant="ghost" asChild>
-                    <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
-                  </Button>
-                  <Button asChild className="bg-primary hover:bg-primary/90">
-                    <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
-                  </Button>
+                  {user ? (
+                    <Button asChild className="bg-primary hover:bg-primary/90">
+                      <a href={getAppUrl('/dashboard')}>{t('nav.dashboard', 'Dashboard')}</a>
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="ghost" asChild>
+                        <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                      </Button>
+                      <Button asChild className="bg-primary hover:bg-primary/90">
+                        <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </nav>
             </motion.div>
