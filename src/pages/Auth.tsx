@@ -27,8 +27,11 @@ export default function Auth() {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
     const refreshToken = hashParams.get('refresh_token');
+    const providerToken = hashParams.get('provider_token');
     
-    if (accessToken && refreshToken) {
+    // Only handle magic link tokens, NOT OAuth callbacks
+    // OAuth callbacks include provider_token and are handled by Supabase automatically
+    if (accessToken && refreshToken && !providerToken) {
       setIsProcessingMagicLink(true);
       // Explicitly set the session with tokens from URL hash - this overrides any existing session
       supabase.auth.setSession({
@@ -45,6 +48,9 @@ export default function Auth() {
         }
         // Clear the hash from URL for cleaner UX
         window.history.replaceState(null, '', window.location.pathname);
+        setIsProcessingMagicLink(false);
+      }).catch(() => {
+        // Safety: ensure we never hang on magic link processing
         setIsProcessingMagicLink(false);
       });
     }
