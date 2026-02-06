@@ -171,7 +171,7 @@ export async function getPlayerBookings(
     .from('bookings')
     .select(`
       *,
-      availability_slots(*, trainer_profiles(*, profiles(*))),
+      availability_slots(*),
       lessons(*)
     `, { count: 'exact' })
     .eq('player_id', playerId)

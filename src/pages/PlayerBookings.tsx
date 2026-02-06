@@ -24,15 +24,6 @@ interface BookingWithDetails {
     start_time: string;
     end_time: string;
     trainer_id: string;
-    trainer_profiles: {
-      id: string;
-      user_id: string;
-      profiles: {
-        full_name: string;
-        avatar_url: string | null;
-        email: string | null;
-      };
-    };
   };
   lessons: {
     title: string;
@@ -40,6 +31,9 @@ interface BookingWithDetails {
     location: string | null;
   } | null;
   hasReview?: boolean;
+  trainerName: string;
+  trainerEmail: string | null;
+  trainerProfileId: string;
 }
 
 export default function PlayerBookings() {
@@ -69,34 +63,72 @@ export default function PlayerBookings() {
         availability_slots(
           start_time,
           end_time,
-          trainer_id,
-          trainer_profiles(
-            id,
-            user_id,
-            profiles(full_name, avatar_url, email)
-          )
+          trainer_id
         ),
         lessons(title, price, location)
       `)
       .eq('player_id', profile!.id)
       .order('created_at', { ascending: false });
 
-    if (data) {
-      // Check which bookings have reviews
-      const bookingsWithReviewStatus = await Promise.all(
-        (data as unknown as BookingWithDetails[]).map(async (booking) => {
-          const { data: review } = await getPlayerReview(booking.id);
-          return { ...booking, hasReview: !!review };
-        })
-      );
-      setBookings(bookingsWithReviewStatus);
-    }
     if (error) {
       toast({
         title: 'Error',
         description: 'Failed to load bookings',
         variant: 'destructive',
       });
+      setLoadingBookings(false);
+      return;
+    }
+
+    if (data) {
+      const rawBookings = data as unknown as Array<{
+        id: string; status: string; notes: string | null; created_at: string;
+        availability_slots: { start_time: string; end_time: string; trainer_id: string };
+        lessons: { title: string; price: number; location: string | null } | null;
+      }>;
+
+      // Enrich with trainer info
+      const trainerIds = [...new Set(rawBookings.map(b => b.availability_slots?.trainer_id).filter(Boolean))];
+      let trainerInfoMap = new Map<string, { name: string; email: string | null; profileId: string }>();
+
+      if (trainerIds.length > 0) {
+        const { data: trainers } = await supabase
+          .from('trainer_profiles')
+          .select('id, user_id')
+          .in('id', trainerIds);
+        if (trainers && trainers.length > 0) {
+          const userIds = trainers.map(t => t.user_id);
+          const { data: profiles } = await supabase
+            .from('profiles_public')
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+          const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+          trainers.forEach(t => {
+            const p = profileMap.get(t.user_id);
+            trainerInfoMap.set(t.id, {
+              name: p?.full_name || 'Trainer',
+              email: null,
+              profileId: t.id,
+            });
+          });
+        }
+      }
+
+      // Check which bookings have reviews
+      const bookingsWithDetails = await Promise.all(
+        rawBookings.map(async (booking) => {
+          const { data: review } = await getPlayerReview(booking.id);
+          const trainerInfo = trainerInfoMap.get(booking.availability_slots?.trainer_id) || { name: 'Trainer', email: null, profileId: '' };
+          return {
+            ...booking,
+            hasReview: !!review,
+            trainerName: trainerInfo.name,
+            trainerEmail: trainerInfo.email,
+            trainerProfileId: trainerInfo.profileId,
+          } as BookingWithDetails;
+        })
+      );
+      setBookings(bookingsWithDetails);
     }
     setLoadingBookings(false);
   };
@@ -211,7 +243,7 @@ export default function PlayerBookings() {
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-muted-foreground" />
                             <span>
-                              Coach {booking.availability_slots.trainer_profiles.profiles.full_name}
+                              Coach {booking.trainerName}
                             </span>
                           </div>
                         </div>
@@ -278,7 +310,7 @@ export default function PlayerBookings() {
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4 text-muted-foreground" />
                               <span>
-                                Coach {booking.availability_slots.trainer_profiles.profiles.full_name}
+                                Coach {booking.trainerName}
                               </span>
                             </div>
                           </div>
@@ -294,9 +326,9 @@ export default function PlayerBookings() {
                                 <ReviewForm
                                   bookingId={booking.id}
                                   playerId={profile!.id}
-                                  trainerId={booking.availability_slots.trainer_profiles.id}
-                                  trainerName={booking.availability_slots.trainer_profiles.profiles.full_name}
-                                  trainerEmail={booking.availability_slots.trainer_profiles.profiles.email || undefined}
+                                  trainerId={booking.trainerProfileId}
+                                  trainerName={booking.trainerName}
+                                  trainerEmail={booking.trainerEmail || undefined}
                                   playerName={profile!.full_name || undefined}
                                   lessonTitle={booking.lessons?.title || undefined}
                                   onSuccess={() => {
