@@ -26,6 +26,7 @@ interface BookingData {
   lessonTitle: string;
   playerName: string;
   playerEmail: string;
+  playerId?: string;
   date: string;
   time: string;
   price: number;
@@ -168,6 +169,7 @@ export function CreateInvoiceDialog({
           invoice_number: invoiceNumber,
           invoice_date: format(invoiceDate, 'yyyy-MM-dd'),
           due_date: format(dueDate, 'yyyy-MM-dd'),
+          player_id: booking?.playerId || null,
           player_name: playerName,
           player_address: playerAddress || null,
           player_btw_number: playerBtwNumber || null,
