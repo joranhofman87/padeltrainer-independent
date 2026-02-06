@@ -1,57 +1,62 @@
 
 
-# Fix: Trainer Can't See Player Names + Players Missing from "Mijn Spelers"
+# Players Can View Their Invoices
 
-## Root Cause
+## What Changes
 
-Two separate issues:
+Players will be able to see invoices sent to them by trainers, download them, and update their billing details (address, BTW number) on the invoice.
 
-### Issue 1: Player names show as "Unknown" in the calendar
-The trainer's calendar queries try to join `profiles:player_id(full_name, ...)` to get player names. However, **Row-Level Security (RLS) on the `profiles` table blocks trainers from reading other users' profiles**. The only SELECT policies allow: own profile, admin, or public trainer profiles. A trainer viewing a player's profile doesn't match any of these, so the join returns null and the name shows as "Unknown".
+## Changes Required
 
-### Issue 2: Booked players don't appear in "Mijn Spelers"
-The "Mijn Spelers" page only queries the `guest_players` table (manually added players). Players who book through the public booking flow are stored as `bookings.player_id` referencing the `profiles` table -- they are never added to `guest_players`, so they never appear in the trainer's player list.
+### 1. Database: Link invoices to players and add RLS
 
-## Solution
+Currently, trainers create invoices but never set the `player_id` field -- only `player_name` is stored as plain text. We need to:
 
-### 1. Add RLS policy: Trainers can view profiles of their booked players
+- Add a **SELECT RLS policy** on the `invoices` table so players can read invoices where `player_id` matches their profile ID
+- Add an **UPDATE RLS policy** so players can update only their billing fields (`player_address`, `player_btw_number`) on their own invoices
 
-Add a new SELECT policy on `profiles` that allows a trainer to read the profile of any player who has a booking on one of their slots. This is the least-privilege approach -- trainers only see players they have a relationship with.
+### 2. Backend: Set `player_id` when creating invoices
 
-```sql
-CREATE POLICY "Trainers can view booked player profiles"
-  ON public.profiles FOR SELECT
-  USING (
-    id IN (
-      SELECT DISTINCT b.player_id
-      FROM bookings b
-      JOIN availability_slots s ON s.id = b.slot_id
-      JOIN trainer_profiles tp ON tp.id = s.trainer_id
-      WHERE tp.user_id = auth.uid()
-    )
-  );
-```
+Update the `CreateInvoiceDialog` to look up the player's profile ID from the booking and include it when inserting the invoice. This links the invoice to the player's account so they can see it.
 
-This immediately fixes the "Unknown" name issue in both `TrainerCalendar.tsx` and `TrainerDashboard.tsx` without any code changes -- the existing PostgREST joins will start returning data.
+For bookings with a registered player (`bookings.player_id`), the invoice will be linked. Guest player invoices remain trainer-only.
 
-### 2. Show registered players in "Mijn Spelers" alongside guest players
+### 3. Frontend: Add "Invoices" tab to PlayerBookings page
 
-Update `TrainerPlayers.tsx` to also fetch registered players (from `bookings` + `profiles`) who have booked with this trainer. Display them alongside the existing guest players, with a visual distinction (e.g., a "Registered" badge vs "Guest" badge).
+Add a third tab ("Invoices") to the existing `PlayerBookings.tsx` page that shows:
 
-**Changes to `src/pages/TrainerPlayers.tsx`:**
-- After fetching `guest_players`, also query distinct `profiles` for players who have bookings on this trainer's slots
-- Merge both lists into a unified player list
-- Add a badge to distinguish registered vs guest players
-- Registered players are read-only (can't be edited/deleted from this page since they manage their own profile)
+- List of invoices addressed to the player (filtered by `player_id`)
+- Invoice number, date, amount, status (draft/sent/paid/overdue)
+- Download button to get the invoice HTML/PDF
+- An "Edit billing details" button that opens a small dialog where the player can fill in their address and BTW number -- these get saved directly to the invoice record
 
-## Files to Change
+### 4. Files to change
 
-1. **Database migration** -- Add RLS policy for trainer-to-player profile visibility
-2. **`src/pages/TrainerPlayers.tsx`** -- Fetch and display registered booked players alongside guest players
+| File | Change |
+|------|--------|
+| **Database migration** | Add SELECT + UPDATE RLS policies for players on `invoices` table |
+| `src/components/trainer/CreateInvoiceDialog.tsx` | Set `player_id` from booking data when creating invoice |
+| `src/pages/PlayerBookings.tsx` | Add "Invoices" tab with invoice list, download, and billing detail editing |
 
 ## Technical Details
 
-- The RLS policy uses a subquery joining `bookings -> availability_slots -> trainer_profiles` to verify the trainer-player relationship
-- The "Mijn Spelers" query for registered players will be: fetch distinct `player_id` from `bookings` where slot's `trainer_id` matches, then fetch their `profiles` data
-- Registered players will show name, email (from profiles), skill rating, and last booking date
-- The existing guest player CRUD (add, edit, delete, import) remains unchanged
+**New RLS policies on `invoices`:**
+
+```text
+SELECT: player_id = (SELECT id FROM profiles WHERE user_id = auth.uid())
+UPDATE: player_id = (SELECT id FROM profiles WHERE user_id = auth.uid())
+        -- restricted to columns: player_address, player_btw_number
+```
+
+Since Postgres RLS can't restrict which columns are updated, the UPDATE policy will allow updates only when the row belongs to the player. The frontend will only send `player_address` and `player_btw_number` fields.
+
+**CreateInvoiceDialog changes:**
+- Accept an optional `playerId` prop (from the booking's `player_id`)
+- Include `player_id` in the insert call when available
+
+**PlayerBookings "Invoices" tab:**
+- Query `invoices` where `player_id = profile.id`, ordered by date
+- Show status badges matching the trainer's view (Concept, Verzonden, Betaald, Verlopen)
+- Download button calls the `generate-invoice` edge function or opens `pdf_url`
+- Inline editable fields for address and BTW number with save button
+
