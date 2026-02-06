@@ -1,51 +1,57 @@
 
 
-# Fix: Cancelled/Failed Payments on Mollie
+# Fix: Trainer Can't See Player Names + Players Missing from "Mijn Spelers"
 
-## Problem
+## Root Cause
 
-When a payment is cancelled or fails on Mollie, the user either stays on the Mollie screen with no clear way back, or gets redirected to the "BookingSuccess" page which confusingly tries to verify a payment that was never completed.
+Two separate issues:
+
+### Issue 1: Player names show as "Unknown" in the calendar
+The trainer's calendar queries try to join `profiles:player_id(full_name, ...)` to get player names. However, **Row-Level Security (RLS) on the `profiles` table blocks trainers from reading other users' profiles**. The only SELECT policies allow: own profile, admin, or public trainer profiles. A trainer viewing a player's profile doesn't match any of these, so the join returns null and the name shows as "Unknown".
+
+### Issue 2: Booked players don't appear in "Mijn Spelers"
+The "Mijn Spelers" page only queries the `guest_players` table (manually added players). Players who book through the public booking flow are stored as `bookings.player_id` referencing the `profiles` table -- they are never added to `guest_players`, so they never appear in the trainer's player list.
 
 ## Solution
 
-Two changes:
+### 1. Add RLS policy: Trainers can view profiles of their booked players
 
-### 1. Add `cancelUrl` to the Mollie payment creation
+Add a new SELECT policy on `profiles` that allows a trainer to read the profile of any player who has a booking on one of their slots. This is the least-privilege approach -- trainers only see players they have a relationship with.
 
-Mollie supports a dedicated `cancelUrl` parameter. When a user clicks "Cancel" or "Back to website" on Mollie's checkout page, they'll be redirected to this URL instead of the `redirectUrl`.
+```sql
+CREATE POLICY "Trainers can view booked player profiles"
+  ON public.profiles FOR SELECT
+  USING (
+    id IN (
+      SELECT DISTINCT b.player_id
+      FROM bookings b
+      JOIN availability_slots s ON s.id = b.slot_id
+      JOIN trainer_profiles tp ON tp.id = s.trainer_id
+      WHERE tp.user_id = auth.uid()
+    )
+  );
+```
 
-We'll point the `cancelUrl` to a new route: `/app/booking-cancelled?booking_id=...`
+This immediately fixes the "Unknown" name issue in both `TrainerCalendar.tsx` and `TrainerDashboard.tsx` without any code changes -- the existing PostgREST joins will start returning data.
 
-**File: `supabase/functions/create-mollie-payment/index.ts`**
-- Add `cancelUrl` to the payment request pointing to `/app/booking-cancelled?booking_id=...`
+### 2. Show registered players in "Mijn Spelers" alongside guest players
 
-### 2. Create a simple "Payment Cancelled" page
+Update `TrainerPlayers.tsx` to also fetch registered players (from `bookings` + `profiles`) who have booked with this trainer. Display them alongside the existing guest players, with a visual distinction (e.g., a "Registered" badge vs "Guest" badge).
 
-A lightweight page that shows a clear message: "Payment was not completed" with two actions:
-- **Try Again** -- links back to the trainer's booking page (`/:lang/book/:slug`)
-- **View My Bookings** -- links to `/app/player/bookings`
-
-The page will fetch the booking's trainer slug so the "Try Again" button works correctly.
-
-**New file: `src/pages/BookingCancelled.tsx`**
-- Simple card UI matching the BookingSuccess design
-- Fetches trainer slug from the booking to enable "Try Again"
-- Shows clear messaging that the payment was not completed
-
-**File: `src/App.tsx` (or wherever routes are defined)**
-- Add route for `/app/booking-cancelled`
-
-### 3. Improve BookingSuccess for edge cases
-
-The existing `BookingSuccess` page should also handle non-paid statuses gracefully in case a webhook updates the booking to `failed`/`expired` during polling.
-
-**File: `src/pages/BookingSuccess.tsx`**
-- During polling, if `payment_status` is `failed`, `canceled`, or `expired`, stop polling immediately and show the error state with a "Try Again" link to the trainer's booking page
+**Changes to `src/pages/TrainerPlayers.tsx`:**
+- After fetching `guest_players`, also query distinct `profiles` for players who have bookings on this trainer's slots
+- Merge both lists into a unified player list
+- Add a badge to distinguish registered vs guest players
+- Registered players are read-only (can't be edited/deleted from this page since they manage their own profile)
 
 ## Files to Change
 
-1. `supabase/functions/create-mollie-payment/index.ts` -- add `cancelUrl` parameter
-2. `src/pages/BookingCancelled.tsx` -- new page for cancelled payments
-3. `src/pages/BookingSuccess.tsx` -- handle failed/expired statuses during polling
-4. Route configuration file -- add `/app/booking-cancelled` route
+1. **Database migration** -- Add RLS policy for trainer-to-player profile visibility
+2. **`src/pages/TrainerPlayers.tsx`** -- Fetch and display registered booked players alongside guest players
 
+## Technical Details
+
+- The RLS policy uses a subquery joining `bookings -> availability_slots -> trainer_profiles` to verify the trainer-player relationship
+- The "Mijn Spelers" query for registered players will be: fetch distinct `player_id` from `bookings` where slot's `trainer_id` matches, then fetch their `profiles` data
+- Registered players will show name, email (from profiles), skill rating, and last booking date
+- The existing guest player CRUD (add, edit, delete, import) remains unchanged
