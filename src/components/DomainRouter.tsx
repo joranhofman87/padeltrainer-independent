@@ -54,6 +54,7 @@ import TrainerCyclus from '@/pages/TrainerCyclus';
 import TrainerCycles from '@/pages/TrainerCycles';
 import TrainerIntakeRequests from '@/pages/TrainerIntakeRequests';
 import OpenSlots from '@/pages/OpenSlots';
+import TrainerLessons from '@/pages/TrainerLessons';
 import TrainerLayout from '@/components/trainer/TrainerLayout';
 import PlayerLayout from '@/components/player/PlayerLayout';
 import PlayerSettings from '@/pages/PlayerSettings';
@@ -198,6 +199,7 @@ function AppRoutes() {
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
         <Route path="open-slots" element={<OpenSlots />} />
+        <Route path="lessons" element={<TrainerLessons />} />
         <Route path="profile" element={<EditProfile />} />
         <Route path="subscription" element={<TrainerSubscription />} />
         <Route path="earnings" element={<TrainerEarnings />} />
@@ -305,6 +307,7 @@ function CombinedRoutes() {
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
         <Route path="open-slots" element={<OpenSlots />} />
+        <Route path="lessons" element={<TrainerLessons />} />
         <Route path="profile" element={<EditProfile />} />
         <Route path="subscription" element={<TrainerSubscription />} />
         <Route path="earnings" element={<TrainerEarnings />} />
