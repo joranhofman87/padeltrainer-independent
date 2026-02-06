@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
-import { getAppUrl } from '@/lib/domains';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 interface SlotData {
   id: string;
@@ -41,6 +41,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
+  const localizePath = useLocalizedPathFn();
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
 
   const totalSlots = dayGroups.reduce((sum, g) => sum + g.slots.length, 0);
   const displayGroups = showAll ? dayGroups : dayGroups.slice(0, 3);
-  const bookUrl = getAppUrl(`/book/${trainerSlug || trainerId}`);
+  const bookUrl = localizePath(`/book/${trainerSlug || trainerId}`);
 
   return (
     <Card>

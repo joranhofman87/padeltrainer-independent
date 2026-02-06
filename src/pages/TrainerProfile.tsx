@@ -417,7 +417,7 @@ export default function TrainerProfile() {
           }
         >
           {/* Action Buttons */}
-          <Button size="lg" className="w-full" onClick={() => navigate(getAppUrl(`/book/${trainerId}`))}>
+          <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}>
             <Calendar className="h-4 w-4 mr-2" />
             {t('common:bookLesson', 'Book Lesson')}
           </Button>
@@ -737,7 +737,7 @@ export default function TrainerProfile() {
                 {lessons.length > 0 && (
                   <Button 
                     className="w-full mt-4" 
-                    onClick={() => navigate(getAppUrl(`/book/${trainerId}`))}
+                    onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
                   >
                     <Calendar className="h-4 w-4 mr-2" />
                     {t('common:bookALesson', 'Book a Lesson')}
@@ -780,7 +780,7 @@ export default function TrainerProfile() {
                   variant="outline" 
                   size="sm" 
                   className="w-full"
-                  onClick={() => navigate(getAppUrl(`/book/${trainerId}`))}
+                  onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
                 >
                   <Calendar className="h-4 w-4 mr-2" />
                   {t('common:bookToConnect', 'Book to Connect')}
