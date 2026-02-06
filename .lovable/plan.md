@@ -1,45 +1,23 @@
 
-# Fix Mollie 404 by Fetching Actual Profile ID
+# Fix Booking Success Page Stuck Loading
 
 ## Problem
 
-The `profileId: "me"` shortcut is returning a 404 when creating payments with the connected account's access token. This likely means "me" isn't resolving to a valid website profile for this Mollie account.
+Two issues discovered:
+
+1. **BookingSuccess page never verifies**: The page requires both `session_id` AND `booking_id` URL params to trigger verification (line 34). But the Mollie redirect URL only includes `booking_id`. The `session_id` check is a leftover from a Stripe-based flow and doesn't apply to Mollie. So `verifyPayment()` never fires and the spinner runs forever.
+
+2. **Mollie profile fetch 403** (secondary): The `GET /v2/profiles/me` endpoint returns 403 with OAuth tokens -- Mollie says it's "only available with an API key." The payment still works because the fallback uses the platform key, but this means application fees aren't being charged to the connected account. This is a separate issue to address later.
 
 ## Fix
 
-### `supabase/functions/create-mollie-payment/index.ts`
+### `src/pages/BookingSuccess.tsx`
 
-Instead of hardcoding `profileId: "me"`, fetch the connected account's actual profile ID before creating the payment:
+- Change the useEffect condition from `if (sessionId && bookingId && user)` to `if (bookingId && user)` -- remove the `sessionId` requirement
+- Remove the unused `sessionId` variable since it's no longer needed
 
-1. After obtaining the `recipientAccessToken`, call `GET /v2/profiles/me` using that token to get the real profile ID (e.g. `pfl_zcfJRjkf6P`)
-2. Use the actual profile ID in the payment request
-3. Add logging to capture the profile lookup result for debugging
-4. If the profile lookup fails, fall back to the platform API key (no application fee)
-
-**New logic (before payment creation):**
-```typescript
-let mollieProfileId: string | null = null;
-if (recipientAccessToken) {
-  const profileResp = await fetch('https://api.mollie.com/v2/profiles/me', {
-    headers: { 'Authorization': `Bearer ${recipientAccessToken}` },
-  });
-  if (profileResp.ok) {
-    const profile = await profileResp.json();
-    mollieProfileId = profile.id;
-    logStep("Mollie profile found", { profileId: mollieProfileId });
-  } else {
-    logStep("Could not fetch Mollie profile, falling back to platform", 
-      { status: profileResp.status });
-    recipientAccessToken = null; // fall back to platform key
-  }
-}
-```
-
-Then in the payment data:
-```typescript
-paymentData.profileId = mollieProfileId; // actual ID like "pfl_..."
-```
+This single change will unblock the verification flow. The webhook logs confirm the payment is already marked as "paid", so once verification runs it will show the success state.
 
 ## Files changed
 
-- `supabase/functions/create-mollie-payment/index.ts` -- fetch actual profile ID instead of using "me"
+- `src/pages/BookingSuccess.tsx` -- remove `sessionId` requirement from verification trigger
