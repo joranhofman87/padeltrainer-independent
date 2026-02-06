@@ -1,39 +1,73 @@
 
 
-# Fix Infinite Loading When Navigating Back (Player Routes)
+# Fix Booking Visibility and Enforce Payment Before Confirmation
 
-## Problem
+## Two Issues Found
 
-When a player logs in, browses trainers, and navigates back, the app gets stuck loading. The root cause is that nearly all navigation links in the player area use paths **without** the required `/app/` prefix (e.g., `/player` instead of `/app/player`).
+### Issue 1: Bookings not showing in Player Dashboard
+The Player Dashboard (line 161) only shows `confirmed` bookings in the "upcoming" section. When a trainer has Mollie connected (no manual invoicing, no approval required), bookings are created with status `pending` -- but the dashboard filters these out. The PlayerBookings page does show all non-cancelled bookings, but the dashboard summary card doesn't.
 
-Every click triggers a redirect chain: `/player` hits a legacy redirect rule, which then redirects to `/app/player`. This double-navigation causes React components to unmount and remount, re-triggering data fetches and auth checks, which can result in stuck loading states -- especially when combined with browser back/forward navigation.
+**Fix**: Update `PlayerDashboard.tsx` to include `pending` and `pending_approval` bookings in the upcoming count and list, with appropriate status badges so players can see their pending bookings.
 
-## Changes
+Also update `PlayerBookings.tsx` to show `pending` bookings with a "Pending Payment" badge and `pending_approval` bookings with a "Awaiting Approval" badge.
 
-### 1. `src/components/player/PlayerSidebar.tsx`
+### Issue 2: Cyclus (Training Cycle) booking skips Mollie payment
+When a player books an entire training cycle, the code (lines 340-404 in `BookLesson.tsx`) only handles two scenarios:
+- `requiresApproval` = true: creates bookings as `pending_approval`
+- else: creates bookings and shows "booked" confirmation (treating it like manual invoicing)
 
-Update all `NavLink` `to` props and `isActive` checks to include the `/app/` prefix:
+It **never** checks for Mollie payment or redirects to checkout. The Mollie payment flow only exists for individual slot bookings (line 494+). Since Trainer Test has Mollie connected and neither approval nor manual invoicing enabled, the cyclus booking silently creates `pending` bookings without ever collecting payment.
 
-- `/player` becomes `/app/player` (Dashboard link, line 147)
-- `/player/bookings` becomes `/app/player/bookings` (line 162)
-- `/player/following` becomes `/app/player/following` (line 177)
-- `/player/settings` becomes `/app/player/settings` (lines 58, 74, 198, 217)
-- `/player/settings/notifications` becomes `/app/player/settings/notifications` (line 229)
-- `/player/settings/calendar` becomes `/app/player/settings/calendar` (line 240)
-- Logout: `/auth` becomes `/app/auth` (line 70)
+**Fix**: Add a third branch in the cyclus booking logic: when the trainer has Mollie connected (not approval, not manual invoicing), check `hasValidPaymentSetup`, create the bookings, then call `create-mollie-payment` with the total cycle amount and redirect to Mollie checkout.
 
-### 2. `src/pages/BookLesson.tsx`
+---
 
-Fix hardcoded navigation paths in the "Trainer not found" and "Request Sent" fallback screens:
+## Technical Changes
 
-- `/player` becomes `/app/player` (lines 574, 596)
-- `/player/bookings` becomes `/app/player/bookings` (line 593)
+### 1. `src/pages/BookLesson.tsx` -- Cyclus Mollie payment flow
 
-### 3. `src/components/marketing/MarketingLayout.tsx`
+In the `handleBook` function, restructure the cyclus booking block (lines 340-404):
 
-The "Dashboard" button always links to `/app/player` regardless of user role (line 83). Update to route based on the user's actual role so trainers, clubs, and academy managers land on the correct dashboard.
+```text
+if (selectedCyclus) {
+  if (requiresApproval) {
+    // existing: create bookings as pending_approval, send email
+  } else if (useManualInvoicing) {
+    // existing: create bookings as confirmed, send email
+  } else {
+    // NEW: Mollie payment path for cyclus
+    // 1. Check hasValidPaymentSetup()
+    // 2. Create bookings with status 'pending', payment_status 'pending'
+    // 3. Call create-mollie-payment with first slot ID and total cyclus price
+    // 4. Redirect to Mollie checkout URL
+  }
+}
+```
 
-## Why This Fixes It
+The `create-mollie-payment` edge function already creates its own booking record, so for cyclus we need a different approach. We will:
+- Create the cyclus bookings in BookLesson.tsx first (as we already do)
+- Skip the edge function's internal booking creation by passing the existing booking IDs
+- Update the edge function to accept an optional `bookingId` parameter and skip creating a new booking when one is provided
 
-Removing the redirect chain means React Router performs a single direct navigation instead of two. Components stay mounted, auth state remains stable, and data fetches don't get interrupted or duplicated. Browser back/forward navigation works cleanly because the history entries point to the correct final URLs.
+### 2. `supabase/functions/create-mollie-payment/index.ts` -- Accept existing bookingId
+
+Add an optional `bookingId` parameter. When provided, skip the booking insert and use the existing booking record instead. This allows the cyclus flow to pre-create multiple bookings and then initiate payment for them as a group.
+
+The metadata will include all booking IDs so the webhook can update all of them on payment success.
+
+### 3. `supabase/functions/mollie-webhook/index.ts` -- Handle multi-booking payments
+
+Update the webhook to check metadata for multiple booking IDs and update all related bookings to `paid`/`confirmed` when payment succeeds.
+
+### 4. `src/pages/PlayerDashboard.tsx` -- Show pending bookings
+
+Update the `fetchPlayerData` function (line 161) to include `pending` and `pending_approval` statuses in the upcoming bookings section, not just `confirmed`. Add visual distinction (badge/color) for each status.
+
+### 5. `src/pages/PlayerBookings.tsx` -- Show payment status
+
+Update the `getStatusBadge` function to also render `pending_approval` as "Awaiting Approval" and add a payment indicator for bookings with `payment_status: pending` so the player knows payment is still needed.
+
+### 6. `src/pages/PlayerDashboard.tsx` -- Fix legacy route
+
+Line 372 and 399 still use `/player/following` and `/player/bookings` without the `/app/` prefix (missed in the previous fix). Update to `/app/player/following` and `/app/player/bookings`.
 
