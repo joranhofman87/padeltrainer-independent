@@ -231,7 +231,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
-              <a href="https://app.padeltrainer.ai/settings/notifications">Manage notification preferences</a>
+              <a href="https://padeltrainer.ai/app/player/settings/notifications">Manage notification preferences</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -256,7 +256,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
-              <a href="https://app.padeltrainer.ai/settings/notifications">Manage notification preferences</a>
+              <a href="https://padeltrainer.ai/app/player/settings/notifications">Manage notification preferences</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -306,7 +306,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>Please review this request in your dashboard and approve or decline it.</p>
             <p style="margin-top: 24px;">
-              <a href="${data.bookingUrl || 'https://app.padeltrainer.ai/trainer/bookings'}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
+              <a href="${data.bookingUrl || 'https://padeltrainer.ai/app/trainer/bookings'}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -407,7 +407,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               </ul>
             </div>
             <p style="margin-top: 24px;">
-              <a href="https://app.padeltrainer.ai/club" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Club Dashboard</a>
+              <a href="https://padeltrainer.ai/app/club" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Club Dashboard</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -484,7 +484,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>You can now see their availability in your club calendar and they'll appear in your trainers list.</p>
             <p style="margin-top: 24px;">
-              <a href="https://app.padeltrainer.ai/club/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Club Trainers</a>
+              <a href="https://padeltrainer.ai/app/club/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Club Trainers</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>

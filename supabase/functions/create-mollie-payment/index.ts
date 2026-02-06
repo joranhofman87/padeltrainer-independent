@@ -171,7 +171,7 @@ serve(async (req) => {
     if (bookingError) throw new Error(`Failed to create booking: ${bookingError.message}`);
     logStep("Booking created", { bookingId: booking.id });
 
-    const origin = redirectUrl || req.headers.get("origin") || "https://app.padeltrainer.ai";
+    const origin = redirectUrl || req.headers.get("origin") || "https://padeltrainer.ai";
 
     // Build payment request
     const paymentData: Record<string, unknown> = {

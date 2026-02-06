@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Star, MapPin, CheckCircle, Users, ArrowRight, Building2, Home, Sun } from 'lucide-react';
@@ -37,6 +37,7 @@ interface TrainerWithProfile {
 export function HomeFeaturedSections() {
   const { t } = useTranslation('common');
   const localizePath = useLocalizedPathFn();
+  const navigate = useNavigate();
   
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
@@ -204,7 +205,7 @@ export function HomeFeaturedSections() {
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
-                      onClick={() => window.location.href = localizePath(`/trainer/${trainer.slug || trainer.id}`)}
+                      onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-start gap-3">
@@ -306,7 +307,7 @@ export function HomeFeaturedSections() {
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full"
-                      onClick={() => window.location.href = localizePath(`/academies/${academy.slug}`)}
+                      onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
                     >
                       <CardContent className="pt-6">
                         <div className="flex items-start gap-3">
@@ -386,7 +387,7 @@ export function HomeFeaturedSections() {
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full relative"
-                      onClick={() => window.location.href = localizePath(`/locations/${location.slug}`)}
+                      onClick={() => navigate(localizePath(`/locations/${location.slug}`))}
                     >
                       <div className="absolute top-3 right-3">
                         <CheckCircle className="h-4 w-4 text-primary" />

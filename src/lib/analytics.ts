@@ -1,5 +1,4 @@
 import { CookieConsent } from '@/contexts/CookieConsentContext';
-import { isOnMarketingDomain } from '@/lib/domains';
 
 const GA_MEASUREMENT_ID = 'G-7LV1ZK9PH5';
 
@@ -42,8 +41,8 @@ function loadGoogleAnalytics() {
 }
 
 function loadTradeTracker() {
-  // Only load on marketing domain (padeltrainer.ai)
-  if (!isOnMarketingDomain()) return;
+  // Only load on marketing pages (not /app/* routes)
+  if (window.location.pathname.startsWith('/app')) return;
   if (isTradeTrackerInitialized) return;
 
   // Set up TradeTracker options globally

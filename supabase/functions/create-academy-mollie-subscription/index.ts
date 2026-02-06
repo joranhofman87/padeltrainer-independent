@@ -59,7 +59,7 @@ serve(async (req) => {
     }
 
     let customerId = academyProfile.mollie_customer_id;
-    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
+    const origin = req.headers.get("origin") || "https://padeltrainer.ai";
 
     // Create Mollie customer if needed
     if (!customerId) {

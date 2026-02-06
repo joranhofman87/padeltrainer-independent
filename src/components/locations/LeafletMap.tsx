@@ -119,6 +119,7 @@ function PopupContent({
         className="w-full"
         onClick={() => {
           window.location.href = getLocalizedPath(`/locations/${location.slug}`);
+          // Note: LeafletMap popups render outside React Router context, window.location.href is required here
         }}
       >
         {t('locations.viewProfile')}

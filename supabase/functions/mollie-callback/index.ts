@@ -6,7 +6,7 @@ const logStep = (step: string, details?: any) => {
   console.log(`[MOLLIE-CALLBACK] ${step}${detailsStr}`);
 };
 
-const FRONTEND_BASE_URL = 'https://app.padeltrainer.ai';
+const FRONTEND_BASE_URL = 'https://padeltrainer.ai';
 
 interface MollieTokenResponse {
   access_token: string;
@@ -23,7 +23,7 @@ interface MollieOrganization {
 }
 
 function redirectToFrontend(status: 'success' | 'error', params: Record<string, string> = {}) {
-  const url = new URL(`${FRONTEND_BASE_URL}/api/mollie-callback`);
+  const url = new URL(`${FRONTEND_BASE_URL}/app/api/mollie-callback`);
   url.searchParams.set('status', status);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);

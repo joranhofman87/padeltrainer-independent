@@ -106,8 +106,9 @@ import NotFound from '@/pages/NotFound';
 export function DomainRouter() {
   return (
     <Routes>
-      {/* API callback routes */}
+      {/* API callback routes (legacy + new path) */}
       <Route path="/api/mollie-callback" element={<MollieCallback />} />
+      <Route path="/app/api/mollie-callback" element={<MollieCallback />} />
 
       {/* Root redirect - detects browser language */}
       <Route path="/" element={<RootRedirect />} />
