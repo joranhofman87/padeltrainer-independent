@@ -1,79 +1,89 @@
 
-# Fix Cross-Domain Booking: Move BookLesson to App Domain
 
-## Problem
+# Implement Cookie-Based Auth Sharing Across Subdomains
 
-The booking flow is broken for logged-in players because of a **cross-domain session issue**:
+## Overview
 
-1. Player logs in on `app.padeltrainer.ai` -- session stored in that domain's localStorage
-2. Player browses trainers on `padeltrainer.ai` (marketing site) -- no session here (different domain = different localStorage)
-3. Player clicks "Book Lesson" which loads `BookLesson` on the marketing domain
-4. `BookLesson` calls `useAuth()`, finds no user, redirects to `/auth`
-5. `/auth` on marketing domain redirects to `app.padeltrainer.ai/auth` via `RedirectToAppDomain`
-6. User is already logged in there -- circular frustration
+Switch the Supabase auth session storage from `localStorage` to cookies scoped to `.padeltrainer.ai`, so users stay logged in on both the marketing site and the app domain. Since there are no real users yet, no migration is needed.
 
-The booking page requires authentication but lives on the marketing domain where auth sessions don't exist. This is a fundamental architecture mismatch.
+## Changes
 
-## Solution
+### 1. New File: `src/lib/cookieStorage.ts`
 
-Move the booking flow to the **app domain** (`app.padeltrainer.ai`). The "Book Lesson" button on the marketing site trainer profile should link to `app.padeltrainer.ai/book/:trainerId` instead of staying on the marketing domain.
+Create a custom storage adapter that implements `getItem`, `setItem`, and `removeItem` using `document.cookie`:
 
-### File 1: `src/components/DomainRouter.tsx`
+- In production: sets `domain=.padeltrainer.ai; Secure; SameSite=Lax; path=/`
+- In development (localhost / lovable.app): no domain restriction, just `path=/`
+- Cookie expiry: 365 days (Supabase handles token refresh internally)
+- Handles URL-encoding of values for safe cookie storage
 
-**Add** `/book/:trainerId` route to `AppRoutes`:
-```text
-<Route path="/book/:trainerId" element={<BookLesson />} />
+### 2. New File: `src/lib/supabaseClient.ts`
+
+Create a wrapper that re-exports a properly configured Supabase client:
+
+```typescript
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/integrations/supabase/types';
+import { cookieStorage } from './cookieStorage';
+
+const URL = import.meta.env.VITE_SUPABASE_URL;
+const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+export const supabase = createClient<Database>(URL, KEY, {
+  auth: {
+    storage: cookieStorage,
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+});
 ```
 
-**Add** a redirect in `MarketingRoutes` so `/book/*` on the marketing domain redirects to the app domain (like `/auth` does):
-```text
-<Route path="/book/*" element={<RedirectToAppDomain path="/book" />} />
+This avoids editing the auto-generated `src/integrations/supabase/client.ts`.
+
+### 3. Update All Imports (~50 files)
+
+Find-and-replace all:
+```
+from "@/integrations/supabase/client"
+```
+to:
+```
+from "@/lib/supabaseClient"
 ```
 
-Also add it to `CombinedRoutes` (dev mode) as a standalone route before the `/:lang` block.
+This affects approximately 50 files across `src/lib/`, `src/hooks/`, `src/pages/`, and `src/components/`.
 
-### File 2: `src/pages/TrainerProfile.tsx`
+### 4. Update `src/components/marketing/MarketingLayout.tsx`
 
-Update the "Book Lesson" button to navigate to the app domain instead of using `localizePath`:
-```text
-Before:  navigate(localizePath(`/book/${trainerId}`))
-After:   window.location.href = getAppUrl(`/book/${trainerId}`)
+Now that `useAuth()` works on the marketing domain, update the header:
+
+- If `user` exists: show "Dashboard" button (linking to role-based dashboard) instead of "Sign In"
+- If no `user`: show "Sign In" as today
+- Apply to both desktop and mobile menu sections
+
+### 5. Update `src/pages/TrainerProfile.tsx`
+
+Remove auth guards that hide buttons on the marketing domain:
+
+- **Line 419**: Remove `user && role === 'player'` guard on hero "Book Lesson" button -- show to everyone. If not logged in, the BookLesson page handles the redirect.
+- **Line 738**: Same for lessons-section "Book a Lesson" button
+- **Line 777**: Same for sidebar "Book to Connect" button
+- All three buttons use `getAppUrl('/book/...')` to navigate to the app domain for the actual booking flow
+
+### 6. Update `src/components/waitingList/WaitingListCard.tsx`
+
+The auth check now works on the marketing domain, so the existing `!user` redirect logic will function correctly. Update the redirect to go to the app domain auth page with a return URL:
+
+```typescript
+window.location.href = getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.href)}`);
 ```
 
-This uses the existing `getAppUrl` helper which returns relative paths in development and full `https://app.padeltrainer.ai/...` URLs in production.
+## Technical Details
 
-### File 3: `src/pages/PlayerDashboard.tsx`
-
-Update the trainer card click to use `/book/:trainerId` directly (already on the app domain, so just `navigate`):
-```text
-Before:  navigate(localizePath(`/book/${trainer.id}`))
-After:   navigate(`/book/${trainer.id}`)
-```
-
-### File 4: `src/pages/BookLesson.tsx`
-
-Update the auth redirect to use `/auth` with a return URL so users are sent back after login:
-```text
-Before:  navigate('/auth')
-After:   navigate(`/auth?redirect=/book/${trainerId}`)
-```
-
-Remove the `localizePath` usage since the page now lives on the app domain (no language prefix needed).
-
-### File 5: `src/components/DomainRouter.tsx` (RedirectToAppDomain)
-
-Update `RedirectToAppDomain` to pass through the full path including params:
-```text
-// For /book/abc123 on marketing domain -> redirect to app.padeltrainer.ai/book/abc123
-```
-
-## Summary
-
-| File | Change |
-|------|--------|
-| `src/components/DomainRouter.tsx` | Add `/book/:trainerId` to AppRoutes; add marketing redirect for `/book/*` |
-| `src/pages/TrainerProfile.tsx` | Use `getAppUrl` for book button to navigate cross-domain |
-| `src/pages/PlayerDashboard.tsx` | Use simple `/book/` path (already on app domain) |
-| `src/pages/BookLesson.tsx` | Remove `localizePath`; fix auth redirect to include return URL |
-
-This ensures the booking page always runs on the app domain where the user's session exists.
+- The auto-generated `src/integrations/supabase/client.ts` is never touched
+- Cookie key is the default Supabase storage key: `sb-ppkbhdiiqdusdeatgdft-auth-token`
+- Cookie size: Supabase JWT tokens are ~2KB, well within the 4KB limit
+- `SameSite=Lax` prevents CSRF while allowing top-level navigations
+- `Secure` flag ensures HTTPS-only in production
+- No `HttpOnly` (must be JS-readable for the client SDK -- same security profile as localStorage)
+- Development mode auto-detects localhost/lovable.app and skips domain scoping
