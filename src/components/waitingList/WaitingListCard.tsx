@@ -14,6 +14,7 @@ import { Bell } from 'lucide-react';
 import WaitingListForm from './WaitingListForm';
 import { OwnerType } from '@/lib/waitingList';
 import { getAppUrl } from '@/lib/domains';
+import { useNavigate } from 'react-router-dom';
 
 interface WaitingListCardProps {
   ownerType: OwnerType;
@@ -29,10 +30,11 @@ export default function WaitingListCard({
   const { t } = useTranslation('waitingList');
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleClick = () => {
     if (!user) {
-      window.location.href = getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.href)}`);
+      navigate(getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.pathname)}`));
       return;
     }
     setIsOpen(true);

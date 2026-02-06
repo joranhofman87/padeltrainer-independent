@@ -1,7 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { useParams, useLocation } from 'react-router-dom';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
-import { MARKETING_DOMAIN, APP_DOMAIN, isInDevelopment } from '@/lib/domains';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 interface SEOProps {
   title: string;
@@ -11,7 +11,7 @@ interface SEOProps {
   type?: 'website' | 'article' | 'place';
   structuredData?: object | object[];
   noIndex?: boolean;
-  /** Set to true for app pages (served from app.padeltrainer.ai) */
+  /** @deprecated Use noIndex instead. App pages under /app are auto-detected. */
   isAppPage?: boolean;
 }
 
@@ -31,8 +31,8 @@ export function SEO({
   
   const fullTitle = `${title} | PadelTrainer.ai`;
   
-  // Determine base URL based on page type
-  const baseUrl = isAppPage ? APP_DOMAIN : MARKETING_DOMAIN;
+  // Determine base URL - always use marketing domain
+  const baseUrl = MARKETING_DOMAIN;
   
   // Get the path without language prefix for hreflang generation
   const pathWithoutLang = url?.replace(/^\/(en|nl)/, '') || '';

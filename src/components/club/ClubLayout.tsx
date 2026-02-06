@@ -69,7 +69,7 @@ export default function ClubLayout() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [user, authLoading, navigate]);
 
@@ -195,7 +195,7 @@ export default function ClubLayout() {
             {t('dashboard.noClubs', "You haven't claimed any clubs yet. Visit a location page to claim your club.")}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button onClick={() => navigate('/onboarding/club')}>
+            <Button onClick={() => navigate('/app/onboarding/club')}>
               {t('dashboard.claimClub', 'Claim a Club')}
             </Button>
             <Button variant="outline" onClick={() => navigate(localizePath('/locations'))}>
@@ -241,7 +241,7 @@ export default function ClubLayout() {
                 activeClubId={activeClub?.id} 
                 onClubChange={handleClubChange} 
               />
-              <Button variant="ghost" size="icon" onClick={() => navigate('/club/settings')}>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/app/club/settings')}>
                 <Settings className="h-5 w-5" />
               </Button>
               <Button variant="ghost" size="icon" onClick={handleSignOut}>

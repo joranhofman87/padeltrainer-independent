@@ -1,8 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useHostname } from '@/hooks/useHostname';
 import { LanguageRouter, RootRedirect } from '@/components/LanguageRouter';
-import { useEffect } from 'react';
-import { logger } from '@/lib/logger';
 
 // Marketing pages
 import Home from '@/pages/marketing/Home';
@@ -102,84 +99,36 @@ import AcademyEarnings from '@/pages/academy/AcademyEarnings';
 import NotFound from '@/pages/NotFound';
 
 /**
- * Marketing routes - served on padeltrainer.ai
- * These are public-facing pages with language prefixes for SEO.
+ * Single unified route tree. All app routes live under /app/*.
+ * Marketing routes live under /:lang/*.
+ * No more hostname detection or subdomain routing.
  */
-function MarketingRoutes() {
-  return (
-    <Routes>
-      {/* Root redirect - detects browser language */}
-      <Route path="/" element={<RootRedirect />} />
-      
-      {/* App route redirects - MUST come before /:lang to avoid being caught as language */}
-      <Route path="/auth" element={<RedirectToAppDomain path="/auth" />} />
-      <Route path="/forgot-password" element={<RedirectToAppDomain path="/forgot-password" />} />
-      <Route path="/reset-password" element={<RedirectToAppDomain path="/reset-password" />} />
-      <Route path="/signup/*" element={<RedirectToAppDomain path="/signup" />} />
-      <Route path="/onboarding/*" element={<RedirectToAppDomain path="/onboarding" />} />
-      
-      <Route path="/player/*" element={<RedirectToAppDomain path="/player" />} />
-      <Route path="/trainer/*" element={<RedirectToAppDomain path="/trainer" />} />
-      <Route path="/club/*" element={<RedirectToAppDomain path="/club" />} />
-      <Route path="/academy/*" element={<RedirectToAppDomain path="/academy" />} />
-      <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
-      <Route path="/profile/*" element={<RedirectToAppDomain path="/profile" />} />
-      <Route path="/booking-success" element={<RedirectToAppDomain path="/booking-success" />} />
-      <Route path="/book/*" element={<RedirectToAppDomain path="/book" />} />
-      
-      {/* Language-prefixed marketing routes - MUST come after app routes */}
-      <Route path="/:lang" element={<LanguageRouter />}>
-        <Route index element={<Home />} />
-        <Route path="pricing" element={<Pricing />} />
-        <Route path="about" element={<About />} />
-        <Route path="blog" element={<Blog />} />
-        <Route path="blog/:slug" element={<BlogPost />} />
-        <Route path="privacy" element={<Privacy />} />
-        <Route path="terms" element={<Terms />} />
-        <Route path="partner" element={<Partner />} />
-        <Route path="trainers" element={<Trainers />} />
-        <Route path="trainers/:city" element={<TrainersCity />} />
-        <Route path="trainer/:trainerId" element={<TrainerProfile />} />
-        <Route path="locations" element={<Locations />} />
-        <Route path="locations/:slug" element={<LocationDetail />} />
-        <Route path="academies" element={<Academies />} />
-        <Route path="academies/:slug" element={<AcademyPublicProfile />} />
-        <Route path="book/:trainerId" element={<BookLesson />} />
-        <Route path="register/:cycleId" element={<CycleRegistration />} />
-      </Route>
-      
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  );
-}
-
-/**
- * App routes - served on app.padeltrainer.ai
- * These are authenticated/functional pages without language prefixes.
- */
-function AppRoutes() {
+export function DomainRouter() {
   return (
     <Routes>
       {/* API callback routes */}
       <Route path="/api/mollie-callback" element={<MollieCallback />} />
-      
-      {/* Redirect root to auth or dashboard based on login state */}
-      <Route path="/" element={<Navigate to="/auth" replace />} />
+
+      {/* Root redirect - detects browser language */}
+      <Route path="/" element={<RootRedirect />} />
+
+      {/* ===== APP ROUTES (under /app) ===== */}
+      <Route path="/app" element={<Navigate to="/app/auth" replace />} />
       
       {/* Auth routes */}
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/signup/player" element={<PlayerSignup />} />
-      <Route path="/signup/trainer" element={<TrainerSignup />} />
-      <Route path="/signup/club" element={<ClubSignup />} />
-      <Route path="/signup/academy" element={<AcademySignup />} />
-      <Route path="/onboarding/club" element={<ClubOnboarding />} />
-      <Route path="/onboarding/:role" element={<Onboarding />} />
-      <Route path="/academy/onboarding" element={<AcademyOnboarding />} />
+      <Route path="/app/auth" element={<Auth />} />
+      <Route path="/app/forgot-password" element={<ForgotPassword />} />
+      <Route path="/app/reset-password" element={<ResetPassword />} />
+      <Route path="/app/signup/player" element={<PlayerSignup />} />
+      <Route path="/app/signup/trainer" element={<TrainerSignup />} />
+      <Route path="/app/signup/club" element={<ClubSignup />} />
+      <Route path="/app/signup/academy" element={<AcademySignup />} />
+      <Route path="/app/onboarding/club" element={<ClubOnboarding />} />
+      <Route path="/app/onboarding/:role" element={<Onboarding />} />
+      <Route path="/app/academy/onboarding" element={<AcademyOnboarding />} />
       
       {/* Player routes */}
-      <Route path="/player" element={<PlayerLayout />}>
+      <Route path="/app/player" element={<PlayerLayout />}>
         <Route index element={<PlayerDashboard />} />
         <Route path="bookings" element={<PlayerBookings />} />
         <Route path="following" element={<FollowingList />} />
@@ -190,7 +139,7 @@ function AppRoutes() {
       </Route>
       
       {/* Trainer routes */}
-      <Route path="/trainer" element={<TrainerLayout />}>
+      <Route path="/app/trainer" element={<TrainerLayout />}>
         <Route index element={<TrainerDashboard />} />
         <Route path="settings" element={<TrainerSettings />} />
         <Route path="settings/bookings" element={<TrainerBookingSettings />} />
@@ -209,11 +158,11 @@ function AppRoutes() {
       </Route>
 
       {/* Booking & standalone routes */}
-      <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/book/:trainerId" element={<BookLesson />} />
+      <Route path="/app/booking-success" element={<BookingSuccess />} />
+      <Route path="/app/book/:trainerId" element={<BookLesson />} />
       
       {/* Admin routes */}
-      <Route path="/admin" element={<AdminLayout />}>
+      <Route path="/app/admin" element={<AdminLayout />}>
         <Route index element={<AdminDashboard />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="clubs" element={<AdminClubs />} />
@@ -230,7 +179,7 @@ function AppRoutes() {
       </Route>
       
       {/* Club routes */}
-      <Route path="/club" element={<ClubLayout />}>
+      <Route path="/app/club" element={<ClubLayout />}>
         <Route index element={<ClubDashboard />} />
         <Route path="profile" element={<ClubProfile />} />
         <Route path="players" element={<ClubPlayers />} />
@@ -244,7 +193,7 @@ function AppRoutes() {
       </Route>
       
       {/* Academy routes */}
-      <Route path="/academy" element={<AcademyLayout />}>
+      <Route path="/app/academy" element={<AcademyLayout />}>
         <Route index element={<AcademyDashboard />} />
         <Route path="profile" element={<AcademyProfile />} />
         <Route path="trainers" element={<AcademyTrainers />} />
@@ -255,118 +204,24 @@ function AppRoutes() {
         <Route path="subscription" element={<AcademySubscription />} />
         <Route path="earnings" element={<AcademyEarnings />} />
       </Route>
-      <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
-      
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  );
-}
+      <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
 
-/**
- * Combined routes for development mode.
- * Shows all routes when in localhost or Lovable preview.
- */
-function CombinedRoutes() {
-  return (
-    <Routes>
-      {/* API callback routes */}
-      <Route path="/api/mollie-callback" element={<MollieCallback />} />
-      
-      {/* Root redirect - detects browser language */}
-      <Route path="/" element={<RootRedirect />} />
-      
-      {/* App routes - MUST come before /:lang to avoid being caught by language router */}
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/signup/player" element={<PlayerSignup />} />
-      <Route path="/signup/trainer" element={<TrainerSignup />} />
-      <Route path="/signup/club" element={<ClubSignup />} />
-      <Route path="/signup/academy" element={<AcademySignup />} />
-      <Route path="/onboarding/club" element={<ClubOnboarding />} />
-      <Route path="/onboarding/:role" element={<Onboarding />} />
-      <Route path="/academy/onboarding" element={<AcademyOnboarding />} />
-      
-      
-      {/* Player routes */}
-      <Route path="/player" element={<PlayerLayout />}>
-        <Route index element={<PlayerDashboard />} />
-        <Route path="bookings" element={<PlayerBookings />} />
-        <Route path="following" element={<FollowingList />} />
-        <Route path="profile" element={<EditProfile />} />
-        <Route path="settings/notifications" element={<NotificationSettings />} />
-        <Route path="settings/calendar" element={<CalendarSettings />} />
-      </Route>
-      
-      {/* Trainer routes */}
-      <Route path="/trainer" element={<TrainerLayout />}>
-        <Route index element={<TrainerDashboard />} />
-        <Route path="settings" element={<TrainerSettings />} />
-        <Route path="settings/bookings" element={<TrainerBookingSettings />} />
-        <Route path="calendar" element={<TrainerCalendar />} />
-        <Route path="players" element={<TrainerPlayers />} />
-        <Route path="cyclus" element={<TrainerCyclus />} />
-        <Route path="cycles" element={<TrainerCycles />} />
-        <Route path="intake-requests" element={<TrainerIntakeRequests />} />
-        <Route path="open-slots" element={<OpenSlots />} />
-        <Route path="lessons" element={<TrainerLessons />} />
-        <Route path="profile" element={<EditProfile />} />
-        <Route path="subscription" element={<TrainerSubscription />} />
-        <Route path="earnings" element={<TrainerEarnings />} />
-        <Route path="analytics" element={<TrainerAnalytics />} />
-        <Route path="bookings" element={<TrainerBookings />} />
-      </Route>
+      {/* ===== LEGACY REDIRECTS ===== */}
+      {/* Redirect old non-prefixed app routes to /app/* */}
+      <Route path="/auth" element={<Navigate to="/app/auth" replace />} />
+      <Route path="/forgot-password" element={<Navigate to="/app/forgot-password" replace />} />
+      <Route path="/reset-password" element={<Navigate to="/app/reset-password" replace />} />
+      <Route path="/signup/*" element={<LegacyRedirect prefix="/app/signup" />} />
+      <Route path="/onboarding/*" element={<LegacyRedirect prefix="/app/onboarding" />} />
+      <Route path="/player/*" element={<LegacyRedirect prefix="/app/player" />} />
+      <Route path="/trainer/*" element={<LegacyRedirect prefix="/app/trainer" />} />
+      <Route path="/club/*" element={<LegacyRedirect prefix="/app/club" />} />
+      <Route path="/academy/*" element={<LegacyRedirect prefix="/app/academy" />} />
+      <Route path="/admin/*" element={<LegacyRedirect prefix="/app/admin" />} />
+      <Route path="/booking-success" element={<Navigate to="/app/booking-success" replace />} />
+      <Route path="/book/*" element={<LegacyRedirect prefix="/app/book" />} />
 
-      {/* Booking & standalone routes */}
-      <Route path="/booking-success" element={<BookingSuccess />} />
-      <Route path="/book/:trainerId" element={<BookLesson />} />
-      
-      {/* Admin routes */}
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="users" element={<AdminUsers />} />
-        <Route path="clubs" element={<AdminClubs />} />
-        <Route path="trainers" element={<AdminTrainers />} />
-        <Route path="locations" element={<AdminLocations />} />
-        <Route path="certifications" element={<AdminCertifications />} />
-        <Route path="club-claims" element={<AdminClubClaims />} />
-        <Route path="rating-systems" element={<AdminRatingSystems />} />
-        <Route path="review-tags" element={<AdminReviewTags />} />
-        <Route path="academies" element={<AdminAcademies />} />
-        <Route path="pricing" element={<AdminPricing />} />
-        <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
-        <Route path="banners" element={<AdminBanners />} />
-      </Route>
-      
-      {/* Club routes */}
-      <Route path="/club" element={<ClubLayout />}>
-        <Route index element={<ClubDashboard />} />
-        <Route path="profile" element={<ClubProfile />} />
-        <Route path="players" element={<ClubPlayers />} />
-        <Route path="trainers" element={<ClubTrainers />} />
-        <Route path="calendar" element={<ClubCalendar />} />
-        <Route path="lessons" element={<ClubLessons />} />
-        <Route path="tournaments" element={<ClubTournaments />} />
-        <Route path="settings" element={<ClubSettings />} />
-        <Route path="subscription" element={<ClubSubscription />} />
-        <Route path="invitation/:token" element={<ClubTrainerInvitation />} />
-      </Route>
-      
-      {/* Academy routes */}
-      <Route path="/academy" element={<AcademyLayout />}>
-        <Route index element={<AcademyDashboard />} />
-        <Route path="profile" element={<AcademyProfile />} />
-        <Route path="trainers" element={<AcademyTrainers />} />
-        <Route path="locations" element={<AcademyLocations />} />
-        <Route path="cycles" element={<AcademyCycles />} />
-        <Route path="calendar" element={<AcademyCalendar />} />
-        <Route path="settings" element={<AcademySettings />} />
-        <Route path="subscription" element={<AcademySubscription />} />
-        <Route path="earnings" element={<AcademyEarnings />} />
-      </Route>
-      <Route path="/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
-      
-      {/* Language-prefixed marketing routes - MUST come after app routes */}
+      {/* ===== MARKETING ROUTES ===== */}
       <Route path="/:lang" element={<LanguageRouter />}>
         <Route index element={<Home />} />
         <Route path="pricing" element={<Pricing />} />
@@ -391,70 +246,15 @@ function CombinedRoutes() {
     </Routes>
   );
 }
-/**
- * Helper component to redirect to app subdomain.
- * Used on marketing domain when users try to access app routes.
- * 
- * This component handles the case where users land on app routes
- * while on the marketing domain (padeltrainer.ai) and need to be
- * redirected to the app domain (app.padeltrainer.ai).
- */
-function RedirectToAppDomain({ path }: { path: string }) {
-  const hostname = window.location.hostname;
-  const isProductionMarketing = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-  // Pass through the full current path so params are preserved (e.g. /book/abc123)
-  const currentPath = window.location.pathname;
-  const targetPath = currentPath.startsWith(path) ? currentPath : path;
-  const targetUrl = `https://app.padeltrainer.ai${targetPath}`;
-
-  useEffect(() => {
-    if (isProductionMarketing) {
-      logger.debug('RedirectToAppDomain executing redirect', { path, targetUrl });
-      window.location.replace(targetUrl);
-    }
-  }, [isProductionMarketing, targetUrl]);
-
-  if (isProductionMarketing) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="text-center">
-          <p className="text-lg">Redirecting to app...</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            If you are not redirected, <a href={targetUrl} className="underline">click here</a>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return <Navigate to={path} replace />;
-}
 
 /**
- * Main router component that serves different routes based on hostname.
+ * Redirects old unprefixed paths to /app/* equivalents.
+ * Preserves the remaining path segments and search params.
  */
-export function DomainRouter() {
-  const { isAppDomain, isMarketingDomain, isDevelopment, hostname } = useHostname();
-  
-  // Debug logging for production diagnostics
-  useEffect(() => {
-    logger.debug('DomainRouter routing', { hostname, isAppDomain, isMarketingDomain, isDevelopment });
-  }, [hostname, isAppDomain, isMarketingDomain, isDevelopment]);
-  
-  // In development, show all routes
-  if (isDevelopment) {
-    return <CombinedRoutes />;
-  }
-  
-  // In production, serve domain-specific routes
-  if (isAppDomain) {
-    return <AppRoutes />;
-  }
-  
-  if (isMarketingDomain) {
-    return <MarketingRoutes />;
-  }
-  
-  // Fallback to combined routes (shouldn't happen in production)
-  return <CombinedRoutes />;
+function LegacyRedirect({ prefix }: { prefix: string }) {
+  const path = window.location.pathname;
+  // Extract the part after the base segment (e.g., /signup/player -> /player)
+  const basePath = prefix.replace('/app', '');
+  const remaining = path.startsWith(basePath) ? path.slice(basePath.length) : '';
+  return <Navigate to={`${prefix}${remaining}${window.location.search}`} replace />;
 }

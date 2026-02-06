@@ -7,7 +7,7 @@ import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Target, Heart, Users, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getAppUrl, isInDevelopment, MARKETING_DOMAIN } from '@/lib/domains';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 export default function About() {
   const { t } = useTranslation('marketing');
@@ -178,11 +178,7 @@ export default function About() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="px-8" asChild>
-                {isInDevelopment() ? (
-                  <Link to="/auth">{t('about.cta.getStarted')}</Link>
-                ) : (
-                  <a href={getAppUrl('/auth')}>{t('about.cta.getStarted')}</a>
-                )}
+                <Link to="/app/auth">{t('about.cta.getStarted')}</Link>
               </Button>
               <Button size="lg" variant="secondary" asChild>
                 <a href="mailto:hello@padeltrainer.ai">{t('about.cta.contact')}</a>
