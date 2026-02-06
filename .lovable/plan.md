@@ -1,23 +1,55 @@
 
-# Fix Booking Success Page Stuck Loading
+
+# Fix Payment Routing to Trainer's Account
 
 ## Problem
 
-Two issues discovered:
+The `GET /v2/profiles/me` endpoint returns 403 with OAuth access tokens (Mollie only allows it with API keys). This triggers the fallback every time, so all payments go to the platform account instead of the trainer.
 
-1. **BookingSuccess page never verifies**: The page requires both `session_id` AND `booking_id` URL params to trigger verification (line 34). But the Mollie redirect URL only includes `booking_id`. The `session_id` check is a leftover from a Stripe-based flow and doesn't apply to Mollie. So `verifyPayment()` never fires and the spinner runs forever.
+## Solution
 
-2. **Mollie profile fetch 403** (secondary): The `GET /v2/profiles/me` endpoint returns 403 with OAuth tokens -- Mollie says it's "only available with an API key." The payment still works because the fallback uses the platform key, but this means application fees aren't being charged to the connected account. This is a separate issue to address later.
+When using the Mollie Connect Platform model with OAuth, you simply create the payment using the connected account's **access token** -- no `profileId` needed. Mollie automatically routes the payment to that connected account. The `applicationFee` is then deducted and sent to the platform.
 
-## Fix
+### Changes to `supabase/functions/create-mollie-payment/index.ts`
 
-### `src/pages/BookingSuccess.tsx`
+1. **Remove the `GET /v2/profiles/me` call entirely** -- it doesn't work with OAuth tokens and isn't needed
+2. **When a valid `recipientAccessToken` exists**, just add the `applicationFee` to the payment data (no `profileId`)
+3. **Create the payment using the access token** -- Mollie handles the routing automatically
 
-- Change the useEffect condition from `if (sessionId && bookingId && user)` to `if (bookingId && user)` -- remove the `sessionId` requirement
-- Remove the unused `sessionId` variable since it's no longer needed
+The flow becomes:
 
-This single change will unblock the verification flow. The webhook logs confirm the payment is already marked as "paid", so once verification runs it will show the success state.
+```text
+recipientAccessToken exists?
+  YES --> Create payment with access token + applicationFee
+          --> Money goes to trainer, platform fee goes to you
+  NO  --> Create payment with platform API key
+          --> Money goes to platform (fallback)
+```
+
+**Before (broken):**
+- Fetch profile ID with access token --> 403 error --> fallback to platform key --> money goes to platform
+
+**After (fixed):**
+- Use access token directly --> payment created on trainer's account --> application fee deducted for platform
+
+### Simplified payment creation block
+
+```typescript
+if (recipientAccessToken) {
+  platformFee = Math.min(platformFee, amount);
+  paymentData.applicationFee = {
+    amount: { currency: "EUR", value: platformFee.toFixed(2) },
+    description: "Platform fee",
+  };
+  logStep("Application fee configured", { recipientType, platformFee });
+} else {
+  logStep("No Mollie account found, payment goes to platform");
+}
+
+const authToken = recipientAccessToken || mollieApiKey;
+```
 
 ## Files changed
 
-- `src/pages/BookingSuccess.tsx` -- remove `sessionId` requirement from verification trigger
+- `supabase/functions/create-mollie-payment/index.ts` -- remove profile fetch, use access token directly with application fee
+
