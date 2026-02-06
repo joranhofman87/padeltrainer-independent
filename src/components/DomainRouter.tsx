@@ -219,7 +219,7 @@ export function DomainRouter() {
       <Route path="/club/*" element={<LegacyRedirect prefix="/app/club" />} />
       <Route path="/academy/*" element={<LegacyRedirect prefix="/app/academy" />} />
       <Route path="/admin/*" element={<LegacyRedirect prefix="/app/admin" />} />
-      <Route path="/booking-success" element={<Navigate to="/app/booking-success" replace />} />
+      <Route path="/booking-success" element={<LegacyRedirect prefix="/app/booking-success" />} />
       <Route path="/book/*" element={<LegacyRedirect prefix="/app/book" />} />
 
       {/* ===== MARKETING ROUTES ===== */}

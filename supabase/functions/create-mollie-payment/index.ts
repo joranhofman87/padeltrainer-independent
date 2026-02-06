@@ -275,7 +275,7 @@ serve(async (req) => {
         value: amount.toFixed(2),
       },
       description: description || `Padel lesson booking`,
-      redirectUrl: `${origin}/booking-success?booking_id=${bookingId}`,
+      redirectUrl: `${origin}/app/booking-success?booking_id=${bookingId}`,
       webhookUrl: `${supabaseUrl}/functions/v1/mollie-webhook`,
       metadata: {
         booking_id: bookingId,
