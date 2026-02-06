@@ -1,29 +1,44 @@
 
 
-# Fix Booking Links on Trainer Profile (404 Error)
+# Fix "Trainer not found" on Booking Page
 
 ## Problem
 
-When viewing a trainer profile at `/nl/trainer/trainer-test`, clicking "Book Lesson" navigates to `/app/book/trainer-test` which requires authentication context and feels wrong from a public marketing page. The booking page already exists as a public marketing route at `/:lang/book/:trainerId`, so links from the marketing trainer profile should use that route instead.
+The booking page (`/nl/book/trainer-test`) receives `trainer-test` as the `trainerId` URL parameter. However, the `BookLesson.tsx` code assumes this is always a `user_id` and queries:
+
+```
+trainer_profiles_safe.eq('user_id', 'trainer-test')  -- 400 Bad Request
+```
+
+This fails because `trainer-test` is a **slug**, not a UUID. The trainer profile page already handles this correctly by checking if the param is a UUID and falling back to a slug lookup.
 
 ## Solution
 
-Replace `getAppUrl('/book/...')` with `localizePath('/book/...')` in two files so booking links stay within the marketing route structure.
+Apply the same slug-vs-UUID resolution logic from `TrainerProfile.tsx` to `BookLesson.tsx`.
 
-## Changes
+## Technical Changes
 
-### 1. `src/pages/TrainerProfile.tsx`
-- Update 3 instances of `getAppUrl('/book/...')` to use `localizePath('/book/...')` (the `localizePath` helper is already imported and available)
-- Lines affected: ~420, ~740, ~783
+### `src/pages/BookLesson.tsx` -- `fetchData()` function (~lines 112-133)
 
-### 2. `src/components/trainer/TrainerOpenSlots.tsx`
-- Replace `getAppUrl('/book/...')` with a localized path
-- Pass the current language into the component (or use the `useLocalizedPathFn` hook directly) to build the correct `/:lang/book/:trainerId` URL
-- This also fixes the slot row click handler and the "View All and Book" button
+1. Add UUID detection (same regex used in TrainerProfile):
+   ```
+   const isUUID = /^[0-9a-f]{8}-...$/i.test(trainerId)
+   ```
 
-### 3. Auth redirect ("Sign In to Book")
-- The sign-in button at line ~392 correctly uses `getAppUrl('/auth')` since auth lives under `/app/` -- no change needed there
+2. If UUID: query `trainer_profiles_safe` with `.eq('user_id', trainerId)` (existing behavior, for backward compat)
+3. If slug: query `trainer_profiles_safe` with `.eq('slug', trainerId)` (new path)
 
-## Technical Detail
-- `localizePath('/book/trainer-test')` produces `/nl/book/trainer-test` (matching the existing `/:lang/book/:trainerId` marketing route)
-- `getAppUrl('/book/trainer-test')` produces `/app/book/trainer-test` (requires auth context, wrong origin for public pages)
+4. After resolving the trainer profile, use `trainerData.user_id` for the `profiles_public` and `profiles` lookups (instead of the raw `trainerId` param)
+
+5. Also fix the auth redirect on line 99 which currently navigates to `/auth` (missing `/app/` prefix):
+   ```
+   navigate(`/app/auth?redirect=/book/${trainerId}`)
+   ```
+
+6. Fix line 101 which navigates to `/trainer` (should be `/app/trainer`):
+   ```
+   navigate('/app/trainer')
+   ```
+
+These changes ensure the booking page works when linked from the trainer profile using the SEO-friendly slug URL.
+
