@@ -30,7 +30,7 @@ import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { getTrainerAcademy, type AcademyProfile } from '@/lib/academy';
 import { toast } from 'sonner';
-import { getMarketingUrl } from '@/lib/domains';
+import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
 import { logger } from '@/lib/logger';
 import {
@@ -417,7 +417,7 @@ export default function TrainerProfile() {
         >
           {/* Action Buttons */}
           {user && role === 'player' && (
-            <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerId}`))}>
+            <Button size="lg" className="w-full" onClick={() => { window.location.href = getAppUrl(`/book/${trainerId}`); }}>
               <Calendar className="h-4 w-4 mr-2" />
               {t('common:bookLesson', 'Book Lesson')}
             </Button>

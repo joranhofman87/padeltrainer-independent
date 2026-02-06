@@ -125,6 +125,7 @@ function MarketingRoutes() {
       <Route path="/admin/*" element={<RedirectToAppDomain path="/admin" />} />
       <Route path="/profile/*" element={<RedirectToAppDomain path="/profile" />} />
       <Route path="/booking-success" element={<RedirectToAppDomain path="/booking-success" />} />
+      <Route path="/book/*" element={<RedirectToAppDomain path="/book" />} />
       
       {/* Language-prefixed marketing routes - MUST come after app routes */}
       <Route path="/:lang" element={<LanguageRouter />}>
@@ -207,8 +208,9 @@ function AppRoutes() {
         <Route path="bookings" element={<TrainerBookings />} />
       </Route>
 
-      {/* Booking success - standalone route */}
+      {/* Booking & standalone routes */}
       <Route path="/booking-success" element={<BookingSuccess />} />
+      <Route path="/book/:trainerId" element={<BookLesson />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>
@@ -315,8 +317,9 @@ function CombinedRoutes() {
         <Route path="bookings" element={<TrainerBookings />} />
       </Route>
 
-      {/* Booking success - standalone route */}
+      {/* Booking & standalone routes */}
       <Route path="/booking-success" element={<BookingSuccess />} />
+      <Route path="/book/:trainerId" element={<BookLesson />} />
       
       {/* Admin routes */}
       <Route path="/admin" element={<AdminLayout />}>
@@ -399,7 +402,10 @@ function CombinedRoutes() {
 function RedirectToAppDomain({ path }: { path: string }) {
   const hostname = window.location.hostname;
   const isProductionMarketing = hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-  const targetUrl = `https://app.padeltrainer.ai${path}`;
+  // Pass through the full current path so params are preserved (e.g. /book/abc123)
+  const currentPath = window.location.pathname;
+  const targetPath = currentPath.startsWith(path) ? currentPath : path;
+  const targetUrl = `https://app.padeltrainer.ai${targetPath}`;
 
   useEffect(() => {
     if (isProductionMarketing) {

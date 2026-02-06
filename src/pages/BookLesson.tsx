@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,7 +80,6 @@ export default function BookLesson() {
   const { trainerId } = useParams();
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
-  const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
 
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
@@ -98,7 +96,7 @@ export default function BookLesson() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate('/auth');
+        navigate(`/auth?redirect=/book/${trainerId}`);
       } else if (role !== 'player') {
         navigate('/trainer');
       }
@@ -566,7 +564,7 @@ export default function BookLesson() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="p-8 text-center">
           <h2 className="text-xl font-semibold mb-2">Trainer not found</h2>
-          <Button onClick={() => navigate(localizePath('/trainers'))}>Browse Trainers</Button>
+          <Button onClick={() => navigate('/player')}>Browse Trainers</Button>
         </Card>
       </div>
     );
@@ -585,10 +583,10 @@ export default function BookLesson() {
             You'll be notified once they respond.
           </p>
           <div className="space-y-3">
-            <Button className="w-full" onClick={() => navigate(localizePath('/bookings'))}>
+            <Button className="w-full" onClick={() => navigate('/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate(localizePath('/trainers'))}>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/player')}>
               Browse Other Trainers
             </Button>
           </div>
@@ -616,10 +614,10 @@ export default function BookLesson() {
             </div>
           )}
           <div className="space-y-3">
-            <Button className="w-full" onClick={() => navigate(localizePath('/bookings'))}>
+            <Button className="w-full" onClick={() => navigate('/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate(localizePath('/trainers'))}>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/player')}>
               Book Another Lesson
             </Button>
           </div>
