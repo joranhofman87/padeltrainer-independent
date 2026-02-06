@@ -41,6 +41,7 @@ const groupedItems: NavGroup[] = [
     items: [
       { key: "calendar", path: "/trainer/calendar", icon: Calendar },
       { key: "openSlots", path: "/trainer/open-slots", icon: Clock },
+      { key: "lessons", path: "/trainer/lessons", icon: FileText },
     ],
   },
   {

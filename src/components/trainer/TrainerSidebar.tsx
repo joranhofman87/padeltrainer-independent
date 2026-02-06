@@ -72,7 +72,8 @@ export function TrainerSidebar() {
   );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/trainer/calendar") ||
-    location.pathname.startsWith("/trainer/open-slots")
+    location.pathname.startsWith("/trainer/open-slots") ||
+    location.pathname.startsWith("/trainer/lessons")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.startsWith("/trainer/cyclus") ||
@@ -287,7 +288,7 @@ export function TrainerSidebar() {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots")
+                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots") || isActive("/trainer/lessons")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -321,6 +322,17 @@ export function TrainerSidebar() {
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.openSlots")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/lessons"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.lessons")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
