@@ -389,7 +389,7 @@ export default function TrainerProfile() {
       <ProfileLayout
         headerAction={
           !user ? (
-            <Button onClick={() => navigate(localizePath('/auth'))}>{t('common:signInToBook', 'Sign In to Book')}</Button>
+            <Button onClick={() => navigate(getAppUrl('/auth'))}>{t('common:signInToBook', 'Sign In to Book')}</Button>
           ) : null
         }
       >
