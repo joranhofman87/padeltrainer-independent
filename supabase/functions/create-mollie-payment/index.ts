@@ -219,6 +219,9 @@ serve(async (req) => {
     if (recipientAccessToken) {
       // Ensure fee doesn't exceed payment amount
       platformFee = Math.min(platformFee, amount);
+
+      // Required when using OAuth access tokens (Connect Platform model)
+      paymentData.profileId = "me";
       
       paymentData.applicationFee = {
         amount: {
