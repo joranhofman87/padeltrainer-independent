@@ -1,73 +1,49 @@
 
 
-# Fix Payment Verification and Webhook for Connected Account Payments
+# Fix: BookingSuccess Losing Query Parameters on Redirect
 
 ## Problem
 
-Payments are now correctly created on the **trainer's connected Mollie account** using their OAuth access token. However, both the **verify-mollie-payment** and **mollie-webhook** functions still try to fetch payment details using the **platform API key**, which can't see payments on connected accounts (especially in test mode). This causes:
+After a successful Mollie payment, the user is redirected to `/booking-success?booking_id=xxx`. The app has a legacy redirect from `/booking-success` to `/app/booking-success`, but it uses React Router's `<Navigate>` component which **drops the query parameters**. So:
 
-- `verify-mollie-payment`: fails to fetch the payment status, so BookingSuccess stays stuck on "Verifying Payment"
-- `mollie-webhook`: fails to fetch payment details, so bookings never get updated to "paid/confirmed"
+1. Mollie redirects to `/booking-success?booking_id=ef923cdb-...`
+2. App redirects to `/app/booking-success` (no query params!)
+3. `bookingId` is `null`, so `verifyPayment()` never runs
+4. Page stays stuck on "Verifying Payment" spinner forever
 
-## Root Cause
+The webhook actually works fine (logs confirm booking was updated to "paid"), but the frontend never knows because it can't call verify without the booking ID.
 
-When a payment is created with an OAuth access token on a connected account, only that access token (or the platform key with `testmode` and `include` params in some cases) can retrieve it. The current code uses just the platform API key with no `testmode` flag.
+## Fix
 
-## Solution
+### Option A (Recommended): Update the redirect URL in `create-mollie-payment`
 
-Both functions need to look up the trainer's access token from the database (via the booking's linked trainer) and use it to fetch payment details from Mollie, with `testmode=true` when applicable.
+Change the redirect URL from `/booking-success` to `/app/booking-success` so it hits the correct route directly, avoiding the redirect entirely.
 
-### 1. `supabase/functions/verify-mollie-payment/index.ts`
+**File**: `supabase/functions/create-mollie-payment/index.ts` (line 278)
 
-- After fetching the booking, look up the trainer via `availability_slots.trainer_id`
-- Check `trainer_mollie_accounts` (and `academy_mollie_accounts` via `academy_trainers`) for an access token
-- Refresh the token if expired (reuse the same `refreshTokenIfNeeded` logic)
-- Use the trainer/academy access token to call Mollie API instead of platform key
-- Add `?testmode=true` query param when platform key starts with `test_`
-
-### 2. `supabase/functions/mollie-webhook/index.ts`
-
-- After receiving the payment ID, look up the booking from `bookings` table using `mollie_payment_id`
-- From the booking, resolve the trainer and their Mollie access token
-- Use the access token to fetch payment details, with `testmode=true` when in test mode
-- Fall back to platform API key for payments not on connected accounts
-
-### 3. `supabase/functions/create-mollie-payment/index.ts`
-
-- Store the `trainer_id` (from `availability_slots`) on the booking record when creating it, so the webhook and verify functions can easily look up the connected account
-- This avoids complex joins at verification time
-
-## Technical Details
-
-### Token Resolution Flow (shared by both verify and webhook)
-
-```text
-booking -> slot_id -> availability_slots.trainer_id
-  -> trainer_mollie_accounts (check access_token)
-  -> OR academy_trainers -> academy_mollie_accounts (check access_token)
-  -> refresh if expired
-  -> use token + testmode flag
+Change:
+```
+redirectUrl: `${origin}/booking-success?booking_id=${bookingId}`
+```
+To:
+```
+redirectUrl: `${origin}/app/booking-success?booking_id=${bookingId}`
 ```
 
-### Key code pattern for fetching payment with connected account token
+### Option B (Safety net): Fix the legacy redirect to preserve query params
 
-```typescript
-// Build URL with testmode if needed
-const isTestMode = mollieApiKey.startsWith("test_");
-let fetchUrl = `https://api.mollie.com/v2/payments/${molliePaymentId}`;
-if (isTestMode && recipientAccessToken) {
-  fetchUrl += "?testmode=true";
-}
+Update the `<Navigate>` redirect in `DomainRouter.tsx` to preserve search params, so any future redirects also work correctly.
 
-const authToken = recipientAccessToken || mollieApiKey;
-const response = await fetch(fetchUrl, {
-  headers: { "Authorization": `Bearer ${authToken}` },
-});
-```
+**File**: `src/components/DomainRouter.tsx` (line 222)
 
-## Files to Change
+Replace the simple `<Navigate to="/app/booking-success" replace />` with a small component that preserves the search string.
 
-1. **`supabase/functions/verify-mollie-payment/index.ts`** -- resolve trainer access token from booking, use it to call Mollie API with testmode
-2. **`supabase/functions/mollie-webhook/index.ts`** -- resolve trainer access token from payment metadata/booking, use it to call Mollie API with testmode
-3. **`supabase/functions/create-mollie-payment/index.ts`** -- minor: include token refresh helper reuse consideration (already has it)
+## Recommendation
+
+Apply **both** fixes for robustness -- the edge function sends users to the correct URL directly, and the legacy redirect preserves params as a fallback.
+
+## Files to change
+
+1. `supabase/functions/create-mollie-payment/index.ts` -- update redirect URL path
+2. `src/components/DomainRouter.tsx` -- preserve query params in legacy redirect
 
