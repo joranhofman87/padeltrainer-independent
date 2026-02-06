@@ -1,52 +1,49 @@
 
 
-# Show Mollie Connection Status When Balance Is Unavailable
+# Fix Payment Availability Check Using Secure Database Views
 
 ## Problem
-
-The trainer "Trainer Test" has Mollie fully connected (`charges_enabled: true`, `onboarding_complete: true`), but the earnings page shows nothing about Mollie. This is because:
-
-1. The "Connect with Mollie" card (line 470) is hidden when `chargesEnabled` is true -- correct behavior.
-2. The "Mollie Balance" card (line 515) only shows when `connectStatus.balance` exists -- but the Mollie balance API returns `null` (common in test mode or new accounts).
-
-Result: neither card renders, so the trainer sees no Mollie-related UI at all.
+Players cannot book sessions with Mollie-connected trainers because RLS policies on `trainer_mollie_accounts` and `academy_mollie_accounts` block players from reading the trainer's payment status. The `hasValidPaymentSetup()` function returns `valid: false`, showing "Payment Not Available."
 
 ## Solution
 
-Add a "Mollie Connected" status card that shows when the account is connected but balance data is unavailable. This gives visual confirmation and provides a link to the Mollie dashboard.
+### 1. Database Migration -- Create two secure views
 
-## Technical Changes
+Create `trainer_mollie_status` and `academy_mollie_status` views that expose only non-sensitive fields (no tokens, no secrets) to any authenticated user.
 
-### `src/pages/TrainerEarnings.tsx`
+```sql
+-- Trainer view
+CREATE VIEW public.trainer_mollie_status AS
+SELECT 
+  trainer_id,
+  charges_enabled,
+  onboarding_complete,
+  (mollie_organization_id IS NOT NULL 
+   AND NOT mollie_organization_id LIKE 'pending_%') AS is_connected
+FROM public.trainer_mollie_accounts;
 
-After the existing Mollie Balance card block (after line 544), add a fallback "connected" card:
-
-```
-{/* Mollie Connected (no balance data) */}
-{!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && 
-  connectStatus?.chargesEnabled && !connectStatus.balance && (
-  <Card className="mb-8 border-green-200">
-    <CardContent className="p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-            <Wallet className="h-6 w-6 text-green-600" />
-          </div>
-          <div>
-            <p className="font-medium">Mollie Connected</p>
-            <p className="text-sm text-muted-foreground">
-              Your account is set up to receive payments
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline" className="border-green-300 text-green-600">
-          <CheckCircle2 className="h-3 w-3 mr-1" />
-          Active
-        </Badge>
-      </div>
-    </CardContent>
-  </Card>
-)}
+-- Academy view
+CREATE VIEW public.academy_mollie_status AS
+SELECT 
+  academy_profile_id,
+  charges_enabled,
+  onboarding_complete,
+  (mollie_organization_id IS NOT NULL 
+   AND NOT mollie_organization_id LIKE 'pending_%') AS is_connected
+FROM public.academy_mollie_accounts;
 ```
 
-This ensures the trainer always sees confirmation that Mollie is connected, regardless of whether the balance API returns data.
+### 2. `src/lib/academyTrainerPayments.ts` -- Query views instead of raw tables
+
+Update `getAcademyPaymentInfo` (line ~39) and `hasValidPaymentSetup` (line ~105) to use the new views:
+
+- `academy_mollie_accounts` becomes `academy_mollie_status`
+- `trainer_mollie_accounts` becomes `trainer_mollie_status`
+- Check `charges_enabled` directly instead of casting through `mollie_organization_id`
+
+### 3. Security
+
+- Views exclude `access_token`, `refresh_token`, `token_expires_at`, and raw `mollie_organization_id`
+- RLS on the underlying tables remains unchanged (trainers/academies still own their full records)
+- Any authenticated user can read the view to check if payment is available -- which is required for the booking flow
+
