@@ -1,43 +1,64 @@
 
-
-# Add Auto-Logout on Invalid Session Token
+# Fix: Stop Auto-Logout on AbortError
 
 ## Problem
 
-When a user's refresh token becomes invalid (expired, revoked, or corrupted), the application gets stuck in an infinite loading state because:
-1. `getSession()` may return a stale session object from localStorage
-2. Subsequent API calls fail silently or the session can't be refreshed
-3. The loading state never resolves, leaving users stuck
+After the auto-logout mechanism was added, users get stuck on the loading page at `/auth` when trying to sign in. The console shows `AbortError: signal is aborted without reason` errors.
+
+**What's happening:**
+
+1. User signs in via Google OAuth → tokens are received
+2. `useAuth` processes the session and calls `fetchUserData()`  
+3. During the parallel database queries, an `AbortError` occurs (this is normal - happens due to React's component lifecycle or fast navigation)
+4. The `.catch()` block interprets this as a "corrupted session" and calls `signOut()`
+5. User is immediately signed out after signing in
+6. This creates an infinite loop where users can't stay logged in
+
+**Why AbortError is normal:**
+- React Strict Mode double-renders components in development, canceling the first render's network requests
+- Fast navigation or page changes can abort in-flight requests
+- This is NOT a sign of a corrupted session
 
 ## Solution
 
-Add error handling in the `useAuth` hook to detect invalid session errors and automatically sign out the user, clearing the corrupted session and redirecting to login.
+Modify the error handling in `useAuth.tsx` to distinguish between:
+- **AbortError**: Ignore - this is a normal browser event, not an auth failure
+- **Session errors**: Only sign out for actual token/session problems
 
 ## Technical Changes
 
 ### File: `src/hooks/useAuth.tsx`
 
-**1. Handle TOKEN_REFRESHED failures in onAuthStateChange**
+**1. Update the `.catch()` block for `getSession()` (lines 205-209)**
 
-The `onAuthStateChange` listener receives a `TOKEN_REFRESH_FAILED` event when refresh fails. We need to catch this and sign out:
+Only sign out for actual session errors, not AbortError:
 
 ```typescript
-// Inside onAuthStateChange callback (around line 142)
-if (event === 'TOKEN_REFRESHED' && !session) {
-  // Token refresh failed - sign out to clear invalid session
-  logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
+}).catch(async (error) => {
+  // AbortError is normal (React StrictMode, navigation) - don't treat as auth failure
+  if (error?.name === 'AbortError') {
+    logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
+    setLoading(false);
+    return;
+  }
+  logger.error('Session retrieval error', error as Error, { component: 'useAuth' });
   await supabase.auth.signOut();
-  return;
-}
+  setLoading(false);
+});
 ```
 
-**2. Add error handling to getSession()**
+**2. Update the `.then()` error handler (lines 189-196)**
 
-Wrap the `getSession()` call to catch errors and handle invalid sessions:
+Also check for AbortError in the explicit error case:
 
 ```typescript
-// Replace the getSession call (lines 182-190)
 supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+  // AbortError is normal - don't treat as auth failure
+  if (error?.name === 'AbortError') {
+    logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
+    setLoading(false);
+    return;
+  }
   // If there's an error getting the session, sign out to clear corrupted state
   if (error) {
     logger.warn('Failed to get session, signing out', { component: 'useAuth', error });
@@ -45,56 +66,19 @@ supabase.auth.getSession().then(async ({ data: { session }, error }) => {
     setLoading(false);
     return;
   }
-  
-  setSession(session);
-  setUser(session?.user ?? null);
-  
-  if (session?.user) {
-    await fetchUserData(session.user.id);
-  }
-  setLoading(false);
-}).catch(async (error) => {
-  logger.error('Session retrieval error', error, { component: 'useAuth' });
-  await supabase.auth.signOut();
-  setLoading(false);
-});
+  // ... rest of the code
 ```
 
-**3. Add periodic session validation**
-
-Add a check that validates the session periodically and signs out if invalid:
-
-```typescript
-// Add new useEffect after line 211
-useEffect(() => {
-  // Periodically validate session is still valid (every 5 minutes)
-  const interval = setInterval(async () => {
-    if (!session) return;
-    
-    const { error } = await supabase.auth.getUser();
-    if (error?.message?.includes('Invalid Refresh Token') || 
-        error?.message?.includes('Refresh Token Not Found')) {
-      logger.warn('Invalid session detected, signing out', { component: 'useAuth' });
-      await supabase.auth.signOut();
-    }
-  }, 300000); // 5 minutes
-
-  return () => clearInterval(interval);
-}, [session]);
-```
-
-## Summary of Changes
+## Summary
 
 | Location | Change |
 |----------|--------|
-| Line ~142 | Handle `TOKEN_REFRESHED` event with null session |
-| Lines 182-190 | Add error handling to `getSession()` |
-| After line 211 | Add periodic session validation |
+| Lines 189-196 | Check for AbortError before signing out in `.then()` |
+| Lines 205-209 | Check for AbortError before signing out in `.catch()` |
 
 ## Expected Result
 
-- Invalid/expired sessions are automatically detected
-- User is signed out and session is cleared from localStorage
-- User can then log in fresh without manual localStorage clearing
-- Loading states will properly resolve even with invalid sessions
-
+- `AbortError` during session retrieval is treated as a normal event (logged as warning, not error)
+- Users can sign in without being immediately signed out
+- The auto-logout mechanism still works for actual token/session failures
+- Loading states properly resolve
