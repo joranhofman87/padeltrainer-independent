@@ -96,9 +96,9 @@ export default function BookLesson() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate(`/auth?redirect=/book/${trainerId}`);
+        navigate(`/app/auth?redirect=/book/${trainerId}`);
       } else if (role !== 'player') {
-        navigate('/trainer');
+        navigate('/app/trainer');
       }
     }
   }, [user, role, loading, navigate]);
@@ -110,42 +110,49 @@ export default function BookLesson() {
   }, [trainerId]);
 
   const fetchData = async () => {
-    // Fetch trainer_profiles and profiles separately (no FK between them for PostgREST join)
-    const [trainerResult, profileResult] = await Promise.all([
-      supabase
-        .from('trainer_profiles_safe')
-        .select(`
-          id,
-          user_id,
-          hourly_rate,
-          experience_years,
-          specializations,
-          require_booking_approval,
-          use_manual_invoicing
-        `)
-        .eq('user_id', trainerId)
-        .maybeSingle(),
-      supabase
-        .from('profiles_public')
-        .select('full_name, avatar_url, location, bio')
-        .eq('user_id', trainerId)
-        .maybeSingle()
-    ]);
+    // Detect if trainerId is a UUID or a slug
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId!);
+
+    // Fetch trainer profile by user_id (UUID) or slug
+    const trainerResult = await supabase
+      .from('trainer_profiles_safe')
+      .select(`
+        id,
+        user_id,
+        hourly_rate,
+        experience_years,
+        specializations,
+        require_booking_approval,
+        use_manual_invoicing
+      `)
+      .eq(isUUID ? 'user_id' : 'slug', trainerId!)
+      .maybeSingle();
 
     const trainerData = trainerResult.data;
-    const profileData = profileResult.data;
 
     if (!trainerData) {
       setLoadingData(false);
       return;
     }
 
-    // Fetch trainer's email from profiles table for booking confirmation
-    const { data: profileWithEmail } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('user_id', trainerId)
-      .maybeSingle();
+    // Now use the resolved user_id for profile lookups
+    const resolvedUserId = trainerData.user_id;
+
+    const [profileResult, profileWithEmailResult] = await Promise.all([
+      supabase
+        .from('profiles_public')
+        .select('full_name, avatar_url, location, bio')
+        .eq('user_id', resolvedUserId)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('email')
+        .eq('user_id', resolvedUserId)
+        .maybeSingle()
+    ]);
+
+    const profileData = profileResult.data;
+    const profileWithEmail = profileWithEmailResult.data;
 
     // Combine trainer and profile data
     setTrainer({
