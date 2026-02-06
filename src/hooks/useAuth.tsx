@@ -47,25 +47,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
-      getUserRoles(userId),
-      getProfile(userId),
-      isUserClubManager(userId),
-      isUserAcademyManager(userId),
-    ]);
-    
-    // Determine primary role based on priority: admin > trainer > club > player
-    const primaryRole = userRoles.includes('admin') ? 'admin'
-      : userRoles.includes('trainer') ? 'trainer'
-      : userRoles.includes('club') ? 'club'
-      : userRoles.includes('player') ? 'player'
-      : null;
-    
-    setRoles(userRoles);
-    setRole(primaryRole);
-    setIsClubManager(clubManagerStatus);
-    setIsAcademyManager(academyManagerStatus);
-    setProfile(userProfile);
+    try {
+      const [userRoles, userProfile, clubManagerStatus, academyManagerStatus] = await Promise.all([
+        getUserRoles(userId),
+        getProfile(userId),
+        isUserClubManager(userId),
+        isUserAcademyManager(userId),
+      ]);
+      
+      // Determine primary role based on priority: admin > trainer > club > player
+      const primaryRole = userRoles.includes('admin') ? 'admin'
+        : userRoles.includes('trainer') ? 'trainer'
+        : userRoles.includes('club') ? 'club'
+        : userRoles.includes('player') ? 'player'
+        : null;
+      
+      setRoles(userRoles);
+      setRole(primaryRole);
+      setIsClubManager(clubManagerStatus);
+      setIsAcademyManager(academyManagerStatus);
+      setProfile(userProfile);
+    } catch (err) {
+      logger.error('Failed to fetch user data', err as Error, { component: 'useAuth' });
+    }
   };
 
   const fetchSubscription = useCallback(async () => {
@@ -220,7 +224,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    return () => authSubscription.unsubscribe();
+    // Safety timeout: if loading hasn't resolved after 10 seconds, force it
+    const safetyTimeout = setTimeout(() => {
+      setLoading((current) => {
+        if (current) {
+          logger.warn('Auth loading safety timeout triggered', { component: 'useAuth' });
+        }
+        return false;
+      });
+    }, 10000);
+
+    return () => {
+      authSubscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // Fetch subscription when role changes to trainer
