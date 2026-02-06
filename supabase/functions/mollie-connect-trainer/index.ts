@@ -56,50 +56,10 @@ serve(async (req) => {
     }
     logStep("Trainer profile found", { trainerId: trainerProfile.id });
 
-    const origin = req.headers.get("origin") || "https://app.padeltrainer.ai";
-
-    // Check if trainer already has a Mollie account with valid tokens
-    const { data: existingAccount } = await supabaseClient
-      .from('trainer_mollie_accounts')
-      .select('mollie_organization_id, onboarding_complete, access_token, token_expires_at')
-      .eq('trainer_id', trainerProfile.id)
-      .maybeSingle();
-
-    if (existingAccount?.mollie_organization_id && existingAccount?.onboarding_complete) {
-      logStep("Trainer already connected to Mollie", { 
-        organizationId: existingAccount.mollie_organization_id 
-      });
-      return new Response(JSON.stringify({ 
-        alreadyConnected: true,
-        message: "Already connected to Mollie"
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    // Generate state for CSRF protection and store it temporarily
-    const state = generateState();
-    
-    // Store state in database for verification on callback
-    const { error: stateError } = await supabaseClient
-      .from('trainer_mollie_accounts')
-      .upsert({
-        trainer_id: trainerProfile.id,
-        mollie_organization_id: `pending_${state}`, // Temporary placeholder
-        onboarding_complete: false,
-        charges_enabled: false,
-        payouts_enabled: false,
-      }, {
-        onConflict: 'trainer_id'
-      });
-
-    if (stateError) {
-      logStep("Error storing OAuth state", { error: stateError });
-    }
-
     // Build Mollie OAuth authorization URL
-    const redirectUri = `${origin}/api/mollie-callback`;
+    // Redirect directly to the edge function so the token exchange happens server-to-server
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const redirectUri = `${supabaseUrl}/functions/v1/mollie-callback`;
     const scopes = [
       'organizations.read',
       'organizations.write',
