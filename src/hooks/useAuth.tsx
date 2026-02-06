@@ -140,12 +140,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let hasTriggeredWelcomeEmails = false;
 
+    // Safety timeout: if auth hasn't resolved in 10 seconds, force loading=false
+    // This prevents the app from being stuck on skeleton loaders forever
+    const safetyTimeout = setTimeout(() => {
+      setLoading((current) => {
+        if (current) {
+          logger.warn('Auth loading safety timeout triggered after 10s', { component: 'useAuth' });
+        }
+        return false;
+      });
+    }, 10_000);
+
     // Single source of truth: onAuthStateChange handles INITIAL_SESSION + all state changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         // Handle token refresh failures
         if (event === 'TOKEN_REFRESHED' && !session) {
           logger.warn('Token refresh failed, signing out', { component: 'useAuth' });
+          setLoading(false);
           await supabase.auth.signOut();
           return;
         }
@@ -154,7 +166,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          await fetchUserData(session.user.id);
+          // Race fetchUserData against a 5-second deadline so a hanging
+          // DB query can't block the entire app from rendering
+          await Promise.race([
+            fetchUserData(session.user.id),
+            new Promise((resolve) => setTimeout(resolve, 5000)),
+          ]);
 
           // Trigger welcome emails on confirmed sign-in
           if (
@@ -184,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
+      clearTimeout(safetyTimeout);
       authSubscription.unsubscribe();
     };
   }, []);
