@@ -193,8 +193,19 @@ export default function TrainerEarnings() {
 
   const checkConnectStatus = async () => {
     try {
+      const { data: tp } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', user!.id)
+        .single();
+
+      if (!tp) {
+        setConnectStatus({ connected: false });
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('check-mollie-connect-status', {
-        body: { type: 'trainer' },
+        body: { entityType: 'trainer', entityId: tp.id },
       });
       if (error) throw error;
       setConnectStatus({
