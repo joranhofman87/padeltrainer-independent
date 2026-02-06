@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/popover";
 import { CalendarIcon, Loader2, Upload } from "lucide-react";
 import { AdminTrainerReviewsTab } from "./AdminTrainerReviewsTab";
+import { MollieDisconnectSection } from "./MollieDisconnectSection";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -730,6 +731,12 @@ export function TrainerEditDialog({
                   Set a custom fee for this trainer. Leave empty to use tier default (€1.00 Starter, €0.75 Professional).
                 </p>
               </div>
+
+              <MollieDisconnectSection
+                entityId={trainer.id}
+                entityType="trainer"
+                entityName={fullName || "this trainer"}
+              />
             </div>
           </TabsContent>
         </Tabs>
