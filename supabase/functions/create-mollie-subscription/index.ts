@@ -124,7 +124,7 @@ serve(async (req) => {
       body: JSON.stringify({
         amount: { currency: "EUR", value: plan.amount },
         description: `${plan.description} - First payment`,
-        redirectUrl: `${origin}/subscription?success=true&plan=${planId}`,
+        redirectUrl: `${origin}/app/trainer/subscription?success=true&plan=${planId}`,
         webhookUrl: `${supabaseUrl}/functions/v1/mollie-subscription-webhook`,
         customerId,
         sequenceType: "first",
