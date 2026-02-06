@@ -52,9 +52,12 @@ serve(async (req) => {
       metadata: payment.metadata 
     });
 
-    const bookingId = payment.metadata?.booking_id;
-    if (!bookingId) {
-      logStep("No booking_id in payment metadata");
+    // Support both single booking_id and multiple booking_ids
+    const bookingIds: string[] = payment.metadata?.booking_ids || 
+      (payment.metadata?.booking_id ? [payment.metadata.booking_id] : []);
+    
+    if (bookingIds.length === 0) {
+      logStep("No booking IDs in payment metadata");
       return new Response("OK", { status: 200 });
     }
 
@@ -83,9 +86,9 @@ serve(async (req) => {
         bookingStatus = "pending";
     }
 
-    logStep("Updating booking", { bookingId, paymentStatus, bookingStatus });
+    logStep("Updating bookings", { bookingIds, paymentStatus, bookingStatus });
 
-    // Update booking
+    // Update all bookings
     const updateData: Record<string, unknown> = {
       payment_status: paymentStatus,
       status: bookingStatus,
@@ -99,19 +102,20 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from("bookings")
       .update(updateData)
-      .eq("id", bookingId);
+      .in("id", bookingIds);
 
     if (updateError) {
-      logStep("Failed to update booking", { error: updateError.message });
-      throw new Error(`Failed to update booking: ${updateError.message}`);
+      logStep("Failed to update bookings", { error: updateError.message });
+      throw new Error(`Failed to update bookings: ${updateError.message}`);
     }
 
-    logStep("Booking updated successfully");
+    logStep("Bookings updated successfully", { count: bookingIds.length });
 
     // If payment is successful, send confirmation email
     if (payment.status === "paid") {
       try {
-        // Fetch booking details for email
+        // Fetch booking details for email (use first booking)
+        const bookingId = bookingIds[0];
         const { data: booking } = await supabase
           .from("bookings")
           .select(`

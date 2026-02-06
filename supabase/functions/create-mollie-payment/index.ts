@@ -34,8 +34,8 @@ serve(async (req) => {
     const user = userData.user;
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { slotId, amount, description, trainerId, redirectUrl } = await req.json();
-    logStep("Request payload", { slotId, amount, trainerId });
+    const { slotId, amount, description, trainerId, redirectUrl, bookingIds } = await req.json();
+    logStep("Request payload", { slotId, amount, trainerId, bookingIds });
 
     if (!slotId || !amount || !trainerId) {
       throw new Error("Missing required fields: slotId, amount, trainerId");
@@ -155,21 +155,33 @@ serve(async (req) => {
       }
     }
 
-    // Create booking record first
-    const { data: booking, error: bookingError } = await supabase
-      .from("bookings")
-      .insert({
-        slot_id: slotId,
-        player_id: user.id,
-        payment_status: "pending",
-        status: "pending",
-        payment_amount: amount,
-      })
-      .select()
-      .single();
+    // Use existing booking IDs (cyclus flow) or create a new booking
+    let bookingId: string;
+    const allBookingIds: string[] = bookingIds || [];
 
-    if (bookingError) throw new Error(`Failed to create booking: ${bookingError.message}`);
-    logStep("Booking created", { bookingId: booking.id });
+    if (allBookingIds.length > 0) {
+      // Cyclus flow: bookings already created by frontend
+      bookingId = allBookingIds[0];
+      logStep("Using existing bookings", { bookingIds: allBookingIds });
+    } else {
+      // Single slot flow: create booking record
+      const { data: booking, error: bookingError } = await supabase
+        .from("bookings")
+        .insert({
+          slot_id: slotId,
+          player_id: user.id,
+          payment_status: "pending",
+          status: "pending",
+          payment_amount: amount,
+        })
+        .select()
+        .single();
+
+      if (bookingError) throw new Error(`Failed to create booking: ${bookingError.message}`);
+      bookingId = booking.id;
+      allBookingIds.push(bookingId);
+      logStep("Booking created", { bookingId });
+    }
 
     const origin = redirectUrl || req.headers.get("origin") || "https://padeltrainer.ai";
 
@@ -180,10 +192,11 @@ serve(async (req) => {
         value: amount.toFixed(2),
       },
       description: description || `Padel lesson booking`,
-      redirectUrl: `${origin}/booking-success?booking_id=${booking.id}`,
+      redirectUrl: `${origin}/booking-success?booking_id=${bookingId}`,
       webhookUrl: `${supabaseUrl}/functions/v1/mollie-webhook`,
       metadata: {
-        booking_id: booking.id,
+        booking_id: bookingId,
+        booking_ids: allBookingIds,
         player_id: user.id,
         trainer_id: trainerId,
         recipient_type: recipientType,
@@ -234,16 +247,16 @@ serve(async (req) => {
     const payment = await mollieResponse.json();
     logStep("Mollie payment created", { paymentId: payment.id });
 
-    // Update booking with Mollie payment ID
+    // Update booking(s) with Mollie payment ID
     await supabase
       .from("bookings")
       .update({ mollie_payment_id: payment.id })
-      .eq("id", booking.id);
+      .in("id", allBookingIds);
 
     return new Response(
       JSON.stringify({
         paymentId: payment.id,
-        bookingId: booking.id,
+        bookingId: bookingId,
         checkoutUrl: payment._links.checkout.href,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

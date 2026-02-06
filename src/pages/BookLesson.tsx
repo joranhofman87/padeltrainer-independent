@@ -382,7 +382,7 @@ export default function BookLesson() {
             title: 'Request Sent!',
             description: `Your booking request for ${selectedCyclus.slots.length} sessions has been sent.`,
           });
-        } else {
+        } else if (useManualInvoicing) {
           await supabase.functions.invoke('send-email', {
             body: {
               type: 'manual_booking_confirmation',
@@ -399,6 +399,56 @@ export default function BookLesson() {
             },
           });
           setBooked(true);
+        } else {
+          // Mollie payment flow for cyclus
+          const paymentSetup = await hasValidPaymentSetup(
+            trainerId!,
+            trainer.id,
+            false
+          );
+
+          if (!paymentSetup.valid) {
+            toast({
+              title: 'Payment Not Available',
+              description: paymentSetup.message || 'This trainer has not set up payments yet',
+              variant: 'destructive',
+            });
+            setBooking(false);
+            return;
+          }
+
+          // Get the booking IDs we just created
+          const { data: createdBookings } = await supabase
+            .from('bookings')
+            .select('id')
+            .eq('player_id', profile.id)
+            .in('slot_id', selectedCyclus.slots.map(s => s.id))
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+          const bookingIds = createdBookings?.map(b => b.id) || [];
+
+          // Create Mollie payment for the full cyclus
+          const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+            'create-mollie-payment',
+            {
+              body: {
+                slotId: selectedCyclus.slots[0].id,
+                amount: selectedCyclus.totalPrice,
+                description: `${selectedCyclus.cyclus_name} (${selectedCyclus.slots.length} sessions)`,
+                trainerId: trainer.id,
+                bookingIds,
+              },
+            }
+          );
+
+          if (paymentError) throw paymentError;
+
+          if (paymentData?.checkoutUrl) {
+            window.location.href = paymentData.checkoutUrl;
+          } else {
+            throw new Error('No checkout URL received');
+          }
         }
         return;
       }
