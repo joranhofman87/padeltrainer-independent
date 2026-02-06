@@ -1,42 +1,34 @@
 
-
-# Fix: "state is not defined" Error in Mollie Connect Functions
+# Fix: Trainer Dashboard Not Showing Mollie Connection Status
 
 ## Problem
 
-Both `mollie-connect-trainer` and `mollie-connect-academy` edge functions define a `generateState()` function but never call it. On the line that builds the OAuth state parameter, they reference an undefined variable `state`:
-
-```typescript
-// Line 76 (trainer) / Line 81 (academy)
-authUrl.searchParams.set('state', `trainer_${trainerProfile.id}_${state}`);
-//                                                                 ^^^^^ undefined!
-```
-
-This causes: `"state is not defined"` and returns a 500 error.
+The `check-mollie-connect-status` edge function expects `{ entityType, entityId }` in the request body, but the trainer earnings page sends `{ type: 'trainer' }` -- wrong parameter name and missing trainer ID entirely. This causes the edge function to throw "Entity type and ID are required", which the frontend catches silently and defaults to `{ connected: false }`.
 
 ## Fix
 
-Add a `const state = generateState();` call before it's used, in both files.
+### `src/pages/TrainerEarnings.tsx`
 
-### `supabase/functions/mollie-connect-trainer/index.ts`
+Change the `checkConnectStatus` function call from:
 
-Add before line 73:
 ```typescript
-const state = generateState();
+body: { type: 'trainer' }
 ```
 
-### `supabase/functions/mollie-connect-academy/index.ts`
+to:
 
-Add before line 78:
 ```typescript
-const state = generateState();
+body: { entityType: 'trainer', entityId: trainerProfile.id }
 ```
+
+This is a one-line fix. The trainer profile ID is already available in the component. Once fixed, the edge function will correctly look up the `trainer_mollie_accounts` record (which already has `charges_enabled: true` and `onboarding_complete: true` from the successful connection) and return the connected status.
+
+### Admin Panel
+
+The admin panel likely reads from the database directly. Let me note the admin check may be a separate issue -- but fixing the trainer dashboard status check is the primary fix needed here.
 
 ## Summary
 
 | File | Change |
 |------|--------|
-| `mollie-connect-trainer/index.ts` | Add `const state = generateState();` before building the auth URL |
-| `mollie-connect-academy/index.ts` | Same fix |
-
-One-line fix in each file. After deploying, retry the Mollie connection.
+| `src/pages/TrainerEarnings.tsx` | Fix request body: `{ type: 'trainer' }` to `{ entityType: 'trainer', entityId: trainerProfile.id }` |
