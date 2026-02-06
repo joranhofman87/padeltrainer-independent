@@ -1,63 +1,51 @@
 
 
-# Fix: Bookings Not Loading (Missing Database Relationship)
+# Fix: Cancelled/Failed Payments on Mollie
 
-## Root Cause
+## Problem
 
-The error `"Could not find a relationship between 'trainer_profiles' and 'profiles'"` means there is **no foreign key** between the `trainer_profiles` table and the `profiles` table. Both tables have a `user_id` column, but PostgREST (the API layer) needs an explicit foreign key constraint to allow nested joins like `trainer_profiles(profiles(...))`.
+When a payment is cancelled or fails on Mollie, the user either stays on the Mollie screen with no clear way back, or gets redirected to the "BookingSuccess" page which confusingly tries to verify a payment that was never completed.
 
-Three places use this broken nested join pattern:
+## Solution
 
-1. **`src/pages/PlayerBookings.tsx`** (line 73-76) -- causes "Failed to load bookings" error
-2. **`src/pages/PlayerDashboard.tsx`** (line 150-153) -- causes dashboard stats to show 0
-3. **`src/lib/lessons.ts`** (line 174) -- `getPlayerBookings` function (unused currently since PlayerBookings has its own inline query, but still broken)
+Two changes:
 
-## Fix Approach
+### 1. Add `cancelUrl` to the Mollie payment creation
 
-Instead of adding a FK constraint (which could have side effects on cascade deletes), we'll **restructure the queries** to fetch trainer info in a separate step -- the same pattern `BookingSuccess.tsx` already uses successfully.
+Mollie supports a dedicated `cancelUrl` parameter. When a user clicks "Cancel" or "Back to website" on Mollie's checkout page, they'll be redirected to this URL instead of the `redirectUrl`.
 
-### File 1: `src/pages/PlayerBookings.tsx`
+We'll point the `cancelUrl` to a new route: `/app/booking-cancelled?booking_id=...`
 
-**Current (broken):**
-```
-availability_slots(
-  trainer_profiles(
-    profiles(full_name, avatar_url, email)
-  )
-)
-```
+**File: `supabase/functions/create-mollie-payment/index.ts`**
+- Add `cancelUrl` to the payment request pointing to `/app/booking-cancelled?booking_id=...`
 
-**Fixed:** Query `availability_slots(start_time, end_time, trainer_id)` and `lessons(...)` only. Then fetch trainer info (name, avatar) with a second query joining `trainer_profiles` + `profiles_public` by `user_id`.
+### 2. Create a simple "Payment Cancelled" page
 
-Update the interface and all references to `booking.availability_slots.trainer_profiles.profiles.full_name` to use the enriched data instead.
+A lightweight page that shows a clear message: "Payment was not completed" with two actions:
+- **Try Again** -- links back to the trainer's booking page (`/:lang/book/:slug`)
+- **View My Bookings** -- links to `/app/player/bookings`
 
-### File 2: `src/pages/PlayerDashboard.tsx`
+The page will fetch the booking's trainer slug so the "Try Again" button works correctly.
 
-**Current (broken):**
-```
-availability_slots(
-  trainer_id,
-  trainer_profiles(
-    user_id,
-    profiles(full_name)
-  )
-)
-```
+**New file: `src/pages/BookingCancelled.tsx`**
+- Simple card UI matching the BookingSuccess design
+- Fetches trainer slug from the booking to enable "Try Again"
+- Shows clear messaging that the payment was not completed
 
-**Fixed:** Query only `availability_slots(start_time, trainer_id)` and `lessons(title, location)`. Then do a separate lookup for trainer names via `trainer_profiles` + `profiles_public`.
+**File: `src/App.tsx` (or wherever routes are defined)**
+- Add route for `/app/booking-cancelled`
 
-### File 3: `src/lib/lessons.ts`
+### 3. Improve BookingSuccess for edge cases
 
-**Current (broken):**
-```
-availability_slots(*, trainer_profiles(*, profiles(*)))
-```
+The existing `BookingSuccess` page should also handle non-paid statuses gracefully in case a webhook updates the booking to `failed`/`expired` during polling.
 
-**Fixed:** Simplify the select to `availability_slots(*), lessons(*)` and remove the nested join. The calling code should handle trainer enrichment separately if needed.
+**File: `src/pages/BookingSuccess.tsx`**
+- During polling, if `payment_status` is `failed`, `canceled`, or `expired`, stop polling immediately and show the error state with a "Try Again" link to the trainer's booking page
 
 ## Files to Change
 
-1. **`src/pages/PlayerBookings.tsx`** -- restructure query, enrich trainer data separately, update template references
-2. **`src/pages/PlayerDashboard.tsx`** -- restructure query, enrich trainer data separately
-3. **`src/lib/lessons.ts`** -- remove broken nested join from `getPlayerBookings`
+1. `supabase/functions/create-mollie-payment/index.ts` -- add `cancelUrl` parameter
+2. `src/pages/BookingCancelled.tsx` -- new page for cancelled payments
+3. `src/pages/BookingSuccess.tsx` -- handle failed/expired statuses during polling
+4. Route configuration file -- add `/app/booking-cancelled` route
 
