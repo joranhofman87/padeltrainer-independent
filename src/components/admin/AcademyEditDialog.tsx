@@ -62,6 +62,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { searchLocations, type Location } from "@/lib/locations";
+import { MollieDisconnectSection } from "./MollieDisconnectSection";
 import { COUNTRIES } from "@/lib/countries";
 
 interface AcademyEditData {
@@ -1525,6 +1526,12 @@ export function AcademyEditDialog({
                     Set a custom fee for this academy. Leave empty to use tier default (€0.50 Academy).
                   </p>
                 </div>
+
+                <MollieDisconnectSection
+                  entityId={academy.id}
+                  entityType="academy"
+                  entityName={name || "this academy"}
+                />
               </div>
             </div>
           </TabsContent>
