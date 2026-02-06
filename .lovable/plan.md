@@ -1,47 +1,87 @@
 
 
-# Fix Payment Routing - Trainer ID Mismatch
+# Switch from Routing to Application Fees (Mollie Connect Platform model)
 
 ## Problem
 
-The payment is going to your platform account (Reditus Software Holding B.V.) instead of the trainer because the edge function can't find the trainer's Mollie account. Here's why:
+The current code uses Mollie's **routing** (split payments), which is designed for the **Marketplace** model. Your Mollie Connect setup uses the **Platform** model, which requires **Application fees** instead. That's why Mollie rejects the payment with "Routing not allowed for provided organization".
 
-- The frontend sends `trainerId = dc4abd48-...` which is the **trainer profile ID** (from `trainer_profiles.id`)
-- The edge function incorrectly assumes this is a **user ID** and queries `trainer_profiles` with `.eq("user_id", trainerId)`
-- That lookup returns nothing, so the Mollie routing is skipped entirely
-- The full payment goes to your platform account
+## How Application Fees Work
 
-The trainer's Mollie account IS properly connected (`org_19447741`, charges enabled, onboarding complete). It's just never found due to the wrong lookup.
+Instead of creating the payment on your platform account and splitting it, you:
 
-## Fix
+1. Create the payment **on the connected account** (trainer/academy) using **their OAuth access token**
+2. Add an `applicationFee` parameter with your platform fee
+3. Mollie automatically moves the fee to your platform account
+
+The trainer receives the payment minus your fee and the Mollie transaction costs.
+
+## Changes
 
 ### `supabase/functions/create-mollie-payment/index.ts`
 
-Change the trainer profile lookup (around line 57) from:
+**1. Fetch the access token** (not just the organization ID)
 
-```typescript
-const { data: trainerProfile } = await supabase
-  .from("trainer_profiles")
-  .select("id")
-  .eq("user_id", trainerId)   // WRONG: trainerId is already a profile ID
-  .single();
+Update the trainer and academy Mollie lookups to also retrieve `access_token` alongside `mollie_organization_id`. The access token is needed to create payments on their behalf.
+
+**2. Replace routing with Application fees**
+
+Replace the `routing` block (lines 218-234):
+
+```
+// OLD (routing - marketplace model)
+paymentData.routing = [{
+  amount: { currency: "EUR", value: (amount - platformFee).toFixed(2) },
+  destination: { type: "organization", organizationId: recipientMollieId }
+}];
 ```
 
-To:
+With the Application fee approach:
 
-```typescript
-const { data: trainerProfile } = await supabase
-  .from("trainer_profiles")
-  .select("id")
-  .eq("id", trainerId)        // CORRECT: match directly on profile ID
-  .single();
+```
+// NEW (application fee - platform model)
+paymentData.applicationFee = {
+  amount: { currency: "EUR", value: platformFee.toFixed(2) },
+  description: "Platform fee"
+};
 ```
 
-This one-line change means:
-- The trainer profile is found correctly
-- The `trainer_mollie_accounts` lookup succeeds (since `trainer_id` matches the profile ID)
-- Payment routing kicks in: the trainer receives the lesson amount minus the platform fee
-- Your platform account collects only the platform fee (not the full amount)
+**3. Use the connected account's access token** for the Mollie API call
 
-No other files need to change.
+When a trainer/academy Mollie account is found, use their `access_token` in the Authorization header instead of the platform `MOLLIE_API_KEY`:
+
+```
+const authToken = recipientAccessToken || mollieApiKey;
+
+const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${authToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(paymentData),
+});
+```
+
+**4. Rename tracking variable**
+
+Change `recipientMollieId` to `recipientAccessToken` since we no longer need the org ID -- we need the token.
+
+## Summary of flow after fix
+
+```text
+Player pays EUR 25.00
+  |
+  v
+Payment created on TRAINER's Mollie account (using their access_token)
+  with applicationFee: EUR 1.00 (your platform fee)
+  |
+  v
+Mollie processes: Trainer gets EUR 25.00 - EUR 1.00 fee - Mollie costs
+                  Platform gets EUR 1.00
+```
+
+## Files changed
+
+- `supabase/functions/create-mollie-payment/index.ts` -- switch from routing to application fees, use connected account's access token
 
