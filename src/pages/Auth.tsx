@@ -19,7 +19,7 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, refreshAuth } = useAuth();
   const { t } = useTranslation('auth');
 
   // Detect and handle magic link tokens in URL hash (for impersonation)
@@ -73,11 +73,12 @@ export default function Auth() {
 
   useEffect(() => {
     if (!loading && user) {
-      // Check for redirect URL from pre-login context (e.g., cycle application)
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
       
       if (role) {
-        // Existing user with role - honor redirect if present, otherwise go to dashboard
+        // Existing user with role - clear any stale pendingRole and redirect
+        localStorage.removeItem('pendingRole');
+        
         if (redirectUrl) {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
@@ -94,24 +95,40 @@ export default function Auth() {
           }
         }
       } else {
-        // New user without role - must complete onboarding first
-        // Clear any redirect URL (they'll need to re-trigger after onboarding)
-        if (redirectUrl) {
-          sessionStorage.removeItem('redirectAfterLogin');
-        }
+        // Role is null - could be new user OR roles haven't loaded yet
+        // Double-check by querying the database directly
+        const checkExistingRoles = async () => {
+          const { data } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .limit(1);
+          
+          if (data && data.length > 0) {
+            // User has roles in DB - this was a race condition
+            // Clear pendingRole and refresh auth to get the correct role
+            localStorage.removeItem('pendingRole');
+            await refreshAuth();
+          } else {
+            // Genuinely new user - proceed with onboarding
+            if (redirectUrl) {
+              sessionStorage.removeItem('redirectAfterLogin');
+            }
+            
+            const pendingRole = localStorage.getItem('pendingRole');
+            if (pendingRole) {
+              localStorage.removeItem('pendingRole');
+              navigate(`/onboarding/${pendingRole}`);
+            } else {
+              navigate('/onboarding/player');
+            }
+          }
+        };
         
-        // Check for pending role from signup (use localStorage for cross-tab persistence)
-        const pendingRole = localStorage.getItem('pendingRole');
-        if (pendingRole) {
-          localStorage.removeItem('pendingRole'); // Clean up after use
-          navigate(`/onboarding/${pendingRole}`);
-        } else {
-          // Default to player onboarding for edge cases (e.g., OAuth without pendingRole)
-          navigate('/onboarding/player');
-        }
+        checkExistingRoles();
       }
     }
-  }, [user, role, loading, navigate]);
+  }, [user, role, loading, navigate, refreshAuth]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
