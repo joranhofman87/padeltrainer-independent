@@ -571,7 +571,7 @@ export default function BookLesson() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="p-8 text-center">
           <h2 className="text-xl font-semibold mb-2">Trainer not found</h2>
-          <Button onClick={() => navigate('/player')}>Browse Trainers</Button>
+          <Button onClick={() => navigate('/app/player')}>Browse Trainers</Button>
         </Card>
       </div>
     );
@@ -590,10 +590,10 @@ export default function BookLesson() {
             You'll be notified once they respond.
           </p>
           <div className="space-y-3">
-            <Button className="w-full" onClick={() => navigate('/player/bookings')}>
+            <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate('/player')}>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/app/player')}>
               Browse Other Trainers
             </Button>
           </div>
@@ -621,10 +621,10 @@ export default function BookLesson() {
             </div>
           )}
           <div className="space-y-3">
-            <Button className="w-full" onClick={() => navigate('/player/bookings')}>
+            <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate('/player')}>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/app/player')}>
               Book Another Lesson
             </Button>
           </div>

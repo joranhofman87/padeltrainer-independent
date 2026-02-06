@@ -11,6 +11,15 @@ import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 
+const getDashboardPath = (role?: string | null) => {
+  switch (role) {
+    case 'trainer': return '/app/trainer';
+    case 'club': return '/app/club';
+    case 'academy': return '/app/academy';
+    default: return '/app/player';
+  }
+};
+
 interface MarketingLayoutProps {
   children: React.ReactNode;
 }
@@ -19,7 +28,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useTranslation('marketing');
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const dashboardUrl = getAppUrl(getDashboardPath(role));
   
   // Get localized paths
   const homePath = useLocalizedPath('/');
@@ -80,7 +90,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <ThemeToggle />
               {user ? (
                 <Button asChild className="bg-primary hover:bg-primary/90">
-                  <Link to={getAppUrl('/player')}>{t('nav.dashboard', 'Dashboard')}</Link>
+                  <Link to={dashboardUrl}>{t('nav.dashboard', 'Dashboard')}</Link>
                 </Button>
               ) : (
                 <>
@@ -134,7 +144,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   </div>
                   {user ? (
                     <Button asChild className="bg-primary hover:bg-primary/90">
-                      <Link to={getAppUrl('/player')}>{t('nav.dashboard', 'Dashboard')}</Link>
+                      <Link to={dashboardUrl}>{t('nav.dashboard', 'Dashboard')}</Link>
                     </Button>
                   ) : (
                     <>
