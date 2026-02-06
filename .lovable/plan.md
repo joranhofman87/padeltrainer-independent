@@ -1,44 +1,39 @@
 
 
-# Fix "Trainer not found" on Booking Page
+# Fix Infinite Loading When Navigating Back (Player Routes)
 
 ## Problem
 
-The booking page (`/nl/book/trainer-test`) receives `trainer-test` as the `trainerId` URL parameter. However, the `BookLesson.tsx` code assumes this is always a `user_id` and queries:
+When a player logs in, browses trainers, and navigates back, the app gets stuck loading. The root cause is that nearly all navigation links in the player area use paths **without** the required `/app/` prefix (e.g., `/player` instead of `/app/player`).
 
-```
-trainer_profiles_safe.eq('user_id', 'trainer-test')  -- 400 Bad Request
-```
+Every click triggers a redirect chain: `/player` hits a legacy redirect rule, which then redirects to `/app/player`. This double-navigation causes React components to unmount and remount, re-triggering data fetches and auth checks, which can result in stuck loading states -- especially when combined with browser back/forward navigation.
 
-This fails because `trainer-test` is a **slug**, not a UUID. The trainer profile page already handles this correctly by checking if the param is a UUID and falling back to a slug lookup.
+## Changes
 
-## Solution
+### 1. `src/components/player/PlayerSidebar.tsx`
 
-Apply the same slug-vs-UUID resolution logic from `TrainerProfile.tsx` to `BookLesson.tsx`.
+Update all `NavLink` `to` props and `isActive` checks to include the `/app/` prefix:
 
-## Technical Changes
+- `/player` becomes `/app/player` (Dashboard link, line 147)
+- `/player/bookings` becomes `/app/player/bookings` (line 162)
+- `/player/following` becomes `/app/player/following` (line 177)
+- `/player/settings` becomes `/app/player/settings` (lines 58, 74, 198, 217)
+- `/player/settings/notifications` becomes `/app/player/settings/notifications` (line 229)
+- `/player/settings/calendar` becomes `/app/player/settings/calendar` (line 240)
+- Logout: `/auth` becomes `/app/auth` (line 70)
 
-### `src/pages/BookLesson.tsx` -- `fetchData()` function (~lines 112-133)
+### 2. `src/pages/BookLesson.tsx`
 
-1. Add UUID detection (same regex used in TrainerProfile):
-   ```
-   const isUUID = /^[0-9a-f]{8}-...$/i.test(trainerId)
-   ```
+Fix hardcoded navigation paths in the "Trainer not found" and "Request Sent" fallback screens:
 
-2. If UUID: query `trainer_profiles_safe` with `.eq('user_id', trainerId)` (existing behavior, for backward compat)
-3. If slug: query `trainer_profiles_safe` with `.eq('slug', trainerId)` (new path)
+- `/player` becomes `/app/player` (lines 574, 596)
+- `/player/bookings` becomes `/app/player/bookings` (line 593)
 
-4. After resolving the trainer profile, use `trainerData.user_id` for the `profiles_public` and `profiles` lookups (instead of the raw `trainerId` param)
+### 3. `src/components/marketing/MarketingLayout.tsx`
 
-5. Also fix the auth redirect on line 99 which currently navigates to `/auth` (missing `/app/` prefix):
-   ```
-   navigate(`/app/auth?redirect=/book/${trainerId}`)
-   ```
+The "Dashboard" button always links to `/app/player` regardless of user role (line 83). Update to route based on the user's actual role so trainers, clubs, and academy managers land on the correct dashboard.
 
-6. Fix line 101 which navigates to `/trainer` (should be `/app/trainer`):
-   ```
-   navigate('/app/trainer')
-   ```
+## Why This Fixes It
 
-These changes ensure the booking page works when linked from the trainer profile using the SEO-friendly slug URL.
+Removing the redirect chain means React Router performs a single direct navigation instead of two. Components stay mounted, auth state remains stable, and data fetches don't get interrupted or duplicated. Browser back/forward navigation works cleanly because the history entries point to the correct final URLs.
 
