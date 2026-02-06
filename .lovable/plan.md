@@ -1,105 +1,64 @@
 
-# Fix: Existing Users Incorrectly Sent to Onboarding
+# Fix: Mollie Callback Page Stuck Loading
 
 ## Problem
 
-When an existing user (joranhofman87@gmail.com with `player` and `admin` roles) clicks "Sign in with Google" from the `/signup/player` page:
+The trainer (`joranhofman87+trainermollie@gmail.com`) completed the Mollie OAuth flow and was redirected back to `https://app.padeltrainer.ai/api/mollie-callback`, but the page is stuck showing "Connecting your Mollie account..." indefinitely.
 
-1. `localStorage.setItem('pendingRole', 'player')` is set **before** OAuth redirect
-2. After OAuth returns to `/auth`, the `role` state in `useAuth` may briefly be `null` during the initial fetch
-3. Auth.tsx sees `role === null`, finds `pendingRole` in localStorage, and redirects to `/onboarding/player`
-4. User gets stuck on onboarding even though they already have roles in the database
+**Symptoms:**
+- Page shows loading spinner with "Please wait while we complete the connection"
+- No error is displayed
+- Edge function logs show no calls to `mollie-callback`
 
 ## Root Cause
 
-There's a race condition in the redirect logic. The code checks `if (role)` but doesn't distinguish between:
-- `role === null` because we haven't fetched it yet
-- `role === null` because the user genuinely has no roles
+The `mollie-callback` edge function has **incomplete CORS headers**. The Supabase JavaScript client automatically sends additional headers that aren't listed in `Access-Control-Allow-Headers`:
+
+**Current headers (line 6):**
+```javascript
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+```
+
+**Missing headers sent by Supabase client:**
+- `x-supabase-client-platform`
+- `x-supabase-client-platform-version`
+- `x-supabase-client-runtime`
+- `x-supabase-client-runtime-version`
+
+When the browser sends a preflight OPTIONS request, the edge function says "I don't allow those headers", so the browser blocks the actual POST request entirely. This causes the `supabase.functions.invoke()` call to hang silently.
 
 ## Solution
 
-**Option A (Preferred):** Check if the user has roles in the database directly before redirecting to onboarding. If they have roles, clear `pendingRole` and redirect to the appropriate dashboard.
-
-**Option B:** Add a separate "rolesLoaded" state to `useAuth` that indicates whether role fetching has completed.
-
-I recommend **Option A** because it's simpler and directly addresses the issue.
+Update the CORS headers in the `mollie-callback` edge function to include all headers sent by the Supabase client.
 
 ## Technical Changes
 
-### File: `src/pages/Auth.tsx`
+### File: `supabase/functions/mollie-callback/index.ts`
 
-Update the redirect useEffect (lines 74-114) to verify the user doesn't already have roles before redirecting to onboarding:
+**Update lines 4-6** - Expand the CORS headers:
 
 ```typescript
-useEffect(() => {
-  if (!loading && user) {
-    const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-    
-    if (role) {
-      // Existing user with role - clear any stale pendingRole and redirect
-      localStorage.removeItem('pendingRole');
-      
-      if (redirectUrl) {
-        sessionStorage.removeItem('redirectAfterLogin');
-        navigate(redirectUrl);
-      } else {
-        // Priority: admin > trainer > club > player
-        if (role === 'admin') {
-          navigate('/admin');
-        } else if (role === 'trainer') {
-          navigate('/trainer');
-        } else if (role === 'club') {
-          navigate('/club');
-        } else {
-          navigate('/player');
-        }
-      }
-    } else {
-      // Role is null - could be new user OR roles haven't loaded yet
-      // Double-check by querying the database directly
-      const checkExistingRoles = async () => {
-        const { data } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .limit(1);
-        
-        if (data && data.length > 0) {
-          // User has roles in DB - this was a race condition
-          // Clear pendingRole and refresh auth to get the correct role
-          localStorage.removeItem('pendingRole');
-          await refreshAuth();
-        } else {
-          // Genuinely new user - proceed with onboarding
-          if (redirectUrl) {
-            sessionStorage.removeItem('redirectAfterLogin');
-          }
-          
-          const pendingRole = localStorage.getItem('pendingRole');
-          if (pendingRole) {
-            localStorage.removeItem('pendingRole');
-            navigate(`/onboarding/${pendingRole}`);
-          } else {
-            navigate('/onboarding/player');
-          }
-        }
-      };
-      
-      checkExistingRoles();
-    }
-  }
-}, [user, role, loading, navigate]);
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 ```
 
-### Changes Summary
+## Immediate Workaround
+
+For the stuck user right now:
+1. The user should manually navigate to `/trainer/earnings`
+2. Click "Connect Mollie" again to restart the OAuth flow
+3. After publishing this fix, the callback will work correctly
+
+## Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/Auth.tsx` | Add database check before redirecting to onboarding when `role === null` |
+| `supabase/functions/mollie-callback/index.ts` | Add missing CORS headers for Supabase client compatibility |
 
 ## Expected Result
 
-- Existing users signing in via Google from signup pages will be correctly redirected to their dashboard
-- New users will still be directed to onboarding as expected
-- The `pendingRole` localStorage value will be cleared for existing users to prevent future issues
-- Race conditions between auth state and role fetching are handled gracefully
+- Mollie OAuth callbacks will process successfully
+- Users will see the success message and be redirected to `/trainer/earnings?mollie_connected=true`
+- The edge function logs will show the callback being processed
