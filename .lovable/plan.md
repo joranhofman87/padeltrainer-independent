@@ -1,89 +1,43 @@
 
+# Fix Player Dashboard Links to Trainers
 
-# Implement Cookie-Based Auth Sharing Across Subdomains
+## Problems Identified
 
-## Overview
+1. **"Find Trainers" and "View All" links point to wrong domain**: The player dashboard (on `app.padeltrainer.ai`) uses `localizePath('/trainers')` which produces `/nl/trainers`. This route doesn't exist on the app domain -- it's a marketing-site-only route under `/:lang/trainers`.
 
-Switch the Supabase auth session storage from `localStorage` to cookies scoped to `.padeltrainer.ai`, so users stay logged in on both the marketing site and the app domain. Since there are no real users yet, no migration is needed.
+2. **No trainers shown**: When manually navigating to the correct marketing URL, trainers should appear (data exists in the database). The issue is the Trainers page is wrapped in `MarketingLayout` and designed for the marketing domain only.
 
-## Changes
+3. **Dashboard loading freeze**: After visiting an invalid route on the app domain and pressing back, the page gets stuck. This is a side-effect of navigating away from the `PlayerLayout` -- the browser "back" may not cleanly re-mount the layout.
 
-### 1. New File: `src/lib/cookieStorage.ts`
+## Solution
 
-Create a custom storage adapter that implements `getItem`, `setItem`, and `removeItem` using `document.cookie`:
+All three issues stem from the same root cause: links from the player dashboard to the trainers page need to go to the **marketing domain**, not the app domain.
 
-- In production: sets `domain=.padeltrainer.ai; Secure; SameSite=Lax; path=/`
-- In development (localhost / lovable.app): no domain restriction, just `path=/`
-- Cookie expiry: 365 days (Supabase handles token refresh internally)
-- Handles URL-encoding of values for safe cookie storage
+### File 1: `src/pages/PlayerDashboard.tsx`
 
-### 2. New File: `src/lib/supabaseClient.ts`
+Replace `localizePath('/trainers')` with `getMarketingUrl('trainers')` for links that should go to the marketing site. This applies to:
 
-Create a wrapper that re-exports a properly configured Supabase client:
+- **Line 466**: "Find Trainers" quick action card -- use `window.location.href = getMarketingUrl('trainers')` instead of `navigate(localizePath('/trainers'))`
+- **Line 554**: "View All" button in Featured Trainers section -- same change
+- **Line 444**: Followed trainer click -- use `window.location.href = getMarketingUrl('trainer/' + slug)` instead of `navigate(localizePath(...))`
 
-```typescript
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/integrations/supabase/types';
-import { cookieStorage } from './cookieStorage';
+Also remove the unused `localizePath` import if no other usage remains.
 
-const URL = import.meta.env.VITE_SUPABASE_URL;
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+### File 2: `src/pages/PlayerDashboard.tsx` (same file)
 
-export const supabase = createClient<Database>(URL, KEY, {
-  auth: {
-    storage: cookieStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
-```
+The featured trainer cards (line 575) currently use `navigate('/book/${trainer.id}')` which is correct -- they stay on the app domain for booking. No change needed there.
 
-This avoids editing the auto-generated `src/integrations/supabase/client.ts`.
+## What This Fixes
 
-### 3. Update All Imports (~50 files)
-
-Find-and-replace all:
-```
-from "@/integrations/supabase/client"
-```
-to:
-```
-from "@/lib/supabaseClient"
-```
-
-This affects approximately 50 files across `src/lib/`, `src/hooks/`, `src/pages/`, and `src/components/`.
-
-### 4. Update `src/components/marketing/MarketingLayout.tsx`
-
-Now that `useAuth()` works on the marketing domain, update the header:
-
-- If `user` exists: show "Dashboard" button (linking to role-based dashboard) instead of "Sign In"
-- If no `user`: show "Sign In" as today
-- Apply to both desktop and mobile menu sections
-
-### 5. Update `src/pages/TrainerProfile.tsx`
-
-Remove auth guards that hide buttons on the marketing domain:
-
-- **Line 419**: Remove `user && role === 'player'` guard on hero "Book Lesson" button -- show to everyone. If not logged in, the BookLesson page handles the redirect.
-- **Line 738**: Same for lessons-section "Book a Lesson" button
-- **Line 777**: Same for sidebar "Book to Connect" button
-- All three buttons use `getAppUrl('/book/...')` to navigate to the app domain for the actual booking flow
-
-### 6. Update `src/components/waitingList/WaitingListCard.tsx`
-
-The auth check now works on the marketing domain, so the existing `!user` redirect logic will function correctly. Update the redirect to go to the app domain auth page with a return URL:
-
-```typescript
-window.location.href = getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.href)}`);
-```
+| Issue | Fix |
+|-------|-----|
+| Wrong "Find Trainers" URL | Links to `padeltrainer.ai/nl/trainers` (marketing domain) |
+| No trainers displayed | Trainers page loads on correct domain with MarketingLayout |
+| Dashboard loading freeze | No more invalid route navigation; no broken back-button state |
 
 ## Technical Details
 
-- The auto-generated `src/integrations/supabase/client.ts` is never touched
-- Cookie key is the default Supabase storage key: `sb-ppkbhdiiqdusdeatgdft-auth-token`
-- Cookie size: Supabase JWT tokens are ~2KB, well within the 4KB limit
-- `SameSite=Lax` prevents CSRF while allowing top-level navigations
-- `Secure` flag ensures HTTPS-only in production
-- No `HttpOnly` (must be JS-readable for the client SDK -- same security profile as localStorage)
-- Development mode auto-detects localhost/lovable.app and skips domain scoping
+- `getMarketingUrl('trainers')` produces `https://padeltrainer.ai/nl/trainers` in production and `/nl/trainers` in development
+- Uses `window.location.href` instead of `navigate()` because these are cross-domain navigations
+- The default language parameter in `getMarketingUrl` is `'nl'` which matches the current setup
+- In development mode (Lovable preview), both domains are served together so relative paths work fine
