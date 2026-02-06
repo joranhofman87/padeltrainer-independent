@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { getMarketingUrl } from '@/lib/domains';
+import { getMarketingPath } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -441,7 +441,7 @@ export default function PlayerDashboard() {
                   <div
                     key={trainer.id}
                     className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => window.location.href = getMarketingUrl(`trainer/${trainer.trainer_slug || trainer.trainer_id}`)}
+                    onClick={() => navigate(getMarketingPath(`trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
                   >
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={trainer.avatar_url || undefined} />
@@ -463,7 +463,7 @@ export default function PlayerDashboard() {
         <div className="grid md:grid-cols-3 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => window.location.href = getMarketingUrl('trainers')}
+            onClick={() => navigate(getMarketingPath('trainers'))}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
@@ -551,7 +551,7 @@ export default function PlayerDashboard() {
                   Top-rated trainers in your area
                 </CardDescription>
               </div>
-              <Button variant="ghost" onClick={() => window.location.href = getMarketingUrl('trainers')} className="gap-1">
+              <Button variant="ghost" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
                 View All <ChevronRight className="h-4 w-4" />
               </Button>
             </div>

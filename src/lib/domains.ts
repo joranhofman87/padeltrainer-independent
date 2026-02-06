@@ -1,37 +1,34 @@
 /**
- * Domain configuration for cross-domain navigation.
+ * Domain configuration for single-domain path-based routing.
  * 
- * Marketing site: padeltrainer.ai
- * App: app.padeltrainer.ai
+ * Marketing pages: padeltrainer.ai/:lang/*
+ * App pages: padeltrainer.ai/app/*
+ * 
+ * All routes live under one domain — no more cross-subdomain issues.
  */
 
-export const APP_DOMAIN = 'https://app.padeltrainer.ai';
 export const MARKETING_DOMAIN = 'https://padeltrainer.ai';
 
 /**
- * Get the full URL for an app route.
- * Use this for links from the marketing site to the app.
+ * @deprecated No longer needed. Kept as alias for MARKETING_DOMAIN for backward compat in SEO.
+ */
+export const APP_DOMAIN = MARKETING_DOMAIN;
+
+/**
+ * Get the path for an app route.
+ * All app routes are prefixed with /app.
  */
 export function getAppUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  
-  // In development, use relative paths for same-origin navigation
-  if (isInDevelopment()) {
-    return normalizedPath;
-  }
-  
-  // In production, always use full app subdomain URL
-  return `${APP_DOMAIN}${normalizedPath}`;
+  return `/app${normalizedPath}`;
 }
 
 /**
- * Get the full URL for a marketing route.
- * Use this for links from the app to the marketing site.
+ * Get the full URL for a marketing route (for sharing / canonical URLs).
+ * Returns a full URL with domain for sharing, or a relative path for navigation.
  */
 export function getMarketingUrl(path: string, lang: string = 'nl'): string {
-  // Ensure path doesn't start with / since we're adding lang prefix
   const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-  // If path is empty (homepage), just return domain with lang
   if (!normalizedPath) {
     return `${MARKETING_DOMAIN}/${lang}`;
   }
@@ -39,40 +36,41 @@ export function getMarketingUrl(path: string, lang: string = 'nl'): string {
 }
 
 /**
- * Check if we're currently on the app domain.
+ * Get a relative marketing path for internal navigation.
  */
-export function isOnAppDomain(): boolean {
-  const hostname = window.location.hostname;
-  return hostname === 'app.padeltrainer.ai';
-}
-
-/**
- * Check if we're currently on the marketing domain.
- */
-export function isOnMarketingDomain(): boolean {
-  const hostname = window.location.hostname;
-  return hostname === 'padeltrainer.ai' || hostname === 'www.padeltrainer.ai';
-}
-
-/**
- * Check if we're in development/preview mode.
- */
-export function isInDevelopment(): boolean {
-  const hostname = window.location.hostname;
-  return hostname === 'localhost' || 
-         hostname === '127.0.0.1' || 
-         hostname.includes('.lovable.app') ||
-         hostname.includes('.lovableproject.com');
+export function getMarketingPath(path: string, lang: string = 'nl'): string {
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+  if (!normalizedPath) {
+    return `/${lang}`;
+  }
+  return `/${lang}/${normalizedPath}`;
 }
 
 /**
  * Get the appropriate auth redirect URL based on environment.
- * In production, always redirect to app subdomain.
- * In development, use current origin.
+ * Always returns a full URL for OAuth/email redirects.
  */
-export function getAuthRedirectUrl(path: string = '/auth'): string {
-  if (isInDevelopment()) {
-    return `${window.location.origin}${path}`;
-  }
-  return getAppUrl(path);
+export function getAuthRedirectUrl(path: string = '/app/auth'): string {
+  return `${window.location.origin}${path}`;
+}
+
+/**
+ * @deprecated No longer needed — everything is same-origin.
+ */
+export function isOnAppDomain(): boolean {
+  return true;
+}
+
+/**
+ * @deprecated No longer needed — everything is same-origin.
+ */
+export function isOnMarketingDomain(): boolean {
+  return true;
+}
+
+/**
+ * @deprecated No longer needed — everything is same-origin.
+ */
+export function isInDevelopment(): boolean {
+  return true;
 }

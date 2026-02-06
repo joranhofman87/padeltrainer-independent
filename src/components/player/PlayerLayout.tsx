@@ -13,11 +13,11 @@ export default function PlayerLayout() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate('/auth');
+        navigate('/app/auth');
       } else if (!role) {
-        navigate('/auth');
+        navigate('/app/auth');
       } else if (role !== 'player' && role !== 'admin') {
-        navigate('/trainer');
+        navigate('/app/trainer');
       }
     }
   }, [user, role, loading, navigate]);

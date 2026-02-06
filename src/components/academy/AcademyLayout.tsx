@@ -59,7 +59,7 @@ export default function AcademyLayout() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/auth');
+      navigate('/app/auth');
     }
   }, [user, authLoading, navigate]);
 

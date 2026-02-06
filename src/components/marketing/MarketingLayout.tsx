@@ -80,15 +80,15 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               <ThemeToggle />
               {user ? (
                 <Button asChild className="bg-primary hover:bg-primary/90">
-                  <a href={getAppUrl('/dashboard')}>{t('nav.dashboard', 'Dashboard')}</a>
+                  <Link to={getAppUrl('/player')}>{t('nav.dashboard', 'Dashboard')}</Link>
                 </Button>
               ) : (
                 <>
                   <Button variant="ghost" asChild>
-                    <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                    <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                    <Link to={getAppUrl('/signup/player')}>{t('nav.getStarted')}</Link>
                   </Button>
                 </>
               )}
@@ -134,15 +134,15 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                   </div>
                   {user ? (
                     <Button asChild className="bg-primary hover:bg-primary/90">
-                      <a href={getAppUrl('/dashboard')}>{t('nav.dashboard', 'Dashboard')}</a>
+                      <Link to={getAppUrl('/player')}>{t('nav.dashboard', 'Dashboard')}</Link>
                     </Button>
                   ) : (
                     <>
                       <Button variant="ghost" asChild>
-                        <a href={getAppUrl('/auth')}>{t('nav.signIn')}</a>
+                        <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                       </Button>
                       <Button asChild className="bg-primary hover:bg-primary/90">
-                        <a href={getAppUrl('/signup/player')}>{t('nav.getStarted')}</a>
+                        <Link to={getAppUrl('/signup/player')}>{t('nav.getStarted')}</Link>
                       </Button>
                     </>
                   )}
@@ -181,7 +181,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
                 <li>
-                  <a href={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</a>
+                  <Link to={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link>
                 </li>
               </ul>
             </div>

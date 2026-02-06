@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { usePlatformStats } from '@/hooks/usePlatformStats';
 import { HomeFeaturedSections } from '@/components/home/HomeFeaturedSections';
-import { getAppUrl, isInDevelopment } from '@/lib/domains';
+import { getAppUrl } from '@/lib/domains';
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -192,24 +192,13 @@ export default function Home() {
               className="flex flex-col sm:flex-row gap-4 justify-center"
             >
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                {isInDevelopment() ? (
-                  <Link to="/signup/player">
-                    {t('home.hero.cta')}
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                ) : (
-                  <a href={getAppUrl('/signup/player')}>
-                    {t('home.hero.cta')}
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </a>
-                )}
+                <Link to={getAppUrl('/signup/player')}>
+                  {t('home.hero.cta')}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 h-14 border-2" asChild>
-                {isInDevelopment() ? (
-                  <Link to="/signup/trainer">{t('home.hero.ctaSecondary')}</Link>
-                ) : (
-                  <a href={getAppUrl('/signup/trainer')}>{t('home.hero.ctaSecondary')}</a>
-                )}
+                <Link to={getAppUrl('/signup/trainer')}>{t('home.hero.ctaSecondary')}</Link>
               </Button>
             </motion.div>
 
@@ -395,17 +384,10 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                {isInDevelopment() ? (
-                  <Link to="/signup/player">
-                    {t('home.cta.button')}
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                ) : (
-                  <a href={getAppUrl('/signup/player')}>
-                    {t('home.cta.button')}
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </a>
-                )}
+                <Link to={getAppUrl('/signup/player')}>
+                  {t('home.cta.button')}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
               </Button>
               <Button size="lg" variant="secondary" className="text-lg px-8 h-14" asChild>
                 <LocalizedLink to="/trainers">{t('home.cta.browseTrainers')}</LocalizedLink>

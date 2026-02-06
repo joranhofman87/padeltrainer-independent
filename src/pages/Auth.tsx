@@ -91,14 +91,14 @@ export default function Auth() {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
         } else {
-          if (role === 'admin') {
-            navigate('/admin');
+        if (role === 'admin') {
+            navigate('/app/admin');
           } else if (role === 'trainer') {
-            navigate('/trainer');
+            navigate('/app/trainer');
           } else if (role === 'club') {
-            navigate('/club');
+            navigate('/app/club');
           } else {
-            navigate('/player');
+            navigate('/app/player');
           }
         }
       } else if (!hasCheckedRoles.current) {
@@ -121,9 +121,9 @@ export default function Auth() {
             const pendingRole = localStorage.getItem('pendingRole');
             if (pendingRole) {
               localStorage.removeItem('pendingRole');
-              navigate(`/onboarding/${pendingRole}`);
+              navigate(`/app/onboarding/${pendingRole}`);
             } else {
-              navigate('/onboarding/player');
+              navigate('/app/onboarding/player');
             }
           }
         };
@@ -245,7 +245,7 @@ export default function Auth() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="signin-password">{t('form.password')}</Label>
                 <Link 
-                  to="/forgot-password" 
+                  to="/app/forgot-password" 
                   className="text-sm text-primary hover:underline"
                 >
                   {t('signIn.forgotPassword', 'Forgot password?')}
@@ -272,10 +272,10 @@ export default function Auth() {
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" asChild>
-                <Link to="/signup/player">{t('signIn.signupPlayer', 'Join as Player')}</Link>
+                <Link to="/app/signup/player">{t('signIn.signupPlayer', 'Join as Player')}</Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link to="/signup/trainer">{t('signIn.signupTrainer', 'Join as Trainer')}</Link>
+                <Link to="/app/signup/trainer">{t('signIn.signupTrainer', 'Join as Trainer')}</Link>
               </Button>
             </div>
           </div>

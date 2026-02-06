@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useTranslation } from 'react-i18next';
 import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAppUrl, isInDevelopment, MARKETING_DOMAIN } from '@/lib/domains';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
@@ -140,11 +140,7 @@ export default function Pricing() {
                 </div>
                 <div className="mt-8 text-center">
                   <Button size="lg" className="px-8" asChild>
-                    {isInDevelopment() ? (
-                      <Link to="/auth">{t('pricing.players.cta')}</Link>
-                    ) : (
-                      <a href={getAppUrl('/auth')}>{t('pricing.players.cta')}</a>
-                    )}
+                    <Link to="/app/auth">{t('pricing.players.cta')}</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -273,11 +269,7 @@ export default function Pricing() {
                           variant={plan.is_highlighted ? 'default' : 'outline'}
                           asChild
                         >
-                          {isInDevelopment() ? (
-                            <Link to="/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
-                          ) : (
-                            <a href={getAppUrl('/auth')}>{t(`pricing.trainers.plans.${plan.tier}.cta`)}</a>
-                          )}
+                          <Link to="/app/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
                         </Button>
                       </CardContent>
                     </Card>
@@ -346,11 +338,7 @@ export default function Pricing() {
                     ))}
                   </div>
                   <Button size="lg" className="w-full" asChild>
-                    {isInDevelopment() ? (
-                      <Link to="/signup/club">{t('pricing.clubs.cta')}</Link>
-                    ) : (
-                      <a href={getAppUrl('/signup/club')}>{t('pricing.clubs.cta')}</a>
-                    )}
+                    <Link to="/app/signup/club">{t('pricing.clubs.cta')}</Link>
                   </Button>
                 </CardContent>
               </Card>

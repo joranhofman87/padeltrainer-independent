@@ -17,7 +17,7 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   }, [authLoading, user, navigate]);
 
@@ -30,7 +30,7 @@ export default function AdminLayout() {
         variant: "destructive",
       });
     } else {
-      navigate("/auth");
+      navigate("/app/auth");
     }
   };
 
