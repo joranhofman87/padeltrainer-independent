@@ -1,6 +1,6 @@
 import { useEffect, useState, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
 import { SubscriptionInfo, SubscriptionTier } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';

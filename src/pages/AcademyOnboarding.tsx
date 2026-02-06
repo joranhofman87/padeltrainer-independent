@@ -17,7 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap } from 'lucide-react';
 import { createAcademy } from '@/lib/academy';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { COUNTRIES, type CountryCode } from '@/lib/countries';
 import { logger } from '@/lib/logger';
 

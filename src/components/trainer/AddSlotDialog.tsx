@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker } from "./SlotLocationPicker";

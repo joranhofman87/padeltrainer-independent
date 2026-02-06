@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { createManualIntakeRequest, type Cycle, type TimeWindow } from '@/lib/cycles';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 

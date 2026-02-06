@@ -30,7 +30,7 @@ import {
   Bell
 } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { updateBookingStatus } from '@/lib/lessons';
 
 interface BookingWithDetails {

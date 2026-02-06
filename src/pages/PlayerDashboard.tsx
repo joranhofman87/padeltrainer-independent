@@ -10,7 +10,7 @@ import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';

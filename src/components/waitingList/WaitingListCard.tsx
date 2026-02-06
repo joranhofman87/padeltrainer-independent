@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,7 @@ import {
 import { Bell } from 'lucide-react';
 import WaitingListForm from './WaitingListForm';
 import { OwnerType } from '@/lib/waitingList';
+import { getAppUrl } from '@/lib/domains';
 
 interface WaitingListCardProps {
   ownerType: OwnerType;
@@ -28,14 +28,11 @@ export default function WaitingListCard({
 }: WaitingListCardProps) {
   const { t } = useTranslation('waitingList');
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
   const handleClick = () => {
     if (!user) {
-      // Redirect to auth with return URL
-      const returnUrl = encodeURIComponent(window.location.pathname);
-      navigate(`/auth?returnUrl=${returnUrl}`);
+      window.location.href = getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.href)}`);
       return;
     }
     setIsOpen(true);

@@ -63,7 +63,7 @@ import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog"
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 // Extended type to include computed fields for sorting
 interface AcademyWithComputedFields extends AcademyProfileAdmin {

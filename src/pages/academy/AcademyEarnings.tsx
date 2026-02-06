@@ -17,7 +17,7 @@ import {
   Info,
   RefreshCw
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { connectAcademyMollie, checkAcademyConnectStatus, type AcademyConnectStatus } from '@/lib/academyPayments';
 import { logger } from '@/lib/logger';

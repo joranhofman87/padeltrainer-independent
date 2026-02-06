@@ -31,7 +31,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
 import { ClubAddSlotDialog, ClubBulkCreateSheet } from "@/components/club/ClubAddSlotDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface ClubSlot {
   id: string;

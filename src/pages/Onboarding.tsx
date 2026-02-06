@@ -10,7 +10,7 @@ import { setUserRole, updateProfile, UserRole } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Phone, User, CheckCircle2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES, validateRating } from '@/lib/ratingSystems';
 

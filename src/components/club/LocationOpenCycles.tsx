@@ -12,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { getLocationCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 
 interface LocationOpenCyclesProps {

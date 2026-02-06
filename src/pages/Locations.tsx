@@ -24,7 +24,7 @@ import { LocationsMap } from '@/components/locations/LocationsMap';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { getActiveLocations, getLocationTrainerCounts, getUniqueCities, getUniqueCountries, getClaimedLocationIds, type Location } from '@/lib/locations';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';

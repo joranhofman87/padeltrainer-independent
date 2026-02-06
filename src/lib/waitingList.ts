@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 export type OwnerType = 'academy' | 'trainer' | 'location';
 export type LessonType = 'private' | 'duo' | 'group' | 'kids';

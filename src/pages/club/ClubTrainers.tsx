@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubTrainers, updateTrainerVisibility } from '@/lib/club';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { CreateClubTrainerDialog } from '@/components/club/CreateClubTrainerDialog';
 import { EditClubTrainerDialog } from '@/components/club/EditClubTrainerDialog';
 import { toast } from 'sonner';

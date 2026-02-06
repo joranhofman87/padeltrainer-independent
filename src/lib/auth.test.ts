@@ -16,7 +16,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 // Import functions after mocking
 import {

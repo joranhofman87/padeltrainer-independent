@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import type { Json } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
