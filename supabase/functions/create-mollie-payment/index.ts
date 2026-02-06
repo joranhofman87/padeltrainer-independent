@@ -64,7 +64,7 @@ serve(async (req) => {
     logStep("Trainer profile lookup", { trainerId, trainerProfileId });
 
     // Check if trainer is part of an active academy
-    let recipientMollieId: string | null = null;
+    let recipientAccessToken: string | null = null;
     let recipientType: 'trainer' | 'academy' | null = null;
     let platformFee = 1.00; // Default to starter fee (€1.00)
 
@@ -84,18 +84,18 @@ serve(async (req) => {
       if (academyTrainer?.academy_profile_id) {
         logStep("Trainer is part of academy", { academyId: academyTrainer.academy_profile_id });
         
-        // Get academy's Mollie account
+        // Get academy's Mollie account (need access_token for Platform model)
         const { data: academyMollie } = await supabase
           .from("academy_mollie_accounts")
-          .select("mollie_organization_id, charges_enabled")
+          .select("mollie_organization_id, charges_enabled, access_token")
           .eq("academy_profile_id", academyTrainer.academy_profile_id)
           .eq("onboarding_complete", true)
           .single();
 
-        if (academyMollie?.mollie_organization_id && academyMollie?.charges_enabled) {
-          recipientMollieId = academyMollie.mollie_organization_id;
+        if (academyMollie?.access_token && academyMollie?.charges_enabled) {
+          recipientAccessToken = academyMollie.access_token;
           recipientType = 'academy';
-          logStep("Using academy Mollie account", { organizationId: recipientMollieId });
+          logStep("Using academy Mollie account", { organizationId: academyMollie.mollie_organization_id });
 
           // Check academy's platform fee override
           const academy = academyTrainer.academy as { platform_fee_override?: number | null };
@@ -122,7 +122,7 @@ serve(async (req) => {
     }
 
     // If not routed to academy, check trainer's own Mollie account
-    if (!recipientMollieId && trainerProfileId) {
+    if (!recipientAccessToken && trainerProfileId) {
       const { data: trainerMollie } = await supabase
         .from("trainer_mollie_accounts")
         .select("mollie_organization_id, access_token")
@@ -130,10 +130,10 @@ serve(async (req) => {
         .eq("onboarding_complete", true)
         .single();
 
-      if (trainerMollie?.mollie_organization_id) {
-        recipientMollieId = trainerMollie.mollie_organization_id;
+      if (trainerMollie?.access_token) {
+        recipientAccessToken = trainerMollie.access_token;
         recipientType = 'trainer';
-        logStep("Using trainer Mollie account", { organizationId: recipientMollieId });
+        logStep("Using trainer Mollie account", { organizationId: trainerMollie.mollie_organization_id });
 
         // Get trainer's fee override or tier-based default
         const { data: trainerProfileData } = await supabase
@@ -215,37 +215,34 @@ serve(async (req) => {
       },
     };
 
-    // If we have a recipient Mollie account, use routing for split payments
-    if (recipientMollieId) {
+    // If we have a recipient access token, use application fees (Platform model)
+    if (recipientAccessToken) {
       // Ensure fee doesn't exceed payment amount
       platformFee = Math.min(platformFee, amount);
       
-      paymentData.routing = [
-        {
-          amount: {
-            currency: "EUR",
-            value: (amount - platformFee).toFixed(2),
-          },
-          destination: {
-            type: "organization",
-            organizationId: recipientMollieId,
-          },
+      paymentData.applicationFee = {
+        amount: {
+          currency: "EUR",
+          value: platformFee.toFixed(2),
         },
-      ];
-      logStep("Payment routing configured", { 
+        description: "Platform fee",
+      };
+      logStep("Application fee configured", { 
         recipientType,
-        recipientAmount: amount - platformFee, 
         platformFee,
       });
     } else {
       logStep("No Mollie account found, payment goes to platform");
     }
 
+    // Use connected account's access token if available, otherwise platform key
+    const authToken = recipientAccessToken || mollieApiKey;
+
     // Create payment via Mollie API
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${mollieApiKey}`,
+        "Authorization": `Bearer ${authToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(paymentData),
