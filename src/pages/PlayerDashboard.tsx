@@ -572,7 +572,7 @@ export default function PlayerDashboard() {
                   <Card 
                     key={trainer.id}
                     className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50"
-                    onClick={() => navigate(localizePath(`/book/${trainer.id}`))}
+                    onClick={() => navigate(`/book/${trainer.id}`)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3 mb-3">
