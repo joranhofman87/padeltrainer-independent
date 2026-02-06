@@ -146,11 +146,7 @@ export default function PlayerDashboard() {
           status,
           availability_slots(
             start_time,
-            trainer_id,
-            trainer_profiles(
-              user_id,
-              profiles(full_name)
-            )
+            trainer_id
           ),
           lessons(title, location)
         `)
@@ -174,16 +170,36 @@ export default function PlayerDashboard() {
           upcomingCount: upcoming.length,
         });
 
-        // Format upcoming bookings for display (max 3)
-        const upcomingFormatted: UpcomingBooking[] = upcoming.slice(0, 3).map(b => {
+        // Enrich upcoming bookings with trainer names
+        const upcomingSlice = upcoming.slice(0, 3);
+        const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
+        
+        let trainerNameMap = new Map<string, string>();
+        if (trainerIds.length > 0) {
+          const { data: trainers } = await supabase
+            .from('trainer_profiles')
+            .select('id, user_id')
+            .in('id', trainerIds);
+          if (trainers && trainers.length > 0) {
+            const userIds = trainers.map(t => t.user_id);
+            const { data: profiles } = await supabase
+              .from('profiles_public')
+              .select('user_id, full_name')
+              .in('user_id', userIds);
+            const profileMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+            trainers.forEach(t => {
+              trainerNameMap.set(t.id, profileMap.get(t.user_id) || 'Trainer');
+            });
+          }
+        }
+
+        const upcomingFormatted: UpcomingBooking[] = upcomingSlice.map(b => {
           const slot = b.availability_slots as any;
           const lesson = b.lessons as any;
-          const trainerProfile = slot?.trainer_profiles as any;
-          const trainerUserProfile = trainerProfile?.profiles as any;
           return {
             id: b.id,
             lessonTitle: lesson?.title || 'Training Session',
-            trainerName: trainerUserProfile?.full_name || 'Trainer',
+            trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
             startTime: new Date(slot.start_time),
             location: lesson?.location || null,
           };
