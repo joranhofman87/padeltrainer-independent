@@ -1,60 +1,84 @@
 
 
-# Fix: Auth Page Infinite Loading After Google OAuth
+# Fix: Mollie Connect Callback Architecture
 
-## Root Cause
+## Problem
 
-When Google OAuth completes, the browser redirects back to `/auth#access_token=...&refresh_token=...`. Two things then fight over these tokens:
+The current Mollie Connect OAuth flow is correct in concept but has a broken callback architecture. The authorization code expires after **30 seconds** (per Mollie docs), yet:
 
-1. **Supabase's built-in handler** automatically detects the hash tokens and fires `onAuthStateChange` with `SIGNED_IN` -- this works correctly
-2. **The magic link handler** in `Auth.tsx` (originally added for impersonation) ALSO detects the same hash tokens and calls `supabase.auth.setSession()` a second time
+1. Mollie redirects to a React page (`/api/mollie-callback`)
+2. The React page loads, then tries to forward the code to the backend via `supabase.functions.invoke()`
+3. This browser-to-backend call silently fails (confirmed: zero logs reach the edge function from real attempts)
+4. The code expires unused, the page hangs forever
 
-This second `setSession` call can fail (tokens already consumed), and because there's no `.catch()`, the `isProcessingMagicLink` state stays `true` forever. The spinner condition `if (loading || isProcessingMagicLink)` keeps showing the loading screen even after the 10-second safety timeout resolves `loading`.
+## Solution
+
+Route the Mollie callback **directly to the backend function** (server-to-server), then redirect the browser to the React app with the result. This is the standard pattern for OAuth callbacks.
+
+```text
+CURRENT (broken):
+  Mollie --> React app (browser) --> supabase.functions.invoke --> Mollie API
+                                     ^^ silently fails
+
+FIXED:
+  Mollie --> Backend function --> Mollie API (token exchange, server-to-server)
+         --> HTTP 302 redirect --> React app (shows result)
+```
 
 ## Changes
 
-### `src/pages/Auth.tsx`
+### 1. `supabase/functions/mollie-connect-trainer/index.ts`
 
-Two fixes to the magic link `useEffect` (lines 26-51):
+Change the `redirect_uri` from the React app to the backend function directly:
 
-1. **Skip OAuth callbacks**: Only process hash tokens that DON'T include a `provider_token` parameter (OAuth redirects always include this, magic links don't). This prevents the handler from interfering with Google OAuth.
-
-2. **Add `.catch()` safety**: If `setSession` rejects for any reason, ensure `isProcessingMagicLink` is set to `false` so the page never hangs.
-
-```typescript
-useEffect(() => {
-  const hashParams = new URLSearchParams(window.location.hash.substring(1));
-  const accessToken = hashParams.get('access_token');
-  const refreshToken = hashParams.get('refresh_token');
-  const providerToken = hashParams.get('provider_token');
-
-  // Only handle magic link tokens, NOT OAuth callbacks
-  // OAuth callbacks include provider_token and are handled by Supabase automatically
-  if (accessToken && refreshToken && !providerToken) {
-    setIsProcessingMagicLink(true);
-    supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    }).then(({ error }) => {
-      if (error) {
-        console.error('Failed to set session from magic link:', error);
-        toast({ ... });
-      }
-      window.history.replaceState(null, '', window.location.pathname);
-      setIsProcessingMagicLink(false);
-    }).catch(() => {
-      // Safety: ensure we never hang on magic link processing
-      setIsProcessingMagicLink(false);
-    });
-  }
-}, [toast, t]);
 ```
+// Before
+const redirectUri = `${origin}/api/mollie-callback`;
+
+// After
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const redirectUri = `${supabaseUrl}/functions/v1/mollie-callback`;
+```
+
+### 2. `supabase/functions/mollie-connect-academy/index.ts`
+
+Same redirect URI change as the trainer function.
+
+### 3. `supabase/functions/mollie-callback/index.ts`
+
+Refactor to handle a direct GET redirect from Mollie (instead of a POST with JSON body from the React app):
+
+- Parse `code`, `state`, `error` from URL query parameters (GET request) instead of JSON body
+- Update the `redirect_uri` used in token exchange to match the new direct URL
+- After processing, return an HTTP 302 redirect to the React app with the result as query parameters:
+  - Success: `https://app.padeltrainer.ai/api/mollie-callback?status=success&name=OrgName`
+  - Error: `https://app.padeltrainer.ai/api/mollie-callback?status=error&message=Something+went+wrong`
+
+### 4. `src/pages/MollieCallback.tsx`
+
+Simplify to only read the connection result from URL parameters -- no more `supabase.functions.invoke()` call:
+
+- If `status=success` in URL params: show success message, redirect to earnings page
+- If `status=error` in URL params: show error message with retry button
+- If `code` is present (direct Mollie redirect that somehow reaches the React app): show a generic error
+- Remove the `AbortController` timeout and invoke logic entirely
+
+## After Publishing
+
+You will need to register the new redirect URI in the **Mollie Dashboard** (App Settings > Redirect URIs):
+
+```
+https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/mollie-callback
+```
+
+The old React app URI can remain registered as a fallback but is no longer used.
 
 ## Summary
 
-| Item | Change |
+| File | Change |
 |------|--------|
-| `src/pages/Auth.tsx` | Skip magic link handler for OAuth callbacks (check for `provider_token`), add `.catch()` safety |
-
-This is a one-file fix. After publishing, Google OAuth login should redirect properly to `/admin` (or the appropriate dashboard) instead of getting stuck on the loading spinner.
+| `mollie-connect-trainer/index.ts` | Point `redirect_uri` to the backend function URL |
+| `mollie-connect-academy/index.ts` | Same redirect URI change |
+| `mollie-callback/index.ts` | Handle GET params instead of JSON body; HTTP 302 redirect to React app after processing |
+| `MollieCallback.tsx` | Read result from URL params only; remove invoke/timeout logic |
 
