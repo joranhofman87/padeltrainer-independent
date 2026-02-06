@@ -276,6 +276,7 @@ serve(async (req) => {
       },
       description: description || `Padel lesson booking`,
       redirectUrl: `${origin}/app/booking-success?booking_id=${bookingId}`,
+      cancelUrl: `${origin}/app/booking-cancelled?booking_id=${bookingId}`,
       webhookUrl: `${supabaseUrl}/functions/v1/mollie-webhook`,
       metadata: {
         booking_id: bookingId,

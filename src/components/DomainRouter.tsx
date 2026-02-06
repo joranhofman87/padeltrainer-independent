@@ -22,6 +22,7 @@ import CycleRegistration from '@/pages/CycleRegistration';
 
 // API callback pages
 import MollieCallback from '@/pages/MollieCallback';
+import BookingCancelled from '@/pages/BookingCancelled';
 
 // App pages
 import Auth from '@/pages/Auth';
@@ -160,6 +161,7 @@ export function DomainRouter() {
 
       {/* Booking & standalone routes */}
       <Route path="/app/booking-success" element={<BookingSuccess />} />
+      <Route path="/app/booking-cancelled" element={<BookingCancelled />} />
       <Route path="/app/book/:trainerId" element={<BookLesson />} />
       
       {/* Admin routes */}
