@@ -1,64 +1,67 @@
 
-# Fix: Mollie Callback Page Stuck Loading
+# Add "Disconnect Mollie" Button to Admin Panel
 
 ## Problem
 
-The trainer (`joranhofman87+trainermollie@gmail.com`) completed the Mollie OAuth flow and was redirected back to `https://app.padeltrainer.ai/api/mollie-callback`, but the page is stuck showing "Connecting your Mollie account..." indefinitely.
-
-**Symptoms:**
-- Page shows loading spinner with "Please wait while we complete the connection"
-- No error is displayed
-- Edge function logs show no calls to `mollie-callback`
-
-## Root Cause
-
-The `mollie-callback` edge function has **incomplete CORS headers**. The Supabase JavaScript client automatically sends additional headers that aren't listed in `Access-Control-Allow-Headers`:
-
-**Current headers (line 6):**
-```javascript
-"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-```
-
-**Missing headers sent by Supabase client:**
-- `x-supabase-client-platform`
-- `x-supabase-client-platform-version`
-- `x-supabase-client-runtime`
-- `x-supabase-client-runtime-version`
-
-When the browser sends a preflight OPTIONS request, the edge function says "I don't allow those headers", so the browser blocks the actual POST request entirely. This causes the `supabase.functions.invoke()` call to hang silently.
+When a trainer or academy gets stuck in a Mollie connection loop (e.g., the callback fails), the admin currently has no way to reset their Mollie state. The only fix is manual database edits.
 
 ## Solution
 
-Update the CORS headers in the `mollie-callback` edge function to include all headers sent by the Supabase client.
+Add a "Disconnect Mollie" section to the **Settings** tab of both the Trainer and Academy edit dialogs in the admin panel. This will allow admins to clear the Mollie connection data so the user can start fresh.
+
+## What Gets Cleared
+
+**For Trainers:**
+- Delete the row in `trainer_mollie_accounts` (contains access tokens, org ID)
+- Set `mollie_customer_id` to `null` on `trainer_profiles`
+
+**For Academies:**
+- Delete the row in `academy_mollie_accounts` (contains access tokens, org ID)
+- Set `mollie_customer_id` to `null` on `academy_profiles`
 
 ## Technical Changes
 
-### File: `supabase/functions/mollie-callback/index.ts`
+### 1. `src/components/admin/TrainerEditDialog.tsx`
 
-**Update lines 4-6** - Expand the CORS headers:
+- On dialog open, fetch Mollie account status from `trainer_mollie_accounts` for this trainer
+- Add a "Mollie Connection" section in the Settings tab showing:
+  - Connection status (Connected / Not connected)
+  - Mollie organization ID (if connected)
+  - A red "Disconnect Mollie" button with confirmation dialog
+- The disconnect handler will:
+  1. Delete from `trainer_mollie_accounts` where `trainer_id = trainer.id`
+  2. Update `trainer_profiles` set `mollie_customer_id = null` where `id = trainer.id`
+  3. Show success toast
 
-```typescript
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+### 2. `src/components/admin/AcademyEditDialog.tsx`
+
+- Same pattern: fetch from `academy_mollie_accounts`, show status, add disconnect button
+- The disconnect handler will:
+  1. Delete from `academy_mollie_accounts` where `academy_profile_id = academy.id`
+  2. Update `academy_profiles` set `mollie_customer_id = null` where `id = academy.id`
+  3. Show success toast
+
+## UI Preview
+
+In the Settings tab, below the existing settings, a new bordered section will appear:
+
+```text
++-----------------------------------------------+
+| Mollie Connection                              |
+| Status: Connected                              |
+| Org ID: org_xxxxx                              |
+|                                                |
+| [Disconnect Mollie]  (red destructive button)  |
++-----------------------------------------------+
 ```
 
-## Immediate Workaround
-
-For the stuck user right now:
-1. The user should manually navigate to `/trainer/earnings`
-2. Click "Connect Mollie" again to restart the OAuth flow
-3. After publishing this fix, the callback will work correctly
+If not connected, it will simply show "Not connected" with no button.
 
 ## Summary
 
 | File | Change |
 |------|--------|
-| `supabase/functions/mollie-callback/index.ts` | Add missing CORS headers for Supabase client compatibility |
+| `src/components/admin/TrainerEditDialog.tsx` | Add Mollie status display and disconnect button in Settings tab |
+| `src/components/admin/AcademyEditDialog.tsx` | Add Mollie status display and disconnect button in Settings tab |
 
-## Expected Result
-
-- Mollie OAuth callbacks will process successfully
-- Users will see the success message and be redirected to `/trainer/earnings?mollie_connected=true`
-- The edge function logs will show the callback being processed
+No database migrations needed -- we're using existing tables and columns.
