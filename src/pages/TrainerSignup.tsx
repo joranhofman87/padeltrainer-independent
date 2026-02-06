@@ -33,13 +33,8 @@ export default function TrainerSignup() {
   const { t } = useTranslation('auth');
 
   useEffect(() => {
-    if (!loading && user) {
-      if (role) {
-        navigate(role === 'trainer' ? '/trainer' : '/player');
-      } else {
-        // New user - redirect to complete onboarding
-        navigate('/onboarding/trainer');
-      }
+    if (!loading && user && role) {
+      navigate(role === 'trainer' ? '/trainer' : '/player');
     }
   }, [user, role, loading, navigate]);
 
