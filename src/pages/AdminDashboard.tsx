@@ -20,6 +20,7 @@ export default function AdminDashboard() {
     data: stats,
     isLoading: statsLoading,
     isFetching: statsRefreshing,
+    error: statsError,
   } = useAdminStats();
   const { invalidateAll } = useInvalidateAdminData();
 
@@ -110,7 +111,12 @@ export default function AdminDashboard() {
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-16">
-          <p className="text-muted-foreground">No data available</p>
+          <p className="text-destructive font-medium">
+            {statsError instanceof Error ? statsError.message : "Failed to load statistics"}
+          </p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {statsError instanceof Error && statsError.message}
+          </p>
           <Button variant="outline" onClick={handleRefresh} className="mt-4">
             Try Again
           </Button>
