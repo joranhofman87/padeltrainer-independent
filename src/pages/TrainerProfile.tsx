@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
+import { TrainerOpenSlots } from '@/components/trainer/TrainerOpenSlots';
 import { WaitingListCard } from '@/components/waitingList';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
@@ -744,6 +745,9 @@ export default function TrainerProfile() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Open Slots */}
+            {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}
 
             {/* Open Registrations */}
             {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
