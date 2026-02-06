@@ -10,6 +10,123 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[MOLLIE-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+async function refreshTokenIfNeeded(
+  supabaseClient: any,
+  accountData: any,
+  entityType: 'trainer' | 'academy',
+  entityId: string
+): Promise<string | null> {
+  const mollieClientId = Deno.env.get("MOLLIE_CLIENT_ID");
+  const mollieClientSecret = Deno.env.get("MOLLIE_CLIENT_SECRET");
+
+  if (!mollieClientId || !mollieClientSecret) {
+    return accountData.access_token;
+  }
+
+  const tokenExpiresAt = new Date(accountData.token_expires_at);
+  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+
+  if (tokenExpiresAt > fiveMinutesFromNow) {
+    return accountData.access_token;
+  }
+
+  logStep("Token expired or expiring soon, refreshing");
+
+  if (!accountData.refresh_token) {
+    return accountData.access_token;
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.mollie.com/oauth2/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${btoa(`${mollieClientId}:${mollieClientSecret}`)}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: accountData.refresh_token,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      logStep("Token refresh failed", errorData);
+      return accountData.access_token;
+    }
+
+    const tokens = await tokenResponse.json();
+    const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+    const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'academy_mollie_accounts';
+    const idColumn = entityType === 'trainer' ? 'trainer_id' : 'academy_profile_id';
+
+    await supabaseClient
+      .from(tableName)
+      .update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: newExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq(idColumn, entityId);
+
+    logStep("Token refreshed successfully");
+    return tokens.access_token;
+  } catch (error) {
+    logStep("Error refreshing token", { error: String(error) });
+    return accountData.access_token;
+  }
+}
+
+async function resolveAccessToken(
+  supabase: any,
+  trainerId: string
+): Promise<string | null> {
+  // First check if trainer is part of an active academy
+  const { data: academyTrainer } = await supabase
+    .from("academy_trainers")
+    .select("academy_profile_id, status")
+    .eq("trainer_profile_id", trainerId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (academyTrainer?.academy_profile_id) {
+    const { data: academyMollie } = await supabase
+      .from("academy_mollie_accounts")
+      .select("access_token, refresh_token, token_expires_at, charges_enabled")
+      .eq("academy_profile_id", academyTrainer.academy_profile_id)
+      .eq("onboarding_complete", true)
+      .single();
+
+    if (academyMollie?.access_token && academyMollie?.charges_enabled) {
+      const token = await refreshTokenIfNeeded(supabase, academyMollie, 'academy', academyTrainer.academy_profile_id);
+      if (token) {
+        logStep("Using academy access token", { academyId: academyTrainer.academy_profile_id });
+        return token;
+      }
+    }
+  }
+
+  // Check trainer's own Mollie account
+  const { data: trainerMollie } = await supabase
+    .from("trainer_mollie_accounts")
+    .select("access_token, refresh_token, token_expires_at")
+    .eq("trainer_id", trainerId)
+    .eq("onboarding_complete", true)
+    .single();
+
+  if (trainerMollie?.access_token) {
+    const token = await refreshTokenIfNeeded(supabase, trainerMollie, 'trainer', trainerId);
+    if (token) {
+      logStep("Using trainer access token", { trainerId });
+      return token;
+    }
+  }
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -34,10 +151,35 @@ serve(async (req) => {
 
     logStep("Webhook received", { paymentId });
 
+    // Look up booking to find trainer for token resolution
+    const { data: bookingForToken } = await supabase
+      .from("bookings")
+      .select("slot_id, availability_slots!inner(trainer_id)")
+      .eq("mollie_payment_id", paymentId)
+      .limit(1)
+      .maybeSingle();
+
+    const trainerId = bookingForToken?.availability_slots?.trainer_id;
+    let recipientAccessToken: string | null = null;
+
+    if (trainerId) {
+      recipientAccessToken = await resolveAccessToken(supabase, trainerId);
+    }
+
+    // Build fetch URL with testmode if needed
+    const isTestMode = mollieApiKey.startsWith("test_");
+    const authToken = recipientAccessToken || mollieApiKey;
+    let fetchUrl = `https://api.mollie.com/v2/payments/${paymentId}`;
+    if (isTestMode && recipientAccessToken) {
+      fetchUrl += "?testmode=true";
+    }
+
+    logStep("Fetching payment from Mollie", { useConnectedToken: !!recipientAccessToken, isTestMode });
+
     // Fetch payment details from Mollie
-    const mollieResponse = await fetch(`https://api.mollie.com/v2/payments/${paymentId}`, {
+    const mollieResponse = await fetch(fetchUrl, {
       headers: {
-        "Authorization": `Bearer ${mollieApiKey}`,
+        "Authorization": `Bearer ${authToken}`,
       },
     });
 
