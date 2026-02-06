@@ -187,6 +187,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      // AbortError is normal (React StrictMode, navigation) - don't treat as auth failure
+      if (error?.name === 'AbortError') {
+        logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
+        setLoading(false);
+        return;
+      }
       // If there's an error getting the session, sign out to clear corrupted state
       if (error) {
         logger.warn('Failed to get session, signing out', { component: 'useAuth', error });
@@ -203,6 +209,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     }).catch(async (error) => {
+      // AbortError is normal (React StrictMode, navigation) - don't treat as auth failure
+      if (error?.name === 'AbortError') {
+        logger.warn('Session retrieval aborted (normal)', { component: 'useAuth' });
+        setLoading(false);
+        return;
+      }
       logger.error('Session retrieval error', error as Error, { component: 'useAuth' });
       await supabase.auth.signOut();
       setLoading(false);
