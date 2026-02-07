@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -26,6 +27,7 @@ interface PlayerInvoice {
   invoice_date: string;
   due_date: string;
   player_name: string;
+  player_business_name: string | null;
   player_address: string | null;
   player_btw_number: string | null;
   subtotal: number;
@@ -56,8 +58,10 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   const [loading, setLoading] = useState(true);
   const [downloadLoading, setDownloadLoading] = useState<string | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<PlayerInvoice | null>(null);
+  const [billingBusinessName, setBillingBusinessName] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [billingBtw, setBillingBtw] = useState('');
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -68,7 +72,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     setLoading(true);
     const { data, error } = await supabase
       .from('invoices')
-      .select('id, invoice_number, invoice_date, due_date, player_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
+      .select('id, invoice_number, invoice_date, due_date, player_name, player_business_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
       .eq('player_id', profileId)
       .order('invoice_date', { ascending: false });
 
@@ -89,51 +93,72 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   };
 
   const handleDownload = async (invoice: PlayerInvoice) => {
-    if (!invoice.pdf_url) {
-      setDownloadLoading(invoice.id);
-      const { data, error } = await supabase.functions.invoke('generate-invoice', {
-        body: { invoiceId: invoice.id },
-      });
+    setDownloadLoading(invoice.id);
 
-      if (error || !data?.pdfUrl) {
-        toast({ title: 'Fout', description: 'Kon PDF niet genereren', variant: 'destructive' });
-        setDownloadLoading(null);
-        return;
-      }
+    // Always regenerate to get a fresh signed URL
+    const { data, error } = await supabase.functions.invoke('generate-invoice', {
+      body: { invoiceId: invoice.id },
+    });
 
-      window.open(data.pdfUrl, '_blank');
+    if (error || !data?.pdfUrl) {
+      console.error('Generate invoice error:', error, data);
+      toast({ title: 'Fout', description: 'Kon PDF niet genereren', variant: 'destructive' });
       setDownloadLoading(null);
-      fetchInvoices();
-    } else {
-      window.open(invoice.pdf_url, '_blank');
+      return;
     }
+
+    window.open(data.pdfUrl, '_blank');
+    setDownloadLoading(null);
+    fetchInvoices();
   };
 
   const openEditBilling = (invoice: PlayerInvoice) => {
     setEditingInvoice(invoice);
+    setBillingBusinessName(invoice.player_business_name || '');
     setBillingAddress(invoice.player_address || '');
     setBillingBtw(invoice.player_btw_number || '');
+    setSaveAsDefault(false);
   };
 
   const handleSaveBilling = async () => {
     if (!editingInvoice) return;
     setSaving(true);
 
+    // Update the invoice and clear pdf_url so next download regenerates with new details
     const { error } = await supabase
       .from('invoices')
       .update({
+        player_business_name: billingBusinessName || null,
         player_address: billingAddress || null,
         player_btw_number: billingBtw || null,
+        pdf_url: null,
       } as any)
       .eq('id', editingInvoice.id);
 
     if (error) {
       toast({ title: 'Fout', description: 'Kon gegevens niet opslaan', variant: 'destructive' });
-    } else {
-      toast({ title: 'Opgeslagen', description: 'Je facturatiegegevens zijn bijgewerkt' });
-      setEditingInvoice(null);
-      fetchInvoices();
+      setSaving(false);
+      return;
     }
+
+    // Save as default billing details on the profile
+    if (saveAsDefault) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from('profiles')
+          .update({
+            billing_business_name: billingBusinessName || null,
+            billing_address: billingAddress || null,
+            billing_btw_number: billingBtw || null,
+          } as any)
+          .eq('user_id', user.id);
+      }
+    }
+
+    toast({ title: 'Opgeslagen', description: 'Je facturatiegegevens zijn bijgewerkt. De PDF wordt opnieuw gegenereerd bij de volgende download.' });
+    setEditingInvoice(null);
+    fetchInvoices();
     setSaving(false);
   };
 
@@ -241,6 +266,15 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
+              <Label htmlFor="billing-business-name">Bedrijfsnaam</Label>
+              <Input
+                id="billing-business-name"
+                value={billingBusinessName}
+                onChange={(e) => setBillingBusinessName(e.target.value)}
+                placeholder="Jouw Bedrijf B.V."
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="billing-address">Adres</Label>
               <Textarea
                 id="billing-address"
@@ -258,6 +292,16 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                 onChange={(e) => setBillingBtw(e.target.value)}
                 placeholder="NL123456789B01"
               />
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="save-as-default"
+                checked={saveAsDefault}
+                onCheckedChange={(checked) => setSaveAsDefault(checked === true)}
+              />
+              <Label htmlFor="save-as-default" className="text-sm font-normal cursor-pointer">
+                Bewaar als standaard voor toekomstige facturen
+              </Label>
             </div>
           </div>
           <DialogFooter>
