@@ -471,7 +471,7 @@
         },
         "forTrainers": {
           "title": "Voor Trainers:",
-          "content": "PadelTrainer.ai brengt een platformvergoeding in rekening (percentage varieert per abonnement) op elke voltooide boeking. Het resterende bedrag wordt overgemaakt naar uw gekoppelde Mollie-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
+          "content": "PadelTrainer.ai brengt een vast bedrag per voltooide boeking in rekening, afhankelijk van uw abonnement (bijv. €1,00 voor Starter, €0,75 voor Professional, €0,50 voor Academy). Het resterende bedrag wordt overgemaakt naar uw gekoppelde Mollie-account. Abonnementskosten worden gefactureerd volgens uw gekozen plan."
         }
       },
       "cancellation": {

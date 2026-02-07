@@ -50,7 +50,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
     {
       title: "Platform Fees",
       value: formatCurrency(stats.overview.platformFees),
-      description: `Avg ${stats.overview.avgFeePercent.toFixed(1)}% fee`,
+      description: `€${stats.overview.avgFeeFlat?.toFixed(2) || '1.00'} avg per booking`,
       icon: DollarSign,
       color: "text-emerald-500",
     },

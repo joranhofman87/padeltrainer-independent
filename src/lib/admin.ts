@@ -115,7 +115,7 @@ export interface AdminStats {
   overview: {
     totalGMV: number;
     platformFees: number;
-    avgFeePercent: number;
+    avgFeeFlat: number;
     totalBookings: number;
     paidBookings: number;
     activeTrainers: number;

@@ -31,7 +31,6 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
     description: plan.description || "",
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
-    platform_fee_percent: plan.platform_fee_percent,
     platform_fee_flat: plan.platform_fee_flat ?? 1.00,
     max_lessons: plan.max_lessons,
     mollie_plan_id_monthly: plan.mollie_plan_id_monthly || "",
