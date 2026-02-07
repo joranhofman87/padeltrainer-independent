@@ -102,6 +102,14 @@ export function AddSlotDialog({
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Sync date/time when dialog opens with new defaults (e.g. clicking a calendar cell)
+  useEffect(() => {
+    if (open) {
+      if (defaultDate) setSlotDate(defaultDate);
+      if (defaultTime) setSlotTime(defaultTime);
+    }
+  }, [open, defaultDate, defaultTime]);
+
   // Fetch trainer's academy affiliation
   useEffect(() => {
     async function fetchAcademy() {
@@ -398,9 +406,9 @@ export function BulkCreateSheet({
       : `${t("calendar.cyclus")} ${dayName} ${startTime}`;
   };
 
-  // Auto-add first slot when opened via cell click with default date/time
+  // Sync first slot when opened via cell click with default date/time
   useEffect(() => {
-    if (open && defaultDate && bulkSlots.length === 0) {
+    if (open && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
       setBulkSlots([
@@ -420,7 +428,10 @@ export function BulkCreateSheet({
         },
       ]);
     }
-  }, [open, defaultDate]);
+    if (!open) {
+      setBulkSlots([]);
+    }
+  }, [open, defaultDate, defaultTime]);
 
   const addBulkSlotConfig = () => {
     // If there's an existing slot, copy its settings
