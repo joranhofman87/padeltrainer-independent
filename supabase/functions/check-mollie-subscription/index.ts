@@ -94,7 +94,7 @@ serve(async (req) => {
           tier: profile.subscription_tier || "professional",
           endsAt: profile.subscription_ends_at,
           isManualOverride: true,
-          ...(type === "trainer" && { isPublic: profile.is_public ?? false }),
+          ...(type === "trainer" && { isPublic: (profile as any).is_public ?? false }),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -111,7 +111,7 @@ serve(async (req) => {
             status: "trialing",
             tier: type === "trainer" ? "trial" : type === "academy" ? "academy" : "club",
             trialEndsAt: trialEndsAt,
-            ...(type === "trainer" && { isPublic: profile.is_public ?? false }),
+            ...(type === "trainer" && { isPublic: (profile as any).is_public ?? false }),
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -143,7 +143,7 @@ serve(async (req) => {
           status: profile.subscription_status || "none",
           tier: profile.subscription_tier,
           endsAt: profile.subscription_ends_at,
-          ...(type === "trainer" && { isPublic: profile.is_public ?? false }),
+          ...(type === "trainer" && { isPublic: (profile as any).is_public ?? false }),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -178,7 +178,7 @@ serve(async (req) => {
           subscriptionId: activeSubscription.id,
           nextPaymentDate: activeSubscription.nextPaymentDate,
           amount: activeSubscription.amount,
-          ...(type === "trainer" && { isPublic: profile.is_public ?? false }),
+          ...(type === "trainer" && { isPublic: (profile as any).is_public ?? false }),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -199,7 +199,7 @@ serve(async (req) => {
           tier: profile.subscription_tier,
           endsAt: profile.subscription_ends_at,
           canceledAt: canceledSubscription.canceledAt,
-          ...(type === "trainer" && { isPublic: profile.is_public ?? false }),
+          ...(type === "trainer" && { isPublic: (profile as any).is_public ?? false }),
         }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

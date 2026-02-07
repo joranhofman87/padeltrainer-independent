@@ -174,7 +174,8 @@ serve(async (req) => {
       if (!paymentId) {
         molliePaymentId = booking.mollie_payment_id;
       }
-      trainerId = booking.availability_slots?.trainer_id;
+      const slotsData = booking.availability_slots as unknown as { trainer_id: string } | null;
+      trainerId = slotsData?.trainer_id;
     }
 
     if (!molliePaymentId) {
