@@ -1,69 +1,123 @@
 
 
-# Remove Percentage-Based Platform Fee References
+# Auto-Generate Invoices on Every Booking + VAT Rate per Trainer
 
 ## Summary
 
-The platform has moved to a flat per-booking fee model (e.g., €1.00, €0.75, €0.50 per booking) plus subscription fees. However, the old percentage-based fee model (10%, 5%, 2.5%) is still referenced in multiple places across the admin dashboard, subscription pages, backend stats calculation, email templates, and terms of service copy. This plan removes all of those remnants.
+Every confirmed booking (whether via Mollie payment, manual invoicing, or approval flow) will automatically generate an invoice. Trainers will be able to set their default VAT rate in their profile settings, since prices are **inclusive** of VAT and rates differ by country (21% NL, 6% UAE, 0% for KOR-registered trainers, etc.).
 
-## Places Where % Fees Are Still Referenced
+## Current State
 
-| Location | What it shows | Action |
-|----------|--------------|--------|
-| **Admin Dashboard** (`src/pages/AdminDashboard.tsx`) | Hardcoded "Fee Structure" card showing 10%, 5%, 2.5% | Replace with flat fee structure (€1.00, €0.75, €0.50) |
-| **Admin Stats Cards** (`src/components/admin/AdminStatsCards.tsx`) | "Avg X% fee" description on Platform Fees card | Change to show flat fee info instead |
-| **Admin Stats Edge Function** (`supabase/functions/get-admin-stats/index.ts`) | `TIER_FEES` map with 10/5/2.5, calculates `avgFeePercent`, estimates fees as GMV * percent | Replace with flat fee calculation: count paid bookings per tier, multiply by flat fee per tier |
-| **Admin Pricing Table** (`src/pages/admin/AdminPricing.tsx`) | Column showing `platform_fee_percent%` | Remove % column, keep flat fee column |
-| **Plan Edit Dialog** (`src/components/admin/PlanEditDialog.tsx`) | Still includes `platform_fee_percent` in form data (submitted on save) | Remove from form state (field is already hidden from UI but still saved) |
-| **Trainer Subscription Page** (`src/pages/TrainerSubscription.tsx`) | Shows `{plan.platform_fee_percent}% platform fee` in feature list | Change to show `€{plan.platform_fee_flat} per booking` |
-| **Email Template** (`supabase/functions/send-email/index.ts`) | Hardcoded "Platform Fee (10%)" with fallback `price * 0.1` | Use actual flat fee from data, remove % fallback |
-| **Terms of Service** (EN: `src/i18n/locales/en/marketing.json`, NL: `src/i18n/locales/nl/marketing.json`) | "percentage varies by subscription plan" | Update to "flat fee per booking" |
-| **Subscription lib** (`src/lib/subscription.ts`) | `TRIAL_PLATFORM_FEE_PERCENT`, `platformFeePercent` on each tier, `getPlatformFeePercent()` function | Remove all percentage constants and the function |
-| **Admin types** (`src/lib/admin.ts`) | `avgFeePercent` in AdminStats type | Replace with `avgFeeFlat` or remove |
+- Invoices are only created manually by trainers via the "Factuur aanmaken" dialog on the Earnings page
+- The `invoices` table exists with all needed columns (line_items, vat_rate, subtotal, etc.)
+- The `CreateInvoiceDialog` hardcodes Dutch VAT rates (21%, 9%, 0%) and treats prices as **exclusive** of VAT (adds VAT on top)
+- `trainer_profiles` has no `default_vat_rate` or `country` column
+- There are 3 booking entry points in `BookLesson.tsx`: (1) Mollie payment, (2) manual invoicing, (3) approval-required
+- The Mollie webhook (`mollie-webhook/index.ts`) confirms bookings after payment but creates no invoice
 
-## What Stays
+## What Changes
 
-- `platform_fee_percent` column in the database `subscription_plans` table -- we won't drop it now (it can be zeroed out), to avoid a schema migration
-- `platform_fee_override` on trainer/academy profiles -- these are already flat fee overrides used in `create-mollie-payment`, they stay as-is
-- The actual payment logic in `create-mollie-payment` -- this already uses `platform_fee_flat` correctly
+### 1. Database: Add `default_vat_rate` to `trainer_profiles`
+
+Add a `default_vat_rate` column (numeric, default 21) to `trainer_profiles`. This stores the trainer's chosen VAT rate for all auto-generated invoices. Prices are VAT-inclusive, so a rate of 21% on a EUR 50 lesson means EUR 41.32 ex-VAT + EUR 8.68 VAT = EUR 50.00.
+
+### 2. New Edge Function: `auto-create-invoice`
+
+A backend function that:
+- Accepts `bookingId` (single) or `bookingIds` (array)
+- Fetches booking details (player, lesson, slot, price)
+- Fetches the trainer's business info and `default_vat_rate`
+- Calculates VAT **backwards** from the inclusive price: `subtotal = total / (1 + vatRate/100)`, `vatAmount = total - subtotal`
+- Generates an invoice number (same `INV-YYYY-NNNN` pattern)
+- Inserts the invoice record with status `sent`
+- Links the booking via `booking_ids`
+- Skips invoice creation if trainer has no business info (business_name, kvk_number, iban) -- the booking still works, invoice can be created manually later
+
+### 3. Call `auto-create-invoice` from 3 places
+
+| Trigger | Where | When |
+|---------|-------|------|
+| Mollie payment succeeds | `mollie-webhook/index.ts` | After bookings are updated to `paid`/`confirmed` |
+| Manual booking confirmed | `BookLesson.tsx` (manual invoicing path) | After booking insert succeeds |
+| Approval-based booking confirmed | `BookLesson.tsx` or `confirmBookingAfterApproval` | After trainer approves and booking becomes `confirmed` |
+
+For the Mollie webhook, it will call `auto-create-invoice` server-side (supabase function invoke). For frontend paths, the client will invoke the edge function after the booking is created.
+
+### 4. Trainer Settings: VAT Rate Picker
+
+Add a "Default VAT rate" selector to the Invoice Settings card (`InvoiceSettingsCard.tsx`). Options:
+- 21% -- Standard (NL, BE, etc.)
+- 9% -- Reduced rate
+- 0% -- Exempt / KOR
+- Custom entry for other countries (e.g., 5% for UAE)
+
+This saves to `trainer_profiles.default_vat_rate`.
+
+### 5. Update `CreateInvoiceDialog` (manual invoice creation)
+
+- Pre-fill the VAT rate from `trainer_profiles.default_vat_rate` instead of hardcoding 21%
+- Change the price label from "Prijs (excl. BTW)" to "Prijs (incl. BTW)" and reverse-calculate subtotal from inclusive price
+- Keep the ability to override VAT rate per invoice
+
+### 6. Update `PlayerInvoicesTab`
+
+No major changes needed -- it already shows invoices linked to the player. Auto-generated invoices will appear automatically since they use the same `player_id` field.
 
 ## Technical Details
 
-### 1. `src/pages/AdminDashboard.tsx`
-Replace the "Fee Structure" card contents from percentage values (10%, 5%, 2.5%) to flat values (€1.00, €0.75, €0.50) with labels like "per booking".
+### Database Migration
 
-### 2. `src/components/admin/AdminStatsCards.tsx`
-Change the Platform Fees card description from `Avg ${stats.overview.avgFeePercent.toFixed(1)}% fee` to something like `€${stats.overview.avgFeeFlat?.toFixed(2) || '1.00'} avg per booking` or simply show total count of paid bookings.
-
-### 3. `supabase/functions/get-admin-stats/index.ts`
-Replace the `TIER_FEES` percentage map with flat fees:
-```text
-const TIER_FLAT_FEES: Record<string, number> = {
-  starter: 1.00,
-  professional: 0.75,
-  academy: 0.50,
-};
+```sql
+ALTER TABLE trainer_profiles 
+ADD COLUMN default_vat_rate numeric DEFAULT 21;
 ```
-Calculate estimated platform fees as: sum of (bookings per tier * flat fee) instead of GMV * percentage. Return `avgFeeFlat` instead of `avgFeePercent`.
 
-### 4. `src/pages/admin/AdminPricing.tsx`
-Remove the `platform_fee_percent%` column from both trainer and club plan tables.
+### Edge Function: `supabase/functions/auto-create-invoice/index.ts`
 
-### 5. `src/components/admin/PlanEditDialog.tsx`
-Remove `platform_fee_percent` from the form state so it's no longer submitted on save.
+Key logic:
+```text
+Input: { bookingIds: string[] }
+For each booking:
+  1. Fetch booking + slot + lesson + player profile
+  2. Fetch trainer_profiles (business info, default_vat_rate)
+  3. If business info incomplete -> skip (log warning)
+  4. Calculate: total = lesson.price (inclusive)
+     vatRate = trainer.default_vat_rate
+     subtotal = total / (1 + vatRate/100)
+     vatAmount = total - subtotal
+  5. Generate invoice_number (INV-YYYY-NNNN, sequential per trainer)
+  6. Insert into invoices table
+  7. Update booking payment_status to 'invoiced' (for manual bookings)
+```
 
-### 6. `src/pages/TrainerSubscription.tsx`
-Change line 330 from `{plan.platform_fee_percent}% platform fee` to `€{plan.platform_fee_flat?.toFixed(2)} per booking`.
+### Mollie Webhook Changes
 
-### 7. `supabase/functions/send-email/index.ts`
-Update the booking confirmation email to show "Platform Fee: -€X.XX" using the actual `platformFee` data value, removing the hardcoded "(10%)" label and the `price * 0.1` fallback.
+After the "Bookings updated successfully" step, add:
+```text
+if (payment.status === "paid") {
+  // Auto-create invoice
+  await supabase.functions.invoke("auto-create-invoice", {
+    body: { bookingIds }
+  });
+}
+```
 
-### 8. i18n files (EN + NL)
-Update the Terms of Service payment section to reference a flat fee per booking instead of a percentage.
+### BookLesson.tsx Changes
 
-### 9. `src/lib/subscription.ts`
-Remove `TRIAL_PLATFORM_FEE_PERCENT`, `platformFeePercent` from tier configs, and the `getPlatformFeePercent()` function entirely. Keep the rest of the file (trial days, tier types, etc.).
+After the manual booking insert (line ~519) and after cyclus booking (line ~355), invoke:
+```text
+await supabase.functions.invoke('auto-create-invoice', {
+  body: { bookingIds: [bookingData.id] }
+});
+```
 
-### 10. `src/lib/admin.ts`
-Update the `AdminStats` type to replace `avgFeePercent` with `avgFeeFlat` (or remove it).
+### InvoiceSettingsCard Changes
+
+Add a VAT rate selector field that reads/writes `default_vat_rate` from `trainer_profiles`.
+
+### CreateInvoiceDialog Changes
+
+- Default `vatRate` from trainer's `default_vat_rate` prop instead of hardcoded "21"
+- Reverse the VAT calculation: prices entered are inclusive, subtotal is derived
+- Update the label from "excl. BTW" to "incl. BTW"
 
