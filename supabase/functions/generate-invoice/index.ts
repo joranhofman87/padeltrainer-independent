@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface LineItem {
@@ -19,6 +19,7 @@ interface InvoiceData {
   invoice_date: string;
   due_date: string;
   player_name: string;
+  player_business_name: string | null;
   player_address: string | null;
   player_btw_number: string | null;
   line_items: LineItem[];
@@ -122,7 +123,8 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
       </div>
       <div class="party">
         <div class="party-label">Aan</div>
-        <div class="party-name">${invoice.player_name}</div>
+        ${invoice.player_business_name ? `<div class="party-name">${invoice.player_business_name}</div>` : ''}
+        <div class="${invoice.player_business_name ? 'party-details' : 'party-name'}">${invoice.player_name}</div>
         ${invoice.player_address ? `<div class="party-details">${invoice.player_address}</div>` : ''}
         ${invoice.player_btw_number ? `<div class="party-details" style="margin-top: 8px;">BTW: ${invoice.player_btw_number}</div>` : ''}
       </div>
@@ -222,7 +224,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch invoice with trainer info
+    // Fetch invoice
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .select('*')
@@ -250,8 +252,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Verify the user owns this invoice
-    if (trainerProfile.user_id !== user.id) {
+    // Allow both the trainer AND the player to access the invoice
+    const isTrainer = trainerProfile.user_id === user.id;
+    const isPlayer = invoice.player_id === user.id;
+
+    if (!isTrainer && !isPlayer) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -265,6 +270,7 @@ const handler = async (req: Request): Promise<Response> => {
       invoice_date: invoice.invoice_date,
       due_date: invoice.due_date,
       player_name: invoice.player_name,
+      player_business_name: invoice.player_business_name || null,
       player_address: invoice.player_address,
       player_btw_number: invoice.player_btw_number,
       line_items: invoice.line_items as LineItem[],
@@ -286,8 +292,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     const htmlContent = generateInvoiceHTML(invoiceData);
     
-    // Store HTML as a file (can be converted to PDF client-side or via additional service)
-    const fileName = `${user.id}/${invoice.invoice_number}.html`;
+    // Store under trainer's user_id folder (consistent path)
+    const fileName = `${trainerProfile.user_id}/${invoice.invoice_number}.html`;
     const { error: uploadError } = await supabase.storage
       .from('invoices')
       .upload(fileName, new Blob([htmlContent], { type: 'text/html' }), {
@@ -306,7 +312,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Get signed URL for download
     const { data: signedUrl } = await supabase.storage
       .from('invoices')
-      .createSignedUrl(fileName, 3600); // 1 hour expiry
+      .createSignedUrl(fileName, 3600);
 
     // Update invoice with PDF URL
     await supabase

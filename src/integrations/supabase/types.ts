@@ -1659,6 +1659,7 @@ export type Database = {
           pdf_url: string | null
           player_address: string | null
           player_btw_number: string | null
+          player_business_name: string | null
           player_id: string | null
           player_name: string
           sent_at: string | null
@@ -1684,6 +1685,7 @@ export type Database = {
           pdf_url?: string | null
           player_address?: string | null
           player_btw_number?: string | null
+          player_business_name?: string | null
           player_id?: string | null
           player_name: string
           sent_at?: string | null
@@ -1709,6 +1711,7 @@ export type Database = {
           pdf_url?: string | null
           player_address?: string | null
           player_btw_number?: string | null
+          player_business_name?: string | null
           player_id?: string | null
           player_name?: string
           sent_at?: string | null
@@ -2377,6 +2380,9 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          billing_address: string | null
+          billing_btw_number: string | null
+          billing_business_name: string | null
           bio: string | null
           created_at: string
           email: string | null
@@ -2392,6 +2398,9 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
           bio?: string | null
           created_at?: string
           email?: string | null
@@ -2407,6 +2416,9 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
           bio?: string | null
           created_at?: string
           email?: string | null

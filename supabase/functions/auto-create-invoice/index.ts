@@ -96,18 +96,24 @@ serve(async (req) => {
       });
     }
 
-    // Get player info
+    // Get player info including default billing details
     const playerId = bookings[0].player_id;
     let playerName = "Unknown Player";
+    let playerBusinessName: string | null = null;
+    let playerAddress: string | null = null;
+    let playerBtwNumber: string | null = null;
     if (playerId) {
       const { data: playerProfile } = await supabase
         .from("profiles")
-        .select("full_name")
+        .select("full_name, billing_business_name, billing_address, billing_btw_number")
         .eq("id", playerId)
         .single();
       if (playerProfile?.full_name) {
         playerName = playerProfile.full_name;
       }
+      playerBusinessName = playerProfile?.billing_business_name || null;
+      playerAddress = playerProfile?.billing_address || null;
+      playerBtwNumber = playerProfile?.billing_btw_number || null;
     }
 
     // Build line items from bookings
@@ -171,6 +177,9 @@ serve(async (req) => {
         due_date: dueDate.toISOString().split("T")[0],
         player_id: playerId,
         player_name: playerName,
+        player_business_name: playerBusinessName,
+        player_address: playerAddress,
+        player_btw_number: playerBtwNumber,
         line_items: lineItems,
         subtotal: Math.round(subtotal * 100) / 100,
         vat_rate: vatRate,
