@@ -20,6 +20,7 @@ interface InvoiceSettingsCardProps {
     iban: string | null;
     bic: string | null;
     payment_terms_days: number;
+    default_vat_rate: number | null;
   };
   onSave?: () => void;
 }
@@ -37,10 +38,14 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     iban: '',
     bic: '',
     payment_terms_days: 14,
+    default_vat_rate: 21,
+    custom_vat_rate: '',
   });
 
   useEffect(() => {
     if (initialData) {
+      const vatRate = initialData.default_vat_rate ?? 21;
+      const isCustom = ![21, 9, 0].includes(vatRate);
       setFormData({
         business_name: initialData.business_name || '',
         business_address: initialData.business_address || '',
@@ -49,6 +54,8 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         iban: initialData.iban || '',
         bic: initialData.bic || '',
         payment_terms_days: initialData.payment_terms_days || 14,
+        default_vat_rate: isCustom ? -1 : vatRate,
+        custom_vat_rate: isCustom ? vatRate.toString() : '',
       });
     }
   }, [initialData]);
@@ -58,6 +65,10 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
   const handleSave = async () => {
     setSaving(true);
     
+    const resolvedVatRate = formData.default_vat_rate === -1
+      ? parseFloat(formData.custom_vat_rate) || 0
+      : formData.default_vat_rate;
+
     const { error } = await supabase
       .from('trainer_profiles')
       .update({
@@ -68,6 +79,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         iban: formData.iban || null,
         bic: formData.bic || null,
         payment_terms_days: formData.payment_terms_days,
+        default_vat_rate: resolvedVatRate,
       })
       .eq('user_id', userId);
 
@@ -181,6 +193,48 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="default_vat_rate">
+              {t('invoices.defaultVatRate', 'Standaard BTW-tarief')}
+            </Label>
+            <Select
+              value={formData.default_vat_rate.toString()}
+              onValueChange={(v) => setFormData({ ...formData, default_vat_rate: parseInt(v), custom_vat_rate: parseInt(v) === -1 ? formData.custom_vat_rate : '' })}
+            >
+              <SelectTrigger id="default_vat_rate">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="21">21% - {t('invoices.vatStandard', 'Standaard tarief')}</SelectItem>
+                <SelectItem value="9">9% - {t('invoices.vatReduced', 'Laag tarief')}</SelectItem>
+                <SelectItem value="0">0% - {t('invoices.vatExempt', 'Vrijgesteld / KOR')}</SelectItem>
+                <SelectItem value="-1">{t('invoices.vatCustom', 'Anders...')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {t('invoices.vatInclusiveNote', 'Lesprijzen zijn inclusief BTW. Dit tarief wordt gebruikt voor automatische facturen.')}
+            </p>
+          </div>
+          {formData.default_vat_rate === -1 && (
+            <div className="space-y-2">
+              <Label htmlFor="custom_vat_rate">
+                {t('invoices.customVatRate', 'BTW-percentage')}
+              </Label>
+              <Input
+                id="custom_vat_rate"
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={formData.custom_vat_rate}
+                onChange={(e) => setFormData({ ...formData, custom_vat_rate: e.target.value })}
+                placeholder="5"
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
