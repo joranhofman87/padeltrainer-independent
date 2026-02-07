@@ -79,6 +79,7 @@ interface TrainerBusinessInfo {
   payment_terms_days: number;
   use_manual_invoicing: boolean;
   default_vat_rate: number | null;
+  invoice_forward_emails: string[] | null;
 }
 
 export default function TrainerEarnings() {
@@ -145,7 +146,7 @@ export default function TrainerEarnings() {
   const fetchTrainerInfo = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing, default_vat_rate')
+      .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing, default_vat_rate, invoice_forward_emails')
       .eq('user_id', user!.id)
       .single();
 
@@ -659,11 +660,9 @@ export default function TrainerEarnings() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="history" className="flex-1 sm:flex-none">History</TabsTrigger>
-              {useManualInvoicing && (
-                <TabsTrigger value="invoices" className="flex-1 sm:flex-none">
-                  Invoices
-                </TabsTrigger>
-              )}
+              <TabsTrigger value="invoices" className="flex-1 sm:flex-none">
+                Invoices
+              </TabsTrigger>
             </TabsList>
 
           <TabsContent value="pending" className="space-y-4">
@@ -770,11 +769,12 @@ export default function TrainerEarnings() {
             )}
           </TabsContent>
 
-          {useManualInvoicing && trainerInfo && (
+          {trainerInfo && (
             <TabsContent value="invoices">
               <InvoiceList 
                 trainerId={trainerInfo.id} 
                 refreshTrigger={invoiceRefreshTrigger}
+                forwardEmails={trainerInfo.invoice_forward_emails || []}
               />
             </TabsContent>
           )}

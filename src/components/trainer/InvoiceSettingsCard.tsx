@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface InvoiceSettingsCardProps {
   userId: string;
@@ -21,6 +22,7 @@ interface InvoiceSettingsCardProps {
     bic: string | null;
     payment_terms_days: number;
     default_vat_rate: number | null;
+    invoice_forward_emails: string[] | null;
   };
   onSave?: () => void;
 }
@@ -41,6 +43,8 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     default_vat_rate: 21,
     custom_vat_rate: '',
   });
+  const [forwardEmails, setForwardEmails] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState('');
 
   useEffect(() => {
     if (initialData) {
@@ -57,6 +61,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         default_vat_rate: isCustom ? -1 : vatRate,
         custom_vat_rate: isCustom ? vatRate.toString() : '',
       });
+      setForwardEmails(initialData.invoice_forward_emails || []);
     }
   }, [initialData]);
 
@@ -80,6 +85,7 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         bic: formData.bic || null,
         payment_terms_days: formData.payment_terms_days,
         default_vat_rate: resolvedVatRate,
+        invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
       })
       .eq('user_id', userId);
 
@@ -258,6 +264,64 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
             <p className="text-xs text-muted-foreground">
               {t('invoices.domesticNote')}
             </p>
+          </div>
+        </div>
+
+        {/* Invoice Forwarding Emails */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <Label>{t('invoices.forwardEmails', 'Facturen doorsturen')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.forwardEmailsDescription', 'Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).')}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {forwardEmails.map((email, i) => (
+              <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                {email}
+                <button
+                  type="button"
+                  onClick={() => setForwardEmails(forwardEmails.filter((_, idx) => idx !== i))}
+                  className="ml-1 rounded-full hover:bg-muted p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="boekhouder@example.com"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const email = newEmail.trim().toLowerCase();
+                  if (email && email.includes('@') && !forwardEmails.includes(email)) {
+                    setForwardEmails([...forwardEmails, email]);
+                    setNewEmail('');
+                  }
+                }
+              }}
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                const email = newEmail.trim().toLowerCase();
+                if (email && email.includes('@') && !forwardEmails.includes(email)) {
+                  setForwardEmails([...forwardEmails, email]);
+                  setNewEmail('');
+                }
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
