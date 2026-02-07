@@ -16,7 +16,8 @@ import {
   Loader2,
   Euro,
   Trash2,
-  Eye
+  Eye,
+  Mail
 } from 'lucide-react';
 import { format, parseISO, isAfter } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -40,6 +41,7 @@ interface Invoice {
 interface InvoiceListProps {
   trainerId: string;
   refreshTrigger?: number;
+  forwardEmails?: string[];
 }
 
 type StatusFilter = 'all' | 'draft' | 'sent' | 'paid' | 'overdue';
@@ -52,7 +54,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
   cancelled: { label: 'Geannuleerd', variant: 'secondary', icon: AlertCircle },
 };
 
-export function InvoiceList({ trainerId, refreshTrigger }: InvoiceListProps) {
+export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: InvoiceListProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -111,6 +113,10 @@ export function InvoiceList({ trainerId, refreshTrigger }: InvoiceListProps) {
       });
     } else {
       toast({ title: 'Factuur gemarkeerd als betaald' });
+      // Auto-forward if emails configured
+      if (forwardEmails.length > 0) {
+        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(console.error);
+      }
       fetchInvoices();
     }
     setActionLoading(null);
@@ -174,6 +180,19 @@ export function InvoiceList({ trainerId, refreshTrigger }: InvoiceListProps) {
     } else {
       window.open(invoice.pdf_url, '_blank');
     }
+  };
+
+  const handleForwardInvoice = async (invoiceId: string) => {
+    setActionLoading(invoiceId);
+    const { error } = await supabase.functions.invoke('forward-invoice', {
+      body: { invoiceId },
+    });
+    if (error) {
+      toast({ title: 'Fout', description: 'Kon factuur niet doorsturen', variant: 'destructive' });
+    } else {
+      toast({ title: 'Factuur doorgestuurd', description: `Verzonden naar ${forwardEmails.length} adres(sen)` });
+    }
+    setActionLoading(null);
   };
 
   const handleDelete = async (invoiceId: string) => {
@@ -328,6 +347,22 @@ export function InvoiceList({ trainerId, refreshTrigger }: InvoiceListProps) {
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                    )}
+
+                    {invoice.status === 'paid' && forwardEmails.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleForwardInvoice(invoice.id)}
+                        disabled={actionLoading === invoice.id}
+                        title="Doorsturen naar boekhouding"
+                      >
+                        {actionLoading === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Mail className="h-4 w-4" />
                         )}
                       </Button>
                     )}

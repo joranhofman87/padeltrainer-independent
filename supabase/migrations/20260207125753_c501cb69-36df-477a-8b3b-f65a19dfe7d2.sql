@@ -1,0 +1,1 @@
+ALTER TABLE public.trainer_profiles ADD COLUMN invoice_forward_emails text[];

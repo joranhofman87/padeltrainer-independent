@@ -3037,6 +3037,7 @@ export type Database = {
           hourly_rate: number | null
           iban: string | null
           id: string
+          invoice_forward_emails: string[] | null
           is_public: boolean | null
           is_verified: boolean | null
           knltb_rating: number | null
@@ -3084,6 +3085,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          invoice_forward_emails?: string[] | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
@@ -3131,6 +3133,7 @@ export type Database = {
           hourly_rate?: number | null
           iban?: string | null
           id?: string
+          invoice_forward_emails?: string[] | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
