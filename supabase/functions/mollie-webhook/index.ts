@@ -159,7 +159,8 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    const trainerId = bookingForToken?.availability_slots?.trainer_id;
+    const slotsData = bookingForToken?.availability_slots as unknown as { trainer_id: string } | null;
+    const trainerId = slotsData?.trainer_id;
     let recipientAccessToken: string | null = null;
 
     if (trainerId) {
