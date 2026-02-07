@@ -1,62 +1,53 @@
 
 
-# Player Business Details for Invoices + Fix Download (403)
+# Fix Invoice Visibility + Add Invoice Email Forwarding
 
-## Two Issues to Solve
+## Problem 1: Invoices Tab Not Visible
 
-### Issue 1: Invoice Download Returns 403 for Players
-The `generate-invoice` edge function only allows the **trainer** to generate/download invoices (it checks `trainerProfile.user_id !== user.id`). When a player clicks download, they get a 403 Forbidden error.
+The "Invoices" tab on the Earnings page is currently **only shown when manual invoicing is enabled** (line 662-666 in `TrainerEarnings.tsx`). Since invoices are now auto-generated for ALL bookings (Mollie + manual + approval), the Invoices tab must always be visible regardless of the payment mode setting.
 
-**Fix**: Update the authorization check to also allow the player linked to the invoice (`invoice.player_id === user.id`).
+**Fix**: Remove the `useManualInvoicing` condition wrapping the Invoices tab trigger and its content. The tab and `InvoiceList` should always render when `trainerInfo` is available.
 
-### Issue 2: Player Business Details on Invoices
-Players should be able to store their own business details (company name, address, BTW number) that appear on invoices. Currently, the invoice only stores `player_address` and `player_btw_number`. We need to add a `player_business_name` field and let players manage these details globally (applied to all their invoices) or per-invoice.
+## Problem 2: Pending Payments Not Showing
 
----
+The pending payments list filters bookings to those with status `completed` or `confirmed` (with `payment_timing === 'after'`) AND `payment_status` of `pending` or `invoiced`. If bookings are being auto-invoiced and their status updates to something else, they may disappear from the pending list. Will verify the query logic aligns with the new auto-invoice flow -- the `auto-create-invoice` function sets invoice status to `sent` but should not be changing the booking `payment_status` unless explicitly coded.
 
-## Changes
+**Fix**: Ensure the pending payments filter also accounts for bookings where an invoice exists but the booking itself hasn't been marked paid yet. The current filter logic should work if the booking `payment_status` remains `pending` or `invoiced`.
 
-### 1. Database: Add `player_business_name` to invoices table
+## Feature: Forward Paid Invoices via Email
 
-```sql
-ALTER TABLE invoices ADD COLUMN player_business_name text;
-```
+Allow trainers to configure one or more email addresses where paid invoices are automatically forwarded (for bookkeeping software integration or self-notification).
 
-This field stores the company/business name that appears on the "Aan" section of the invoice.
+### Database Changes
 
-### 2. Fix `generate-invoice` Edge Function
+Add a column to `trainer_profiles`:
+- `invoice_forward_emails` (text array, nullable) -- stores multiple email addresses
 
-- **Fix CORS headers**: Add the missing `x-supabase-client-platform` headers so browser calls don't fail silently.
-- **Fix authorization**: Allow both the trainer (`trainerProfile.user_id === user.id`) AND the player (`invoice.player_id === user.id`) to generate/download the invoice.
-- **Include `player_business_name`** in the HTML template output (show it above or below the player name in the "Aan" section).
+### UI Changes: InvoiceSettingsCard
 
-### 3. Update `PlayerInvoicesTab.tsx`
+Add a new section "Invoice forwarding" with:
+- A list of configured email addresses (chips/tags)
+- An input to add new email addresses
+- A remove button per email
+- Helper text explaining that paid invoices (PDF) will be sent to these addresses
 
-**Enhance the billing details edit dialog** to include:
-- Business/company name (new field)
-- Address (existing)
-- BTW number (existing)
+### Backend: New Edge Function or Extend Existing
 
-When a player saves these details:
-- Update the invoice record with the new fields
-- Regenerate the PDF (clear `pdf_url` so next download creates a fresh one with updated details)
+When an invoice is marked as paid (either via `handleMarkPaid` in `InvoiceList` or automatically), trigger an email to all configured forwarding addresses with the invoice PDF attached/linked.
 
-Also add a "Save as default" option that stores these billing details for future invoices (stored in the player's profile or a separate preferences mechanism -- simplest: store on the `profiles` table).
+Two trigger points:
+1. **InvoiceList.tsx** `handleMarkPaid` -- after successfully updating status to paid, invoke the forwarding function
+2. **auto-create-invoice** -- for Mollie payments that are already paid, the invoice is created with status `sent`; when marked paid later, same flow applies
 
-### 4. Add default billing fields to `profiles` table
+Create a new edge function `forward-invoice` that:
+- Accepts `invoiceId` and `trainerId`
+- Fetches the invoice (including PDF URL) and trainer's `invoice_forward_emails`
+- If no forwarding emails configured, skip silently
+- Sends an email via Resend to each address with invoice details and a PDF download link
 
-Add columns to `profiles` so the player's business details auto-populate on new invoices:
-- `billing_business_name` (text, nullable)
-- `billing_address` (text, nullable)  
-- `billing_btw_number` (text, nullable)
+### InvoiceList: Add Manual Forward Button
 
-### 5. Update `auto-create-invoice` Edge Function
-
-When creating an invoice for a player, look up the player's default billing details from `profiles` and pre-fill `player_business_name`, `player_address`, and `player_btw_number` on the invoice.
-
-### 6. Update Invoice HTML Template
-
-Add the business name to the "Aan" (To) section of the invoice, displayed above the player's personal name when present.
+Add a "Forward" button (mail icon) on paid invoices so trainers can also manually trigger forwarding at any time, not just at the moment of marking paid.
 
 ---
 
@@ -64,8 +55,10 @@ Add the business name to the "Aan" (To) section of the invoice, displayed above 
 
 | File | Change |
 |------|--------|
-| Migration SQL | Add `player_business_name` to `invoices`, add `billing_business_name`, `billing_address`, `billing_btw_number` to `profiles` |
-| `generate-invoice/index.ts` | Fix CORS, fix auth (allow player), add `player_business_name` to HTML |
-| `auto-create-invoice/index.ts` | Pre-fill player billing details from `profiles` |
-| `PlayerInvoicesTab.tsx` | Add business name field to edit dialog, clear `pdf_url` on save so PDF regenerates |
+| Migration SQL | Add `invoice_forward_emails text[]` to `trainer_profiles` |
+| `TrainerEarnings.tsx` | Remove `useManualInvoicing` condition from Invoices tab; always show it |
+| `InvoiceSettingsCard.tsx` | Add forwarding emails section (add/remove emails, save to DB) |
+| `InvoiceList.tsx` | Add forward button on paid invoices; auto-forward on mark-paid |
+| `TrainerEarnings.tsx` | Pass `invoice_forward_emails` to settings card; update `TrainerBusinessInfo` interface |
+| New: `supabase/functions/forward-invoice/index.ts` | Edge function that emails invoice PDF link to configured addresses via Resend |
 
