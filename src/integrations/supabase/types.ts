@@ -3019,6 +3019,7 @@ export type Database = {
           certifications: string[] | null
           coaching_method: string | null
           created_at: string
+          default_vat_rate: number | null
           experience_years: number | null
           favourite_quote: string | null
           hourly_rate: number | null
@@ -3065,6 +3066,7 @@ export type Database = {
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string
+          default_vat_rate?: number | null
           experience_years?: number | null
           favourite_quote?: string | null
           hourly_rate?: number | null
@@ -3111,6 +3113,7 @@ export type Database = {
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string
+          default_vat_rate?: number | null
           experience_years?: number | null
           favourite_quote?: string | null
           hourly_rate?: number | null

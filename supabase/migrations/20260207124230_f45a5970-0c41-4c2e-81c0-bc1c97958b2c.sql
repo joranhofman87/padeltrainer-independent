@@ -1,0 +1,1 @@
+ALTER TABLE trainer_profiles ADD COLUMN default_vat_rate numeric DEFAULT 21;

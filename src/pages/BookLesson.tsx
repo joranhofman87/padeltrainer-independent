@@ -352,8 +352,19 @@ export default function BookLesson() {
           payment_status: 'pending',
         }));
 
-        const { error } = await supabase.from('bookings').insert(bookings);
+        const { data: insertedBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
         if (error) throw error;
+
+        // Auto-create invoice for manual invoicing cyclus bookings
+        if (useManualInvoicing && insertedBookings?.length) {
+          try {
+            await supabase.functions.invoke('auto-create-invoice', {
+              body: { bookingIds: insertedBookings.map(b => b.id) },
+            });
+          } catch (invoiceErr) {
+            console.error('Auto-create invoice failed (non-fatal):', invoiceErr);
+          }
+        }
 
         // Send appropriate email
         const firstSlot = selectedCyclus.slots[0];
@@ -519,6 +530,17 @@ export default function BookLesson() {
           .single();
 
         if (error) throw error;
+
+        // Auto-create invoice for manual booking
+        if (bookingData?.id) {
+          try {
+            await supabase.functions.invoke('auto-create-invoice', {
+              body: { bookingIds: [bookingData.id] },
+            });
+          } catch (invoiceErr) {
+            console.error('Auto-create invoice failed (non-fatal):', invoiceErr);
+          }
+        }
 
         // Send confirmation email to player
         const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');

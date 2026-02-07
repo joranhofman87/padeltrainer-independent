@@ -48,6 +48,7 @@ interface CreateInvoiceDialogProps {
   booking?: BookingData;
   trainerId: string;
   trainerBusinessInfo: TrainerBusinessInfo;
+  defaultVatRate?: number;
   onInvoiceCreated: () => void;
 }
 
@@ -63,6 +64,7 @@ export function CreateInvoiceDialog({
   booking,
   trainerId,
   trainerBusinessInfo,
+  defaultVatRate,
   onInvoiceCreated,
 }: CreateInvoiceDialogProps) {
   const { t } = useTranslation('trainer');
@@ -73,7 +75,7 @@ export function CreateInvoiceDialog({
   const [playerName, setPlayerName] = useState('');
   const [playerAddress, setPlayerAddress] = useState('');
   const [playerBtwNumber, setPlayerBtwNumber] = useState('');
-  const [vatRate, setVatRate] = useState('21');
+  const [vatRate, setVatRate] = useState((defaultVatRate ?? 21).toString());
   const [notes, setNotes] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
@@ -95,9 +97,11 @@ export function CreateInvoiceDialog({
     }
   }, [booking, open]);
 
-  const subtotal = lineItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
-  const vatAmount = subtotal * (parseFloat(vatRate) / 100);
-  const total = subtotal + vatAmount;
+  // Prices are VAT-inclusive: total = sum of line items, subtotal = total / (1 + vatRate/100)
+  const total = lineItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+  const vatRateNum = parseFloat(vatRate) || 0;
+  const subtotal = vatRateNum > 0 ? total / (1 + vatRateNum / 100) : total;
+  const vatAmount = total - subtotal;
 
   const addLineItem = () => {
     setLineItems([...lineItems, { description: '', quantity: 1, unit_price: 0 }]);
@@ -231,7 +235,7 @@ export function CreateInvoiceDialog({
       setPlayerName('');
       setPlayerAddress('');
       setPlayerBtwNumber('');
-      setVatRate('21');
+      setVatRate((defaultVatRate ?? 21).toString());
       setNotes('');
       setLineItems([]);
     } catch (err: any) {
@@ -367,7 +371,7 @@ export function CreateInvoiceDialog({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{t('invoices.unitPrice', 'Prijs (excl. BTW)')}</Label>
+                        <Label>{t('invoices.unitPrice', 'Prijs (incl. BTW)')}</Label>
                         <Input
                           type="number"
                           step="0.01"

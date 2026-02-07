@@ -120,3 +120,6 @@ verify_jwt = false
 
 [functions.generate-proposals]
 verify_jwt = false
+
+[functions.auto-create-invoice]
+verify_jwt = false

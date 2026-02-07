@@ -254,8 +254,21 @@ serve(async (req) => {
 
     logStep("Bookings updated successfully", { count: bookingIds.length });
 
-    // If payment is successful, send confirmation email
+    // If payment is successful, auto-create invoice and send confirmation email
     if (payment.status === "paid") {
+      // Auto-create invoice
+      try {
+        const { error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {
+          body: { bookingIds },
+        });
+        if (invoiceError) {
+          logStep("Auto-create invoice failed (non-fatal)", { error: String(invoiceError) });
+        } else {
+          logStep("Auto-create invoice triggered");
+        }
+      } catch (invoiceErr) {
+        logStep("Auto-create invoice error (non-fatal)", { error: String(invoiceErr) });
+      }
       try {
         // Fetch booking details for email (use first booking)
         const bookingId = bookingIds[0];
