@@ -87,24 +87,24 @@ export default function AdminDashboard() {
             <h2 className="text-lg font-semibold mb-4">Platform Fee Structure</h2>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-lg bg-muted/50 p-4">
-                <div className="text-2xl font-bold text-muted-foreground">10%</div>
+                <div className="text-2xl font-bold text-muted-foreground">€1.00</div>
                 <div className="text-sm font-medium">Starter Tier</div>
-                <div className="text-xs text-muted-foreground">Free plan</div>
+                <div className="text-xs text-muted-foreground">Per booking</div>
               </div>
               <div className="rounded-lg bg-primary/10 p-4">
-                <div className="text-2xl font-bold text-primary">5%</div>
+                <div className="text-2xl font-bold text-primary">€0.75</div>
                 <div className="text-sm font-medium">Professional Tier</div>
-                <div className="text-xs text-muted-foreground">€29/month</div>
+                <div className="text-xs text-muted-foreground">Per booking</div>
               </div>
               <div className="rounded-lg bg-chart-4/10 p-4">
                 <div
                   className="text-2xl font-bold"
                   style={{ color: "hsl(var(--chart-4))" }}
                 >
-                  2.5%
+                  €0.50
                 </div>
                 <div className="text-sm font-medium">Academy Tier</div>
-                <div className="text-xs text-muted-foreground">€79/month</div>
+                <div className="text-xs text-muted-foreground">Per booking</div>
               </div>
             </div>
           </div>

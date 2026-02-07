@@ -327,7 +327,7 @@ export default function TrainerSubscription() {
                   ))}
                   <li className="flex items-start gap-2">
                     <Check className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-sm">{plan.platform_fee_percent}% platform fee</span>
+                    <span className="text-sm">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} per booking fee</span>
                   </li>
                 </ul>
               </CardContent>

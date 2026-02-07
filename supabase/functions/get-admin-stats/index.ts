@@ -11,11 +11,11 @@ const logStep = (step: string, details?: any) => {
   console.log(`[ADMIN-STATS] ${step}${detailsStr}`);
 };
 
-// Platform fee percentages by tier
-const TIER_FEES: Record<string, number> = {
-  starter: 10,
-  professional: 5,
-  academy: 2.5,
+// Platform flat fees by tier (€ per booking)
+const TIER_FLAT_FEES: Record<string, number> = {
+  starter: 1.00,
+  professional: 0.75,
+  academy: 0.50,
 };
 
 serve(async (req) => {
@@ -154,15 +154,22 @@ serve(async (req) => {
       }
     });
 
-    // Estimate platform fees (weighted average based on current tier distribution)
+    // Estimate platform fees using flat fee per booking
     const totalTrainers = trainers.length || 1;
-    const avgFeePercent = (
-      (trainerTiers.starter * TIER_FEES.starter) +
-      (trainerTiers.professional * TIER_FEES.professional) +
-      (trainerTiers.academy * TIER_FEES.academy)
-    ) / totalTrainers;
-    
-    const estimatedPlatformFees = totalGMV * (avgFeePercent / 100);
+    const estimatedPlatformFees = 
+      (trainerTiers.starter * TIER_FLAT_FEES.starter) +
+      (trainerTiers.professional * TIER_FLAT_FEES.professional) +
+      (trainerTiers.academy * TIER_FLAT_FEES.academy);
+    // Weight by bookings (rough estimate: distribute paid bookings proportionally by trainer count)
+    const totalPaidBookings = paidBookings.length;
+    const avgFeeFlat = totalPaidBookings > 0
+      ? (
+          ((trainerTiers.starter / totalTrainers) * TIER_FLAT_FEES.starter) +
+          ((trainerTiers.professional / totalTrainers) * TIER_FLAT_FEES.professional) +
+          ((trainerTiers.academy / totalTrainers) * TIER_FLAT_FEES.academy)
+        )
+      : TIER_FLAT_FEES.starter;
+    const estimatedTotalFees = totalPaidBookings * avgFeeFlat;
 
     // Mollie Connect stats
     const connectedAccounts = mollieAccounts.filter(a => a.charges_enabled).length;
@@ -204,7 +211,7 @@ serve(async (req) => {
       });
 
       const monthGMV = monthBookings.reduce((sum, b) => sum + (Number(b.payment_amount) || 0), 0);
-      const monthFees = monthGMV * (avgFeePercent / 100);
+      const monthFees = monthBookings.length * avgFeeFlat;
 
       monthlyStats.push({
         month: monthName,
@@ -217,8 +224,8 @@ serve(async (req) => {
     const response = {
       overview: {
         totalGMV,
-        platformFees: estimatedPlatformFees,
-        avgFeePercent,
+        platformFees: estimatedTotalFees,
+        avgFeeFlat,
         totalBookings: bookings.length,
         paidBookings: paidBookings.length,
         activeTrainers: trainers.length,
@@ -244,7 +251,7 @@ serve(async (req) => {
       monthlyStats,
     };
 
-    logStep("Response prepared", { totalGMV, platformFees: estimatedPlatformFees });
+    logStep("Response prepared", { totalGMV, platformFees: estimatedTotalFees });
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

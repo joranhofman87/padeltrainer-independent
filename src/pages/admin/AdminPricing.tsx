@@ -132,7 +132,7 @@ export default function AdminPricing() {
                   <TableHead>Plan</TableHead>
                   <TableHead>{t("pricing.monthly")}</TableHead>
                   <TableHead>{t("pricing.yearly")}</TableHead>
-                  <TableHead>{t("pricing.platformFee")}</TableHead>
+                  <TableHead>{t("pricing.platformFee")} (€)</TableHead>
                   <TableHead>{t("pricing.maxLessons")}</TableHead>
                   <TableHead>{t("pricing.active")}</TableHead>
                   <TableHead className="text-right">{t("pricing.actions")}</TableHead>
@@ -153,7 +153,7 @@ export default function AdminPricing() {
                     </TableCell>
                     <TableCell>€{plan.monthly_price}</TableCell>
                     <TableCell>€{plan.yearly_price}</TableCell>
-                    <TableCell>{plan.platform_fee_percent}%</TableCell>
+                    <TableCell>€{plan.platform_fee_flat?.toFixed(2) ?? '—'}</TableCell>
                     <TableCell>{plan.max_lessons ?? "∞"}</TableCell>
                     <TableCell>
                       <Switch
@@ -200,7 +200,7 @@ export default function AdminPricing() {
                   <TableHead>Plan</TableHead>
                   <TableHead>{t("pricing.monthly")}</TableHead>
                   <TableHead>{t("pricing.yearly")}</TableHead>
-                  <TableHead>{t("pricing.platformFee")}</TableHead>
+                  <TableHead>{t("pricing.platformFee")} (€)</TableHead>
                   <TableHead>{t("pricing.active")}</TableHead>
                   <TableHead className="text-right">{t("pricing.actions")}</TableHead>
                 </TableRow>
@@ -220,7 +220,7 @@ export default function AdminPricing() {
                     </TableCell>
                     <TableCell>€{plan.monthly_price}</TableCell>
                     <TableCell>€{plan.yearly_price}</TableCell>
-                    <TableCell>{plan.platform_fee_percent}%</TableCell>
+                    <TableCell>€{plan.platform_fee_flat?.toFixed(2) ?? '—'}</TableCell>
                     <TableCell>
                       <Switch
                         checked={plan.is_active}

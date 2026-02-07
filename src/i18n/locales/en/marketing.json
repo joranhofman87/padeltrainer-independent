@@ -471,7 +471,7 @@
         },
         "forTrainers": {
           "title": "For Trainers:",
-          "content": "PadelTrainer.ai charges a platform fee (percentage varies by subscription plan) on each completed booking. The remaining amount is transferred to your connected Mollie account. Subscription fees are billed according to your chosen plan."
+          "content": "PadelTrainer.ai charges a flat platform fee per completed booking, which varies by subscription plan (e.g., €1.00 for Starter, €0.75 for Professional, €0.50 for Academy). The remaining amount is transferred to your connected Mollie account. Subscription fees are billed according to your chosen plan."
         }
       },
       "cancellation": {

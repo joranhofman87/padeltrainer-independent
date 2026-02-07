@@ -181,8 +181,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Location:</strong> ${data.location || "TBD"}</p>
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
               <p><strong>Lesson Price:</strong> €${data.price}</p>
-              <p><strong>Platform Fee (10%):</strong> -€${data.platformFee?.toFixed(2) || (data.price ? (data.price * 0.1).toFixed(2) : '0.00')}</p>
-              <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price * 0.9).toFixed(2) : '0.00')}</p>
+              <p><strong>Platform Fee:</strong> -€${data.platformFee?.toFixed(2) || '1.00'}</p>
+              <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price - (data.platformFee || 1.00)).toFixed(2) : '0.00')}</p>
             </div>
             <p>The payment will be transferred to your connected bank account automatically.</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>

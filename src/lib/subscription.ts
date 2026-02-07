@@ -13,19 +13,16 @@ export interface SubscriptionInfo {
 
 // Trial configuration
 export const TRIAL_DURATION_DAYS = 7;
-export const TRIAL_PLATFORM_FEE_PERCENT = 10;
 
 // Subscription tier configuration (database-driven, no Stripe IDs)
 export const SUBSCRIPTION_TIERS = {
   professional: {
     name: 'Professional',
-    platformFeePercent: 5,
     monthlyPrice: 39,
     yearlyPrice: 374,
   },
   academy: {
     name: 'Academy',
-    platformFeePercent: 2.5,
     monthlyPrice: 99,
     yearlyPrice: 950,
   },
@@ -33,19 +30,10 @@ export const SUBSCRIPTION_TIERS = {
 
 export const STARTER_TIER = {
   name: 'Starter',
-  platformFeePercent: TRIAL_PLATFORM_FEE_PERCENT,
   maxLessons: 3,
   monthlyPrice: 10,
   yearlyPrice: 96,
 };
-
-export function getPlatformFeePercent(tier: SubscriptionTier): number {
-  if (tier === 'trial') return STARTER_TIER.platformFeePercent;
-  if (tier === 'professional' || tier === 'academy') {
-    return SUBSCRIPTION_TIERS[tier].platformFeePercent;
-  }
-  return STARTER_TIER.platformFeePercent;
-}
 
 /**
  * @deprecated Tier is now determined directly from database subscription_tier field.
