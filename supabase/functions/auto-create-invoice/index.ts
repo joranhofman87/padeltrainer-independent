@@ -167,6 +167,9 @@ serve(async (req) => {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + paymentTermsDays);
 
+    // Check if bookings are already paid (e.g. Mollie)
+    const allPaid = bookings.every((b) => b.payment_status === "paid");
+
     // Insert invoice
     const { data: invoice, error: insertError } = await supabase
       .from("invoices")
@@ -185,9 +188,10 @@ serve(async (req) => {
         vat_rate: vatRate,
         vat_amount: Math.round(vatAmount * 100) / 100,
         total: Math.round(totalInclusive * 100) / 100,
-        status: "sent",
+        status: allPaid ? "paid" : "sent",
         booking_ids: bookingIds,
         sent_at: new Date().toISOString(),
+        ...(allPaid ? { paid_at: new Date().toISOString() } : {}),
       })
       .select()
       .single();

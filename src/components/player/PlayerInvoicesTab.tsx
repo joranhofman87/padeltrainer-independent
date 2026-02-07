@@ -95,21 +95,24 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   const handleDownload = async (invoice: PlayerInvoice) => {
     setDownloadLoading(invoice.id);
 
-    // Always regenerate to get a fresh signed URL
     const { data, error } = await supabase.functions.invoke('generate-invoice', {
       body: { invoiceId: invoice.id },
     });
 
-    if (error || !data?.pdfUrl) {
+    if (error || !data?.html) {
       console.error('Generate invoice error:', error, data);
-      toast({ title: 'Fout', description: 'Kon PDF niet genereren', variant: 'destructive' });
+      toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
       setDownloadLoading(null);
       return;
     }
 
-    window.open(data.pdfUrl, '_blank');
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(data.html);
+      printWindow.document.close();
+      printWindow.onload = () => printWindow.print();
+    }
     setDownloadLoading(null);
-    fetchInvoices();
   };
 
   const openEditBilling = (invoice: PlayerInvoice) => {

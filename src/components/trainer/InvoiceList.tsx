@@ -157,29 +157,29 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
   };
 
   const handleDownload = async (invoice: Invoice) => {
-    if (!invoice.pdf_url) {
-      // Generate PDF first
-      setActionLoading(invoice.id);
-      const { data, error } = await supabase.functions.invoke('generate-invoice', {
-        body: { invoiceId: invoice.id },
+    setActionLoading(invoice.id);
+    const { data, error } = await supabase.functions.invoke('generate-invoice', {
+      body: { invoiceId: invoice.id },
+    });
+
+    if (error || !data?.html) {
+      toast({
+        title: 'Fout',
+        description: 'Kon factuur niet genereren',
+        variant: 'destructive',
       });
-      
-      if (error || !data?.pdfUrl) {
-        toast({
-          title: 'Fout',
-          description: 'Kon PDF niet genereren',
-          variant: 'destructive',
-        });
-        setActionLoading(null);
-        return;
-      }
-      
-      window.open(data.pdfUrl, '_blank');
       setActionLoading(null);
-      fetchInvoices();
-    } else {
-      window.open(invoice.pdf_url, '_blank');
+      return;
     }
+
+    // Open HTML in new window and trigger print dialog for PDF saving
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(data.html);
+      printWindow.document.close();
+      printWindow.onload = () => printWindow.print();
+    }
+    setActionLoading(null);
   };
 
   const handleForwardInvoice = async (invoiceId: string) => {
