@@ -1,56 +1,52 @@
 
-# Fix Invoice PDF Download + Auto-Mark Mollie Invoices as Paid
 
-## Three Issues Identified
+# Move Setup Checklist to Dedicated Page
 
-### Issue 1: Invoice download opens raw HTML instead of PDF
-The `generate-invoice` function stores an `.html` file in storage and returns a signed URL to it. When opened, the browser renders it as an HTML page. There is no actual PDF conversion happening.
-
-**Fix**: Instead of opening the signed URL directly (which points to an `.html` file), the download handler should use the HTML content returned by the edge function and trigger a browser-side print-to-PDF. The simplest robust approach: open the HTML in a new window with a `window.print()` auto-trigger, which lets the user "Save as PDF" via the browser print dialog. Alternatively, use the returned HTML content to create a Blob and trigger a proper download.
-
-The cleanest fix: modify `handleDownload` to fetch the HTML from the edge function response, open it in a new tab, and auto-trigger `window.print()` so the user can save as PDF. This avoids needing a server-side PDF library.
-
-### Issue 2: Mollie-paid invoices show as "sent" instead of "paid"
-When a Mollie payment succeeds, the webhook calls `auto-create-invoice` which creates the invoice with `status: 'sent'`. But it never updates the invoice to `status: 'paid'` even though the payment is already completed.
-
-**Fix**: In the `auto-create-invoice` edge function, detect when the booking's `payment_status` is already `'paid'` (Mollie flow) and create the invoice directly with `status: 'paid'` and `paid_at` set.
-
-### Issue 3: Player invoice download returns 403
-The screenshot shows a 403 from `generate-invoice`. Looking at the current code, the auth check already allows both trainer and player (`invoice.player_id === user.id`). However, the `profiles` table query in `auto-create-invoice` uses `.eq('id', playerId)` but `player_id` on bookings is a `user_id` (UUID from auth), while `profiles.id` might be the table's own primary key vs `profiles.user_id`. Need to verify this lookup is correct -- if `player_id` is a `user_id`, the query should use `.eq('user_id', playerId)`.
-
-**Fix**: Ensure the player ID comparison in `generate-invoice` correctly matches. The `invoice.player_id` stores the user's auth UUID, and the edge function compares it with `user.id` from the auth token -- this should work. The 403 may be caused by a stale deployment. Will redeploy the function.
-
----
+## Current State
+`TrainerDashboard.tsx` is 1,009 lines. It contains the setup checklist logic inline: the `SetupStatus` interface, `setupStatus` state, `setupLoading` state, `isSetupExpanded` + localStorage persistence, the `fetchSetupStatus` function (~70 lines of DB queries), and the conditional rendering block. All of this runs on every dashboard load even after setup is complete.
 
 ## Changes
 
-### 1. `generate-invoice/index.ts` -- Return HTML for client-side PDF
-No changes needed to the function itself -- it already returns `html` in the response body.
+### 1. New Page: `src/pages/TrainerGetStarted.tsx`
+A standalone page at `/trainer/get-started` that:
+- Contains the `fetchSetupStatus` logic (currently in TrainerDashboard lines 469-538)
+- Renders the `TrainerSetupChecklist` component full-width (always expanded, no collapsible wrapper needed)
+- Shows a congratulations/completion state when all steps are done, with a "Go to Dashboard" button
+- Lightweight page -- just the checklist, no calendar or stats
 
-### 2. `InvoiceList.tsx` + `PlayerInvoicesTab.tsx` -- Fix download to render PDF
-Update `handleDownload` in both components to:
-- Call `generate-invoice` to get the HTML
-- Open a new window, write the HTML into it
-- Auto-trigger `window.print()` so the user can save as PDF
-- This gives a proper PDF experience without raw HTML display
+### 2. Update `TrainerSidebar.tsx`
+Add a "Get Started" nav item (with a rocket or flag icon) between "Dashboard" and "Players":
+- Only visible when setup is NOT fully complete (query the same setup status)
+- Hidden automatically once all 5 steps are done
+- Uses an orange/highlight badge or dot to draw attention
 
-### 3. `auto-create-invoice/index.ts` -- Mark Mollie invoices as paid
-When the booking's `payment_status === 'paid'`, create the invoice with:
-- `status: 'paid'`  
-- `paid_at: new Date().toISOString()`
+To determine visibility without re-fetching on every render, the sidebar will check setup completion via a lightweight query (count-based checks) cached in component state.
 
-This ensures Mollie-paid bookings show the correct invoice status immediately.
+### 3. Simplify `TrainerDashboard.tsx`
+Remove from the dashboard:
+- `SetupStatus` interface (move to shared types or the new page)
+- `setupStatus`, `setupLoading`, `isSetupExpanded` state variables
+- `fetchSetupStatus` function (~70 lines)
+- localStorage get/set for `trainer_setup_expanded`
+- The `TrainerSetupChecklist` import and rendering block
+- The `useEffect` call for `fetchSetupStatus`
 
-### 4. Redeploy `generate-invoice`
-Ensure the latest version (with player auth fix) is deployed, resolving the 403 for players.
+This removes ~90 lines and one full data-fetching flow from the dashboard.
 
----
+### 4. Add Route
+Register `/trainer/get-started` in the router config, wrapped in `TrainerLayout`.
 
-## Technical Summary
+### 5. Translation Keys
+Add `nav.getStarted` to `trainer.json` (en: "Get Started", nl: "Aan de slag").
+
+## Technical Details
 
 | File | Change |
 |------|--------|
-| `supabase/functions/auto-create-invoice/index.ts` | Check booking payment_status; if already 'paid', create invoice as paid |
-| `src/components/trainer/InvoiceList.tsx` | Update handleDownload to open HTML in new window with print dialog |
-| `src/components/player/PlayerInvoicesTab.tsx` | Same download fix as InvoiceList |
-| `supabase/functions/generate-invoice/index.ts` | Redeploy (no code change needed) |
+| `src/pages/TrainerGetStarted.tsx` | New page with setup status fetching + checklist rendering |
+| `src/components/trainer/TrainerSidebar.tsx` | Add conditional "Get Started" nav item |
+| `src/pages/TrainerDashboard.tsx` | Remove all setup-related state, logic, and rendering (~90 lines) |
+| `src/App.tsx` | Add `/trainer/get-started` route |
+| `src/i18n/locales/en/trainer.json` | Add `nav.getStarted` |
+| `src/i18n/locales/nl/trainer.json` | Add `nav.getStarted` |
+
