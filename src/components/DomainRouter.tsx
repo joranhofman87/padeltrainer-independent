@@ -36,6 +36,7 @@ import ClubOnboarding from '@/pages/ClubOnboarding';
 import Onboarding from '@/pages/Onboarding';
 import PlayerDashboard from '@/pages/PlayerDashboard';
 import TrainerDashboard from '@/pages/TrainerDashboard';
+import TrainerGetStarted from '@/pages/TrainerGetStarted';
 import TrainerSettings from '@/pages/TrainerSettings';
 import TrainerBookingSettings from '@/pages/TrainerBookingSettings';
 import EditProfile from '@/pages/EditProfile';
@@ -157,6 +158,7 @@ export function DomainRouter() {
         <Route path="earnings" element={<TrainerEarnings />} />
         <Route path="analytics" element={<TrainerAnalytics />} />
         <Route path="bookings" element={<TrainerBookings />} />
+        <Route path="get-started" element={<TrainerGetStarted />} />
       </Route>
 
       {/* Booking & standalone routes */}

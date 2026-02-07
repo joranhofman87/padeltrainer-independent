@@ -17,7 +17,6 @@ import {
   addMonths, subMonths, addDays, subDays, format
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
 
@@ -31,7 +30,6 @@ import { DuplicateCyclusDialog } from '@/components/trainer/DuplicateCyclusDialo
 import { DeleteSlotDialog } from '@/components/trainer/DeleteSlotDialog';
 import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
-import { TrainerSetupChecklist } from '@/components/trainer/TrainerSetupChecklist';
 
 interface DashboardStats {
   totalStudents: number;
@@ -39,15 +37,6 @@ interface DashboardStats {
   monthlyEarnings: number;
   followerCount: number;
   profileViews: number;
-}
-
-interface SetupStatus {
-  profileComplete: boolean;
-  hasLessons: boolean;
-  hasAvailability: boolean;
-  paymentsComplete: boolean;
-  hasPlayers: boolean;
-  academyPaymentInfo?: AcademyPaymentInfo;
 }
 
 interface Lesson {
@@ -76,20 +65,6 @@ export default function TrainerDashboard() {
   });
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [setupStatus, setSetupStatus] = useState<SetupStatus>({
-    profileComplete: false,
-    hasLessons: false,
-    hasAvailability: false,
-    paymentsComplete: false,
-    hasPlayers: false,
-    academyPaymentInfo: undefined,
-  });
-  const [setupLoading, setSetupLoading] = useState(true);
-  const [isSetupExpanded, setIsSetupExpanded] = useState(() => {
-    const stored = localStorage.getItem('trainer_setup_expanded');
-    return stored !== null ? stored === 'true' : true;
-  });
-
   // Calendar state
   const [view, setView] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -120,7 +95,6 @@ export default function TrainerDashboard() {
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchStats();
-      fetchSetupStatus();
       fetchTrainerData();
     }
   }, [user, role]);
@@ -131,9 +105,7 @@ export default function TrainerDashboard() {
     }
   }, [trainerId, currentDate, view]);
 
-  useEffect(() => {
-    localStorage.setItem('trainer_setup_expanded', String(isSetupExpanded));
-  }, [isSetupExpanded]);
+
 
   const fetchTrainerData = async () => {
     try {
@@ -466,76 +438,6 @@ export default function TrainerDashboard() {
     }
   };
 
-  const fetchSetupStatus = async () => {
-    try {
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('id, hourly_rate, use_manual_invoicing')
-        .eq('user_id', user?.id)
-        .maybeSingle();
-
-      if (!trainerProfile) {
-        setSetupLoading(false);
-        return;
-      }
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('bio')
-        .eq('user_id', user?.id)
-        .maybeSingle();
-
-      const profileComplete = !!(trainerProfile.hourly_rate && profileData?.bio);
-      const currentTrainerId = trainerProfile.id;
-
-      const { count: lessonCount } = await supabase
-        .from('lessons')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
-
-      const hasLessons = (lessonCount || 0) > 0;
-
-      const { count: slotCount } = await supabase
-        .from('availability_slots')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
-
-      const hasAvailability = (slotCount || 0) > 0;
-
-      const { data: mollieData } = await supabase
-        .from('trainer_mollie_accounts')
-        .select('onboarding_complete, charges_enabled')
-        .eq('trainer_id', currentTrainerId)
-        .maybeSingle();
-
-      const academyPaymentInfo = await getAcademyPaymentInfo(currentTrainerId);
-
-      const paymentsComplete = 
-        !!(mollieData?.onboarding_complete && mollieData?.charges_enabled) || 
-        !!trainerProfile.use_manual_invoicing ||
-        (academyPaymentInfo.isAcademyTrainer && academyPaymentInfo.academyChargesEnabled);
-
-      const { count: playerCount } = await supabase
-        .from('guest_players')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
-
-      const hasPlayers = (playerCount || 0) > 0;
-
-      setSetupStatus({
-        profileComplete,
-        hasLessons,
-        hasAvailability,
-        paymentsComplete,
-        hasPlayers,
-        academyPaymentInfo,
-      });
-    } catch (error) {
-      console.error('Error fetching setup status:', error);
-    } finally {
-      setSetupLoading(false);
-    }
-  };
 
   const fetchStats = async () => {
     try {
@@ -654,16 +556,6 @@ export default function TrainerDashboard() {
           <TrainerTrialBanner 
             trialEndsAt={subscription.trialEndsAt}
             onUpgrade={() => navigate('/app/trainer/subscription')}
-          />
-        )}
-
-        {/* Setup Checklist - Only show if not all complete */}
-        {!setupLoading && !(setupStatus.profileComplete && setupStatus.hasLessons && setupStatus.hasAvailability && setupStatus.paymentsComplete && setupStatus.hasPlayers) && (
-          <TrainerSetupChecklist
-            setupStatus={setupStatus}
-            isExpanded={isSetupExpanded}
-            onToggle={() => setIsSetupExpanded(!isSetupExpanded)}
-            onNavigate={navigate}
           />
         )}
 
