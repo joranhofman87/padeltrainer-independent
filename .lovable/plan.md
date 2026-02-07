@@ -1,123 +1,71 @@
 
 
-# Auto-Generate Invoices on Every Booking + VAT Rate per Trainer
+# Player Business Details for Invoices + Fix Download (403)
 
-## Summary
+## Two Issues to Solve
 
-Every confirmed booking (whether via Mollie payment, manual invoicing, or approval flow) will automatically generate an invoice. Trainers will be able to set their default VAT rate in their profile settings, since prices are **inclusive** of VAT and rates differ by country (21% NL, 6% UAE, 0% for KOR-registered trainers, etc.).
+### Issue 1: Invoice Download Returns 403 for Players
+The `generate-invoice` edge function only allows the **trainer** to generate/download invoices (it checks `trainerProfile.user_id !== user.id`). When a player clicks download, they get a 403 Forbidden error.
 
-## Current State
+**Fix**: Update the authorization check to also allow the player linked to the invoice (`invoice.player_id === user.id`).
 
-- Invoices are only created manually by trainers via the "Factuur aanmaken" dialog on the Earnings page
-- The `invoices` table exists with all needed columns (line_items, vat_rate, subtotal, etc.)
-- The `CreateInvoiceDialog` hardcodes Dutch VAT rates (21%, 9%, 0%) and treats prices as **exclusive** of VAT (adds VAT on top)
-- `trainer_profiles` has no `default_vat_rate` or `country` column
-- There are 3 booking entry points in `BookLesson.tsx`: (1) Mollie payment, (2) manual invoicing, (3) approval-required
-- The Mollie webhook (`mollie-webhook/index.ts`) confirms bookings after payment but creates no invoice
+### Issue 2: Player Business Details on Invoices
+Players should be able to store their own business details (company name, address, BTW number) that appear on invoices. Currently, the invoice only stores `player_address` and `player_btw_number`. We need to add a `player_business_name` field and let players manage these details globally (applied to all their invoices) or per-invoice.
 
-## What Changes
+---
 
-### 1. Database: Add `default_vat_rate` to `trainer_profiles`
+## Changes
 
-Add a `default_vat_rate` column (numeric, default 21) to `trainer_profiles`. This stores the trainer's chosen VAT rate for all auto-generated invoices. Prices are VAT-inclusive, so a rate of 21% on a EUR 50 lesson means EUR 41.32 ex-VAT + EUR 8.68 VAT = EUR 50.00.
-
-### 2. New Edge Function: `auto-create-invoice`
-
-A backend function that:
-- Accepts `bookingId` (single) or `bookingIds` (array)
-- Fetches booking details (player, lesson, slot, price)
-- Fetches the trainer's business info and `default_vat_rate`
-- Calculates VAT **backwards** from the inclusive price: `subtotal = total / (1 + vatRate/100)`, `vatAmount = total - subtotal`
-- Generates an invoice number (same `INV-YYYY-NNNN` pattern)
-- Inserts the invoice record with status `sent`
-- Links the booking via `booking_ids`
-- Skips invoice creation if trainer has no business info (business_name, kvk_number, iban) -- the booking still works, invoice can be created manually later
-
-### 3. Call `auto-create-invoice` from 3 places
-
-| Trigger | Where | When |
-|---------|-------|------|
-| Mollie payment succeeds | `mollie-webhook/index.ts` | After bookings are updated to `paid`/`confirmed` |
-| Manual booking confirmed | `BookLesson.tsx` (manual invoicing path) | After booking insert succeeds |
-| Approval-based booking confirmed | `BookLesson.tsx` or `confirmBookingAfterApproval` | After trainer approves and booking becomes `confirmed` |
-
-For the Mollie webhook, it will call `auto-create-invoice` server-side (supabase function invoke). For frontend paths, the client will invoke the edge function after the booking is created.
-
-### 4. Trainer Settings: VAT Rate Picker
-
-Add a "Default VAT rate" selector to the Invoice Settings card (`InvoiceSettingsCard.tsx`). Options:
-- 21% -- Standard (NL, BE, etc.)
-- 9% -- Reduced rate
-- 0% -- Exempt / KOR
-- Custom entry for other countries (e.g., 5% for UAE)
-
-This saves to `trainer_profiles.default_vat_rate`.
-
-### 5. Update `CreateInvoiceDialog` (manual invoice creation)
-
-- Pre-fill the VAT rate from `trainer_profiles.default_vat_rate` instead of hardcoding 21%
-- Change the price label from "Prijs (excl. BTW)" to "Prijs (incl. BTW)" and reverse-calculate subtotal from inclusive price
-- Keep the ability to override VAT rate per invoice
-
-### 6. Update `PlayerInvoicesTab`
-
-No major changes needed -- it already shows invoices linked to the player. Auto-generated invoices will appear automatically since they use the same `player_id` field.
-
-## Technical Details
-
-### Database Migration
+### 1. Database: Add `player_business_name` to invoices table
 
 ```sql
-ALTER TABLE trainer_profiles 
-ADD COLUMN default_vat_rate numeric DEFAULT 21;
+ALTER TABLE invoices ADD COLUMN player_business_name text;
 ```
 
-### Edge Function: `supabase/functions/auto-create-invoice/index.ts`
+This field stores the company/business name that appears on the "Aan" section of the invoice.
 
-Key logic:
-```text
-Input: { bookingIds: string[] }
-For each booking:
-  1. Fetch booking + slot + lesson + player profile
-  2. Fetch trainer_profiles (business info, default_vat_rate)
-  3. If business info incomplete -> skip (log warning)
-  4. Calculate: total = lesson.price (inclusive)
-     vatRate = trainer.default_vat_rate
-     subtotal = total / (1 + vatRate/100)
-     vatAmount = total - subtotal
-  5. Generate invoice_number (INV-YYYY-NNNN, sequential per trainer)
-  6. Insert into invoices table
-  7. Update booking payment_status to 'invoiced' (for manual bookings)
-```
+### 2. Fix `generate-invoice` Edge Function
 
-### Mollie Webhook Changes
+- **Fix CORS headers**: Add the missing `x-supabase-client-platform` headers so browser calls don't fail silently.
+- **Fix authorization**: Allow both the trainer (`trainerProfile.user_id === user.id`) AND the player (`invoice.player_id === user.id`) to generate/download the invoice.
+- **Include `player_business_name`** in the HTML template output (show it above or below the player name in the "Aan" section).
 
-After the "Bookings updated successfully" step, add:
-```text
-if (payment.status === "paid") {
-  // Auto-create invoice
-  await supabase.functions.invoke("auto-create-invoice", {
-    body: { bookingIds }
-  });
-}
-```
+### 3. Update `PlayerInvoicesTab.tsx`
 
-### BookLesson.tsx Changes
+**Enhance the billing details edit dialog** to include:
+- Business/company name (new field)
+- Address (existing)
+- BTW number (existing)
 
-After the manual booking insert (line ~519) and after cyclus booking (line ~355), invoke:
-```text
-await supabase.functions.invoke('auto-create-invoice', {
-  body: { bookingIds: [bookingData.id] }
-});
-```
+When a player saves these details:
+- Update the invoice record with the new fields
+- Regenerate the PDF (clear `pdf_url` so next download creates a fresh one with updated details)
 
-### InvoiceSettingsCard Changes
+Also add a "Save as default" option that stores these billing details for future invoices (stored in the player's profile or a separate preferences mechanism -- simplest: store on the `profiles` table).
 
-Add a VAT rate selector field that reads/writes `default_vat_rate` from `trainer_profiles`.
+### 4. Add default billing fields to `profiles` table
 
-### CreateInvoiceDialog Changes
+Add columns to `profiles` so the player's business details auto-populate on new invoices:
+- `billing_business_name` (text, nullable)
+- `billing_address` (text, nullable)  
+- `billing_btw_number` (text, nullable)
 
-- Default `vatRate` from trainer's `default_vat_rate` prop instead of hardcoded "21"
-- Reverse the VAT calculation: prices entered are inclusive, subtotal is derived
-- Update the label from "excl. BTW" to "incl. BTW"
+### 5. Update `auto-create-invoice` Edge Function
+
+When creating an invoice for a player, look up the player's default billing details from `profiles` and pre-fill `player_business_name`, `player_address`, and `player_btw_number` on the invoice.
+
+### 6. Update Invoice HTML Template
+
+Add the business name to the "Aan" (To) section of the invoice, displayed above the player's personal name when present.
+
+---
+
+## Technical Summary
+
+| File | Change |
+|------|--------|
+| Migration SQL | Add `player_business_name` to `invoices`, add `billing_business_name`, `billing_address`, `billing_btw_number` to `profiles` |
+| `generate-invoice/index.ts` | Fix CORS, fix auth (allow player), add `player_business_name` to HTML |
+| `auto-create-invoice/index.ts` | Pre-fill player billing details from `profiles` |
+| `PlayerInvoicesTab.tsx` | Add business name field to edit dialog, clear `pdf_url` on save so PDF regenerates |
 
