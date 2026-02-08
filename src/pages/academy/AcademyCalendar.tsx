@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
 import { supabase } from "@/lib/supabaseClient";
-import CycleForm from "@/components/cycles/CycleForm";
+
 import { logger } from "@/lib/logger";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
@@ -94,7 +94,7 @@ export default function AcademyCalendar() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
   // Cycle dialog state
-  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
+  
 
   // Slot creation dialog state
   const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
@@ -445,11 +445,10 @@ export default function AcademyCalendar() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
               size="sm"
               onClick={() => {
-                setDefaultSlotDate(new Date());
-                setDefaultSlotTime("09:00");
+                setDefaultSlotDate(undefined);
+                setDefaultSlotTime(undefined);
                 const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
                 setSelectedSlotTrainerId(trainerToUse);
                 setSlotTypeChoiceOpen(true);
@@ -457,7 +456,7 @@ export default function AcademyCalendar() {
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.addSlot", "Slot Toevoegen")}</span>
+              {t("calendar.new", "New")}
             </Button>
             <Button
               variant="outline"
@@ -467,14 +466,6 @@ export default function AcademyCalendar() {
             >
               <Copy className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.duplicateCyclus", "Cyclus Dupliceren")}</span>
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setShowCreateCycleDialog(true)}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.addCycle", "Cyclus Aanmaken")}</span>
             </Button>
           </div>
         </div>
@@ -774,21 +765,9 @@ export default function AcademyCalendar() {
         </Card>
       </main>
       
-      {/* Create Cycle Dialog */}
+      {/* Slot Creation Dialogs */}
       {activeAcademy && (
         <>
-          <CycleForm
-            open={showCreateCycleDialog}
-            onOpenChange={setShowCreateCycleDialog}
-            ownerType="academy"
-            ownerId={activeAcademy.id}
-            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-            locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
-            onSuccess={() => {
-              setShowCreateCycleDialog(false);
-            }}
-          />
-
           <SlotTypeChoiceDialog
             open={slotTypeChoiceOpen}
             onOpenChange={setSlotTypeChoiceOpen}
