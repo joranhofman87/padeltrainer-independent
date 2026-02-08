@@ -9,6 +9,7 @@ import { CookieConsentProvider } from "@/contexts/CookieConsentContext";
 import { CookieConsentBanner } from "@/components/CookieConsentBanner";
 import { DomainRouter } from "@/components/DomainRouter";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { PageTracker } from "@/components/PageTracker";
 import "@/i18n";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <ScrollToTop />
+            <PageTracker />
             <AuthProvider>
               <DomainRouter />
               <CookieConsentBanner />
