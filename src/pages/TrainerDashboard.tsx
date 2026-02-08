@@ -93,7 +93,7 @@ export default function TrainerDashboard() {
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
   const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
-
+  const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   useEffect(() => {
     if (user && role === 'trainer') {
       fetchStats();
@@ -113,13 +113,14 @@ export default function TrainerDashboard() {
     try {
       const { data: trainerProfile } = await supabase
         .from("trainer_profiles")
-        .select("id, slot_duration_minutes, schedule_weeks_ahead")
+        .select("id, slot_duration_minutes, schedule_weeks_ahead, hourly_rate")
         .eq("user_id", user!.id)
         .maybeSingle();
 
       if (!trainerProfile) return;
 
       setTrainerId(trainerProfile.id);
+      setTrainerHourlyRate(trainerProfile.hourly_rate || undefined);
       setSettings({
         slot_duration_minutes: trainerProfile.slot_duration_minutes || 60,
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
@@ -895,6 +896,7 @@ export default function TrainerDashboard() {
           ownerId={trainerId}
           open={showCreateCycleDialog}
           onOpenChange={setShowCreateCycleDialog}
+          trainerHourlyRate={trainerHourlyRate}
           onSuccess={() => {
             handleSlotsCreated();
           }}

@@ -20,6 +20,7 @@ export default function TrainerCycles() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
+  const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
 
@@ -31,12 +32,13 @@ export default function TrainerCycles() {
 
       const { data } = await supabase
         .from('trainer_profiles')
-        .select('id')
+        .select('id, hourly_rate')
         .eq('user_id', user.id)
         .single();
 
       if (data) {
         setTrainerId(data.id);
+        setTrainerHourlyRate(data.hourly_rate || undefined);
       }
     };
 
@@ -147,6 +149,7 @@ export default function TrainerCycles() {
           cycle={editingCycle || undefined}
           ownerType="trainer"
           ownerId={trainerId}
+          trainerHourlyRate={trainerHourlyRate}
           onSuccess={handleCycleCreated}
         />
       )}

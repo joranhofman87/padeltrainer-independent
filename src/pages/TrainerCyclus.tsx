@@ -75,6 +75,7 @@ export default function TrainerCyclus() {
   const [filteredCyclus, setFilteredCyclus] = useState<CyclusInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
+  const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCyclus, setExpandedCyclus] = useState<string | null>(null);
   const [deletingCyclus, setDeletingCyclus] = useState<CyclusInfo | null>(null);
@@ -88,12 +89,13 @@ export default function TrainerCyclus() {
 
       const { data } = await supabase
         .from("trainer_profiles")
-        .select("id")
+        .select("id, hourly_rate")
         .eq("user_id", user.id)
         .single();
 
       if (data) {
         setTrainerId(data.id);
+        setTrainerHourlyRate(data.hourly_rate || undefined);
       }
     };
 

@@ -27,7 +27,7 @@ export default function AcademyCycles() {
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
-  const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
+  const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
@@ -64,6 +64,7 @@ export default function AcademyCycles() {
           academyTrainers.map((t) => ({
             id: t.trainer_profile_id,
             name: t.profile?.full_name || 'Unknown',
+            hourly_rate: t.trainer_profile?.hourly_rate || undefined,
           }))
         );
         
