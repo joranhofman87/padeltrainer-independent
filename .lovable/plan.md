@@ -1,38 +1,29 @@
 
 
-# Fix: Admin "Login as User" Impersonation
+# Fix: Academy Locations 404 Error
 
 ## Problem
-When an admin clicks "Login as User", the magic link is generated and opens in a new tab, but the new tab shares the same browser session. The Auth.tsx page detects the admin is already logged in (via the existing session) and immediately redirects to `/app/admin` before the magic link tokens in the URL hash can be processed by `setSession`.
+The "Locaties" (Locations) link in the academy sidebar and dashboard navigates to `/academy/locations`, but the actual route is registered at `/app/academy/locations`. This causes a 404 because `/nl/academy/locations` doesn't match any route.
 
 ## Root Cause
-In Auth.tsx, there's a race between:
-1. The redirect effect that checks `user` and `role` and immediately navigates to `/app/admin`
-2. The magic link processing effect that calls `supabase.auth.setSession()` with the tokens from the URL hash
+Several navigation paths use the old `/academy/...` prefix instead of `/app/academy/...`:
+- Academy sidebar: links to `/academy/locations`
+- Academy dashboard: navigates to `/academy/locations` (both the stats card click and the "Locaties Beheren" button)
 
-The redirect fires first because the admin's existing session is already available, so the user never gets impersonated.
+This is consistent with the single-domain routing architecture where all application routes must use the `/app/` prefix.
 
 ## Solution
+Update all academy navigation paths to use the `/app/` prefix. Three files need changes:
 
-Two changes are needed:
+### 1. `src/components/academy/AcademySidebar.tsx`
+- Change `to="/academy/locations"` to `to="/app/academy/locations"`
 
-### 1. Edge function: update redirect path (line 90-92)
-Change the redirect from `/auth` to `/app/auth` to skip the unnecessary legacy redirect hop:
-```
-const redirectUrl = `${origin}/app/auth`;
-```
+### 2. `src/pages/academy/AcademyDashboard.tsx`
+- Change `navigate('/academy/locations')` to `navigate('/app/academy/locations')` (two occurrences: stats card click and manage button)
 
-### 2. Auth.tsx: skip auto-redirect when magic link tokens are present
-In the redirect effect (the `useEffect` that checks `user` and `role`), add a guard that skips the redirect if the URL hash contains `access_token` (meaning a magic link is being processed). This gives the `setSession` call time to replace the admin session with the target user's session.
+### 3. `src/components/academy/AcademyNavigation.tsx`
+- Change `path: "/academy/locations"` to `path: "/app/academy/locations"`
 
-The magic link processing effect already sets `isProcessingMagicLink = true`, but the redirect effect doesn't check this flag. The fix adds `isProcessingMagicLink` to the redirect guard so it waits for magic link processing to complete before deciding where to navigate.
-
-## Technical Details
-
-### Modified: `supabase/functions/impersonate-user/index.ts`
-- Line 90-92: Simplify redirect URL to always use `/app/auth`
-
-### Modified: `src/pages/Auth.tsx`
-- In the redirect effect (line 83-134): add `isProcessingMagicLink` to the early-return condition so the redirect doesn't fire while the magic link session is being established
-- This means: if `isProcessingMagicLink` is true, don't redirect -- wait for the session swap to finish, then the auth state will update with the impersonated user's role and redirect correctly
+## Scope Check
+While fixing this, all other academy navigation paths in these files should also be audited and updated to use `/app/academy/...` if they don't already, to prevent similar 404s on other pages.
 
