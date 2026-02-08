@@ -604,42 +604,23 @@ export function LocationEditDialog({
                     }
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="club_sub_status">Subscription Status</Label>
-                    <Select
-                      value={clubFormData.subscription_status || 'inactive'}
-                      onValueChange={value =>
-                        setClubFormData(prev => prev ? { ...prev, subscription_status: value } : prev)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="trial">Trial</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="club_sub_tier">Subscription Tier</Label>
-                    <Select
-                      value={clubFormData.subscription_tier || 'starter'}
-                      onValueChange={value =>
-                        setClubFormData(prev => prev ? { ...prev, subscription_tier: value } : prev)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="starter">Starter</SelectItem>
-                        <SelectItem value="club">Club</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="club_sub_status">Subscription Status</Label>
+                  <Select
+                    value={clubFormData.subscription_status || 'inactive'}
+                    onValueChange={value =>
+                      setClubFormData(prev => prev ? { ...prev, subscription_status: value } : prev)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="trial">Trial</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 {clubFormData.subscription_status !== 'active' && (
                   <div className="space-y-2">
