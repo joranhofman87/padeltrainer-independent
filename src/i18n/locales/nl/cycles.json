@@ -36,6 +36,8 @@
     "showPreferredTrainer": "Trainer voorkeur toestaan",
     "showPreferredTrainerHelp": "Spelers kunnen een voorkeurscoach aangeven bij aanmelding",
     "maxGroupSize": "Max Groepsgrootte",
+    "minGroupSize": "Min Groepsgrootte",
+    "minGroupSizeHelp": "Minimum aantal spelers vereist per sessie",
     "applicableTrainers": "Beschikbare Trainers",
     "applicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze cyclus",
     "location": "Trainingslocatie",
