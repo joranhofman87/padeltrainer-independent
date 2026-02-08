@@ -261,7 +261,15 @@
     "paymentPending": "Pending",
     "paymentPaid": "Paid",
     "paymentWaived": "Waived",
-    "playerWillBeSwapped": "Player will be changed to the selected one"
+    "playerWillBeSwapped": "Player will be changed to the selected one",
+    "requests": "Requests",
+    "pendingApproval": "Awaiting Approval",
+    "awaitingApproval": "Awaiting trainer approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "noRequests": "No pending requests",
+    "noRequestsDescription": "Booking requests from players will appear here",
+    "booked": "booked"
   },
   "players": {
     "title": "My Players",
@@ -557,15 +565,6 @@
     "manualApprovalDescriptionInvoice": "Review and approve each request before confirmation.",
     "approvalEnabled": "Booking approval is now required",
     "approvalDisabled": "Bookings are now auto-accepted"
-  },
-  "bookings": {
-    "requests": "Requests",
-    "pendingApproval": "Awaiting Approval",
-    "awaitingApproval": "Awaiting trainer approval",
-    "approve": "Approve",
-    "reject": "Reject",
-    "noRequests": "No pending requests",
-    "noRequestsDescription": "Booking requests from players will appear here"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",
