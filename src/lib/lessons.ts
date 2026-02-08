@@ -22,6 +22,8 @@ export interface Lesson {
   start_date: string | null; // When the recurring cycle begins
   // Payment settings
   payment_timing: 'upfront' | 'after';
+  // Booking mode
+  booking_mode: 'full_slot' | 'individual' | 'flexible';
   created_at: string;
   updated_at: string;
 }

@@ -99,6 +99,7 @@ export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonP
         recurrence_end_date: null,
         start_date: null,
         payment_timing: paymentTiming,
+        booking_mode: 'full_slot',
       });
 
       if (error) throw error;

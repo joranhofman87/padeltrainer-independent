@@ -1,0 +1,1 @@
+ALTER TABLE public.lessons ADD COLUMN booking_mode text NOT NULL DEFAULT 'full_slot';

@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat, AlertCircle, Building2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Euro, MapPin, Star, Check, Users, SendHorizontal, FileText, Repeat, AlertCircle, Building2, Minus, Plus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
@@ -46,6 +46,8 @@ interface SlotWithDetails {
     duration_minutes: number;
     min_skill_rating: number | null;
     max_skill_rating: number | null;
+    max_participants: number;
+    booking_mode: string;
   } | null;
 }
 
@@ -88,6 +90,7 @@ export default function BookLesson() {
   const [selectedSlot, setSelectedSlot] = useState<SlotWithDetails | null>(null);
   const [selectedCyclus, setSelectedCyclus] = useState<CyclusBundle | null>(null);
   const [notes, setNotes] = useState('');
+  const [quantity, setQuantity] = useState(1);
   const [loadingData, setLoadingData] = useState(true);
   const [booking, setBooking] = useState(false);
   const [booked, setBooked] = useState(false);
@@ -180,7 +183,7 @@ export default function BookLesson() {
         court_type,
         location_id,
         locations:location_id(id, name, city, street_address),
-        lessons(id, title, description, price, duration_minutes, min_skill_rating, max_skill_rating)
+        lessons(id, title, description, price, duration_minutes, min_skill_rating, max_skill_rating, max_participants, booking_mode)
       `)
       .eq('trainer_id', trainerData.id)
       .eq('is_marked_full', false)
@@ -467,7 +470,13 @@ export default function BookLesson() {
       // Handle single slot booking (existing logic)
       if (!selectedSlot) return;
       
-      const price = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
+      const lesson = selectedSlot.lessons;
+      const bookingMode = lesson?.booking_mode || 'full_slot';
+      const maxP = lesson?.max_participants || 1;
+      const fullPrice = lesson?.price || trainer.hourly_rate || 50;
+      const perSpotPrice = maxP > 1 && bookingMode !== 'full_slot' ? fullPrice / maxP : fullPrice;
+      const bookingQuantity = bookingMode === 'full_slot' ? maxP : quantity;
+      const price = bookingMode === 'full_slot' ? fullPrice : perSpotPrice * bookingQuantity;
       const requiresApproval = trainer.require_booking_approval;
       const useManualInvoicing = trainer.use_manual_invoicing;
 
@@ -896,6 +905,14 @@ export default function BookLesson() {
                           if (!isIneligible) {
                             setSelectedSlot(slot);
                             setSelectedCyclus(null);
+                            // Reset quantity based on booking mode
+                            const mode = slot.lessons?.booking_mode || 'full_slot';
+                            const maxP = slot.lessons?.max_participants || 1;
+                            if (mode === 'full_slot') {
+                              setQuantity(maxP);
+                            } else {
+                              setQuantity(1);
+                            }
                           }
                         }}
                       >
@@ -934,7 +951,9 @@ export default function BookLesson() {
                               <div className="flex items-center gap-2 mt-1">
                                 <Euro className="h-4 w-4 text-primary" />
                                 <span className="font-semibold text-primary">
-                                  €{slot.lessons.price}
+                                  {slot.lessons.booking_mode !== 'full_slot' && slot.lessons.max_participants > 1
+                                    ? `€${(slot.lessons.price / slot.lessons.max_participants).toFixed(2)}/spot`
+                                    : `€${slot.lessons.price}`}
                                 </span>
                               </div>
                             </div>
@@ -1076,6 +1095,58 @@ export default function BookLesson() {
                       </div>
                     </div>
 
+                    {/* Quantity picker for flexible mode */}
+                    {(() => {
+                      const bm = selectedSlot.lessons?.booking_mode || 'full_slot';
+                      const maxP = selectedSlot.lessons?.max_participants || 1;
+                      const spotsAvailable = selectedSlot.spotsLeft || maxP;
+                      const perSpot = maxP > 1 && bm !== 'full_slot' ? (selectedSlot.lessons?.price || 0) / maxP : 0;
+
+                      if (bm === 'flexible' && maxP > 1) {
+                        return (
+                          <div className="space-y-2">
+                            <Label>Number of spots</Label>
+                            <div className="flex items-center gap-3">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                                disabled={quantity <= 1}
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="font-semibold text-lg w-8 text-center">{quantity}</span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setQuantity(Math.min(spotsAvailable, quantity + 1))}
+                                disabled={quantity >= spotsAvailable}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                              <span className="text-sm text-muted-foreground">
+                                of {spotsAvailable} available
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              €{perSpot.toFixed(2)} per spot
+                            </p>
+                          </div>
+                        );
+                      }
+                      if (bm === 'individual' && maxP > 1) {
+                        return (
+                          <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+                            <Users className="h-4 w-4 inline mr-1" />
+                            Booking 1 spot · €{perSpot.toFixed(2)} per spot
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     <div className="space-y-2">
                       <Label htmlFor="notes">Notes for trainer (optional)</Label>
                       <Textarea
@@ -1090,7 +1161,15 @@ export default function BookLesson() {
                       <div className="flex justify-between items-center text-lg font-semibold">
                         <span>Total</span>
                         <span>
-                          €{selectedSlot.lessons?.price || trainer.hourly_rate || 50}
+                          {(() => {
+                            const bm = selectedSlot.lessons?.booking_mode || 'full_slot';
+                            const maxP = selectedSlot.lessons?.max_participants || 1;
+                            const fullPrice = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
+                            if (bm === 'full_slot' || maxP <= 1) return `€${fullPrice}`;
+                            const perSpot = fullPrice / maxP;
+                            const qty = bm === 'individual' ? 1 : quantity;
+                            return `€${(perSpot * qty).toFixed(2)}`;
+                          })()}
                         </span>
                       </div>
                     </div>

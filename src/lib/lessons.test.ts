@@ -35,6 +35,7 @@ describe('Lesson interface', () => {
       recurrence_end_date: null,
       start_date: null,
       payment_timing: 'upfront',
+      booking_mode: 'full_slot',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     };
@@ -66,6 +67,7 @@ describe('Lesson interface', () => {
       recurrence_end_date: '2024-04-01',
       start_date: '2024-01-15',
       payment_timing: 'after',
+      booking_mode: 'individual',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     };
