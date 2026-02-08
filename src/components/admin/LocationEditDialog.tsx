@@ -39,6 +39,14 @@ interface ClubData {
   subscription_status: string | null;
   subscription_tier: string | null;
   trial_ends_at: string | null;
+  description: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  social_instagram: string | null;
+  social_facebook: string | null;
+  social_tiktok: string | null;
+  social_youtube: string | null;
+  social_linkedin: string | null;
 }
 
 interface FormData {
@@ -111,7 +119,7 @@ export function LocationEditDialog({
       if (location?.id) {
         supabaseTyped
           .from('club_profiles')
-          .select('id, is_verified, subscription_status, subscription_tier, trial_ends_at')
+          .select('id, is_verified, subscription_status, subscription_tier, trial_ends_at, description, contact_email, phone, social_instagram, social_facebook, social_tiktok, social_youtube, social_linkedin')
           .eq('location_id', location.id)
           .maybeSingle()
           .then(({ data }) => {
@@ -122,6 +130,14 @@ export function LocationEditDialog({
                 subscription_status: data.subscription_status,
                 subscription_tier: data.subscription_tier,
                 trial_ends_at: data.trial_ends_at,
+                description: data.description,
+                contact_email: data.contact_email,
+                phone: data.phone,
+                social_instagram: data.social_instagram,
+                social_facebook: data.social_facebook,
+                social_tiktok: data.social_tiktok,
+                social_youtube: data.social_youtube,
+                social_linkedin: data.social_linkedin,
               });
             } else {
               setClubData(null);
@@ -199,6 +215,14 @@ export function LocationEditDialog({
             subscription_status: clubFormData.subscription_status,
             subscription_tier: clubFormData.subscription_tier,
             trial_ends_at: clubFormData.trial_ends_at,
+            description: clubFormData.description,
+            contact_email: clubFormData.contact_email,
+            phone: clubFormData.phone,
+            social_instagram: clubFormData.social_instagram,
+            social_facebook: clubFormData.social_facebook,
+            social_tiktok: clubFormData.social_tiktok,
+            social_youtube: clubFormData.social_youtube,
+            social_linkedin: clubFormData.social_linkedin,
           })
           .eq('id', clubData.id);
         if (clubError) throw clubError;
@@ -639,6 +663,106 @@ export function LocationEditDialog({
                     />
                   </div>
                 )}
+
+                <Separator />
+                <h3 className="text-sm font-medium text-muted-foreground">Club Profile Details</h3>
+
+                <div className="space-y-2">
+                  <Label htmlFor="club_description">Club Description</Label>
+                  <Textarea
+                    id="club_description"
+                    value={clubFormData.description || ''}
+                    onChange={e =>
+                      setClubFormData(prev => prev ? { ...prev, description: e.target.value || null } : prev)
+                    }
+                    placeholder="Club description..."
+                    rows={3}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="club_contact_email">Contact Email</Label>
+                    <Input
+                      id="club_contact_email"
+                      type="email"
+                      value={clubFormData.contact_email || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, contact_email: e.target.value || null } : prev)
+                      }
+                      placeholder="info@club.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="club_phone">Phone</Label>
+                    <Input
+                      id="club_phone"
+                      value={clubFormData.phone || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, phone: e.target.value || null } : prev)
+                      }
+                      placeholder="+31 6 12345678"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="club_instagram">Instagram</Label>
+                    <Input
+                      id="club_instagram"
+                      value={clubFormData.social_instagram || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, social_instagram: e.target.value || null } : prev)
+                      }
+                      placeholder="https://instagram.com/..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="club_facebook">Facebook</Label>
+                    <Input
+                      id="club_facebook"
+                      value={clubFormData.social_facebook || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, social_facebook: e.target.value || null } : prev)
+                      }
+                      placeholder="https://facebook.com/..."
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="club_tiktok">TikTok</Label>
+                    <Input
+                      id="club_tiktok"
+                      value={clubFormData.social_tiktok || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, social_tiktok: e.target.value || null } : prev)
+                      }
+                      placeholder="https://tiktok.com/..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="club_youtube">YouTube</Label>
+                    <Input
+                      id="club_youtube"
+                      value={clubFormData.social_youtube || ''}
+                      onChange={e =>
+                        setClubFormData(prev => prev ? { ...prev, social_youtube: e.target.value || null } : prev)
+                      }
+                      placeholder="https://youtube.com/..."
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="club_linkedin">LinkedIn</Label>
+                  <Input
+                    id="club_linkedin"
+                    value={clubFormData.social_linkedin || ''}
+                    onChange={e =>
+                      setClubFormData(prev => prev ? { ...prev, social_linkedin: e.target.value || null } : prev)
+                    }
+                    placeholder="https://linkedin.com/..."
+                  />
+                </div>
               </div>
             </>
           )}
