@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,6 @@ export function ClaimClubDialog({
 }: ClaimClubDialogProps) {
   const { t } = useTranslation('club');
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -78,7 +77,6 @@ export function ClaimClubDialog({
       });
 
       onOpenChange(false);
-      navigate('/app/club');
     } catch (error: any) {
       console.error('Error claiming club:', error);
       toast({
