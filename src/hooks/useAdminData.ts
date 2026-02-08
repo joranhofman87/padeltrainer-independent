@@ -94,6 +94,7 @@ export function useAdminUsers() {
 
 export interface TrainerProfileAdmin {
   id: string;
+  slug: string | null;
   user_id: string;
   subscription_status: string | null;
   trial_ends_at: string | null;
@@ -145,7 +146,7 @@ export function useAdminTrainers() {
       const { data: trainers, error: trainersError } = await supabase
         .from("trainer_profiles")
         .select(`
-          id, user_id, subscription_status, trial_ends_at, trial_started_at, 
+          id, user_id, slug, subscription_status, trial_ends_at, trial_started_at, 
           is_public, is_verified, created_at,
           hourly_rate, experience_years, coaching_method, favourite_quote,
           video_url, website_url, social_instagram, social_tiktok, 

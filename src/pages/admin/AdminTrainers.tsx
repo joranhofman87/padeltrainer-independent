@@ -309,7 +309,7 @@ export default function AdminTrainers() {
                           </DropdownMenuItem>
                           {trainer.is_public && (
                             <DropdownMenuItem
-                              onClick={() => window.open(`/en/trainers/${trainer.id}`, "_blank")}
+                              onClick={() => window.open(`/en/trainers/${trainer.slug || trainer.id}`, "_blank")}
                             >
                               <ExternalLink className="mr-2 h-4 w-4" />
                               View Profile
