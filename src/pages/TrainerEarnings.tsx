@@ -459,7 +459,7 @@ export default function TrainerEarnings() {
         )}
 
         {/* Manual invoicing: Business info warning - Only for non-academy trainers */}
-        {!academyPaymentInfo?.isAcademyTrainer && useManualInvoicing && !isBusinessInfoComplete && (
+        {!academyPaymentInfo?.isAcademyTrainer && !isBusinessInfoComplete && (
           <Card className="mb-6 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
             <CardContent className="p-4 flex items-center gap-4">
               <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
