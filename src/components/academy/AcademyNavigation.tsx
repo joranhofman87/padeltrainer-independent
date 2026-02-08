@@ -35,9 +35,9 @@ interface NavGroup {
 }
 
 const standaloneItems: NavItem[] = [
-  { key: "dashboard", path: "/academy", icon: LayoutDashboard },
-  { key: "calendar", path: "/academy/calendar", icon: Calendar },
-  { key: "cycles", path: "/academy/cycles", icon: CalendarDays },
+  { key: "dashboard", path: "/app/academy", icon: LayoutDashboard },
+  { key: "calendar", path: "/app/academy/calendar", icon: Calendar },
+  { key: "cycles", path: "/app/academy/cycles", icon: CalendarDays },
 ];
 
 const groupedItems: NavGroup[] = [
@@ -45,19 +45,19 @@ const groupedItems: NavGroup[] = [
     key: "team",
     icon: Users,
     items: [
-      { key: "trainers", path: "/academy/trainers", icon: Users },
-      { key: "players", path: "/academy/players", icon: Users },
+      { key: "trainers", path: "/app/academy/trainers", icon: Users },
+      { key: "players", path: "/app/academy/players", icon: Users },
     ],
   },
   {
     key: "academy",
     icon: GraduationCap,
     items: [
-      { key: "profile", path: "/academy/profile", icon: GraduationCap },
-      { key: "locations", path: "/academy/locations", icon: MapPin },
-      { key: "earnings", path: "/academy/earnings", icon: DollarSign },
-      { key: "subscription", path: "/academy/subscription", icon: CreditCard },
-      { key: "settings", path: "/academy/settings", icon: Settings },
+      { key: "profile", path: "/app/academy/profile", icon: GraduationCap },
+      { key: "locations", path: "/app/academy/locations", icon: MapPin },
+      { key: "earnings", path: "/app/academy/earnings", icon: DollarSign },
+      { key: "subscription", path: "/app/academy/subscription", icon: CreditCard },
+      { key: "settings", path: "/app/academy/settings", icon: Settings },
     ],
   },
 ];
