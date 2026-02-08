@@ -156,7 +156,7 @@ export async function getTrainersAtLocation(locationId: string) {
       )
     `)
     .eq('location_id', locationId)
-    .eq('show_on_club_page', true);
+    .or('show_on_club_page.eq.true,relationship_type.eq.academy_trainer');
 
   if (error) {
     logger.error('Error fetching trainers at location', undefined, { error });
