@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -73,7 +74,12 @@ export default function CycleForm({
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const isEdit = !!cycle;
+
+  useEffect(() => {
+    getRatingSystems().then(setRatingSystems);
+  }, []);
 
   const formSchema = z.object({
     name: z.string().min(2),
@@ -85,6 +91,10 @@ export default function CycleForm({
     show_preferred_trainer: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     min_group_size: z.coerce.number().min(1).max(20).optional(),
+    assigned_trainer_id: z.string().optional(),
+    min_skill_rating: z.coerce.number().min(0).optional().or(z.literal('')),
+    max_skill_rating: z.coerce.number().min(0).optional().or(z.literal('')),
+    rating_system: z.string().optional(),
     applicable_trainer_ids: z.array(z.string()).optional(),
     location_id: z.string().optional(),
     price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
@@ -112,6 +122,10 @@ export default function CycleForm({
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
+      assigned_trainer_id: cycle?.settings?.assigned_trainer_id || '',
+      min_skill_rating: cycle?.settings?.min_skill_rating ?? '',
+      max_skill_rating: cycle?.settings?.max_skill_rating ?? '',
+      rating_system: cycle?.settings?.rating_system || 'knltb',
       applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
       location_id: cycle?.location_id || '',
       price_per_session: cycle?.price_per_session ?? '',
@@ -133,6 +147,10 @@ export default function CycleForm({
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
         max_group_size: cycle?.settings?.max_group_size || 4,
         min_group_size: cycle?.settings?.min_group_size || 1,
+        assigned_trainer_id: cycle?.settings?.assigned_trainer_id || '',
+        min_skill_rating: cycle?.settings?.min_skill_rating ?? '',
+        max_skill_rating: cycle?.settings?.max_skill_rating ?? '',
+        rating_system: cycle?.settings?.rating_system || 'knltb',
         applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
         location_id: cycle?.location_id || '',
         price_per_session: cycle?.price_per_session ?? '',
@@ -149,6 +167,7 @@ export default function CycleForm({
     if (prevLocationRef.current !== undefined && prevLocationRef.current !== watchedLocationId) {
       if (locations.length > 0 && Object.keys(trainerLocationMap).length > 0) {
         form.setValue('applicable_trainer_ids', []);
+        form.setValue('assigned_trainer_id', '');
       }
     }
     prevLocationRef.current = watchedLocationId;
@@ -163,6 +182,10 @@ export default function CycleForm({
         show_preferred_trainer: values.show_preferred_trainer,
         max_group_size: values.max_group_size,
         min_group_size: values.min_group_size,
+        assigned_trainer_id: values.assigned_trainer_id || undefined,
+        min_skill_rating: values.min_skill_rating ? Number(values.min_skill_rating) : undefined,
+        max_skill_rating: values.max_skill_rating ? Number(values.max_skill_rating) : undefined,
+        rating_system: values.rating_system || undefined,
         applicable_trainer_ids: values.applicable_trainer_ids,
       };
 
@@ -382,8 +405,48 @@ export default function CycleForm({
               />
             )}
 
-            {/* Applicable Trainers - right after location */}
-            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (() => {
+            {/* Assigned Trainer - single select for academy */}
+            {ownerType === 'academy' && trainers.length > 0 && (() => {
+              const selectedLocationId = form.watch('location_id');
+              const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
+                ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
+                : trainers;
+
+              if (!selectedLocationId && locations.length > 0) return null;
+
+              return (
+                <FormField
+                  control={form.control}
+                  name="assigned_trainer_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.assignedTrainer', 'Assigned Trainer')}</FormLabel>
+                      <Select value={field.value || ''} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t('form.selectTrainer', 'Select trainer')} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredTrainers.map(tr => (
+                            <SelectItem key={tr.id} value={tr.id}>
+                              {tr.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription className="text-xs">
+                        {t('form.assignedTrainerHelp', 'The trainer who will give the lessons in this cycle')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            })()}
+
+            {/* Applicable Trainers - for clubs (multi-select) */}
+            {ownerType === 'club' && trainers.length > 0 && (() => {
               const selectedLocationId = form.watch('location_id');
               const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
                 ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
@@ -435,7 +498,77 @@ export default function CycleForm({
               );
             })()}
 
-            {/* Pricing Section */}
+            {/* Skill Level Requirement */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <FormLabel className="text-sm font-medium">{t('form.levelRequirement', 'Level Requirement')}</FormLabel>
+              <FormField
+                control={form.control}
+                name="rating_system"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">{t('form.ratingSystem', 'Rating System')}</FormLabel>
+                    <Select value={field.value || 'knltb'} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {ratingSystems.map(rs => (
+                          <SelectItem key={rs.code} value={rs.code}>
+                            {rs.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="min_skill_rating"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{t('form.minLevel', 'Min Level')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.1"
+                          placeholder={t('form.minLevelPlaceholder', 'e.g. 3.0')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="max_skill_rating"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{t('form.maxLevel', 'Max Level')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.1"
+                          placeholder={t('form.maxLevelPlaceholder', 'e.g. 5.0')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormDescription className="text-xs">
+                {t('form.levelRequirementHelp', 'Only players within this level range can register')}
+              </FormDescription>
+            </div>
+
+
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
