@@ -66,16 +66,16 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
 
   // Track which groups are open
   const [teamOpen, setTeamOpen] = useState(
-    location.pathname.includes("/academy/trainers")
+    location.pathname.includes("/app/academy/trainers")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/academy/calendar") ||
-    location.pathname.includes("/academy/cycles")
+    location.pathname.includes("/app/academy/calendar") ||
+    location.pathname.includes("/app/academy/cycles")
   );
   const [businessOpen, setBusinessOpen] = useState(
-    location.pathname.includes("/academy/settings") ||
-    location.pathname.includes("/academy/subscription") ||
-    location.pathname.includes("/academy/earnings")
+    location.pathname.includes("/app/academy/settings") ||
+    location.pathname.includes("/app/academy/subscription") ||
+    location.pathname.includes("/app/academy/earnings")
   );
 
   const handleLogout = async () => {
@@ -192,7 +192,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
                   <NavLink
-                    to="/academy"
+                    to="/app/academy"
                     end
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
@@ -207,7 +207,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.profile")}>
                   <NavLink
-                    to="/academy/profile"
+                    to="/app/academy/profile"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
@@ -227,7 +227,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.team")}
-                      className={isActive("/academy/trainers")
+                      className={isActive("/app/academy/trainers")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -245,7 +245,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/trainers"
+                            to="/app/academy/trainers"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -268,7 +268,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/academy/calendar") || isActive("/academy/cycles")
+                      className={isActive("/app/academy/calendar") || isActive("/app/academy/cycles")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -286,7 +286,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/calendar"
+                            to="/app/academy/calendar"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -297,7 +297,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/cycles"
+                            to="/app/academy/cycles"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -314,7 +314,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.locations")}>
                   <NavLink
-                    to="/academy/locations"
+                    to="/app/academy/locations"
                     className="flex items-center gap-2"
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                   >
@@ -334,7 +334,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
-                      className={isActive("/academy/settings") || isActive("/academy/subscription") || isActive("/academy/earnings")
+                      className={isActive("/app/academy/settings") || isActive("/app/academy/subscription") || isActive("/app/academy/earnings")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -352,7 +352,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/settings"
+                            to="/app/academy/settings"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -364,7 +364,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/subscription"
+                            to="/app/academy/subscription"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
@@ -375,7 +375,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
-                            to="/academy/earnings"
+                            to="/app/academy/earnings"
                             className="flex items-center gap-2"
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >

@@ -62,7 +62,7 @@ export default function AcademyDashboard() {
           <AlertTitle>{t('subscription.trialActive')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/academy/subscription')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/subscription')}>
               {t('subscription.upgradeNow')}
             </Button>
           </AlertDescription>
@@ -76,7 +76,7 @@ export default function AcademyDashboard() {
           <AlertTitle>{t('subscription.trialExpired')}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{t('subscription.subscribeToAccess')}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/academy/subscription')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/subscription')}>
               {t('subscription.upgradeNow')}
             </Button>
           </AlertDescription>
@@ -96,7 +96,7 @@ export default function AcademyDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/academy/trainers')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/trainers')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.trainers')}</CardDescription>
             <CardTitle className="text-3xl">{stats.trainers}</CardTitle>
@@ -108,7 +108,7 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/academy/locations')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/locations')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.locations')}</CardDescription>
             <CardTitle className="text-3xl">{stats.locations}</CardTitle>
@@ -120,7 +120,7 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/academy/calendar')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/academy/calendar')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.upcomingSessions')}</CardDescription>
             <CardTitle className="text-3xl">-</CardTitle>
@@ -160,7 +160,7 @@ export default function AcademyDashboard() {
             <CardDescription>{t('trainers.description')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/academy/trainers')}>
+            <Button onClick={() => navigate('/app/academy/trainers')}>
               {t('trainers.manage')} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
@@ -175,7 +175,7 @@ export default function AcademyDashboard() {
             <CardDescription>{t('locations.description')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/academy/locations')}>
+            <Button onClick={() => navigate('/app/academy/locations')}>
               {t('locations.manage')} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>
