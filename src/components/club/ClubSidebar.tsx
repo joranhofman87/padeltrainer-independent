@@ -79,7 +79,6 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
     location.pathname.includes("/app/club/lessons")
   );
   const [businessOpen, setBusinessOpen] = useState(
-    location.pathname.includes("/app/club/profile") ||
     location.pathname.includes("/app/club/subscription") ||
     location.pathname.includes("/app/club/settings")
   );
@@ -202,6 +201,20 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.dashboard")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Profile */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.profile")}>
+                  <NavLink
+                    to="/app/club/profile"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Building2 className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.profile")}</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -334,7 +347,7 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.business")}
-                      className={isActive("/app/club/profile") || isActive("/app/club/subscription") || isActive("/app/club/settings")
+                      className={isActive("/app/club/subscription") || isActive("/app/club/settings")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -349,18 +362,6 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/club/profile"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            <Building2 className="h-4 w-4" />
-                            {t("nav.profile")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton asChild>
                           <NavLink
