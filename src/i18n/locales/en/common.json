@@ -175,21 +175,6 @@
     "description": "The page you're looking for doesn't exist or has been moved.",
     "goHome": "Go to Home"
   },
-  "cookies": {
-    "title": "Cookie Preferences",
-    "description": "We use cookies to improve your experience.",
-    "acceptAll": "Accept All",
-    "rejectNonEssential": "Essential Only",
-    "customize": "Customize",
-    "necessary": "Essential",
-    "necessaryDesc": "Required for the site to function properly",
-    "analytics": "Analytics",
-    "analyticsDesc": "Help us understand how visitors use our site",
-    "preferences": "Preferences",
-    "preferencesDesc": "Remember your settings and preferences",
-    "save": "Save Preferences",
-    "privacyLink": "Learn more in our Privacy Policy"
-  },
   "deleteAccount": {
     "title": "Delete Account",
     "description": "Permanently delete your account and all data",
