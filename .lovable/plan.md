@@ -1,73 +1,54 @@
 
 
-# Club Dashboard: Add Sidebar Navigation and Fix Routes
+# Restrict Club Access Until Admin Approval
 
-## Overview
-Replace the current horizontal dropdown navigation bar in the Club dashboard with a sidebar-based layout, matching the Trainer and Academy dashboards. Also fix all navigation paths missing the `/app/` prefix.
+## Problem
+When a user claims a club, they immediately get full dashboard access (edit profile, manage trainers, players, calendar, etc.) even though the claim is still pending admin verification. The "pending verification" alert is shown but has no actual access restriction.
+
+## Solution
+Add a verification gate in the `ClubLayout` so unverified clubs only see a "pending review" status page instead of the full dashboard. This is the simplest, most secure approach -- a single checkpoint that blocks all club pages.
 
 ## Changes
 
-### 1. Create `ClubSidebar.tsx` (new file)
-Create a new sidebar component following the exact same pattern as `AcademySidebar.tsx`:
-- **Header**: Club logo/icon, club name, verified badge, collapse toggle
-- **Navigation sections**:
-  - Dashboard (standalone)
-  - People group (collapsible): Trainers, Players
-  - Schedule group (collapsible): Calendar, Lessons
-  - Tournaments (standalone)
-  - Business group (collapsible): Profile, Subscription, Settings
-- **Footer**: ProfileSwitcher, View Public Profile button, ThemeToggle, LanguageSwitcher, Logout
-- All paths use `/app/club/...` prefix
+### 1. `src/components/club/ClubLayout.tsx` -- Add verification gate
+After the "no clubs" empty state check, add a new check: if the active club's `is_verified` is `false`, render a "Pending Verification" page instead of the sidebar + Outlet. This page will show:
+- A clock/pending icon
+- "Your claim is being reviewed" message
+- The club name and submission date
+- A note that they'll be notified when approved
+- A button to browse locations or go back to their other dashboard
 
-### 2. Rewrite `ClubLayout.tsx`
-Replace the current header + horizontal nav layout with the sidebar pattern from `AcademyLayout.tsx`:
-- Wrap content in `SidebarProvider` with `ClubSidebar` + `SidebarInset`
-- Remove the top header bar and club info section (moved into sidebar header)
-- Add mobile header with `SidebarTrigger`
-- Fix `isOnSubscriptionPage` check: `/club/subscription` --> `/app/club/subscription`
-- Fix `subscriptionPath` in `SubscriptionOverlay`: `/club/subscription` --> `/app/club/subscription`
+This ensures **no** club sub-page (profile, trainers, players, calendar, settings) is accessible until verified.
 
-### 3. Delete `ClubNavigation.tsx`
-No longer needed since the sidebar replaces it entirely.
+### 2. `src/components/club/ClaimClubDialog.tsx` -- Don't navigate to club dashboard
+Change `navigate('/app/club')` to stay on the current page after claiming. Show a success toast explaining the claim is under review. The user shouldn't be sent to a dashboard they can't use yet.
 
-### 4. Fix remaining broken paths
-- `ClubLayout.tsx` line 143: `isOnSubscriptionPage` uses `/club/subscription` instead of `/app/club/subscription`
-- `ClubLayout.tsx` line 304: `SubscriptionOverlay` `subscriptionPath` uses `/club/subscription`
-- `AcademyLayout.tsx` line 133: `isOnSubscriptionPage` uses `/academy/subscription` instead of `/app/academy/subscription`
-- `AcademyLayout.tsx` line 165: navigate uses `/academy/onboarding` instead of `/app/onboarding/academy`
-- `AcademyLayout.tsx` line 222: `SubscriptionOverlay` `subscriptionPath` uses `/academy/subscription`
+### 3. `src/lib/club.ts` -- Filter `getUserClubProfiles` (optional hardening)
+No change needed here since the layout gate handles it. Keeping unverified clubs in the list allows showing the pending state. However, functions like `updateClubProfile`, `getClubTrainers`, etc. should ideally also be protected -- but since RLS is already in place and the layout gate blocks the UI, this is sufficient.
 
 ## Technical Details
 
-### Sidebar structure (mirrors AcademySidebar)
+### ClubLayout verification gate (inserted after `clubs.length === 0` check)
 ```text
-+---------------------------+
-| Logo                      |
-| Club Name     [collapse]  |
-| Verified Badge            |
-+---------------------------+
-| Dashboard                 |
-| People >                  |
-|   Trainers                |
-|   Players                 |
-| Schedule >                |
-|   Calendar                |
-|   Lessons                 |
-| Tournaments               |
-| Business >                |
-|   Profile                 |
-|   Subscription            |
-|   Settings                |
-+---------------------------+
-| ProfileSwitcher           |
-| View Public Profile       |
-| Theme | Lang | Logout     |
-+---------------------------+
+if (activeClub && !activeClub.is_verified) {
+  --> Render pending verification page
+  --> No sidebar, no Outlet
+  --> Show: icon, title, description, club name, claimed date
+  --> Button: "Browse Locations" or navigate to player/trainer dashboard
+}
 ```
 
+### ClaimClubDialog post-submit behavior
+- Remove `navigate('/app/club')`
+- Keep the success toast (already says claim is pending)
+- Close dialog only; user stays on location page
+
 ### Files modified
-- **New**: `src/components/club/ClubSidebar.tsx`
-- **Rewritten**: `src/components/club/ClubLayout.tsx`
-- **Deleted**: `src/components/club/ClubNavigation.tsx`
-- **Fixed**: `src/components/academy/AcademyLayout.tsx` (path fixes)
+- `src/components/club/ClubLayout.tsx` -- add verification gate before full layout render
+- `src/components/club/ClaimClubDialog.tsx` -- remove navigation to club dashboard after claim
+
+### Translation keys needed (in club.json for both en and nl)
+- `dashboard.pendingTitle` -- "Claim Under Review"
+- `dashboard.pendingDescription` -- "Your request to manage {clubName} is being reviewed by our team. You'll receive an email once approved."
+- `dashboard.pendingNote` -- "This usually takes 1-2 business days."
 
