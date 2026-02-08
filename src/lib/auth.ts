@@ -61,11 +61,26 @@ export async function signUpWithEmail(email: string, password: string, fullName:
       };
     }
 
-    // User created successfully, return user data (no session yet - needs email verification)
+    // User created successfully with email auto-confirmed
+    // Sign in immediately to establish a session
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      console.error('Auto sign-in after signup failed:', signInError);
+      // User was created but sign-in failed — fall back to manual login
+      return { 
+        data: { user: response?.user || null, session: null }, 
+        error: null 
+      };
+    }
+
     return { 
       data: { 
-        user: response?.user || null, 
-        session: null // No session until email is verified
+        user: signInData.user, 
+        session: signInData.session 
       }, 
       error: null 
     };

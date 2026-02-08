@@ -38,30 +38,25 @@ const getEmailTemplate = (userName: string, actionLink: string) => {
   `;
 
   return {
-    subject: "Confirm your email - PadelTrainer",
+    subject: "Welcome to PadelTrainer! 🎾",
     html: `
       <div style="${baseStyle}">
         <div style="text-align: center; margin-bottom: 30px;">
           <h1 style="color: #16a34a; margin: 0;">PadelTrainer<span style="color: #333;">.ai</span></h1>
         </div>
         
-        <h2 style="color: #333;">Confirm your email address</h2>
+        <h2 style="color: #333;">Welcome to PadelTrainer!</h2>
         
         <p>Hi${userName ? ` ${userName}` : ''},</p>
         
-        <p>Thanks for signing up for PadelTrainer! Please confirm your email address by clicking the button below:</p>
+        <p>Thanks for signing up! Your account is ready and you can start setting up your trainer profile right away.</p>
         
         <p style="text-align: center; margin: 30px 0;">
-          <a href="${actionLink}" style="${buttonStyle}">Confirm Email</a>
+          <a href="${actionLink}" style="${buttonStyle}">Go to PadelTrainer</a>
         </p>
         
         <p style="color: #666; font-size: 14px;">
           If you didn't create an account with PadelTrainer, you can safely ignore this email.
-        </p>
-        
-        <p style="color: #666; font-size: 14px;">
-          Or copy and paste this link into your browser:<br>
-          <a href="${actionLink}" style="color: #16a34a; word-break: break-all;">${actionLink}</a>
         </p>
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
@@ -120,7 +115,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: false, // Keep email unconfirmed
+      email_confirm: true, // Auto-confirm so trainer can proceed to onboarding immediately
       user_metadata: {
         full_name: fullName,
         phone: phone,
@@ -143,24 +138,24 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('user_id', user.id);
     }
 
-    // Generate email verification link using Admin API
+    // Generate a welcome link (magiclink type since user is already confirmed)
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "signup",
+      type: "magiclink",
       email,
-      password,
       options: {
         redirectTo: redirectTo || "https://padeltrainer.ai/app/auth",
       },
     });
 
     if (linkError) {
-      console.error("Error generating verification link:", linkError);
-      throw new Error(`Failed to generate verification link: ${linkError.message}`);
+      console.error("Error generating welcome link:", linkError);
+      // Don't fail signup if welcome link generation fails
+      console.error("Failed to generate welcome link, but user was created");
     }
 
-    const actionLink = linkData.properties.action_link;
+    const actionLink = linkData?.properties?.action_link || redirectTo || "https://padeltrainer.ai/app/auth";
 
-    // Send custom branded email via Resend
+    // Send custom branded welcome email via Resend
     const emailContent = getEmailTemplate(fullName, actionLink);
     
     const res = await fetch("https://api.resend.com/emails", {
@@ -180,10 +175,9 @@ const handler = async (req: Request): Promise<Response> => {
     if (!res.ok) {
       const errorText = await res.text();
       console.error("Resend API error:", errorText);
-      // Don't fail signup if email fails - user was created
-      console.error("Failed to send verification email, but user was created");
+      console.error("Failed to send welcome email, but user was created");
     } else {
-      console.log(`Verification email sent to ${email}`);
+      console.log(`Welcome email sent to ${email}`);
     }
 
     return new Response(
