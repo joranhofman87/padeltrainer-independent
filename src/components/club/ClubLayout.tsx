@@ -2,20 +2,15 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Building2, MapPin, Settings, LogOut, ExternalLink } from 'lucide-react';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { Building2, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
-import { ClubNavigation } from '@/components/club/ClubNavigation';
-import { ProfileSwitcher } from '@/components/ProfileSwitcher';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { signOut } from '@/lib/auth';
+import { ClubSidebar } from '@/components/club/ClubSidebar';
+import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
-import { getMarketingUrl } from '@/lib/domains';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { 
   checkClubSubscription, 
@@ -55,7 +50,7 @@ export function useClubContext() {
 const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
 
 export default function ClubLayout() {
-  const { t, i18n } = useTranslation('club');
+  const { t } = useTranslation('club');
   const navigate = useNavigate();
   const location = useLocation();
   const localizePath = useLocalizedPathFn();
@@ -80,7 +75,6 @@ export default function ClubLayout() {
       const userClubs = await getUserClubProfiles(user.id);
       setClubs(userClubs);
       
-      // Try to restore previously selected club from localStorage
       const savedClubId = localStorage.getItem(ACTIVE_CLUB_STORAGE_KEY);
       const savedClub = savedClubId ? userClubs.find(c => c.id === savedClubId) : null;
       
@@ -101,7 +95,6 @@ export default function ClubLayout() {
     fetchClubs();
   }, [user]);
 
-  // Fetch subscription status when active club changes
   const fetchSubscription = async () => {
     if (!activeClub) {
       setSubscription(null);
@@ -122,8 +115,6 @@ export default function ClubLayout() {
 
   useEffect(() => {
     fetchSubscription();
-    
-    // Refresh subscription every 60 seconds
     const interval = setInterval(fetchSubscription, 60000);
     return () => clearInterval(interval);
   }, [activeClub]);
@@ -133,52 +124,29 @@ export default function ClubLayout() {
     localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, club.id);
   };
 
-  // Calculate subscription status
   const hasActiveSubscription = subscription?.isSubscribed || false;
   const isTrialing = subscription?.isTrial && !subscription?.trialExpired;
   const trialDaysRemaining = subscription?.trialEnd 
     ? getTrialDaysRemaining(subscription.trialEnd) 
     : 0;
   const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
-  const isOnSubscriptionPage = location.pathname === '/club/subscription';
-
-  const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: t('common:success'),
-      description: t('common:signedOut', 'Successfully signed out'),
-    });
-    navigate('/');
-  };
+  const isOnSubscriptionPage = location.pathname === '/app/club/subscription';
 
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
-            <Skeleton className="h-8 w-40" />
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-8 w-8 rounded-full" />
-              <Skeleton className="h-8 w-32" />
-            </div>
+        <div className="flex">
+          <div className="w-64 border-r bg-sidebar p-4 space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-6 w-3/4" />
+            <Skeleton className="h-6 w-1/2" />
           </div>
-        </div>
-        <div className="border-b bg-card">
-          <div className="container mx-auto px-4 py-6">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-lg" />
-              <div className="space-y-2">
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-4 w-32" />
-              </div>
+          <div className="flex-1 p-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
             </div>
-          </div>
-        </div>
-        <div className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
           </div>
         </div>
       </div>
@@ -207,7 +175,6 @@ export default function ClubLayout() {
     );
   }
 
-  // Feature translations for subscription overlay
   const subscriptionFeatures = [
     t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
     t('subscription.features.unifiedCalendar', 'Unified calendar'),
@@ -227,81 +194,36 @@ export default function ClubLayout() {
       trialDaysRemaining,
       refreshSubscription: fetchSubscription,
     }}>
-      <div className="min-h-screen bg-background">
-        {/* Top Header Bar */}
-        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-2 sm:py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg sm:text-xl">PadelTrainer<span className="text-primary">.ai</span></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <LanguageSwitcher />
-              <ThemeToggle />
-              <ProfileSwitcher
-                activeClubId={activeClub?.id} 
-                onClubChange={handleClubChange} 
-              />
-              <Button variant="ghost" size="icon" onClick={() => navigate('/app/club/settings')}>
-                <Settings className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleSignOut}>
-                <LogOut className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
-        </header>
-
-        {/* Club Info Section */}
-        <div className="border-b bg-card">
-          <div className="container mx-auto px-4 py-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-bold">{activeClub?.location.name}</h1>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      <span>{activeClub?.location.city}</span>
-                      <Badge variant={activeClub?.is_verified ? 'default' : 'secondary'}>
-                        {activeClub?.is_verified ? t('common:verified') : t('dashboard.pendingVerification')}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* View Public Profile */}
-                {activeClub?.location.slug && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                  onClick={() => {
-                    const lang = i18n.language === 'en' || i18n.language === 'nl' ? i18n.language : 'nl';
-                    window.open(getMarketingUrl(`locations/${activeClub.location.slug}`, lang), '_blank');
-                  }}
-                >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    {t('dashboard.viewPublicProfile')}
-                  </Button>
-                )}
-              </div>
-              
-              {/* Navigation */}
-              <ClubNavigation />
-            </div>
-          </div>
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-background">
+          <ClubSidebar 
+            club={activeClub}
+            onClubChange={handleClubChange}
+          />
+          <SidebarInset className="flex-1">
+            {/* Mobile Header */}
+            <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:hidden">
+              <SidebarTrigger>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle sidebar</span>
+                </Button>
+              </SidebarTrigger>
+              <span className="font-semibold truncate">{activeClub?.location?.name}</span>
+            </header>
+            
+            {/* Page Content */}
+            <main className="flex-1">
+              <Outlet />
+            </main>
+          </SidebarInset>
         </div>
-
-        {/* Page Content */}
-        <Outlet />
         
         {/* Subscription Paywall Overlay */}
         {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
           <SubscriptionOverlay
             roleName="club"
-            subscriptionPath="/club/subscription"
+            subscriptionPath="/app/club/subscription"
             pricing={{
               monthly: CLUB_SUBSCRIPTION.monthlyPrice,
               yearly: CLUB_SUBSCRIPTION.yearlyPrice,
@@ -311,7 +233,7 @@ export default function ClubLayout() {
             isTrialExpired={isSubscriptionExpired}
           />
         )}
-      </div>
+      </SidebarProvider>
     </ClubContext.Provider>
   );
 }
