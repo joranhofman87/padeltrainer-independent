@@ -553,7 +553,20 @@
     "noOpenSlots": "Geen open slots beschikbaar",
     "noOpenSlotsDescription": "Al je trainingsslots zijn of volgeboekt of gemarkeerd als privé.",
     "createSlots": "Nieuwe slots aanmaken",
-    "viewCalendar": "Bekijk volledige kalender"
+    "viewCalendar": "Bekijk volledige kalender",
+    "visibleToPlayers": "Zichtbaar voor spelers",
+    "hiddenFromPlayers": "Verborgen voor spelers",
+    "toggleAll": "Alles omschakelen",
+    "showAll": "Alles tonen",
+    "hideAll": "Alles verbergen",
+    "slotVisible": "Slot is nu zichtbaar voor spelers",
+    "slotHidden": "Slot is nu verborgen voor spelers",
+    "cyclusVisible": "Alle sessies in deze cyclus zijn nu zichtbaar",
+    "cyclusHidden": "Alle sessies in deze cyclus zijn nu verborgen",
+    "allVisible": "Alle slots zijn nu zichtbaar voor spelers",
+    "allHidden": "Alle slots zijn nu verborgen voor spelers",
+    "dateRange": "{{start}} – {{end}}",
+    "at": "om"
   },
   "bookingSettings": {
     "title": "Boekingsinstellingen",
