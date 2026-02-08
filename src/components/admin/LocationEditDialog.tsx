@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { supabase as supabaseTyped } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +31,14 @@ interface LocationEditDialogProps {
   onOpenChange: (open: boolean) => void;
   location: Location | null;
   onSuccess: () => void;
+}
+
+interface ClubData {
+  id: string;
+  is_verified: boolean;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  trial_ends_at: string | null;
 }
 
 interface FormData {
@@ -93,10 +102,36 @@ export function LocationEditDialog({
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [clubData, setClubData] = useState<ClubData | null>(null);
+  const [clubFormData, setClubFormData] = useState<Omit<ClubData, 'id'> | null>(null);
 
   useEffect(() => {
     if (open) {
       setFormData(getInitialFormData(location));
+      if (location?.id) {
+        supabaseTyped
+          .from('club_profiles')
+          .select('id, is_verified, subscription_status, subscription_tier, trial_ends_at')
+          .eq('location_id', location.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data) {
+              setClubData(data);
+              setClubFormData({
+                is_verified: data.is_verified,
+                subscription_status: data.subscription_status,
+                subscription_tier: data.subscription_tier,
+                trial_ends_at: data.trial_ends_at,
+              });
+            } else {
+              setClubData(null);
+              setClubFormData(null);
+            }
+          });
+      } else {
+        setClubData(null);
+        setClubFormData(null);
+      }
     }
   }, [open, location]);
 
@@ -153,6 +188,20 @@ export function LocationEditDialog({
       } else {
         await createLocation(locationData);
         toast({ title: 'Success', description: 'Location created successfully' });
+      }
+
+      // Update linked club profile if present
+      if (clubData && clubFormData) {
+        const { error: clubError } = await supabaseTyped
+          .from('club_profiles')
+          .update({
+            is_verified: clubFormData.is_verified,
+            subscription_status: clubFormData.subscription_status,
+            subscription_tier: clubFormData.subscription_tier,
+            trial_ends_at: clubFormData.trial_ends_at,
+          })
+          .eq('id', clubData.id);
+        if (clubError) throw clubError;
       }
 
       onSuccess();
@@ -538,6 +587,80 @@ export function LocationEditDialog({
               </div>
             </div>
           </div>
+
+          {/* Club Management - only shown when a club profile is linked */}
+          {clubFormData && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Club Management</h3>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="club_verified">Verified</Label>
+                  <Switch
+                    id="club_verified"
+                    checked={clubFormData.is_verified}
+                    onCheckedChange={checked =>
+                      setClubFormData(prev => prev ? { ...prev, is_verified: checked } : prev)
+                    }
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="club_sub_status">Subscription Status</Label>
+                    <Select
+                      value={clubFormData.subscription_status || 'inactive'}
+                      onValueChange={value =>
+                        setClubFormData(prev => prev ? { ...prev, subscription_status: value } : prev)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                        <SelectItem value="trial">Trial</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="club_sub_tier">Subscription Tier</Label>
+                    <Select
+                      value={clubFormData.subscription_tier || 'starter'}
+                      onValueChange={value =>
+                        setClubFormData(prev => prev ? { ...prev, subscription_tier: value } : prev)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="starter">Starter</SelectItem>
+                        <SelectItem value="club">Club</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {clubFormData.subscription_status !== 'active' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="club_trial_ends">Trial Ends At</Label>
+                    <Input
+                      id="club_trial_ends"
+                      type="date"
+                      value={clubFormData.trial_ends_at?.split('T')[0] || ''}
+                      onChange={e =>
+                        setClubFormData(prev =>
+                          prev
+                            ? { ...prev, trial_ends_at: e.target.value ? `${e.target.value}T23:59:59Z` : null }
+                            : prev
+                        )
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
