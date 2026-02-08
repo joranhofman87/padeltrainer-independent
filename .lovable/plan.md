@@ -1,89 +1,35 @@
 
-# ✅ IMPLEMENTED
-## Separate Registrations from Cyclus (Calendar Slots)
+## Fix: "Training Cycle" on Calendar Should Create Slots, Not Registrations
 
 ### The Problem
-Currently, "Registrations" (collecting player interest) and "Cyclus" (specific recurring calendar entries) are mixed together in the same `cycles` table and use the same `CycleForm`. These are fundamentally different things:
+When clicking "Training Cycle" from the calendar's slot type chooser, it opens `CycleForm` which creates a record in the `cycles` table (a registration). Instead, it should create `availability_slots` directly on the calendar -- exactly what `BulkCreateSheet` already does.
 
-1. **Registrations** = "We're looking for players interested in training." No specific day/time. Players fill in their availability, preferences, rating, etc. All responses go to Intake Requests. From there, the trainer/academy plans the agenda.
+`BulkCreateSheet` already handles recurring slot creation: it picks a day, time, duration, number of weeks, lesson type, location, and generates all the `availability_slots` with a shared `cyclus_id` and `cyclus_name`. This is the correct behavior for a "Training Cycle" on the calendar.
 
-2. **Cyclus** (or single slots) = A specific recurring training on a day and timeframe (e.g. "Tuesday 16:00-17:00, 10 weeks"). Shown on the calendar. Has a trainer, level, group size, pricing.
+### The Fix
 
-### What Changes
+**1. Wire "Training Cycle" to open BulkCreateSheet instead of CycleForm**
 
-**1. Simplify the Registration form (public-facing CycleApplicationForm)**
-- Remove the cycle-specific timeframe info from the registration page header (no specific day/time to show since registrations are not tied to a slot)
-- Keep the detailed player application form: availability picker (multiple time windows per day with 30-min increments), lesson type, rating, preferred trainer, notes
-- The form stays largely the same -- it already collects availability via `DayAvailabilityPicker`
+In both `TrainerCalendar.tsx` and `AcademyCalendar.tsx`:
+- Change `handleChooseCyclus` / `onChooseCyclus` to open `BulkCreateSheet` instead of `CycleForm`
+- Remove the `CycleForm` import and usage from both calendar pages (it no longer belongs here)
+- Remove the `showCreateCycleDialog` state and related `trainerHourlyRate` fetching that was only needed for CycleForm
 
-**2. Simplify the Registration creation form (CycleForm for registrations)**
-- When creating a Registration, remove timeframe fields (`start_time`, `end_time`) and the auto-pricing calculation -- these belong to Cyclus only
-- Keep: name, enrollment deadline, lesson types, rating requirements, location
-- The `CycleForm` will detect which mode it's in based on a new prop or a field
+**2. Files to change**
 
-**3. Keep the Cyclus creation form (CycleForm for cyclus)**
-- When creating a Cyclus, keep all the current fields: start date, number of weeks, start time, end time, trainer, level, group size, auto-pricing
-- This creates calendar entries and is tied to specific day/time
+`src/pages/TrainerCalendar.tsx`:
+- Change `handleChooseCyclus` from `setShowCreateCycleDialog(true)` to `setBulkCreateOpen(true)`
+- Remove the `CycleForm` component at the bottom
+- Remove `showCreateCycleDialog` state, `trainerHourlyRate` state, and CycleForm import
+- Keep `trainerHourlyRate` fetch only if used elsewhere (it's not -- can be removed)
 
-**4. Navigation restructuring**
+`src/pages/academy/AcademyCalendar.tsx`:
+- Change `onChooseCyclus` callback from `setShowCreateCycleDialog(true)` to `setBulkCreateOpen(true)`
+- Remove the `CycleForm` component at the bottom
+- Remove `showCreateCycleDialog` state and CycleForm import
 
-For **Trainers**, reorganize the sidebar:
-- **Players** group:
-  - My Players
-  - Intake Requests (all intake requests across all registrations)
-- **Schedule** group:
-  - Calendar (create Cyclus/single slots here)
-  - Open Slots
-  - Lessons
-- **Registrations** -- single page (not a group): shows the list of registrations + create button + link to share. Intake requests link from here too.
-
-For **Academies**, same pattern:
-- Move "Registrations" out of the Schedule group and make it a standalone nav item
-- Add an Intake Requests page for academies (currently only trainers have one)
-
-**5. Add Intake Requests page for Academy**
-- Create `src/pages/academy/AcademyIntakeRequests.tsx` mirroring `TrainerIntakeRequests.tsx`
-- Uses `getIntakeRequestsWithProposals('academy', academyId)` -- the function already supports this owner type
-- Add route and sidebar link
-
-**6. Differentiate Registration vs Cyclus in the database**
-- Add a `type` field to the `cycles` table: `'registration'` or `'cyclus'`
-- Default to `'registration'` for backward compatibility
-- Filter by type in queries: Registrations page shows type=registration, Calendar shows type=cyclus
-
-### Technical Details
-
-**Database migration:**
-```sql
-ALTER TABLE cycles ADD COLUMN type TEXT NOT NULL DEFAULT 'registration' 
-  CHECK (type IN ('registration', 'cyclus'));
-```
-
-**CycleForm changes (`src/components/cycles/CycleForm.tsx`):**
-- Add a `formType: 'registration' | 'cyclus'` prop
-- When `formType === 'registration'`: hide start_time, end_time, auto-pricing. Show name, enrollment deadline, lesson types, rating, location
-- When `formType === 'cyclus'`: show all current fields (date, weeks, timeframe, trainer, pricing, etc.)
-- On submit, include `type` in the cycle input
-
-**SlotTypeChoiceDialog stays the same** -- "Training Cycle" opens CycleForm with `formType='cyclus'`
-
-**TrainerCycles/AcademyCycles pages** -- these become the "Registrations" pages, filtering for `type='registration'` only. Add a "Create Registration" button that opens CycleForm with `formType='registration'`.
-
-**Calendar pages** -- "Training Cycle" choice opens CycleForm with `formType='cyclus'`
-
-**New files:**
-- `src/pages/academy/AcademyIntakeRequests.tsx`
-
-**Modified files:**
-- `src/components/cycles/CycleForm.tsx` -- add `formType` prop, conditional field visibility
-- `src/lib/cycles.ts` -- add `type` to `CycleInput` and `Cycle` interfaces, update queries
-- `src/pages/TrainerCycles.tsx` -- filter by type='registration'
-- `src/pages/academy/AcademyCycles.tsx` -- filter by type='registration'
-- `src/pages/TrainerDashboard.tsx` -- pass formType='cyclus' to CycleForm
-- `src/pages/TrainerCalendar.tsx` -- pass formType='cyclus' to CycleForm
-- `src/pages/academy/AcademyCalendar.tsx` -- pass formType='cyclus' to CycleForm
-- `src/components/trainer/TrainerSidebar.tsx` -- restructure Registration nav
-- `src/components/academy/AcademySidebar.tsx` -- add Registrations + Intake nav items
-- `src/App.tsx` -- add academy intake requests route
-- `src/i18n/locales/en/cycles.json` and `nl/cycles.json` -- add new translation keys
-
+**3. What stays the same**
+- `CycleForm` continues to exist and is used on the Registrations pages (`TrainerCycles.tsx`, `AcademyCycles.tsx`) for creating registration-type cycles
+- `BulkCreateSheet` already handles all the cyclus functionality: day, time, duration, weeks, lesson, location, players, court type
+- `AddSlotDialog` stays for single slot creation
+- The `SlotTypeChoiceDialog` stays -- "Single Slot" opens `AddSlotDialog`, "Training Cycle" opens `BulkCreateSheet`
