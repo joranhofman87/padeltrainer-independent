@@ -1,43 +1,38 @@
 
-# Add PostHog Analytics (Cookieless Mode)
+# Remove Google Analytics, TradeTracker, and Cookie Banner
 
 ## What changes
-Add PostHog analytics that loads for **all visitors** without requiring cookie consent. This runs alongside the existing Google Analytics (which stays behind the consent banner). You'll get full traffic visibility from day one.
+Since PostHog (cookieless) now handles all traffic analytics, there's no remaining reason for Google Analytics, TradeTracker, or the cookie consent system. Removing all of them simplifies the codebase and eliminates the consent banner entirely.
 
-PostHog in cookieless mode uses no cookies and stores nothing persistently in the browser, so it's GDPR-compliant without consent.
+## Files to delete
+- `src/lib/analytics.ts` -- GA + TradeTracker initialization
+- `src/contexts/CookieConsentContext.tsx` -- Cookie consent state management
+- `src/components/CookieConsentBanner.tsx` -- The banner UI and customize dialog
 
-## Setup steps
+## Files to modify
 
-### 1. Get your PostHog API key
-- Sign up at [posthog.com](https://posthog.com) (free tier: 1M events/month)
-- Go to Project Settings and copy your **Project API Key** (it's a public key, safe to use in frontend code)
-- Note your **PostHog host** (usually `https://eu.i.posthog.com` for EU data residency -- recommended for a Netherlands-based site)
+### `src/main.tsx`
+- Remove `import { initializeAnalytics }` and the `initializeAnalytics()` call
 
-### 2. You'll be asked to provide the PostHog key
-Since this is a **public/publishable** key, it will be stored directly in the code (not as a secret).
+### `src/App.tsx`
+- Remove `CookieConsentProvider` wrapper
+- Remove `CookieConsentBanner` component
+- Remove their imports
 
-## Technical Details
+## Translation keys to clean up
+Remove the `cookies.*` keys from:
+- `src/i18n/locales/en/common.json`
+- `src/i18n/locales/nl/common.json`
 
-### New file: `src/lib/posthog.ts`
-Initialize PostHog with cookieless settings:
-- `persistence: 'memory'` -- no cookies, no localStorage
-- `disable_cookie: true`
-- `disable_persistence: true`
-- SPA page-view tracking on route changes
+## What stays
+- **PostHog** (`src/lib/posthog.ts`) -- cookieless, always loads, no consent needed
+- **PageTracker** (`src/components/PageTracker.tsx`) -- SPA route tracking via PostHog
+- **Privacy page** -- still accessible, just no longer linked from the cookie banner
 
-### Modified file: `src/main.tsx`
-Import and call `initializePostHog()` at app startup (no consent check needed).
-
-### Modified file: `src/lib/analytics.ts`
-Add a `trackPageView()` helper that fires to both PostHog (always) and GA (when consented). Add SPA route tracking via a React hook or history listener.
-
-### New file: `src/hooks/usePageTracking.ts`
-A React hook using `useLocation()` from react-router to track page views on every route change -- fires to PostHog unconditionally and to GA only if consented.
-
-### Modified file: `src/App.tsx`
-Add the `usePageTracking()` hook inside the router to capture all navigation.
-
-### Dependencies
-- Install `posthog-js` package
-
-No database changes needed. No backend changes needed.
+## Summary
+| Before | After |
+|--------|-------|
+| GA + TradeTracker (behind consent) | Removed |
+| PostHog (cookieless) | Stays |
+| Cookie consent banner | Removed |
+| 3 extra files + context provider | Gone |
