@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, MapPin, Star, ArrowLeft, TrendingUp, Building2, ChevronRight } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
+import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { LocationCard } from '@/components/locations/LocationCard';
 import { SEO } from '@/components/SEO';
@@ -88,20 +89,29 @@ export default function TrainersCity() {
     setTrainerCounts(allTrainerCounts);
     setClaimedLocationIds(allClaimedIds);
 
-    // Fetch trainers at locations in this city OR with location field matching city
-    // Only show trainers who are: is_public=true AND (subscription_status='active' OR trial_ends_at > now())
+    // Fetch all public trainers, then filter by subscription/academy
     const now = new Date().toISOString();
-    const { data: trainerProfiles, error: trainerError } = await supabase
+    const { data: allPublicTrainers, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
       .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
-      .eq('is_public', true)
-      .or(`subscription_status.eq.active,trial_ends_at.gt.${now}`);
+      .eq('is_public', true);
 
     if (trainerError) {
       console.error('Error fetching trainers:', trainerError);
       setLoading(false);
       return;
     }
+
+    // Check which trainers are in paid academies
+    const allTrainerIds = allPublicTrainers.map(t => t.id);
+    const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
+
+    // Filter: subscription_status='active' OR trial_ends_at > now() OR in paid academy
+    const trainerProfiles = allPublicTrainers.filter(t =>
+      t.subscription_status === 'active' ||
+      (t.trial_ends_at && t.trial_ends_at > now) ||
+      paidAcademyTrainerIds.has(t.id)
+    );
 
     // Fetch profiles
     const userIds = trainerProfiles.map(t => t.user_id);

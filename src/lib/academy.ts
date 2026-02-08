@@ -430,6 +430,33 @@ export async function isTrainerInPaidAcademy(trainerProfileId: string): Promise<
   return (data || []).some((row: any) => row.academy_profile?.subscription_status === 'active');
 }
 
+// Batch check: returns a Set of trainer profile IDs that are part of a paid academy
+export async function getTrainerIdsInPaidAcademies(trainerProfileIds: string[]): Promise<Set<string>> {
+  if (trainerProfileIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      trainer_profile_id,
+      academy_profile:academy_profiles!inner(subscription_status)
+    `)
+    .in('trainer_profile_id', trainerProfileIds)
+    .eq('status', 'active');
+
+  if (error) {
+    logger.error('Error batch checking trainer paid academy status', undefined, { error });
+    return new Set();
+  }
+
+  const result = new Set<string>();
+  (data || []).forEach((row: any) => {
+    if (row.academy_profile?.subscription_status === 'active') {
+      result.add(row.trainer_profile_id);
+    }
+  });
+  return result;
+}
+
 // ===================== Location Contract Functions =====================
 
 export interface AcademyLocationWithDetails extends AcademyLocation {
