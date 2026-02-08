@@ -39,6 +39,7 @@ export default function ClubProfile() {
   const [courtData, setCourtData] = useState({
     indoor_courts: 0,
     outdoor_courts: 0,
+    website_url: '',
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
@@ -67,6 +68,7 @@ export default function ClubProfile() {
       setCourtData({
         indoor_courts: activeClub.location.indoor_courts || 0,
         outdoor_courts: activeClub.location.outdoor_courts || 0,
+        website_url: (activeClub.location as any).website_url || '',
       });
     }
   }, [activeClub]);
@@ -228,6 +230,7 @@ export default function ClubProfile() {
         .update({
           indoor_courts: courtData.indoor_courts,
           outdoor_courts: courtData.outdoor_courts,
+          website_url: courtData.website_url || null,
         })
         .eq('id', activeClub.location_id);
 
@@ -428,6 +431,16 @@ export default function ClubProfile() {
                   onChange={(e) => setCourtData({ ...courtData, outdoor_courts: parseInt(e.target.value) || 0 })}
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="website_url">{t('profile.websiteUrl', 'Website URL')}</Label>
+              <Input
+                id="website_url"
+                type="url"
+                value={courtData.website_url}
+                onChange={(e) => setCourtData({ ...courtData, website_url: e.target.value })}
+                placeholder="https://www.example.com"
+              />
             </div>
           </CardContent>
         </Card>
