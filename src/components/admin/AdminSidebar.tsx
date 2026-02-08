@@ -48,6 +48,7 @@ import {
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
+import { Logo } from "@/components/Logo";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/app/admin", icon: LayoutDashboard, end: true },
@@ -93,6 +94,11 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <Logo className="h-6" />
+          </div>
+        )}
         <div className={cn(
           "flex px-2 py-2",
           collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
