@@ -175,21 +175,6 @@
     "description": "De pagina die je zoekt bestaat niet of is verplaatst.",
     "goHome": "Naar Home"
   },
-  "cookies": {
-    "title": "Cookie Voorkeuren",
-    "description": "We gebruiken cookies om je ervaring te verbeteren.",
-    "acceptAll": "Alles Accepteren",
-    "rejectNonEssential": "Alleen Essentieel",
-    "customize": "Aanpassen",
-    "necessary": "Essentieel",
-    "necessaryDesc": "Nodig voor het functioneren van de site",
-    "analytics": "Analytics",
-    "analyticsDesc": "Helpen ons begrijpen hoe bezoekers onze site gebruiken",
-    "preferences": "Voorkeuren",
-    "preferencesDesc": "Onthouden je instellingen en voorkeuren",
-    "save": "Voorkeuren Opslaan",
-    "privacyLink": "Lees meer in ons Privacybeleid"
-  },
   "deleteAccount": {
     "title": "Account Verwijderen",
     "description": "Verwijder je account en alle gegevens permanent",
