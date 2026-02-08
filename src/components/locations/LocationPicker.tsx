@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { getActiveLocations, searchLocations, type Location } from '@/lib/locations';
+import { COUNTRIES } from '@/lib/countries';
 import { useTranslation } from 'react-i18next';
 
 interface LocationPickerProps {
@@ -39,10 +40,7 @@ interface LocationPickerProps {
   serverSearch?: boolean;
 }
 
-// Country codes to names mapping
-const COUNTRIES: Record<string, string> = {
-  NL: 'Nederland',
-};
+// Use shared COUNTRIES from lib/countries.ts
 
 export function LocationPicker({
   selectedLocationIds,
