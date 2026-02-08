@@ -30,7 +30,7 @@ import { getTrainerAverageRating } from '@/lib/reviews';
 import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
-import { getTrainerAcademy, type AcademyProfile } from '@/lib/academy';
+import { getTrainerAcademy, isTrainerInPaidAcademy, type AcademyProfile } from '@/lib/academy';
 import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
@@ -56,6 +56,8 @@ interface TrainerData {
   specializations: string[] | null;
   is_verified: boolean;
   is_public: boolean;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
@@ -237,8 +239,21 @@ export default function TrainerProfile() {
     // Allow the trainer to view their own profile even if not public
     const isOwnProfile = user?.id === trainerResult.data.user_id;
 
+    // Check subscription-based visibility: must have active subscription, trial, or paid academy
+    const now = new Date().toISOString();
+    const hasActiveSubscription = trainerResult.data.subscription_status === 'active';
+    const hasActiveTrial = trainerResult.data.trial_ends_at && trainerResult.data.trial_ends_at > now;
+    const inPaidAcademy = await isTrainerInPaidAcademy(trainerResult.data.id);
+    const hasSubscriptionAccess = hasActiveSubscription || hasActiveTrial || inPaidAcademy;
+
     if (!trainerResult.data.is_public && !hasVerifiedClubLink && !isOwnProfile) {
       logger.debug('Trainer is not public and not linked to verified club');
+      setLoading(false);
+      return;
+    }
+
+    if (!hasSubscriptionAccess && !isOwnProfile) {
+      logger.debug('Trainer has no active subscription, trial, or paid academy membership');
       setLoading(false);
       return;
     }
