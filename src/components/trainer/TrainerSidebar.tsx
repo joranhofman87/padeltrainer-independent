@@ -65,6 +65,7 @@ export function TrainerSidebar() {
   const { toast } = useToast();
 
   const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+  const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
   const [trainerClubs, setTrainerClubs] = useState<TrainerClub[]>([]);
   const [hasAcademy, setHasAcademy] = useState<boolean>(false);
   const [showGetStarted, setShowGetStarted] = useState(false);
@@ -98,6 +99,7 @@ export function TrainerSidebar() {
       const trainerProfile = await getTrainerProfile(user.id);
       if (trainerProfile) {
         setTrainerProfileId(trainerProfile.id);
+        setTrainerSlug(trainerProfile.slug);
 
         // Fetch clubs, academy, and setup completion in parallel
         const [clubs, academy, profileData, lessonCount, slotCount, mollieData, playerCount] = await Promise.all([
@@ -143,7 +145,7 @@ export function TrainerSidebar() {
   const handleViewPublicProfile = () => {
     if (trainerProfileId) {
       const lang = i18n.language === "en" || i18n.language === "nl" ? i18n.language : "nl";
-      window.open(getMarketingUrl(`trainer/${trainerProfileId}`, lang), "_blank");
+      window.open(getMarketingUrl(`trainer/${trainerSlug || trainerProfileId}`, lang), "_blank");
     }
   };
 
