@@ -41,12 +41,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
-interface Lesson {
-  id: string;
-  title: string;
-  price: number;
-  location: string | null;
-}
+// Lessons table removed - pricing now on slots
 
 interface ScheduleSettings {
   slot_duration_minutes: number;
@@ -64,7 +59,7 @@ export default function TrainerCalendar() {
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
   const [settings, setSettings] = useState<ScheduleSettings>({
     slot_duration_minutes: 60,
     schedule_weeks_ahead: 4,
@@ -81,7 +76,7 @@ export default function TrainerCalendar() {
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
-  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
@@ -115,14 +110,8 @@ export default function TrainerCalendar() {
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
       });
 
-      // Fetch lessons with more details
-      const { data: lessonData } = await supabase
-        .from("lessons")
-        .select("id, title, price, location")
-        .eq("trainer_id", trainerProfile.id)
-        .eq("is_active", true);
-
-      setLessons(lessonData || []);
+      // Lessons table removed - no longer needed
+      setLessons([]);
     } catch (error) {
       console.error("Error fetching trainer data:", error);
     }
@@ -169,18 +158,14 @@ export default function TrainerCalendar() {
           id,
           start_time,
           end_time,
-          lesson_id,
+          max_participants,
+          price_per_session,
           cyclus_id,
           cyclus_name,
           is_marked_full,
           location_id,
           locations:location_id (
             name
-          ),
-          lessons:lesson_id (
-            title,
-            max_participants,
-            price
           )
         `)
         .eq("trainer_id", trainerProfile.id)
@@ -190,7 +175,6 @@ export default function TrainerCalendar() {
 
       if (slotsError) throw slotsError;
 
-      // Fetch bookings for these slots with player names (only if there are slots)
       const slotIds = availabilitySlots?.map((s) => s.id) || [];
       let bookings: any[] = [];
       
@@ -251,7 +235,6 @@ export default function TrainerCalendar() {
       const now = new Date();
       const transformedSlots: SlotWithBookings[] = (availabilitySlots || []).map(
         (slot) => {
-          const lesson = slot.lessons as { title: string; max_participants: number; price: number } | null;
           const location = slot.locations as { name: string } | null;
           const counts = bookingCounts[slot.id] || { confirmed: 0, pending: 0, players: [] };
 
@@ -259,10 +242,10 @@ export default function TrainerCalendar() {
             id: slot.id,
             start_time: slot.start_time,
             end_time: slot.end_time,
-            lesson_id: slot.lesson_id,
-            lesson_title: lesson?.title || null,
-            max_participants: lesson?.max_participants || 1,
-            price: lesson?.price || null,
+            lesson_id: null,
+            lesson_title: null,
+            max_participants: slot.max_participants || 1,
+            price: slot.price_per_session || null,
             active_bookings: counts.confirmed,
             pending_bookings: counts.pending,
             is_past: new Date(slot.start_time) < now,
@@ -357,13 +340,7 @@ export default function TrainerCalendar() {
 
   const handleBookForPlayer = (slot: SlotWithBookings) => {
     setSelectedSlot(slot);
-    // Find the lesson for this slot
-    if (slot.lesson_id) {
-      const lesson = lessons.find(l => l.id === slot.lesson_id);
-      setSelectedLesson(lesson || null);
-    } else {
-      setSelectedLesson(null);
-    }
+    setSelectedLesson(null);
     setBookForPlayerOpen(true);
   };
 
@@ -389,7 +366,6 @@ export default function TrainerCalendar() {
           payment_amount,
           guest_player_id,
           availability_slots (id, start_time, end_time),
-          lessons (id, title, price, location),
           profiles:player_id (id, full_name, email)
         `)
         .eq("id", bookingId)

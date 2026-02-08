@@ -13,7 +13,7 @@ import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHo
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
-import { createLesson } from '@/lib/lessons';
+
 import { toast } from 'sonner';
 
 interface OnboardingStep3LessonProps {
@@ -81,41 +81,19 @@ export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonP
 
     setCreatingLesson(true);
     try {
-      const { data, error } = await createLesson(trainerId, {
-        title: title.trim(),
-        description: null,
-        duration_minutes: parseInt(duration),
-        price: parseFloat(price),
-        max_participants: parseInt(maxParticipants),
-        min_skill_rating: null,
-        max_skill_rating: null,
-        location: null,
-        is_active: true,
-        is_recurring: false,
-        recurrence_type: null,
-        recurrence_day: null,
-        recurrence_time: null,
-        recurrence_count: null,
-        recurrence_end_date: null,
-        start_date: null,
-        payment_timing: paymentTiming,
-        booking_mode: 'full_slot',
-      });
-
-      if (error) throw error;
-
-      // Side effect: set hourly_rate on trainer profile
+      // Set hourly_rate on trainer profile (lessons table removed)
       await supabase
         .from('trainer_profiles')
         .update({ hourly_rate: parseFloat(price) })
         .eq('id', trainerId);
 
-      setLessonId(data.id);
+      // We no longer create a "lesson" row - just mark as ready
+      setLessonId(trainerId); // use trainerId as placeholder
       setLessonCreated(true);
-      toast.success('Lesson created!');
+      toast.success('Lesson settings saved!');
     } catch (error: any) {
-      console.error('Error creating lesson:', error);
-      toast.error('Failed to create lesson');
+      console.error('Error saving lesson settings:', error);
+      toast.error('Failed to save lesson settings');
     } finally {
       setCreatingLesson(false);
     }
@@ -138,14 +116,17 @@ export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonP
         return;
       }
 
+      const slotPrice = Math.round(parseFloat(price) * (parseInt(duration) / 60) * 100) / 100;
+
       const { data, error } = await supabase
         .from('availability_slots')
         .insert({
           trainer_id: trainerId,
-          lesson_id: lessonId,
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
           is_recurring: false,
+          max_participants: parseInt(maxParticipants),
+          price_per_session: slotPrice,
         })
         .select()
         .single();
@@ -186,6 +167,7 @@ export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonP
 
       const slotsToInsert = [];
       const baseStart = setMinutes(setHours(startOfDay(cyclusDate), startH), startM);
+      const slotPrice = Math.round(parseFloat(price) * (durationMin / 60) * 100) / 100;
 
       for (let week = 0; week < weeks; week++) {
         const slotStart = addWeeks(baseStart, week);
@@ -193,12 +175,13 @@ export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonP
 
         slotsToInsert.push({
           trainer_id: trainerId,
-          lesson_id: lessonId,
           start_time: slotStart.toISOString(),
           end_time: slotEnd.toISOString(),
           is_recurring: false,
           cyclus_id: cyclusId,
           cyclus_name: name,
+          max_participants: parseInt(maxParticipants),
+          price_per_session: slotPrice,
         });
       }
 

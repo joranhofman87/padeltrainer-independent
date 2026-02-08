@@ -55,7 +55,7 @@ import TrainerCyclus from '@/pages/TrainerCyclus';
 import TrainerCycles from '@/pages/TrainerCycles';
 import TrainerIntakeRequests from '@/pages/TrainerIntakeRequests';
 import OpenSlots from '@/pages/OpenSlots';
-import TrainerLessons from '@/pages/TrainerLessons';
+
 import TrainerLayout from '@/components/trainer/TrainerLayout';
 import PlayerLayout from '@/components/player/PlayerLayout';
 import PlayerSettings from '@/pages/PlayerSettings';
@@ -82,7 +82,7 @@ import ClubPlayers from '@/pages/club/ClubPlayers';
 import ClubTrainers from '@/pages/club/ClubTrainers';
 import ClubProfile from '@/pages/club/ClubProfile';
 import ClubCalendar from '@/pages/club/ClubCalendar';
-import ClubLessons from '@/pages/club/ClubLessons';
+
 import ClubTournaments from '@/pages/club/ClubTournaments';
 import ClubSettings from '@/pages/club/ClubSettings';
 import ClubSubscription from '@/pages/club/ClubSubscription';
@@ -157,7 +157,7 @@ export function DomainRouter() {
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
         <Route path="open-slots" element={<OpenSlots />} />
-        <Route path="lessons" element={<TrainerLessons />} />
+        
         <Route path="profile" element={<EditProfile />} />
         <Route path="subscription" element={<TrainerSubscription />} />
         <Route path="earnings" element={<TrainerEarnings />} />
@@ -195,7 +195,7 @@ export function DomainRouter() {
         <Route path="players" element={<ClubPlayers />} />
         <Route path="trainers" element={<ClubTrainers />} />
         <Route path="calendar" element={<ClubCalendar />} />
-        <Route path="lessons" element={<ClubLessons />} />
+        
         <Route path="tournaments" element={<ClubTournaments />} />
         <Route path="settings" element={<ClubSettings />} />
         <Route path="subscription" element={<ClubSubscription />} />

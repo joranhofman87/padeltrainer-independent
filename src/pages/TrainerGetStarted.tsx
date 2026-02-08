@@ -58,10 +58,8 @@ export default function TrainerGetStarted() {
       const profileComplete = !!(trainerProfile.hourly_rate && profileData?.bio);
       const currentTrainerId = trainerProfile.id;
 
-      const { count: lessonCount } = await supabase
-        .from('lessons')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
+      // Lessons table removed - use slot count instead
+      const lessonCount = 0; // deprecated
 
       const { count: slotCount } = await supabase
         .from('availability_slots')

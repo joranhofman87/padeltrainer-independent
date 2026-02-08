@@ -120,12 +120,11 @@ export function TrainerSidebar() {
         } else {
           // Determine if setup is incomplete
           const profileComplete = !!(trainerProfile.hourly_rate && profileData.data?.bio);
-          const hasLessons = (lessonCount.count || 0) > 0;
           const hasAvailability = (slotCount.count || 0) > 0;
           const paymentsComplete = !!(mollieData.data?.onboarding_complete && mollieData.data?.charges_enabled) || !!(trainerProfile as any).use_manual_invoicing;
           const hasPlayers = (playerCount.count || 0) > 0;
           
-          setShowGetStarted(!(profileComplete && hasLessons && hasAvailability && paymentsComplete && hasPlayers));
+          setShowGetStarted(!(profileComplete && hasAvailability && paymentsComplete && hasPlayers));
         }
       }
     };
@@ -372,17 +371,6 @@ export function TrainerSidebar() {
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.openSlots")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/trainer/lessons"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.lessons")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

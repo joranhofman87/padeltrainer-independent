@@ -54,11 +54,7 @@ interface Trainer {
   user_id: string;
 }
 
-interface Lesson {
-  id: string;
-  title: string;
-  trainer_id: string;
-}
+// Lesson interface removed - lessons table no longer exists
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 08:00 to 21:00
 
@@ -78,7 +74,7 @@ export default function ClubCalendar() {
   
   // Trainer filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
   
   // Dialog states
@@ -124,17 +120,8 @@ export default function ClubCalendar() {
         
         setTrainers(trainerList);
         
-        // Load lessons for all trainers
-        if (trainerList.length > 0) {
-          const trainerIds = trainerList.map(t => t.id);
-          const { data: lessonsData } = await supabase
-            .from("lessons")
-            .select("id, title, trainer_id")
-            .in("trainer_id", trainerIds)
-            .eq("is_active", true);
-          
-          setLessons(lessonsData || []);
-        }
+        // Lessons table removed
+        setLessons([]);
       }
     }
     loadClub();
