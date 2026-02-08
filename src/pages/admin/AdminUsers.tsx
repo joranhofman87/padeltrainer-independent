@@ -395,7 +395,8 @@ export default function AdminUsers() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort<UserWithComputedFields>(
     filteredUsers,
-    "_name"
+    "created_at",
+    "desc"
   );
 
   const getRoleBadgeVariant = (role: string | null) => {
