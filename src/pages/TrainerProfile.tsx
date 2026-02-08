@@ -674,13 +674,13 @@ export default function TrainerProfile() {
                 <CardContent>
                 <div className="space-y-3">
                     {trainerLocations.map((loc) => {
-                      const hasIndoor = loc.location.indoor_courts && loc.location.indoor_courts > 0;
-                      const hasOutdoor = loc.location.outdoor_courts && loc.location.outdoor_courts > 0;
+                      const hasIndoor = loc.location.indoor_courts != null && loc.location.indoor_courts > 0;
+                      const hasOutdoor = loc.location.outdoor_courts != null && loc.location.outdoor_courts > 0;
                       return (
                         <div 
                           key={loc.id} 
-                          className={`flex items-center justify-between p-3 bg-muted rounded-lg ${loc.club ? 'cursor-pointer hover:bg-muted/80 transition-colors' : ''}`}
-                          onClick={loc.club ? () => navigate(localizePath(`/locations/${loc.location.slug}`)) : undefined}
+                          className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
+                          onClick={() => navigate(localizePath(`/locations/${loc.location.slug}`))}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
@@ -710,19 +710,17 @@ export default function TrainerProfile() {
                               </div>
                             )}
                           </div>
-                          {loc.club && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              className="shrink-0 text-primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(localizePath(`/locations/${loc.location.slug}`));
-                              }}
-                            >
-                              {t('common:viewClub', 'View Club')} →
-                            </Button>
-                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            className="shrink-0 text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(localizePath(`/locations/${loc.location.slug}`));
+                            }}
+                          >
+                            {t('common:viewClub', 'View Club')} →
+                          </Button>
                         </div>
                       );
                     })}
