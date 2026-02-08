@@ -7,10 +7,10 @@ export interface SortConfig<T> {
   direction: SortDirection;
 }
 
-export function useTableSort<T>(data: T[], defaultSortKey?: keyof T) {
+export function useTableSort<T>(data: T[], defaultSortKey?: keyof T, defaultDirection?: SortDirection) {
   const [sortConfig, setSortConfig] = useState<SortConfig<T>>({
     key: defaultSortKey ?? null,
-    direction: defaultSortKey ? "asc" : null,
+    direction: defaultSortKey ? (defaultDirection ?? "asc") : null,
   });
 
   const handleSort = useCallback((key: keyof T) => {
