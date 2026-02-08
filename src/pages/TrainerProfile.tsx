@@ -407,6 +407,7 @@ export default function TrainerProfile() {
       />
 
       <ProfileLayout
+        bannerUrl={trainerAcademy?.banner_url}
         headerAction={
           !user ? (
             <Button onClick={() => navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(window.location.pathname)}`))}>{t('common:signUpToBook', 'Sign Up to Book')}</Button>
