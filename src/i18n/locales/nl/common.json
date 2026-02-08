@@ -233,5 +233,8 @@
     "teaching_style": "Lesstijl",
     "skill_focus": "Vaardigheden",
     "specialties": "Specialisaties"
-  }
+  },
+  "generalTerms": "Algemene Voorwaarden",
+  "acceptTerms": "Ik heb de algemene voorwaarden gelezen en ga hiermee akkoord",
+  "loadingTerms": "Voorwaarden laden..."
 }

@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2 } from 'lucide-react';
+import { getTermsForCycleOwner } from '@/lib/terms';
+import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -78,6 +80,9 @@ export default function CycleApplicationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<{ code: string; name: string }[]>([]);
+  const [cycleTerms, setCycleTerms] = useState<string | null>(null);
+  const [termsLoading, setTermsLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   
   // Load rating systems
   useEffect(() => {
@@ -91,6 +96,22 @@ export default function CycleApplicationForm({
     }
     loadRatingSystems();
   }, []);
+
+  // Load applicable terms for this cycle
+  useEffect(() => {
+    async function loadTerms() {
+      setTermsLoading(true);
+      try {
+        const { terms } = await getTermsForCycleOwner(cycle.owner_id, cycle.owner_type);
+        setCycleTerms(terms);
+      } catch (e) {
+        console.error('Error loading cycle terms:', e);
+      } finally {
+        setTermsLoading(false);
+      }
+    }
+    loadTerms();
+  }, [cycle.owner_id, cycle.owner_type]);
 
   const timeBlockSchema = z.object({
     start: z.string(),
@@ -566,6 +587,13 @@ export default function CycleApplicationForm({
                 </FormItem>
               )}
             />
+
+            <TermsAcceptance
+              terms={cycleTerms}
+              loading={termsLoading}
+              accepted={termsAccepted}
+              onAcceptChange={setTermsAccepted}
+            />
           </CardContent>
         </Card>
 
@@ -576,7 +604,7 @@ export default function CycleApplicationForm({
               {t('common:cancel', 'Cancel')}
             </Button>
           )}
-          <Button type="submit" disabled={isSubmitting} className="flex-1">
+          <Button type="submit" disabled={isSubmitting || (!!cycleTerms && !termsAccepted)} className="flex-1">
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -313,6 +313,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          general_terms: string | null
           id: string
           is_public: boolean
           is_verified: boolean
@@ -342,6 +343,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          general_terms?: string | null
           id?: string
           is_public?: boolean
           is_verified?: boolean
@@ -371,6 +373,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          general_terms?: string | null
           id?: string
           is_public?: boolean
           is_verified?: boolean
@@ -3083,6 +3086,7 @@ export type Database = {
           default_vat_rate: number | null
           experience_years: number | null
           favourite_quote: string | null
+          general_terms: string | null
           hourly_rate: number | null
           iban: string | null
           id: string
@@ -3132,6 +3136,7 @@ export type Database = {
           default_vat_rate?: number | null
           experience_years?: number | null
           favourite_quote?: string | null
+          general_terms?: string | null
           hourly_rate?: number | null
           iban?: string | null
           id?: string
@@ -3181,6 +3186,7 @@ export type Database = {
           default_vat_rate?: number | null
           experience_years?: number | null
           favourite_quote?: string | null
+          general_terms?: string | null
           hourly_rate?: number | null
           iban?: string | null
           id?: string

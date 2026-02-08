@@ -226,6 +226,11 @@
     "mollieConnectRefresh": "Complete Setup",
     "mollieConnectRefreshDescription": "Please complete your payment account setup."
   },
+  "terms": {
+    "title": "General Terms",
+    "description": "Terms players must accept before booking lessons with your trainers.",
+    "saved": "Terms saved successfully"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "trainers": "Trainers",
