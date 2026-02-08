@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Calendar, Users, DollarSign, Clock, 
   Bell, Eye, CalendarDays,
-  ChevronLeft, ChevronRight, LayoutGrid, Plus, Repeat, Copy
+  ChevronLeft, ChevronRight, LayoutGrid, Plus, Copy
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { 
@@ -658,18 +658,16 @@ export default function TrainerDashboard() {
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="outline"
               size="sm"
               onClick={() => {
                 setDefaultSlotDate(undefined);
                 setDefaultSlotTime(undefined);
-                setAddSlotOpen(true);
+                setSlotTypeChoiceOpen(true);
               }}
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
-              <span className="sm:hidden">{t("calendar.addSlot")}</span>
+              {t("calendar.new", "New")}
             </Button>
             <Button
               variant="outline"
@@ -682,15 +680,6 @@ export default function TrainerDashboard() {
             >
               <Copy className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.duplicateCyclus")}</span>
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setBulkCreateOpen(true)}
-              className="gap-2"
-            >
-              <Repeat className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.createCyclus")}</span>
-              <span className="sm:hidden">{t("calendar.createCyclus")}</span>
             </Button>
           </div>
 
