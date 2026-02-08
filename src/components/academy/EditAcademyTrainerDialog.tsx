@@ -142,7 +142,7 @@ export function EditAcademyTrainerDialog({
 
       if (profile) {
         setProfileData({
-          full_name: profile.full_name || '',
+          full_name: profile.full_name || trainerName || '',
           phone: profile.phone || '',
           bio: profile.bio || '',
           avatar_url: profile.avatar_url,
@@ -150,6 +150,9 @@ export function EditAcademyTrainerDialog({
           rating_system: profile.rating_system,
           rating_member_id: profile.rating_member_id,
         });
+      } else {
+        // Profile not accessible via RLS — use the prop name as fallback
+        setProfileData(prev => ({ ...prev, full_name: trainerName || '' }));
       }
 
       // Fetch trainer profile data
