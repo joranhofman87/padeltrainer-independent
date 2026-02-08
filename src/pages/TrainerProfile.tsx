@@ -610,49 +610,6 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Specializations */}
-            {trainer.specializations && trainer.specializations.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Star className="h-5 w-5 text-yellow-500" />
-                    {t('common:specializations', 'Specializations')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {trainer.specializations.map((spec, i) => (
-                      <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
-                        {spec}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Certifications */}
-            {trainer.certifications && trainer.certifications.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Award className="h-5 w-5 text-blue-500" />
-                    {t('common:certifications', 'Certifications')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {trainer.certifications.map((cert, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        {cert}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Academy Affiliation */}
             {trainerAcademy && trainerAcademy.name && (
               <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
@@ -838,6 +795,49 @@ export default function TrainerProfile() {
                 </Button>
               }
             />
+
+            {/* Specializations */}
+            {trainer.specializations && trainer.specializations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Star className="h-5 w-5 text-yellow-500" />
+                    {t('common:specializations', 'Specializations')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {trainer.specializations.map((spec, i) => (
+                      <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
+                        {spec}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Certifications */}
+            {trainer.certifications && trainer.certifications.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5 text-blue-500" />
+                    {t('common:certifications', 'Certifications')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {trainer.certifications.map((cert, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        {cert}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             {socialLinks.length > 0 && (
               <ProfileSocialCard
