@@ -603,7 +603,6 @@ export type Database = {
           is_marked_full: boolean
           is_public: boolean
           is_recurring: boolean
-          lesson_id: string | null
           location_id: string | null
           max_participants: number | null
           min_participants: number | null
@@ -626,7 +625,6 @@ export type Database = {
           is_marked_full?: boolean
           is_public?: boolean
           is_recurring?: boolean
-          lesson_id?: string | null
           location_id?: string | null
           max_participants?: number | null
           min_participants?: number | null
@@ -649,7 +647,6 @@ export type Database = {
           is_marked_full?: boolean
           is_public?: boolean
           is_recurring?: boolean
-          lesson_id?: string | null
           location_id?: string | null
           max_participants?: number | null
           min_participants?: number | null
@@ -683,13 +680,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "availability_slots_lesson_id_fkey"
-            columns: ["lesson_id"]
-            isOneToOne: false
-            referencedRelation: "lessons"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "availability_slots_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
@@ -720,7 +710,6 @@ export type Database = {
           discount_reason: string | null
           guest_player_id: string | null
           id: string
-          lesson_id: string | null
           mollie_payment_id: string | null
           mollie_transaction_id: string | null
           notes: string | null
@@ -740,7 +729,6 @@ export type Database = {
           discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
-          lesson_id?: string | null
           mollie_payment_id?: string | null
           mollie_transaction_id?: string | null
           notes?: string | null
@@ -760,7 +748,6 @@ export type Database = {
           discount_reason?: string | null
           guest_player_id?: string | null
           id?: string
-          lesson_id?: string | null
           mollie_payment_id?: string | null
           mollie_transaction_id?: string | null
           notes?: string | null
@@ -779,13 +766,6 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookings_lesson_id_fkey"
-            columns: ["lesson_id"]
-            isOneToOne: false
-            referencedRelation: "lessons"
             referencedColumns: ["id"]
           },
           {
@@ -1788,96 +1768,6 @@ export type Database = {
           },
           {
             foreignKeyName: "invoices_trainer_id_fkey"
-            columns: ["trainer_id"]
-            isOneToOne: false
-            referencedRelation: "trainer_profiles_safe"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      lessons: {
-        Row: {
-          booking_mode: string
-          created_at: string
-          description: string | null
-          duration_minutes: number
-          id: string
-          is_active: boolean
-          is_recurring: boolean
-          location: string | null
-          max_participants: number
-          max_skill_rating: number | null
-          min_skill_rating: number | null
-          payment_timing: string
-          price: number
-          recurrence_count: number | null
-          recurrence_day: number | null
-          recurrence_end_date: string | null
-          recurrence_time: string | null
-          recurrence_type: string | null
-          start_date: string | null
-          title: string
-          trainer_id: string
-          updated_at: string
-        }
-        Insert: {
-          booking_mode?: string
-          created_at?: string
-          description?: string | null
-          duration_minutes?: number
-          id?: string
-          is_active?: boolean
-          is_recurring?: boolean
-          location?: string | null
-          max_participants?: number
-          max_skill_rating?: number | null
-          min_skill_rating?: number | null
-          payment_timing?: string
-          price: number
-          recurrence_count?: number | null
-          recurrence_day?: number | null
-          recurrence_end_date?: string | null
-          recurrence_time?: string | null
-          recurrence_type?: string | null
-          start_date?: string | null
-          title: string
-          trainer_id: string
-          updated_at?: string
-        }
-        Update: {
-          booking_mode?: string
-          created_at?: string
-          description?: string | null
-          duration_minutes?: number
-          id?: string
-          is_active?: boolean
-          is_recurring?: boolean
-          location?: string | null
-          max_participants?: number
-          max_skill_rating?: number | null
-          min_skill_rating?: number | null
-          payment_timing?: string
-          price?: number
-          recurrence_count?: number | null
-          recurrence_day?: number | null
-          recurrence_end_date?: string | null
-          recurrence_time?: string | null
-          recurrence_type?: string | null
-          start_date?: string | null
-          title?: string
-          trainer_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lessons_trainer_id_fkey"
-            columns: ["trainer_id"]
-            isOneToOne: false
-            referencedRelation: "trainer_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lessons_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles_safe"

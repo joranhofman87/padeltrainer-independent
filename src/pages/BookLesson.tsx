@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
+import { formatPrice } from '@/lib/pricing';
 
 interface BookedPlayerInfo {
   skillRating: number | null;
@@ -25,10 +26,12 @@ interface SlotWithDetails {
   id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   cyclus_id?: string | null;
   cyclus_name?: string | null;
   court_type?: 'indoor' | 'outdoor' | null;
+  price_per_session?: number | null;
+  max_participants?: number | null;
+  allow_single_booking?: boolean | null;
   bookedPlayers?: BookedPlayerInfo[];
   averageRating?: number | null;
   ratingSystem?: string;
@@ -40,17 +43,6 @@ interface SlotWithDetails {
     city: string;
     street_address: string | null;
   } | null;
-  lessons?: {
-    id: string;
-    title: string;
-    description: string | null;
-    price: number;
-    duration_minutes: number;
-    min_skill_rating: number | null;
-    max_skill_rating: number | null;
-    max_participants: number;
-    booking_mode: string;
-  } | null;
 }
 
 interface CyclusBundle {
@@ -60,7 +52,6 @@ interface CyclusBundle {
   totalPrice: number;
   firstDate: string;
   lastDate: string;
-  lesson: SlotWithDetails['lessons'];
   location?: SlotWithDetails['location'];
   min_group_size?: number;
 }
@@ -120,10 +111,8 @@ export default function BookLesson() {
   }, [trainerId]);
 
   const fetchData = async () => {
-    // Detect if trainerId is a UUID or a slug
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId!);
 
-    // Fetch trainer profile by user_id (UUID) or slug
     const trainerResult = await supabase
       .from('trainer_profiles_safe')
       .select(`
@@ -145,7 +134,6 @@ export default function BookLesson() {
       return;
     }
 
-    // Now use the resolved user_id for profile lookups
     const resolvedUserId = trainerData.user_id;
 
     const [profileResult, profileWithEmailResult] = await Promise.all([
@@ -164,7 +152,6 @@ export default function BookLesson() {
     const profileData = profileResult.data;
     const profileWithEmail = profileWithEmailResult.data;
 
-    // Combine trainer and profile data
     setTrainer({
       ...trainerData,
       profiles: {
@@ -176,21 +163,21 @@ export default function BookLesson() {
       }
     } as unknown as TrainerWithProfile);
 
-    // Fetch available slots using the trainer's actual id (not user_id)
-    // Include cyclus_id and cyclus_name for grouping, and location via location_id
+    // Fetch available slots - no lessons join
     const { data: slotsData } = await supabase
       .from('availability_slots')
       .select(`
         id,
         start_time,
         end_time,
-        lesson_id,
         cyclus_id,
         cyclus_name,
         court_type,
+        price_per_session,
+        max_participants,
+        allow_single_booking,
         location_id,
-        locations:location_id(id, name, city, street_address),
-        lessons(id, title, description, price, duration_minutes, min_skill_rating, max_skill_rating, max_participants, booking_mode)
+        locations:location_id(id, name, city, street_address)
       `)
       .eq('trainer_id', trainerData.id)
       .eq('is_marked_full', false)
@@ -199,7 +186,6 @@ export default function BookLesson() {
       .order('start_time', { ascending: true });
 
     if (slotsData) {
-      // Fetch bookings with player ratings for each slot
       const slotIds = slotsData.map((s) => s.id);
       const { data: bookingsData } = await supabase
         .from('bookings')
@@ -212,7 +198,6 @@ export default function BookLesson() {
         .in('slot_id', slotIds)
         .in('status', ['pending', 'confirmed']);
 
-      // Count bookings per slot and calculate average ratings
       const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
       bookingsData?.forEach((b) => {
         if (!slotBookingInfo[b.slot_id]) {
@@ -220,23 +205,26 @@ export default function BookLesson() {
         }
         slotBookingInfo[b.slot_id].count++;
         
-        const profile = b.profiles as { skill_rating: number | null; rating_system: string } | null;
+        const prof = b.profiles as { skill_rating: number | null; rating_system: string } | null;
         const guestPlayer = b.guest_players as { skill_rating: number | null; rating_system: string } | null;
-        const rating = profile?.skill_rating ?? guestPlayer?.skill_rating;
-        const system = profile?.rating_system || guestPlayer?.rating_system || 'knltb';
+        const rating = prof?.skill_rating ?? guestPlayer?.skill_rating;
+        const system = prof?.rating_system || guestPlayer?.rating_system || 'knltb';
         
         if (rating != null) {
           slotBookingInfo[b.slot_id].ratings.push({ rating, system });
         }
       });
 
-      // Build available slots with cyclus info
       const availableSlots = slotsData
-        .filter((s) => (slotBookingInfo[s.id]?.count || 0) < 4)
+        .filter((s) => {
+          const maxP = (s as any).max_participants || 4;
+          return (slotBookingInfo[s.id]?.count || 0) < maxP;
+        })
         .map((s) => {
           const info = slotBookingInfo[s.id];
           const bookingCount = info?.count || 0;
           const ratings = info?.ratings || [];
+          const maxP = (s as any).max_participants || 4;
           
           let averageRating: number | null = null;
           let ratingSystem: string | undefined = undefined;
@@ -250,7 +238,7 @@ export default function BookLesson() {
           return {
             ...s,
             location: s.locations as SlotWithDetails['location'],
-            spotsLeft: 4 - bookingCount,
+            spotsLeft: maxP - bookingCount,
             averageRating,
             ratingSystem,
           } as SlotWithDetails;
@@ -260,7 +248,6 @@ export default function BookLesson() {
       const cyclusGroups: Record<string, SlotWithDetails[]> = {};
       const standaloneSlots: SlotWithDetails[] = [];
 
-      // Also count total slots per cyclus (including ones with bookings)
       const totalSlotsPerCyclus: Record<string, number> = {};
       const cyclusIds: string[] = [];
       slotsData.forEach((s) => {
@@ -270,7 +257,6 @@ export default function BookLesson() {
         }
       });
 
-      // Fetch cycle settings for min_group_size
       let cycleSettingsMap: Record<string, { min_group_size?: number }> = {};
       if (cyclusIds.length > 0) {
         const { data: cyclesData } = await supabase
@@ -300,20 +286,18 @@ export default function BookLesson() {
         }
       });
 
-      // Create bundles for full cycluses, individual slots for partial ones
       const bundles: CyclusBundle[] = [];
       const partialCyclusSlots: SlotWithDetails[] = [];
 
       Object.entries(cyclusGroups).forEach(([cyclusId, cyclusSlots]) => {
         const totalInCyclus = totalSlotsPerCyclus[cyclusId] || cyclusSlots.length;
         
-        // If ALL slots in cyclus are available (no bookings on any)
         if (cyclusSlots.length === totalInCyclus) {
           const sortedSlots = cyclusSlots.sort((a, b) => 
             new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
           );
           const totalPrice = sortedSlots.reduce((sum, s) => 
-            sum + (s.lessons?.price || 0), 0
+            sum + (s.price_per_session || 0), 0
           );
           
           bundles.push({
@@ -323,12 +307,10 @@ export default function BookLesson() {
             totalPrice,
             firstDate: sortedSlots[0].start_time,
             lastDate: sortedSlots[sortedSlots.length - 1].start_time,
-            lesson: sortedSlots[0].lessons,
             location: sortedSlots[0].location,
             min_group_size: cycleSettingsMap[cyclusId]?.min_group_size,
           });
         } else {
-          // Partial cyclus - show remaining slots individually
           partialCyclusSlots.push(...cyclusSlots);
         }
       });
@@ -353,32 +335,12 @@ export default function BookLesson() {
     setLoadingData(false);
   };
 
+  const getSlotPrice = (slot: SlotWithDetails) => {
+    return slot.price_per_session || trainer?.hourly_rate || 0;
+  };
+
   const handleBook = async () => {
     if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
-
-    // Get the lesson to check skill requirements
-    const lesson = selectedCyclus ? selectedCyclus.lesson : selectedSlot?.lessons;
-    
-    // Check skill rating requirements
-    if (lesson) {
-      const playerRating = profile.skill_rating;
-      if (lesson.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating)) {
-        toast({
-          title: 'Rating Too Low',
-          description: `This lesson requires a minimum rating of ${lesson.min_skill_rating}`,
-          variant: 'destructive',
-        });
-        return;
-      }
-      if (lesson.max_skill_rating && playerRating && playerRating > lesson.max_skill_rating) {
-        toast({
-          title: 'Rating Too High',
-          description: `This lesson is for players with rating up to ${lesson.max_skill_rating}`,
-          variant: 'destructive',
-        });
-        return;
-      }
-    }
 
     // Check terms acceptance
     if (applicableTerms && !termsAccepted) {
@@ -398,11 +360,9 @@ export default function BookLesson() {
         const requiresApproval = trainer.require_booking_approval;
         const useManualInvoicing = trainer.use_manual_invoicing;
         
-        // Create bookings for all slots in the cyclus
         const bookings = selectedCyclus.slots.map((slot) => ({
           player_id: profile.id,
           slot_id: slot.id,
-          lesson_id: slot.lesson_id,
           notes: notes || null,
           status: requiresApproval ? 'pending_approval' : (useManualInvoicing ? 'confirmed' : 'pending'),
           payment_status: 'pending',
@@ -422,7 +382,6 @@ export default function BookLesson() {
           }
         }
 
-        // Send appropriate email
         const firstSlot = selectedCyclus.slots[0];
         const firstDate = format(parseISO(firstSlot.start_time), 'EEE, MMM d, yyyy');
         const firstTime = format(parseISO(firstSlot.start_time), 'HH:mm');
@@ -484,7 +443,6 @@ export default function BookLesson() {
             return;
           }
 
-          // Get the booking IDs we just created
           const { data: createdBookings } = await supabase
             .from('bookings')
             .select('id')
@@ -495,7 +453,6 @@ export default function BookLesson() {
 
           const bookingIds = createdBookings?.map(b => b.id) || [];
 
-          // Create Mollie payment for the full cyclus
           const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
             'create-mollie-payment',
             {
@@ -520,27 +477,24 @@ export default function BookLesson() {
         return;
       }
 
-      // Handle single slot booking (existing logic)
+      // Handle single slot booking
       if (!selectedSlot) return;
       
-      const lesson = selectedSlot.lessons;
-      const bookingMode = lesson?.booking_mode || 'full_slot';
-      const maxP = lesson?.max_participants || 1;
-      const fullPrice = lesson?.price || trainer.hourly_rate || 50;
-      const perSpotPrice = maxP > 1 && bookingMode !== 'full_slot' ? fullPrice / maxP : fullPrice;
-      const bookingQuantity = bookingMode === 'full_slot' ? maxP : quantity;
-      const price = bookingMode === 'full_slot' ? fullPrice : perSpotPrice * bookingQuantity;
+      const maxP = selectedSlot.max_participants || 1;
+      const slotPrice = getSlotPrice(selectedSlot);
+      const allowSingle = selectedSlot.allow_single_booking;
+      const perSpotPrice = maxP > 1 && allowSingle ? slotPrice / maxP : slotPrice;
+      const bookingQuantity = !allowSingle ? 1 : quantity;
+      const price = allowSingle && maxP > 1 ? perSpotPrice * bookingQuantity : slotPrice;
       const requiresApproval = trainer.require_booking_approval;
       const useManualInvoicing = trainer.use_manual_invoicing;
 
       if (requiresApproval) {
-        // Create booking with pending_approval status
-        const { data: bookingData, error } = await supabase
+        const { error } = await supabase
           .from('bookings')
           .insert({
             player_id: profile.id,
             slot_id: selectedSlot.id,
-            lesson_id: selectedSlot.lesson_id,
             notes: notes || null,
             status: 'pending_approval',
             payment_status: 'pending',
@@ -550,7 +504,6 @@ export default function BookLesson() {
 
         if (error) throw error;
 
-        // Send email to trainer about the request
         const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
         const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
         
@@ -562,7 +515,7 @@ export default function BookLesson() {
               trainerName: trainer.profiles.full_name,
               playerName: profile.full_name,
               playerEmail: profile.email,
-              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+              lessonTitle: selectedSlot.cyclus_name || 'Training Session',
               lessonDate,
               lessonTime,
               location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null,
@@ -577,13 +530,11 @@ export default function BookLesson() {
           description: 'The trainer will review your booking request.',
         });
       } else if (useManualInvoicing) {
-        // Auto-accept with manual invoicing - confirm immediately
         const { data: bookingData, error } = await supabase
           .from('bookings')
           .insert({
             player_id: profile.id,
             slot_id: selectedSlot.id,
-            lesson_id: selectedSlot.lesson_id,
             notes: notes || null,
             status: 'confirmed',
             payment_status: 'pending',
@@ -593,7 +544,6 @@ export default function BookLesson() {
 
         if (error) throw error;
 
-        // Auto-create invoice for manual booking
         if (bookingData?.id) {
           try {
             await supabase.functions.invoke('auto-create-invoice', {
@@ -604,7 +554,6 @@ export default function BookLesson() {
           }
         }
 
-        // Send confirmation email to player
         const lessonDate = format(parseISO(selectedSlot.start_time), 'EEE, MMM d, yyyy');
         const lessonTime = format(parseISO(selectedSlot.start_time), 'HH:mm');
 
@@ -615,7 +564,7 @@ export default function BookLesson() {
             data: {
               playerName: profile.full_name,
               trainerName: trainer.profiles.full_name,
-              lessonTitle: selectedSlot.lessons?.title || 'Training Session',
+              lessonTitle: selectedSlot.cyclus_name || 'Training Session',
               lessonDate,
               lessonTime,
               location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null,
@@ -626,8 +575,6 @@ export default function BookLesson() {
 
         setBooked(true);
       } else {
-        // Auto-accept with Mollie payment (existing flow)
-        // First, check if trainer/club has valid payment setup
         const paymentSetup = await hasValidPaymentSetup(
           trainerId!,
           trainer.id,
@@ -644,12 +591,11 @@ export default function BookLesson() {
           return;
         }
 
-        const { data: bookingData, error } = await supabase
+        const { error } = await supabase
           .from('bookings')
           .insert({
             player_id: profile.id,
             slot_id: selectedSlot.id,
-            lesson_id: selectedSlot.lesson_id,
             notes: notes || null,
             status: 'pending',
             payment_status: 'pending',
@@ -659,14 +605,13 @@ export default function BookLesson() {
 
         if (error) throw error;
 
-        // Create Mollie payment
         const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
           'create-mollie-payment',
           {
             body: {
               slotId: selectedSlot.id,
               amount: price,
-              description: selectedSlot.lessons?.title || 'Training Session',
+              description: selectedSlot.cyclus_name || 'Training Session',
               trainerId: trainer.id,
             },
           }
@@ -675,7 +620,6 @@ export default function BookLesson() {
         if (paymentError) throw paymentError;
 
         if (paymentData?.checkoutUrl) {
-          // Redirect to Mollie Checkout
           window.location.href = paymentData.checkoutUrl;
         } else {
           throw new Error('No checkout URL received');
@@ -833,92 +777,52 @@ export default function BookLesson() {
                   Training Cycles
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {cyclusBundles.map((cyclus) => {
-                    const lesson = cyclus.lesson;
-                    const playerRating = profile?.skill_rating;
-                    const isTooLow = lesson?.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating);
-                    const isTooHigh = lesson?.max_skill_rating && playerRating && playerRating > lesson.max_skill_rating;
-                    const isIneligible = isTooLow || isTooHigh;
-                    const hasRatingRequirement = lesson?.min_skill_rating || lesson?.max_skill_rating;
-
-                    return (
-                      <Card
-                        key={cyclus.cyclus_id}
-                        className={`transition-all ${
-                          isIneligible 
-                            ? 'opacity-60 cursor-not-allowed border-muted'
-                            : selectedCyclus?.cyclus_id === cyclus.cyclus_id
-                              ? 'ring-2 ring-primary border-primary cursor-pointer'
-                              : 'hover:border-primary/50 cursor-pointer'
-                        }`}
-                        onClick={() => {
-                          if (!isIneligible) {
-                            setSelectedCyclus(cyclus);
-                            setSelectedSlot(null);
-                          }
-                        }}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Repeat className="h-4 w-4 text-primary" />
-                              <span className="font-semibold">{cyclus.cyclus_name}</span>
-                            </div>
-                            {selectedCyclus?.cyclus_id === cyclus.cyclus_id && !isIneligible && (
-                              <Check className="h-5 w-5 text-primary" />
-                            )}
+                  {cyclusBundles.map((cyclus) => (
+                    <Card
+                      key={cyclus.cyclus_id}
+                      className={`transition-all ${
+                        selectedCyclus?.cyclus_id === cyclus.cyclus_id
+                          ? 'ring-2 ring-primary border-primary cursor-pointer'
+                          : 'hover:border-primary/50 cursor-pointer'
+                      }`}
+                      onClick={() => {
+                        setSelectedCyclus(cyclus);
+                        setSelectedSlot(null);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Repeat className="h-4 w-4 text-primary" />
+                            <span className="font-semibold">{cyclus.cyclus_name}</span>
                           </div>
-                          <Badge variant="secondary" className="mb-2">
-                            {cyclus.slots.length} sessions
-                          </Badge>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
+                          {selectedCyclus?.cyclus_id === cyclus.cyclus_id && (
+                            <Check className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="mb-2">
+                          {cyclus.slots.length} sessions
+                        </Badge>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {format(parseISO(cyclus.firstDate), 'MMM d')} - {format(parseISO(cyclus.lastDate), 'MMM d, yyyy')}
+                        </p>
+                        {cyclus.location && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                            <MapPin className="h-3 w-3" />
+                            {cyclus.location.name}, {cyclus.location.city}
                           </p>
-                          {cyclus.lesson && (
-                            <>
-                              <p className="text-sm font-medium mb-1">{cyclus.lesson.title}</p>
-                              {cyclus.location && (
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-                                  <MapPin className="h-3 w-3" />
-                                  {cyclus.location.name}, {cyclus.location.city}
-                                </p>
-                              )}
-                            </>
-                          )}
-                          
-                          {/* Rating requirement */}
-                          {hasRatingRequirement && (
-                            <div className={`flex items-center gap-2 text-xs mt-2 ${isIneligible ? 'text-destructive' : 'text-muted-foreground'}`}>
-                              <Star className="h-3 w-3" />
-                              <span>
-                                Level: {lesson?.min_skill_rating || '0'} - {lesson?.max_skill_rating || '∞'}
-                              </span>
-                              {isIneligible && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <AlertCircle className="h-3 w-3" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Your rating ({playerRating || 'none'}) is {isTooLow ? 'below' : 'above'} the required range</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-2 pt-2 border-t mt-2">
-                            <Euro className="h-4 w-4 text-primary" />
-                            <span className="font-semibold text-primary">
-                              €{cyclus.totalPrice}
-                            </span>
-                            <span className="text-xs text-muted-foreground">total</span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                        )}
+                        
+                        <div className="flex items-center gap-2 pt-2 border-t mt-2">
+                          <Euro className="h-4 w-4 text-primary" />
+                          <span className="font-semibold text-primary">
+                            {formatPrice(cyclus.totalPrice)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">total</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               </div>
             )}
@@ -937,36 +841,25 @@ export default function BookLesson() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {individualSlots.map((slot) => {
-                    const lesson = slot.lessons;
-                    const playerRating = profile?.skill_rating;
-                    const isTooLow = lesson?.min_skill_rating && (!playerRating || playerRating < lesson.min_skill_rating);
-                    const isTooHigh = lesson?.max_skill_rating && playerRating && playerRating > lesson.max_skill_rating;
-                    const isIneligible = isTooLow || isTooHigh;
-                    const hasRatingRequirement = lesson?.min_skill_rating || lesson?.max_skill_rating;
+                    const slotPrice = getSlotPrice(slot);
 
                     return (
                       <Card
                         key={slot.id}
                         className={`transition-all ${
-                          isIneligible 
-                            ? 'opacity-60 cursor-not-allowed border-muted'
-                            : selectedSlot?.id === slot.id
-                              ? 'ring-2 ring-primary border-primary cursor-pointer'
-                              : 'hover:border-primary/50 cursor-pointer'
+                          selectedSlot?.id === slot.id
+                            ? 'ring-2 ring-primary border-primary cursor-pointer'
+                            : 'hover:border-primary/50 cursor-pointer'
                         }`}
                         onClick={() => {
-                          if (!isIneligible) {
-                            setSelectedSlot(slot);
-                            setSelectedCyclus(null);
-                            // Reset quantity based on booking mode and min_group_size
-                            const mode = slot.lessons?.booking_mode || 'full_slot';
-                            const maxP = slot.lessons?.max_participants || 1;
-                            const minGroup = slot.cyclus_id ? (cycleSettingsMap[slot.cyclus_id]?.min_group_size || 1) : 1;
-                            if (mode === 'full_slot') {
-                              setQuantity(maxP);
-                            } else {
-                              setQuantity(Math.max(minGroup, 1));
-                            }
+                          setSelectedSlot(slot);
+                          setSelectedCyclus(null);
+                          const maxP = slot.max_participants || 1;
+                          const minGroup = slot.cyclus_id ? (cycleSettingsMap[slot.cyclus_id]?.min_group_size || 1) : 1;
+                          if (!slot.allow_single_booking) {
+                            setQuantity(maxP);
+                          } else {
+                            setQuantity(Math.max(minGroup, 1));
                           }
                         }}
                       >
@@ -978,7 +871,7 @@ export default function BookLesson() {
                                 {format(parseISO(slot.start_time), 'EEE, MMM d')}
                               </span>
                             </div>
-                            {selectedSlot?.id === slot.id && !isIneligible && (
+                            {selectedSlot?.id === slot.id && (
                               <Check className="h-5 w-5 text-primary" />
                             )}
                           </div>
@@ -987,51 +880,26 @@ export default function BookLesson() {
                             {format(parseISO(slot.start_time), 'HH:mm')} -{' '}
                             {format(parseISO(slot.end_time), 'HH:mm')}
                           </div>
-                          {slot.lessons && (
-                            <div className="pt-2 border-t">
-                              <p className="font-medium text-sm">{slot.lessons.title}</p>
-                              {slot.location && (
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                  <MapPin className="h-3 w-3" />
-                                  {slot.location.name}, {slot.location.city}
-                                </p>
-                              )}
-                              {slot.court_type && (
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                  {slot.court_type === 'indoor' ? '🏠' : '☀️'}{' '}
-                                  {slot.court_type === 'indoor' ? 'Indoor' : 'Outdoor'}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-2 mt-1">
-                                <Euro className="h-4 w-4 text-primary" />
-                                <span className="font-semibold text-primary">
-                                  {slot.lessons.booking_mode !== 'full_slot' && slot.lessons.max_participants > 1
-                                    ? `€${(slot.lessons.price / slot.lessons.max_participants).toFixed(2)}/spot`
-                                    : `€${slot.lessons.price}`}
-                                </span>
-                              </div>
-                            </div>
+                          {slot.location && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                              <MapPin className="h-3 w-3" />
+                              {slot.location.name}, {slot.location.city}
+                            </p>
                           )}
-                          
-                          {/* Rating requirement */}
-                          {hasRatingRequirement && (
-                            <div className={`flex items-center gap-2 text-xs mt-2 ${isIneligible ? 'text-destructive' : 'text-muted-foreground'}`}>
-                              <Star className="h-3 w-3" />
-                              <span>
-                                Level: {lesson?.min_skill_rating || '0'} - {lesson?.max_skill_rating || '∞'}
+                          {slot.court_type && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                              {slot.court_type === 'indoor' ? '🏠' : '☀️'}{' '}
+                              {slot.court_type === 'indoor' ? 'Indoor' : 'Outdoor'}
+                            </p>
+                          )}
+                          {slotPrice > 0 && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                              <Euro className="h-4 w-4 text-primary" />
+                              <span className="font-semibold text-primary">
+                                {slot.allow_single_booking && (slot.max_participants || 1) > 1
+                                  ? `${formatPrice(slotPrice / (slot.max_participants || 1))}/spot`
+                                  : formatPrice(slotPrice)}
                               </span>
-                              {isIneligible && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <AlertCircle className="h-3 w-3" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Your rating ({playerRating || 'none'}) is {isTooLow ? 'below' : 'above'} the required range</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
                             </div>
                           )}
                           
@@ -1039,7 +907,7 @@ export default function BookLesson() {
                           <div className="flex items-center justify-between mt-2 pt-2 border-t">
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Users className="h-4 w-4" />
-                              <span>{slot.spotsLeft || 4}/4 spots left</span>
+                              <span>{slot.spotsLeft || (slot.max_participants || 4)}/{slot.max_participants || 4} spots left</span>
                             </div>
                             {slot.averageRating !== null && slot.averageRating !== undefined && (
                               <div className="flex items-center gap-1">
@@ -1079,9 +947,6 @@ export default function BookLesson() {
                       <Badge variant="secondary" className="mb-2">
                         {selectedCyclus.slots.length} sessions
                       </Badge>
-                      {selectedCyclus.lesson && (
-                        <p className="text-sm">{selectedCyclus.lesson.title}</p>
-                      )}
                       <div className="text-sm text-muted-foreground space-y-1 mt-2 max-h-32 overflow-y-auto">
                         {selectedCyclus.slots.map((slot) => (
                           <p key={slot.id} className="flex items-center gap-2">
@@ -1118,7 +983,7 @@ export default function BookLesson() {
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-lg font-semibold">
                         <span>Total ({selectedCyclus.slots.length} sessions)</span>
-                        <span>€{selectedCyclus.totalPrice}</span>
+                        <span>{formatPrice(selectedCyclus.totalPrice)}</span>
                       </div>
                     </div>
 
@@ -1135,7 +1000,7 @@ export default function BookLesson() {
                   <>
                     <div className="p-4 bg-muted rounded-lg space-y-2">
                       <p className="font-semibold">
-                        {selectedSlot.lessons?.title || 'Training Session'}
+                        {selectedSlot.cyclus_name || 'Training Session'}
                       </p>
                       <div className="text-sm text-muted-foreground space-y-1">
                         <p className="flex items-center gap-2">
@@ -1156,15 +1021,15 @@ export default function BookLesson() {
                       </div>
                     </div>
 
-                    {/* Quantity picker for flexible mode */}
+                    {/* Quantity picker for allow_single_booking */}
                     {(() => {
-                      const bm = selectedSlot.lessons?.booking_mode || 'full_slot';
-                      const maxP = selectedSlot.lessons?.max_participants || 1;
+                      const maxP = selectedSlot.max_participants || 1;
                       const spotsAvailable = selectedSlot.spotsLeft || maxP;
-                      const perSpot = maxP > 1 && bm !== 'full_slot' ? (selectedSlot.lessons?.price || 0) / maxP : 0;
+                      const slotPrice = getSlotPrice(selectedSlot);
+                      const perSpot = maxP > 1 && selectedSlot.allow_single_booking ? slotPrice / maxP : 0;
                       const minGroup = selectedSlot.cyclus_id ? (cycleSettingsMap[selectedSlot.cyclus_id]?.min_group_size || 1) : 1;
 
-                      if (bm === 'flexible' && maxP > 1) {
+                      if (selectedSlot.allow_single_booking && maxP > 1) {
                         return (
                           <div className="space-y-2">
                             <Label>Number of spots</Label>
@@ -1193,7 +1058,7 @@ export default function BookLesson() {
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              €{perSpot.toFixed(2)} per spot
+                              {formatPrice(perSpot)} per spot
                             </p>
                             {minGroup > 1 && (
                               <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
@@ -1201,49 +1066,6 @@ export default function BookLesson() {
                                 This session requires a minimum of {minGroup} players
                               </div>
                             )}
-                          </div>
-                        );
-                      }
-                      if (bm === 'individual' && maxP > 1) {
-                        if (minGroup > 1) {
-                          return (
-                            <div className="space-y-2">
-                              <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                                <Users className="h-4 w-4" />
-                                This session requires booking at least {minGroup} spots
-                              </div>
-                              <Label>Number of spots</Label>
-                              <div className="flex items-center gap-3">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => setQuantity(Math.max(minGroup, quantity - 1))}
-                                  disabled={quantity <= minGroup}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="font-semibold text-lg w-8 text-center">{quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => setQuantity(Math.min(spotsAvailable, quantity + 1))}
-                                  disabled={quantity >= spotsAvailable}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                €{perSpot.toFixed(2)} per spot
-                              </p>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
-                            <Users className="h-4 w-4 inline mr-1" />
-                            Booking 1 spot · €{perSpot.toFixed(2)} per spot
                           </div>
                         );
                       }
@@ -1272,13 +1094,11 @@ export default function BookLesson() {
                         <span>Total</span>
                         <span>
                           {(() => {
-                            const bm = selectedSlot.lessons?.booking_mode || 'full_slot';
-                            const maxP = selectedSlot.lessons?.max_participants || 1;
-                            const fullPrice = selectedSlot.lessons?.price || trainer.hourly_rate || 50;
-                            if (bm === 'full_slot' || maxP <= 1) return `€${fullPrice}`;
-                            const perSpot = fullPrice / maxP;
-                            const qty = bm === 'individual' ? 1 : quantity;
-                            return `€${(perSpot * qty).toFixed(2)}`;
+                            const maxP = selectedSlot.max_participants || 1;
+                            const slotPrice = getSlotPrice(selectedSlot);
+                            if (!selectedSlot.allow_single_booking || maxP <= 1) return formatPrice(slotPrice);
+                            const perSpot = slotPrice / maxP;
+                            return formatPrice(perSpot * quantity);
                           })()}
                         </span>
                       </div>

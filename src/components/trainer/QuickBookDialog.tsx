@@ -41,12 +41,7 @@ interface AvailableSlot {
   end_time: string;
   cyclus_id: string | null;
   cyclus_name: string | null;
-  lesson: {
-    id: string;
-    title: string;
-    price: number;
-    location: string | null;
-  } | null;
+  max_participants: number;
   spots_available: number;
 }
 
@@ -142,7 +137,6 @@ export function QuickBookDialog({
   const fetchAvailableSlots = async () => {
     setIsFetching(true);
     try {
-      // Fetch slots with booking counts for next 4 weeks
       const startDate = new Date();
       const endDate = addDays(startDate, 28);
 
@@ -154,7 +148,7 @@ export function QuickBookDialog({
           end_time,
           cyclus_id,
           cyclus_name,
-          lessons(id, title, price, location, max_participants)
+          max_participants
         `)
         .eq("trainer_id", trainerId)
         .gte("start_time", startDate.toISOString())
@@ -176,10 +170,9 @@ export function QuickBookDialog({
         return acc;
       }, {});
 
-      // Filter to available slots
       const available = (slotsData || [])
         .map((slot) => {
-          const maxParticipants = (slot.lessons as any)?.max_participants || 1;
+          const maxParticipants = (slot as any).max_participants || 4;
           const booked = bookingCounts[slot.id] || 0;
           return {
             id: slot.id,
@@ -187,7 +180,7 @@ export function QuickBookDialog({
             end_time: slot.end_time,
             cyclus_id: slot.cyclus_id,
             cyclus_name: slot.cyclus_name,
-            lesson: slot.lessons as AvailableSlot["lesson"],
+            max_participants: maxParticipants,
             spots_available: maxParticipants - booked,
           };
         })
@@ -220,7 +213,6 @@ export function QuickBookDialog({
         ? cyclusSlots
         : [{ id: selectedSlot.id, start_time: selectedSlot.start_time, end_time: selectedSlot.end_time }];
 
-      // Create bookings with pricing
       const bookingsToInsert = slotsToBook.map((slot, index) => {
         const slotDuration = differenceInMinutes(new Date(slot.end_time), new Date(slot.start_time));
         const slotPrice = calculateSlotPrice(hourlyRate, slotDuration);
@@ -229,7 +221,6 @@ export function QuickBookDialog({
         return {
           slot_id: slot.id,
           guest_player_id: player.id,
-          lesson_id: selectedSlot.lesson?.id || null,
           status: "confirmed",
           payment_status: "pending",
           original_amount: slotPrice,
@@ -313,20 +304,6 @@ export function QuickBookDialog({
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           {format(new Date(slot.start_time), "HH:mm")}
                         </div>
-                        {slot.lesson && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                            <span>{slot.lesson.title}</span>
-                            <Badge variant="secondary" className="text-xs">
-                              €{slot.lesson.price}
-                            </Badge>
-                            {slot.lesson.location && (
-                              <>
-                                <MapPin className="h-3 w-3" />
-                                <span>{slot.lesson.location}</span>
-                              </>
-                            )}
-                          </div>
-                        )}
                         {slot.cyclus_name && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                             <Repeat className="h-3 w-3" />

@@ -181,7 +181,6 @@ export function DuplicateCyclusDialog({
           trainer_id: trainerId,
           start_time: new Date(originalStart.getTime() + dateOffsetMs).toISOString(),
           end_time: new Date(originalEnd.getTime() + dateOffsetMs).toISOString(),
-          lesson_id: slot.lesson_id,
           cyclus_id: newCyclusId,
           cyclus_name: newCyclusName,
           is_recurring: false,

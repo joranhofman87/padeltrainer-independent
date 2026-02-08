@@ -9,20 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
+import { formatPrice } from '@/lib/pricing';
 
 interface SlotData {
   id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   cyclus_id: string | null;
   cyclus_name: string | null;
   court_type: string | null;
   location_name: string | null;
-  lesson_title: string | null;
-  lesson_price: number | null;
-  lesson_max_participants: number;
-  lesson_booking_mode: string;
+  price_per_session: number | null;
+  max_participants: number;
+  allow_single_booking: boolean;
   spots_left: number;
 }
 
@@ -58,15 +57,16 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           id,
           start_time,
           end_time,
-          lesson_id,
           cyclus_id,
           cyclus_name,
           court_type,
           is_marked_full,
           is_public,
+          price_per_session,
+          max_participants,
+          allow_single_booking,
           location_id,
-          locations:location_id(name),
-          lessons:lesson_id(title, price, max_participants, booking_mode)
+          locations:location_id(name)
         `)
         .eq('trainer_id', trainerId)
         .eq('is_marked_full', false)
@@ -97,26 +97,24 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
       // Filter to slots with availability and map
       const availableSlots: SlotData[] = slotsData
         .filter(s => {
-          const maxParticipants = (s.lessons as any)?.max_participants || 4;
+          const maxParticipants = (s as any).max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
           return booked < maxParticipants;
         })
         .map(s => {
-          const maxParticipants = (s.lessons as any)?.max_participants || 4;
+          const maxParticipants = (s as any).max_participants || 4;
           const booked = bookingCounts[s.id] || 0;
           return {
             id: s.id,
             start_time: s.start_time,
             end_time: s.end_time,
-            lesson_id: s.lesson_id,
             cyclus_id: s.cyclus_id,
             cyclus_name: s.cyclus_name,
             court_type: s.court_type,
             location_name: (s.locations as any)?.name || null,
-            lesson_title: (s.lessons as any)?.title || null,
-            lesson_price: (s.lessons as any)?.price || null,
-            lesson_max_participants: (s.lessons as any)?.max_participants || 4,
-            lesson_booking_mode: (s.lessons as any)?.booking_mode || 'full_slot',
+            price_per_session: (s as any).price_per_session || null,
+            max_participants: maxParticipants,
+            allow_single_booking: (s as any).allow_single_booking || false,
             spots_left: maxParticipants - booked,
           };
         });
@@ -188,9 +186,6 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                       </p>
                     </div>
                     <div className="flex-1 min-w-0">
-                      {slot.lesson_title && (
-                        <p className="font-medium text-sm truncate">{slot.lesson_title}</p>
-                      )}
                       {slot.cyclus_name && (
                         <p className="text-xs text-muted-foreground truncate">{slot.cyclus_name}</p>
                       )}
@@ -209,11 +204,11 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-2">
-                    {slot.lesson_price != null && (
+                    {slot.price_per_session != null && slot.price_per_session > 0 && (
                       <Badge variant="secondary" className="font-semibold">
-                        {slot.lesson_booking_mode !== 'full_slot' && slot.lesson_max_participants > 1
-                          ? `€${(slot.lesson_price / slot.lesson_max_participants).toFixed(2)}/spot`
-                          : `€${slot.lesson_price}`}
+                        {slot.allow_single_booking && slot.max_participants > 1
+                          ? `${formatPrice(slot.price_per_session / slot.max_participants)}/spot`
+                          : formatPrice(slot.price_per_session)}
                       </Badge>
                     )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
