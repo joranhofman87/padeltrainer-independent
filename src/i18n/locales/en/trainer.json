@@ -587,5 +587,20 @@
     "saveError": "Could not save settings",
     "saved": "Saved",
     "savedDescription": "Your invoice settings have been updated"
+  },
+  "profileVisibility": {
+    "title": "Marketplace visibility",
+    "statusPublic": "Your profile is visible in the trainer marketplace",
+    "statusHidden": "Your profile is hidden from the marketplace",
+    "updating": "Updating...",
+    "updated": "Visibility updated",
+    "updatedPublic": "Your profile is now visible in the marketplace.",
+    "updatedHidden": "Your profile is now hidden from the marketplace.",
+    "error": "Could not update visibility",
+    "upgradeTitle": "Publish your profile and start getting booking requests",
+    "upgradeBody": "Public visibility is available on the Pro plan (or via a paid academy). Upgrade to get listed in the trainer marketplace and let players request lessons.",
+    "upgradePrimary": "Upgrade to publish",
+    "upgradeSecondary": "See what's included",
+    "upgradeSmall": "You can keep your profile in preview mode until you're ready."
   }
 }

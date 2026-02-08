@@ -587,5 +587,20 @@
     "saveError": "Kon instellingen niet opslaan",
     "saved": "Opgeslagen",
     "savedDescription": "Je factuur instellingen zijn bijgewerkt"
+  },
+  "profileVisibility": {
+    "title": "Zichtbaarheid marktplaats",
+    "statusPublic": "Je profiel is zichtbaar op de trainersmarktplaats",
+    "statusHidden": "Je profiel is verborgen op de marktplaats",
+    "updating": "Bijwerken...",
+    "updated": "Zichtbaarheid bijgewerkt",
+    "updatedPublic": "Je profiel is nu zichtbaar op de marktplaats.",
+    "updatedHidden": "Je profiel is nu verborgen op de marktplaats.",
+    "error": "Kon zichtbaarheid niet bijwerken",
+    "upgradeTitle": "Publiceer je profiel en ontvang boekingsverzoeken",
+    "upgradeBody": "Publieke zichtbaarheid is beschikbaar op het Pro-plan (of via een betaalde academie). Upgrade om in de trainersmarktplaats te worden getoond en laat spelers lessen aanvragen.",
+    "upgradePrimary": "Upgrade om te publiceren",
+    "upgradeSecondary": "Bekijk wat inbegrepen is",
+    "upgradeSmall": "Je kunt je profiel in preview-modus houden tot je er klaar voor bent."
   }
 }
