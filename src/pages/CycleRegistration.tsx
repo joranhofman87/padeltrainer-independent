@@ -283,7 +283,7 @@ export default function CycleRegistration() {
             </div>
 
             {cycle.description && (
-              <p className="text-muted-foreground">{cycle.description}</p>
+              <div className="text-muted-foreground prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
             )}
           </div>
 

@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -256,10 +256,10 @@ export default function CycleForm({
                 <FormItem>
                   <FormLabel>{t('form.description')}</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      {...field} 
+                    <RichTextEditor
+                      value={field.value || ''}
+                      onChange={field.onChange}
                       placeholder={t('form.descriptionPlaceholder')}
-                      rows={3}
                     />
                   </FormControl>
                   <FormMessage />

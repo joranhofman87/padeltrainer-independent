@@ -190,9 +190,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
       
       <CardContent>
         {cycle.description && (
-          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-            {cycle.description}
-          </p>
+          <div className="text-sm text-muted-foreground mb-4 line-clamp-2 prose prose-sm dark:prose-invert max-w-none [&>*]:m-0" dangerouslySetInnerHTML={{ __html: cycle.description }} />
         )}
         
         <div className="flex items-center gap-4 text-sm">
