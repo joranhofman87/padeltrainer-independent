@@ -1,37 +1,24 @@
 
-# Add Profile Visibility Toggle to Trainer Profile Page
+# Redirect unauthenticated trainer page CTAs to Sign Up
 
 ## What changes
-Add a visibility toggle card at the top of the Edit Profile page (for trainers only) that lets them publish/unpublish their profile. When a trainer without a paid subscription (or paid academy membership) tries to toggle visibility on, show an upgrade banner instead.
+All call-to-action buttons visible to unauthenticated users on trainer-related pages currently navigate to `/app/auth` (the sign-in page). We will change these to navigate to `/app/signup/player` instead, preserving any redirect parameters so users return to the correct page after registration.
 
-## UI Design
+## Affected locations
 
-### Toggle Card (top of form, trainers only)
-A card with an Eye/EyeOff icon, title "Marketplace visibility", current status text, and a Switch toggle -- similar to the existing one in TrainerSettings but embedded in the profile edit page.
+1. **TrainerProfile.tsx (line 412)** -- the "Sign In to Book" header button navigates to `/app/auth`. Change to `/app/signup/player` with a redirect back to the trainer profile, and update the label to "Sign Up to Book".
 
-### Upgrade Banner (shown as a Dialog when unpaid trainer tries to publish)
-- **Title**: Publish your profile and start getting booking requests
-- **Body**: Public visibility is available on the Pro plan (or via a paid academy). Upgrade to get listed in the trainer marketplace and let players request lessons.
-- **Primary CTA**: "Upgrade to publish" -- navigates to `/trainer/subscription`
-- **Secondary CTA**: "See what's included" -- navigates to pricing page
-- **Small text**: You can keep your profile in preview mode until you're ready.
+2. **BookLesson.tsx (line 99)** -- unauthenticated users are redirected to `/app/auth?redirect=/book/:trainerId`. Change to `/app/signup/player?redirect=/book/:trainerId`.
 
-## Logic
-- Use the existing `canBeVisible()` from `src/lib/subscription.ts` plus a new check: if the trainer is part of a paid academy (check `academy_trainers` table for an active academy link), they can also publish
-- When `canBeVisible()` returns false AND no paid academy membership, show the upgrade dialog instead of toggling
+3. **WaitingListCard.tsx (line 37)** -- unauthenticated users clicking "Join Waiting List" are sent to `/app/auth?redirect=...`. Change to `/app/signup/player?redirect=...`.
 
-## Technical Details
+4. **CycleApplicationModal.tsx (line 79)** -- unauthenticated users trying to apply for a cycle are sent to `/app/auth`. Change to `/app/signup/player` (preserving the sessionStorage redirect logic).
 
-### File: `src/pages/EditProfile.tsx`
-1. Import `Switch`, `useAuth` subscription data, `canBeVisible`, `Dialog` components, and visibility icons
-2. Add state: `isPublic`, `showUpgradeDialog`, `updatingVisibility`
-3. Fetch `is_public` from trainer profile (add to existing query on line 191)
-4. Add a visibility card before the Basic Info card (only for `role === 'trainer'`)
-5. Add upgrade Dialog component at the bottom
-6. Handle toggle: if paid or in trial or in paid academy, update `trainer_profiles.is_public`; otherwise open upgrade dialog
+## Translation updates
+- Add `signUpToBook` key to EN and NL `common.json` (e.g., "Sign Up to Book" / "Registreer om te Boeken")
 
-### File: `src/lib/academy.ts`
-- Add/export a helper `isTrainerInPaidAcademy(trainerId)` that checks `academy_trainers` joined with `academy_profiles` for `subscription_status = 'active'`
+## Technical details
 
-### Translation keys
-- Add relevant keys to `trainer.json` (EN + NL) under a `profileVisibility` namespace
+Each change is a simple URL swap from `/auth` to `/signup/player`, keeping existing redirect query parameters intact. The PlayerSignup page already handles redirects via query params and sessionStorage, so no changes are needed there.
+
+No database or backend changes required.
