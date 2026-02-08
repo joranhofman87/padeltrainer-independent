@@ -2,16 +2,22 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, Calendar, ExternalLink, Eye, EyeOff, Trash2, Clock, UserPlus } from 'lucide-react';
+import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +39,7 @@ import {
   cancelAcademyInvitation,
   canUserAddSelfAsTrainer,
   addSelfAsAcademyTrainer,
+  getAcademyLocations,
 } from '@/lib/academy';
 import { InviteAcademyTrainerDialog } from '@/components/academy/InviteAcademyTrainerDialog';
 import { CreateAcademyTrainerDialog } from '@/components/academy/CreateAcademyTrainerDialog';
@@ -48,6 +55,7 @@ export default function AcademyTrainers() {
   const { user, profile } = useAuth();
   const [trainers, setTrainers] = useState<any[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [academyLocations, setAcademyLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
   const [canAddSelf, setCanAddSelf] = useState<{
@@ -61,12 +69,14 @@ export default function AcademyTrainers() {
     if (!activeAcademy) return;
 
     try {
-      const [trainersData, invitationsData] = await Promise.all([
+      const [trainersData, invitationsData, locationsData] = await Promise.all([
         getAcademyTrainersWithProfiles(activeAcademy.id),
         getAcademyPendingInvitations(activeAcademy.id),
+        getAcademyLocations(activeAcademy.id),
       ]);
       setTrainers(trainersData);
       setPendingInvitations(invitationsData);
+      setAcademyLocations(locationsData);
 
       // Check if current user can add themselves as a trainer
       if (user) {
@@ -160,11 +170,7 @@ export default function AcademyTrainers() {
     return (
       <div className="container mx-auto px-4 py-8">
         <Skeleton className="h-10 w-48 mb-6" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
-        </div>
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
@@ -239,138 +245,113 @@ export default function AcademyTrainers() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeTrainers.map((trainer) => {
-                const hasName = !!trainer.profile?.full_name;
-                const isVisible = trainer.show_on_academy_page;
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[280px]">{t('common:name', 'Name')}</TableHead>
+                    <TableHead className="text-right">{t('trainers.hourlyRate', 'Rate')}</TableHead>
+                    <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
+                    <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {activeTrainers.map((trainer) => {
+                    const hasName = !!trainer.profile?.full_name;
+                    const isVisible = trainer.show_on_academy_page;
 
-                return (
-                  <Card key={trainer.id}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start gap-4">
-                        <Avatar className="h-14 w-14">
-                          <AvatarImage src={trainer.profile?.avatar_url || ''} />
-                          <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg truncate">
-                            {trainer.profile?.full_name || 'Trainer'}
-                          </CardTitle>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {trainer.trainer_profile?.is_verified && (
-                              <Badge variant="secondary" className="text-xs">
-                                {t('common:verified')}
-                              </Badge>
-                            )}
-                            <Badge
-                              variant={isVisible ? 'default' : 'secondary'}
-                              className="text-xs flex items-center gap-1"
-                            >
-                              {isVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                              {isVisible ? t('trainers.visible') : t('trainers.hidden')}
-                            </Badge>
+                    return (
+                      <TableRow key={trainer.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9">
+                              <AvatarImage src={trainer.profile?.avatar_url || ''} />
+                              <AvatarFallback className="text-xs">
+                                {getInitials(trainer.profile?.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium truncate">
+                              {trainer.profile?.full_name || 'Trainer'}
+                            </span>
                           </div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center justify-between text-sm">
-                        {trainer.trainer_profile?.hourly_rate && (
-                          <span className="font-semibold text-primary">
-                            €{trainer.trainer_profile.hourly_rate}/hour
-                          </span>
-                        )}
-                        {trainer.trainer_profile?.experience_years && (
-                          <span className="text-muted-foreground">
-                            {trainer.trainer_profile.experience_years}y exp.
-                          </span>
-                        )}
-                      </div>
-
-                      {trainer.trainer_profile?.specializations?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {trainer.trainer_profile.specializations.slice(0, 3).map((spec: string) => (
-                            <Badge key={spec} variant="outline" className="text-xs">
-                              {spec}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Visibility Toggle */}
-                      <div className="pt-2 border-t">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center justify-between">
-                                <Label
-                                  htmlFor={`visibility-${trainer.id}`}
-                                  className={`text-sm ${!hasName ? 'text-muted-foreground' : ''}`}
-                                >
-                                  {t('trainers.showOnAcademyPage')}
-                                </Label>
-                                <Switch
-                                  id={`visibility-${trainer.id}`}
-                                  checked={isVisible}
-                                  onCheckedChange={(checked) =>
-                                    handleVisibilityToggle(trainer.id, checked, hasName)
-                                  }
-                                  disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
-                                />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {hasName ? t('trainers.visibilityHint') : t('trainers.incompleteProfile')}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        {trainer.trainer_profile?.user_id && (
-                          <EditAcademyTrainerDialog
-                            trainerId={trainer.trainer_profile.id}
-                            userId={trainer.trainer_profile.user_id}
-                            trainerName={trainer.profile?.full_name || 'Trainer'}
-                            onTrainerUpdated={fetchData}
-                          />
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(localizePath(`/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`))}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          {t('trainers.viewProfile', 'Profile')}
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>{t('trainers.removeTitle')}</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {t('trainers.removeDescription')}
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleRemoveTrainer(trainer.id)}>
-                                {t('trainers.remove')}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {trainer.trainer_profile?.hourly_rate ? (
+                            <span className="font-semibold text-primary">
+                              €{trainer.trainer_profile.hourly_rate}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex justify-center">
+                                  <Switch
+                                    checked={isVisible}
+                                    onCheckedChange={(checked) =>
+                                      handleVisibilityToggle(trainer.id, checked, hasName)
+                                    }
+                                    disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
+                                  />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {hasName
+                                    ? isVisible
+                                      ? t('trainers.visibilityHint')
+                                      : t('trainers.hidden')
+                                    : t('trainers.incompleteProfile')}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {trainer.trainer_profile?.user_id && (
+                              <EditAcademyTrainerDialog
+                                trainerId={trainer.trainer_profile.id}
+                                userId={trainer.trainer_profile.user_id}
+                                trainerName={trainer.profile?.full_name || 'Trainer'}
+                                academyTrainerId={trainer.id}
+                                academyLocations={academyLocations}
+                                onTrainerUpdated={fetchData}
+                                onRemoveTrainer={() => handleRemoveTrainer(trainer.id)}
+                              />
+                            )}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      navigate(
+                                        localizePath(
+                                          `/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`
+                                        )
+                                      )
+                                    }
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t('trainers.viewProfile', 'View public profile')}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>

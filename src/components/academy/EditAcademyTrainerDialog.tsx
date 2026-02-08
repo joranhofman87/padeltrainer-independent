@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Loader2, Camera, Save } from 'lucide-react';
+import { Pencil, Loader2, Camera, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,12 +11,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
@@ -28,7 +41,10 @@ interface EditAcademyTrainerDialogProps {
   trainerId: string; // trainer_profiles.id
   userId: string; // auth user id
   trainerName: string;
+  academyTrainerId: string; // academy_trainers.id for removal
+  academyLocations: any[]; // academy_locations with location details
   onTrainerUpdated: () => void;
+  onRemoveTrainer: () => void;
 }
 
 interface TrainerProfileData {
@@ -58,7 +74,10 @@ export function EditAcademyTrainerDialog({
   trainerId,
   userId,
   trainerName,
+  academyTrainerId,
+  academyLocations,
   onTrainerUpdated,
+  onRemoveTrainer,
 }: EditAcademyTrainerDialogProps) {
   const { t } = useTranslation('academy');
   const { toast } = useToast();
@@ -91,6 +110,9 @@ export function EditAcademyTrainerDialog({
     social_linkedin: '',
   });
 
+  // Track which academy locations are assigned to this trainer
+  const [assignedLocationIds, setAssignedLocationIds] = useState<Set<string>>(new Set());
+
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [trainerCountry, setTrainerCountry] = useState<string>('NL');
 
@@ -111,7 +133,7 @@ export function EditAcademyTrainerDialog({
       const country = await getTrainerCountry(userId);
       setTrainerCountry(country);
 
-      // Fetch profile data from profiles table (academy managers have RLS access)
+      // Fetch profile data
       const { data: profile } = await supabase
         .from('profiles')
         .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
@@ -150,6 +172,16 @@ export function EditAcademyTrainerDialog({
           social_youtube: trainer.social_youtube || '',
           social_linkedin: trainer.social_linkedin || '',
         });
+      }
+
+      // Fetch trainer's current locations to find which academy locations are assigned
+      const { data: trainerLocs } = await supabase
+        .from('trainer_locations')
+        .select('location_id')
+        .eq('trainer_id', trainerId);
+
+      if (trainerLocs) {
+        setAssignedLocationIds(new Set(trainerLocs.map((tl) => tl.location_id)));
       }
     } catch (error) {
       console.error('Error fetching trainer data:', error);
@@ -223,6 +255,18 @@ export function EditAcademyTrainerDialog({
     }
   };
 
+  const handleLocationToggle = (locationId: string, checked: boolean) => {
+    setAssignedLocationIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(locationId);
+      } else {
+        next.delete(locationId);
+      }
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -246,7 +290,7 @@ export function EditAcademyTrainerDialog({
       if (updateError) throw updateError;
       if (updateResult?.error) throw new Error(updateResult.error);
 
-      // Update trainer profile (direct update works due to trainer_profiles RLS)
+      // Update trainer profile
       const { error: trainerError } = await supabase
         .from('trainer_profiles')
         .update({
@@ -264,6 +308,43 @@ export function EditAcademyTrainerDialog({
         .eq('id', trainerId);
 
       if (trainerError) throw trainerError;
+
+      // Sync trainer_locations for academy locations
+      const academyLocationIds = academyLocations.map((al) => al.location?.id).filter(Boolean);
+
+      // Get current trainer locations for these academy locations only
+      const { data: currentLocs } = await supabase
+        .from('trainer_locations')
+        .select('id, location_id')
+        .eq('trainer_id', trainerId)
+        .in('location_id', academyLocationIds.length > 0 ? academyLocationIds : ['__none__']);
+
+      const currentLocIds = new Set((currentLocs || []).map((l) => l.location_id));
+
+      // Add new assignments
+      const toAdd = academyLocationIds.filter(
+        (id: string) => assignedLocationIds.has(id) && !currentLocIds.has(id)
+      );
+      if (toAdd.length > 0) {
+        await supabase.from('trainer_locations').insert(
+          toAdd.map((locationId: string) => ({
+            trainer_id: trainerId,
+            location_id: locationId,
+            relationship_type: 'academy_trainer',
+          }))
+        );
+      }
+
+      // Remove unassigned
+      const toRemove = (currentLocs || []).filter(
+        (l) => !assignedLocationIds.has(l.location_id)
+      );
+      if (toRemove.length > 0) {
+        await supabase
+          .from('trainer_locations')
+          .delete()
+          .in('id', toRemove.map((l) => l.id));
+      }
 
       toast({
         title: t('trainers.updated'),
@@ -302,9 +383,8 @@ export function EditAcademyTrainerDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <Pencil className="h-4 w-4 mr-2" />
-          {t('trainers.edit')}
+        <Button variant="ghost" size="icon">
+          <Pencil className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
@@ -484,6 +564,150 @@ export function EditAcademyTrainerDialog({
                   selectedSpecializations={trainerData.specializations}
                   onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
                 />
+              </div>
+
+              {/* Academy Locations Assignment */}
+              {academyLocations.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <Label className="text-base font-semibold">{t('trainers.assignLocations', 'Assign Locations')}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t('trainers.assignLocationsDescription', 'Select which locations this trainer is active at.')}
+                    </p>
+                    <div className="space-y-2">
+                      {academyLocations.map((al) => {
+                        const location = al.location;
+                        if (!location) return null;
+                        return (
+                          <div key={al.id} className="flex items-center gap-3 py-1.5">
+                            <Checkbox
+                              id={`loc-${location.id}`}
+                              checked={assignedLocationIds.has(location.id)}
+                              onCheckedChange={(checked) =>
+                                handleLocationToggle(location.id, checked === true)
+                              }
+                            />
+                            <label
+                              htmlFor={`loc-${location.id}`}
+                              className="text-sm font-medium cursor-pointer"
+                            >
+                              {location.name}
+                              {location.city && (
+                                <span className="text-muted-foreground font-normal ml-1">
+                                  — {location.city}
+                                </span>
+                              )}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Additional fields */}
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-coaching_method">Coaching Method</Label>
+                <Textarea
+                  id="edit-coaching_method"
+                  value={trainerData.coaching_method}
+                  onChange={(e) => setTrainerData({ ...trainerData, coaching_method: e.target.value })}
+                  placeholder="Describe coaching methodology..."
+                  rows={2}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-favourite_quote">Favourite Quote</Label>
+                <Input
+                  id="edit-favourite_quote"
+                  value={trainerData.favourite_quote}
+                  onChange={(e) => setTrainerData({ ...trainerData, favourite_quote: e.target.value })}
+                  placeholder="A motivational quote..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-video_url">Video URL</Label>
+                <Input
+                  id="edit-video_url"
+                  value={trainerData.video_url}
+                  onChange={(e) => setTrainerData({ ...trainerData, video_url: e.target.value })}
+                  placeholder="https://youtube.com/..."
+                />
+              </div>
+
+              {/* Social Links */}
+              <div className="grid sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-social_instagram">Instagram</Label>
+                  <Input
+                    id="edit-social_instagram"
+                    value={trainerData.social_instagram}
+                    onChange={(e) => setTrainerData({ ...trainerData, social_instagram: e.target.value })}
+                    placeholder="@username"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-social_youtube">YouTube</Label>
+                  <Input
+                    id="edit-social_youtube"
+                    value={trainerData.social_youtube}
+                    onChange={(e) => setTrainerData({ ...trainerData, social_youtube: e.target.value })}
+                    placeholder="Channel URL"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-social_linkedin">LinkedIn</Label>
+                  <Input
+                    id="edit-social_linkedin"
+                    value={trainerData.social_linkedin}
+                    onChange={(e) => setTrainerData({ ...trainerData, social_linkedin: e.target.value })}
+                    placeholder="Profile URL"
+                  />
+                </div>
+              </div>
+
+              {/* Remove Trainer */}
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-destructive">{t('trainers.removeTitle', 'Remove Trainer')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('trainers.removeDescription', 'This will remove the trainer from your academy.')}
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" type="button">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {t('trainers.remove', 'Remove')}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t('trainers.removeTitle')}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t('trainers.removeDescription')}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          onRemoveTrainer();
+                          setOpen(false);
+                        }}
+                      >
+                        {t('trainers.remove')}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
 
