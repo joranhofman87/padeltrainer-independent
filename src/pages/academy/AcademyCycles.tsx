@@ -9,6 +9,7 @@ import CyclesTable from '@/components/cycles/CyclesTable';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
+import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
 interface LocationData {
@@ -28,6 +29,7 @@ export default function AcademyCycles() {
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
+  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
   // Fetch academy trainers and locations for the form
   useEffect(() => {
@@ -39,6 +41,25 @@ export default function AcademyCycles() {
           getAcademyLocations(activeAcademy.id),
         ]);
         
+        const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
+        
+        // Fetch trainer-location mappings
+        let tlMap: Record<string, string[]> = {};
+        if (trainerIds.length > 0) {
+          const { data: trainerLocs } = await supabase
+            .from('trainer_locations')
+            .select('trainer_id, location_id')
+            .in('trainer_id', trainerIds);
+          
+          if (trainerLocs) {
+            for (const tl of trainerLocs) {
+              if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
+              tlMap[tl.location_id].push(tl.trainer_id);
+            }
+          }
+        }
+        setTrainerLocationMap(tlMap);
+
         setTrainers(
           academyTrainers.map((t) => ({
             id: t.trainer_profile_id,
@@ -171,6 +192,7 @@ export default function AcademyCycles() {
           onSuccess={handleCycleCreated}
           trainers={trainers}
           locations={locations}
+          trainerLocationMap={trainerLocationMap}
         />
       )}
     </div>
