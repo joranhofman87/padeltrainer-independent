@@ -1,59 +1,60 @@
 
-## Add Minimum Group Size to Cycles
 
-### What this does
-Adds a "minimum players" setting when creating a cycle (cyclus), so academy owners can enforce rules like "evening sessions require exactly 4 players." When a player books a session from that cycle, the booking flow will enforce that they book at least the minimum number of spots -- they cannot book fewer players than required.
+## Unify Slot and Cyclus Creation Entry Points
+
+### Problem
+Currently there are two different experiences depending on how you create a cyclus or slot:
+- **Clicking the calendar grid**: Opens a choice dialog, then either `AddSlotDialog` (single slot) or `BulkCreateSheet` (cyclus with recurring slots)
+- **Clicking the button above the calendar**: On the academy page, "Cyclus Aanmaken" opens a completely different form (`CycleForm` -- the registration cycle form), and "Slot Toevoegen" opens the choice dialog without pre-filled time
+
+The goal is to make both entry points open the **same dialog**, with the only difference being that the calendar click pre-fills the date and time.
 
 ### Changes
 
-**1. Add `min_group_size` field to the Cycle Form**
+**1. Trainer Dashboard (`src/pages/TrainerDashboard.tsx`)**
 
-In the cycle creation/edit form (`CycleForm.tsx`), add a new number input for "Minimum group size" right next to the existing "Maximum group size" field. This gets stored in `cycle.settings.min_group_size`.
+- **"Add Slot" button**: Currently opens `AddSlotDialog` directly (no date/time). Keep this behavior but route it through `SlotTypeChoiceDialog` like the calendar click does, so the user always gets the choice between single slot and cyclus.
+- **"Create Cyclus" button**: Currently opens `BulkCreateSheet` directly. Instead, route through `SlotTypeChoiceDialog` (same as calendar click), just without pre-filled date/time.
+- **Remove the separate "Add Slot" and "Create Cyclus" buttons**. Replace them with a single "Add" / "New" button that opens `SlotTypeChoiceDialog` (without pre-filled date/time). This makes both entry points consistent.
+- **Calendar cell click**: Keep as-is -- opens `SlotTypeChoiceDialog` with pre-filled date/time.
 
-- Default value: 1 (no minimum enforced)
-- Validation: must be between 1 and the max_group_size value
-- Side-by-side layout with the existing max field
+**2. Academy Calendar (`src/pages/academy/AcademyCalendar.tsx`)**
 
-**2. Update the `CycleSettings` type**
+- **"Slot Toevoegen" button**: Currently opens `SlotTypeChoiceDialog` with a hardcoded default time of "09:00". Change to open it without pre-filled date/time (use `undefined`), so it behaves the same as the button on the trainer dashboard.
+- **"Cyclus Aanmaken" button**: Currently opens `CycleForm` (the registration form). Change this to also route through `SlotTypeChoiceDialog`, matching the trainer dashboard behavior. The `CycleForm` should be accessible from a different place (e.g., the Registrations page), not mixed with calendar slot creation.
+- **Calendar cell click**: Keep as-is -- opens `SlotTypeChoiceDialog` with pre-filled date/time.
+- Merge the "Slot Toevoegen" and "Cyclus Aanmaken" buttons into a single button that opens `SlotTypeChoiceDialog`.
 
-Add `min_group_size?: number` to the `CycleSettings` interface in `src/lib/cycles.ts`.
+**3. Resulting consistent flow (both dashboards)**
 
-**3. Enforce minimum on the Booking Page**
-
-On the booking page (`BookLesson.tsx`), when a player selects a slot that belongs to a cycle with `min_group_size` set:
-
-- In "flexible" booking mode: the quantity picker's minimum becomes `min_group_size` instead of 1
-- In "individual" booking mode: if `min_group_size > 1`, show a message explaining the slot requires booking multiple spots
-- In "full_slot" mode: no change needed (already books all spots)
-- Display a clear message like "This session requires a minimum of 4 players"
-
-**4. Pass cycle settings through to slots**
-
-The cycle's `min_group_size` needs to be accessible when viewing a slot. The slot already has a `cyclus_id` reference. We'll fetch the cycle settings when displaying booking details for cycle-linked slots, or store the min_group_size on the slot/lesson level.
+```text
+  Button above calendar          Calendar cell click
+  (no pre-filled time)           (pre-filled date+time)
+          |                              |
+          +-------> SlotTypeChoiceDialog <+
+                    /              \
+           Single Slot        Training Cycle
+               |                    |
+         AddSlotDialog        BulkCreateSheet
+```
 
 ### Technical Details
 
-**File: `src/lib/cycles.ts`**
-- Add `min_group_size?: number` to `CycleSettings` interface (line ~51)
+**File: `src/pages/TrainerDashboard.tsx`**
+- Replace the two separate buttons ("Add Slot" + "Create Cyclus") with a single button that calls:
+  ```
+  setDefaultSlotDate(undefined);
+  setDefaultSlotTime(undefined);
+  setSlotTypeChoiceOpen(true);
+  ```
+- Keep the "Duplicate Cyclus" button as a separate action since it serves a different purpose.
 
-**File: `src/components/cycles/CycleForm.tsx`**
-- Add `min_group_size` to the form schema (default 1, min 1)
-- Add form field next to the existing `max_group_size` field in a grid layout
-- Include in the `settings` object on submit
-- Add validation: `min_group_size` must be less than or equal to `max_group_size`
+**File: `src/pages/academy/AcademyCalendar.tsx`**
+- Replace "Slot Toevoegen" and "Cyclus Aanmaken" buttons with a single "New" button that opens `SlotTypeChoiceDialog` without pre-filled date/time.
+- Remove the `showCreateCycleDialog` state and the `CycleForm` dialog from this page (the CycleForm for registrations belongs on the Registrations page, not the calendar).
+- Keep the "Duplicate Cyclus" button.
 
-**File: `src/pages/BookLesson.tsx`**
-- When loading slots, also fetch cycle settings for slots with `cyclus_id`
-- In the quantity picker section, use `min_group_size` as the lower bound instead of hardcoded 1
-- Show informational message when minimum is enforced: "This session requires at least X players"
-- Disable the "Confirm Booking" button if quantity is below the minimum
+**No changes needed:**
+- `SlotTypeChoiceDialog` -- already works correctly
+- `AddSlotDialog` / `BulkCreateSheet` -- already accept optional `defaultDate` and `defaultTime` props
 
-**File: `src/i18n/locales/en/cycles.json` and `nl/cycles.json`**
-- Add translation keys: `form.minGroupSize`, `form.minGroupSizeHelp`
-
-### Example User Flow
-
-1. Academy owner creates a cycle, sets min group size = 4, max group size = 4
-2. Player opens a session from that cycle to book
-3. The quantity picker starts at 4 (minimum) and maxes at 4 -- effectively "exactly 4 players"
-4. Player must provide details for all 4 players before confirming
