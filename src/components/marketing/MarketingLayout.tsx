@@ -14,10 +14,10 @@ import { Logo } from '@/components/Logo';
 
 const getDashboardPath = (role?: string | null) => {
   switch (role) {
-    case 'trainer': return '/app/trainer';
-    case 'club': return '/app/club';
-    case 'academy': return '/app/academy';
-    default: return '/app/player';
+    case 'trainer': return '/trainer';
+    case 'club': return '/club';
+    case 'academy': return '/academy';
+    default: return '/player';
   }
 };
 
