@@ -1,29 +1,73 @@
 
 
-# Fix: Academy Locations 404 Error
+# Club Dashboard: Add Sidebar Navigation and Fix Routes
 
-## Problem
-The "Locaties" (Locations) link in the academy sidebar and dashboard navigates to `/academy/locations`, but the actual route is registered at `/app/academy/locations`. This causes a 404 because `/nl/academy/locations` doesn't match any route.
+## Overview
+Replace the current horizontal dropdown navigation bar in the Club dashboard with a sidebar-based layout, matching the Trainer and Academy dashboards. Also fix all navigation paths missing the `/app/` prefix.
 
-## Root Cause
-Several navigation paths use the old `/academy/...` prefix instead of `/app/academy/...`:
-- Academy sidebar: links to `/academy/locations`
-- Academy dashboard: navigates to `/academy/locations` (both the stats card click and the "Locaties Beheren" button)
+## Changes
 
-This is consistent with the single-domain routing architecture where all application routes must use the `/app/` prefix.
+### 1. Create `ClubSidebar.tsx` (new file)
+Create a new sidebar component following the exact same pattern as `AcademySidebar.tsx`:
+- **Header**: Club logo/icon, club name, verified badge, collapse toggle
+- **Navigation sections**:
+  - Dashboard (standalone)
+  - People group (collapsible): Trainers, Players
+  - Schedule group (collapsible): Calendar, Lessons
+  - Tournaments (standalone)
+  - Business group (collapsible): Profile, Subscription, Settings
+- **Footer**: ProfileSwitcher, View Public Profile button, ThemeToggle, LanguageSwitcher, Logout
+- All paths use `/app/club/...` prefix
 
-## Solution
-Update all academy navigation paths to use the `/app/` prefix. Three files need changes:
+### 2. Rewrite `ClubLayout.tsx`
+Replace the current header + horizontal nav layout with the sidebar pattern from `AcademyLayout.tsx`:
+- Wrap content in `SidebarProvider` with `ClubSidebar` + `SidebarInset`
+- Remove the top header bar and club info section (moved into sidebar header)
+- Add mobile header with `SidebarTrigger`
+- Fix `isOnSubscriptionPage` check: `/club/subscription` --> `/app/club/subscription`
+- Fix `subscriptionPath` in `SubscriptionOverlay`: `/club/subscription` --> `/app/club/subscription`
 
-### 1. `src/components/academy/AcademySidebar.tsx`
-- Change `to="/academy/locations"` to `to="/app/academy/locations"`
+### 3. Delete `ClubNavigation.tsx`
+No longer needed since the sidebar replaces it entirely.
 
-### 2. `src/pages/academy/AcademyDashboard.tsx`
-- Change `navigate('/academy/locations')` to `navigate('/app/academy/locations')` (two occurrences: stats card click and manage button)
+### 4. Fix remaining broken paths
+- `ClubLayout.tsx` line 143: `isOnSubscriptionPage` uses `/club/subscription` instead of `/app/club/subscription`
+- `ClubLayout.tsx` line 304: `SubscriptionOverlay` `subscriptionPath` uses `/club/subscription`
+- `AcademyLayout.tsx` line 133: `isOnSubscriptionPage` uses `/academy/subscription` instead of `/app/academy/subscription`
+- `AcademyLayout.tsx` line 165: navigate uses `/academy/onboarding` instead of `/app/onboarding/academy`
+- `AcademyLayout.tsx` line 222: `SubscriptionOverlay` `subscriptionPath` uses `/academy/subscription`
 
-### 3. `src/components/academy/AcademyNavigation.tsx`
-- Change `path: "/academy/locations"` to `path: "/app/academy/locations"`
+## Technical Details
 
-## Scope Check
-While fixing this, all other academy navigation paths in these files should also be audited and updated to use `/app/academy/...` if they don't already, to prevent similar 404s on other pages.
+### Sidebar structure (mirrors AcademySidebar)
+```text
++---------------------------+
+| Logo                      |
+| Club Name     [collapse]  |
+| Verified Badge            |
++---------------------------+
+| Dashboard                 |
+| People >                  |
+|   Trainers                |
+|   Players                 |
+| Schedule >                |
+|   Calendar                |
+|   Lessons                 |
+| Tournaments               |
+| Business >                |
+|   Profile                 |
+|   Subscription            |
+|   Settings                |
++---------------------------+
+| ProfileSwitcher           |
+| View Public Profile       |
+| Theme | Lang | Logout     |
++---------------------------+
+```
+
+### Files modified
+- **New**: `src/components/club/ClubSidebar.tsx`
+- **Rewritten**: `src/components/club/ClubLayout.tsx`
+- **Deleted**: `src/components/club/ClubNavigation.tsx`
+- **Fixed**: `src/components/academy/AcademyLayout.tsx` (path fixes)
 
