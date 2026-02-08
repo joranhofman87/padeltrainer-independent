@@ -806,6 +806,7 @@ export default function AcademyCalendar() {
             defaultDuration={60}
             defaultWeeks={8}
             onSlotsCreated={() => fetchSlots()}
+            availableLocations={locations}
           />
 
           <BulkCreateSheet
@@ -818,6 +819,7 @@ export default function AcademyCalendar() {
             defaultDuration={60}
             defaultWeeks={8}
             onSlotsCreated={() => fetchSlots()}
+            availableLocations={locations}
           />
 
           <DuplicateCyclusDialog
