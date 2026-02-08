@@ -597,6 +597,7 @@ export type Database = {
           end_time: string
           id: string
           is_marked_full: boolean
+          is_public: boolean
           is_recurring: boolean
           lesson_id: string | null
           location_id: string | null
@@ -613,6 +614,7 @@ export type Database = {
           end_time: string
           id?: string
           is_marked_full?: boolean
+          is_public?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
           location_id?: string | null
@@ -629,6 +631,7 @@ export type Database = {
           end_time?: string
           id?: string
           is_marked_full?: boolean
+          is_public?: boolean
           is_recurring?: boolean
           lesson_id?: string | null
           location_id?: string | null

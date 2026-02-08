@@ -553,7 +553,20 @@
     "noOpenSlots": "No open slots available",
     "noOpenSlotsDescription": "All your training slots are either fully booked or marked as private.",
     "createSlots": "Create new slots",
-    "viewCalendar": "View full calendar"
+    "viewCalendar": "View full calendar",
+    "visibleToPlayers": "Visible to players",
+    "hiddenFromPlayers": "Hidden from players",
+    "toggleAll": "Toggle all",
+    "showAll": "Show all",
+    "hideAll": "Hide all",
+    "slotVisible": "Slot is now visible to players",
+    "slotHidden": "Slot is now hidden from players",
+    "cyclusVisible": "All sessions in this cycle are now visible",
+    "cyclusHidden": "All sessions in this cycle are now hidden",
+    "allVisible": "All slots are now visible to players",
+    "allHidden": "All slots are now hidden from players",
+    "dateRange": "{{start}} – {{end}}",
+    "at": "at"
   },
   "bookingSettings": {
     "title": "Booking Settings",

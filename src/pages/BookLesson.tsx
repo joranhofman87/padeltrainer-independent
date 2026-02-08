@@ -187,6 +187,7 @@ export default function BookLesson() {
       `)
       .eq('trainer_id', trainerData.id)
       .eq('is_marked_full', false)
+      .eq('is_public', true)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true });
 

@@ -63,12 +63,14 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           cyclus_name,
           court_type,
           is_marked_full,
+          is_public,
           location_id,
           locations:location_id(name),
           lessons:lesson_id(title, price, max_participants, booking_mode)
         `)
         .eq('trainer_id', trainerId)
         .eq('is_marked_full', false)
+        .eq('is_public', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(50);
