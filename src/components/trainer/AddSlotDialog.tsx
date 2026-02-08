@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users } from "lucide-react";
+import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -56,7 +57,6 @@ interface BulkSlotConfig {
   startTime: string;
   durationMinutes: number;
   recurrenceWeeks: number;
-  lessonId: string | null;
   cyclusName: string;
   addPlayers: boolean;
   selectedPlayers: string[];
@@ -66,6 +66,12 @@ interface BulkSlotConfig {
   academyProfileId: string | null;
   trainerId: string | null;
   trainingLevel: string | null;
+  pricePerSession: number | null;
+  totalPrice: number | null;
+  allowSingleBooking: boolean;
+  minParticipants: number | null;
+  maxParticipants: number | null;
+  priceManuallyEdited: boolean;
 }
 
 interface AddSlotDialogProps {
@@ -342,7 +348,7 @@ interface BulkCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainerId: string | null;
-  lessons: Lesson[];
+  lessons?: Lesson[];
   defaultDate?: Date;
   defaultTime?: string;
   defaultDuration: number;
@@ -374,11 +380,16 @@ export function BulkCreateSheet({
   const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
   const [addPlayerContext, setAddPlayerContext] = useState<{ slotIndex: number; playerIndex: number } | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
+  const [trainerHourlyRates, setTrainerHourlyRates] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (open && trainerId) {
       fetchPlayers();
       fetchAcademy();
+      fetchTrainerHourlyRate(trainerId);
+    }
+    if (open && availableTrainers) {
+      fetchAllTrainerRates();
     }
   }, [open, trainerId]);
 
@@ -388,7 +399,43 @@ export function BulkCreateSheet({
     setTrainerAcademy(academy);
   };
 
-  const fetchPlayers = async () => {
+  const fetchTrainerHourlyRate = async (tId: string) => {
+    const { data } = await supabase
+      .from("trainer_profiles")
+      .select("id, hourly_rate")
+      .eq("id", tId)
+      .maybeSingle();
+    if (data?.hourly_rate) {
+      setTrainerHourlyRates(prev => new Map(prev).set(tId, data.hourly_rate));
+    }
+  };
+
+  const fetchAllTrainerRates = async () => {
+    if (!availableTrainers || availableTrainers.length === 0) return;
+    const ids = availableTrainers.map(t => t.id);
+    const { data } = await supabase
+      .from("trainer_profiles")
+      .select("id, hourly_rate")
+      .in("id", ids);
+    if (data) {
+      const map = new Map<string, number>();
+      data.forEach(d => { if (d.hourly_rate) map.set(d.id, d.hourly_rate); });
+      setTrainerHourlyRates(map);
+    }
+  };
+
+  const getHourlyRate = (tId: string | null): number | null => {
+    if (!tId) return null;
+    return trainerHourlyRates.get(tId) ?? null;
+  };
+
+  const autoCalcPricing = (tId: string | null, durationMinutes: number, recurrenceWeeks: number) => {
+    const rate = getHourlyRate(tId);
+    if (!rate) return { pricePerSession: null, totalPrice: null };
+    const pricePerSession = calculateSlotPrice(rate, durationMinutes);
+    const totalPrice = pricePerSession * recurrenceWeeks;
+    return { pricePerSession: Math.round(pricePerSession * 100) / 100, totalPrice: Math.round(totalPrice * 100) / 100 };
+  };
     if (!trainerId) return;
     const { data } = await supabase
       .from("guest_players")
@@ -412,12 +459,34 @@ export function BulkCreateSheet({
     return defaultTime || "09:00";
   };
 
-  const generateCyclusName = (startDate: Date, startTime: string, lessonId: string | null) => {
-    const lesson = lessons.find((l) => l.id === lessonId);
+  const generateCyclusName = (startDate: Date, startTime: string) => {
     const dayName = format(startDate, "EEEE");
-    return lesson 
-      ? `${lesson.title} - ${dayName} ${startTime}` 
-      : `${t("calendar.cyclus")} ${dayName} ${startTime}`;
+    return `${t("calendar.cyclus")} ${dayName} ${startTime}`;
+  };
+
+  const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null): BulkSlotConfig => {
+    const pricing = autoCalcPricing(tId, duration, weeks);
+    return {
+      startDate,
+      startTime,
+      durationMinutes: duration,
+      recurrenceWeeks: weeks,
+      cyclusName: generateCyclusName(startDate, startTime),
+      addPlayers: false,
+      selectedPlayers: [],
+      courtType: null,
+      locationId: null,
+      isMarkedFull: false,
+      academyProfileId: null,
+      trainerId: tId,
+      trainingLevel: null,
+      pricePerSession: pricing.pricePerSession,
+      totalPrice: pricing.totalPrice,
+      allowSingleBooking: false,
+      minParticipants: null,
+      maxParticipants: null,
+      priceManuallyEdited: false,
+    };
   };
 
   // Sync first slot when opened via cell click with default date/time
@@ -425,24 +494,7 @@ export function BulkCreateSheet({
     if (open && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
-      setBulkSlots([
-        {
-          startDate: newStartDate,
-          startTime: newStartTime,
-          durationMinutes: defaultDuration,
-          recurrenceWeeks: defaultWeeks,
-          lessonId: null,
-          cyclusName: generateCyclusName(newStartDate, newStartTime, null),
-          addPlayers: false,
-          selectedPlayers: [],
-          courtType: null,
-          locationId: null,
-          isMarkedFull: false,
-          academyProfileId: null,
-          trainerId: trainerId,
-          trainingLevel: null,
-        },
-      ]);
+      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
     }
     if (!open) {
       setBulkSlots([]);
@@ -450,11 +502,9 @@ export function BulkCreateSheet({
   }, [open, defaultDate, defaultTime]);
 
   const addBulkSlotConfig = () => {
-    // If there's an existing slot, copy its settings
     if (bulkSlots.length > 0) {
       const lastSlot = bulkSlots[bulkSlots.length - 1];
       
-      // Calculate next available time (increment by duration)
       const lastTimeMinutes = parseInt(lastSlot.startTime.split(':')[0]) * 60 
                             + parseInt(lastSlot.startTime.split(':')[1]);
       const nextTimeMinutes = lastTimeMinutes + lastSlot.durationMinutes;
@@ -462,51 +512,41 @@ export function BulkCreateSheet({
       const nextMins = nextTimeMinutes % 60;
       const newStartTime = nextHours < 24 
         ? `${nextHours.toString().padStart(2, '0')}:${nextMins.toString().padStart(2, '0')}`
-        : lastSlot.startTime; // Fallback if exceeds 24h
+        : lastSlot.startTime;
       
-      const newCyclusName = generateCyclusName(lastSlot.startDate, newStartTime, lastSlot.lessonId);
+      const newCyclusName = generateCyclusName(lastSlot.startDate, newStartTime);
+      const pricing = lastSlot.priceManuallyEdited 
+        ? { pricePerSession: lastSlot.pricePerSession, totalPrice: lastSlot.totalPrice }
+        : autoCalcPricing(lastSlot.trainerId, lastSlot.durationMinutes, lastSlot.recurrenceWeeks);
       
       setBulkSlots([
         ...bulkSlots,
         {
-          startDate: lastSlot.startDate,           // Copy
-          startTime: newStartTime,                  // Auto-increment
-          durationMinutes: lastSlot.durationMinutes, // Copy
-          recurrenceWeeks: lastSlot.recurrenceWeeks, // Copy
-          lessonId: lastSlot.lessonId,              // Copy
-          locationId: lastSlot.locationId,          // Copy
-          courtType: lastSlot.courtType,            // Copy
-          cyclusName: newCyclusName,                // Auto-generate
-          addPlayers: false,                        // Reset (different players)
-          selectedPlayers: [],                      // Reset
-          isMarkedFull: false,                      // Reset
-          academyProfileId: lastSlot.academyProfileId, // Copy
-          trainerId: lastSlot.trainerId,            // Copy
-          trainingLevel: lastSlot.trainingLevel,    // Copy
+          startDate: lastSlot.startDate,
+          startTime: newStartTime,
+          durationMinutes: lastSlot.durationMinutes,
+          recurrenceWeeks: lastSlot.recurrenceWeeks,
+          locationId: lastSlot.locationId,
+          courtType: lastSlot.courtType,
+          cyclusName: newCyclusName,
+          addPlayers: false,
+          selectedPlayers: [],
+          isMarkedFull: false,
+          academyProfileId: lastSlot.academyProfileId,
+          trainerId: lastSlot.trainerId,
+          trainingLevel: lastSlot.trainingLevel,
+          pricePerSession: pricing.pricePerSession,
+          totalPrice: pricing.totalPrice,
+          allowSingleBooking: lastSlot.allowSingleBooking,
+          minParticipants: lastSlot.minParticipants,
+          maxParticipants: lastSlot.maxParticipants,
+          priceManuallyEdited: lastSlot.priceManuallyEdited,
         },
       ]);
     } else {
-      // No existing slots - use defaults
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
-      setBulkSlots([
-        {
-          startDate: newStartDate,
-          startTime: newStartTime,
-          durationMinutes: defaultDuration,
-          recurrenceWeeks: defaultWeeks,
-          lessonId: null,
-          cyclusName: generateCyclusName(newStartDate, newStartTime, null),
-          addPlayers: false,
-          selectedPlayers: [],
-          courtType: null,
-          locationId: null,
-          isMarkedFull: false,
-          academyProfileId: null,
-          trainerId: trainerId,
-          trainingLevel: null,
-        },
-      ]);
+      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
     }
   };
 
@@ -515,17 +555,21 @@ export function BulkCreateSheet({
       prev.map((slot, i) => {
         if (i !== index) return slot;
         const updated = { ...slot, ...updates };
-        // Auto-regenerate cyclus name if relevant fields changed and name wasn't manually edited
-        if (updates.startDate || updates.startTime || updates.lessonId) {
+        // Auto-regenerate cyclus name if relevant fields changed
+        if (updates.startDate || updates.startTime) {
           const autoName = generateCyclusName(
             updates.startDate || slot.startDate,
             updates.startTime || slot.startTime,
-            updates.lessonId !== undefined ? updates.lessonId : slot.lessonId
           );
-          // Only update name if it looks auto-generated
-          if (slot.cyclusName.includes(" - ") || slot.cyclusName.startsWith(t("calendar.cyclus"))) {
+          if (slot.cyclusName.startsWith(t("calendar.cyclus"))) {
             updated.cyclusName = autoName;
           }
+        }
+        // Auto-recalc pricing if trainer/duration/weeks changed and not manually edited
+        if (!updated.priceManuallyEdited && (updates.trainerId !== undefined || updates.durationMinutes !== undefined || updates.recurrenceWeeks !== undefined)) {
+          const pricing = autoCalcPricing(updated.trainerId, updated.durationMinutes, updated.recurrenceWeeks);
+          updated.pricePerSession = pricing.pricePerSession;
+          updated.totalPrice = pricing.totalPrice;
         }
         return updated;
       })
@@ -562,7 +606,6 @@ export function BulkCreateSheet({
         trainer_id: string;
         start_time: string;
         end_time: string;
-        lesson_id: string | null;
         cyclus_id: string | null;
         cyclus_name: string | null;
         court_type: 'indoor' | 'outdoor' | null;
@@ -570,6 +613,11 @@ export function BulkCreateSheet({
         is_marked_full: boolean;
         academy_profile_id: string | null;
         training_level: string | null;
+        price_per_session: number | null;
+        total_price: number | null;
+        allow_single_booking: boolean;
+        min_participants: number | null;
+        max_participants: number | null;
       }[] = [];
 
       // Get existing slots to avoid duplicates per trainer
@@ -622,7 +670,6 @@ export function BulkCreateSheet({
             trainer_id: slotTrainerId,
             start_time: currentSlotStart.toISOString(),
             end_time: currentSlotEnd.toISOString(),
-            lesson_id: config.lessonId,
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             court_type: config.courtType,
@@ -630,6 +677,11 @@ export function BulkCreateSheet({
             is_marked_full: config.isMarkedFull,
             academy_profile_id: config.academyProfileId,
             training_level: config.trainingLevel,
+            price_per_session: config.pricePerSession,
+            total_price: config.totalPrice,
+            allow_single_booking: config.allowSingleBooking,
+            min_participants: config.minParticipants,
+            max_participants: config.maxParticipants,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -674,7 +726,6 @@ export function BulkCreateSheet({
                   bookingsToInsert.push({
                     slot_id: slot.id,
                     guest_player_id: playerId,
-                    lesson_id: config.lessonId,
                     status: "confirmed",
                     payment_status: "pending",
                   });
@@ -912,27 +963,108 @@ export function BulkCreateSheet({
                     </div>
                   )}
 
-                  {/* Lesson */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">{t("calendar.linkLesson")}</Label>
-                    <Select
-                      value={slot.lessonId || "none"}
-                      onValueChange={(v) =>
-                        updateBulkSlot(index, { lessonId: v === "none" ? null : v })
+                  {/* Pricing */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label className="text-xs flex items-center gap-1">
+                      <Euro className="h-3 w-3" />
+                      {t("calendar.pricing", "Pricing")}
+                    </Label>
+                    {slot.trainerId && getHourlyRate(slot.trainerId) && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("calendar.hourlyRate", "Hourly rate")}: {formatPrice(getHourlyRate(slot.trainerId)!)}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("calendar.pricePerSession", "Price per session")}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={slot.pricePerSession ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : null;
+                            updateBulkSlot(index, { 
+                              pricePerSession: val, 
+                              totalPrice: val !== null ? Math.round(val * slot.recurrenceWeeks * 100) / 100 : null,
+                              priceManuallyEdited: true 
+                            });
+                          }}
+                          placeholder="0.00"
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("calendar.totalPrice", "Total cyclus price")}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={slot.totalPrice ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : null;
+                            updateBulkSlot(index, { totalPrice: val, priceManuallyEdited: true });
+                          }}
+                          placeholder="0.00"
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Participants */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label className="text-xs flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {t("calendar.participants", "Participants")}
+                    </Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("calendar.minParticipants", "Min participants")}</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={slot.minParticipants ?? ""}
+                          onChange={(e) =>
+                            updateBulkSlot(index, { minParticipants: e.target.value ? parseInt(e.target.value) : null })
+                          }
+                          placeholder="-"
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("calendar.maxParticipants", "Max participants")}</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={slot.maxParticipants ?? ""}
+                          onChange={(e) =>
+                            updateBulkSlot(index, { maxParticipants: e.target.value ? parseInt(e.target.value) : null })
+                          }
+                          placeholder="-"
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Allow Single Booking */}
+                  <div className="flex items-center space-x-2 pt-2 border-t">
+                    <Checkbox
+                      id={`allow-single-${index}`}
+                      checked={slot.allowSingleBooking}
+                      onCheckedChange={(checked) =>
+                        updateBulkSlot(index, { allowSingleBooking: !!checked })
                       }
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{t("calendar.noLesson")}</SelectItem>
-                        {lessons.map((lesson) => (
-                          <SelectItem key={lesson.id} value={lesson.id}>
-                            {lesson.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
+                    <div>
+                      <Label htmlFor={`allow-single-${index}`} className="text-sm cursor-pointer">
+                        {t("calendar.allowSingleBooking", "Allow players to book individual slots")}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t("calendar.allowSingleBookingHint", "When enabled, players can book and pay for single sessions")}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Location */}

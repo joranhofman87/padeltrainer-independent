@@ -593,6 +593,7 @@ export type Database = {
       availability_slots: {
         Row: {
           academy_profile_id: string | null
+          allow_single_booking: boolean | null
           court_type: string | null
           created_at: string
           cyclus_id: string | null
@@ -604,13 +605,18 @@ export type Database = {
           is_recurring: boolean
           lesson_id: string | null
           location_id: string | null
+          max_participants: number | null
+          min_participants: number | null
+          price_per_session: number | null
           recurrence_rule: string | null
           start_time: string
+          total_price: number | null
           trainer_id: string
           training_level: string | null
         }
         Insert: {
           academy_profile_id?: string | null
+          allow_single_booking?: boolean | null
           court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
@@ -622,13 +628,18 @@ export type Database = {
           is_recurring?: boolean
           lesson_id?: string | null
           location_id?: string | null
+          max_participants?: number | null
+          min_participants?: number | null
+          price_per_session?: number | null
           recurrence_rule?: string | null
           start_time: string
+          total_price?: number | null
           trainer_id: string
           training_level?: string | null
         }
         Update: {
           academy_profile_id?: string | null
+          allow_single_booking?: boolean | null
           court_type?: string | null
           created_at?: string
           cyclus_id?: string | null
@@ -640,8 +651,12 @@ export type Database = {
           is_recurring?: boolean
           lesson_id?: string | null
           location_id?: string | null
+          max_participants?: number | null
+          min_participants?: number | null
+          price_per_session?: number | null
           recurrence_rule?: string | null
           start_time?: string
+          total_price?: number | null
           trainer_id?: string
           training_level?: string | null
         }
