@@ -285,7 +285,7 @@ export function EditAcademyTrainerDialog({
           bio: profileData.bio,
           avatar_url: profileData.avatar_url,
           skill_rating: profileData.skill_rating,
-          rating_system: profileData.rating_system,
+          rating_system: profileData.rating_system || 'none',
           rating_member_id: profileData.rating_member_id,
         },
       });
