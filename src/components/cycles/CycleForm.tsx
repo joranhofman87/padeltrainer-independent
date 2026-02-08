@@ -88,7 +88,7 @@ export default function CycleForm({
   }, []);
 
   const formSchema = z.object({
-    name: z.string().min(2),
+    name: isRegistration ? z.string().min(2) : z.string().optional().default(''),
     start_date: z.date(),
     number_of_weeks: z.coerce.number().min(1).max(52),
     start_time: z.string().default('09:00'),
@@ -236,10 +236,17 @@ export default function CycleForm({
         end_time: values.end_time,
       };
 
+      // For cyclus, auto-generate name from day + time
+      let cycleName = values.name;
+      if (!isRegistration) {
+        const dayName = format(values.start_date, 'EEEE');
+        cycleName = `${dayName} ${values.start_time}–${values.end_time}`;
+      }
+
       const input: CycleInput = {
         owner_type: ownerType,
         owner_id: ownerId,
-        name: values.name,
+        name: cycleName,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
         end_date: format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd'),
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
@@ -286,19 +293,21 @@ export default function CycleForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('form.name')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder={t('form.namePlaceholder')} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.name')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder={t('form.namePlaceholder')} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -723,7 +732,7 @@ export default function CycleForm({
               )}
             />
 
-            {ownerType === 'academy' && (
+            {ownerType === 'academy' && isRegistration && (
               <FormField
                 control={form.control}
                 name="show_preferred_trainer"
