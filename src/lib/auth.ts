@@ -22,6 +22,7 @@ export interface UserProfile {
 export interface TrainerProfile {
   id: string;
   user_id: string;
+  slug: string;
   hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
