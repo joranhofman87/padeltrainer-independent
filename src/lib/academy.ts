@@ -854,18 +854,37 @@ export async function getAcademyTrainersWithProfiles(academyProfileId: string): 
 
   // Batch fetch profiles with rating data
   const userIds = data.map((t: any) => t.trainer_profile?.user_id).filter(Boolean);
-  const { data: profiles } = await supabase
-    .from('profiles_public')
-    .select('user_id, full_name, avatar_url, skill_rating, rating_system')
-    .in('user_id', userIds);
+  const trainerProfileIds = data.map((t: any) => t.trainer_profile?.id).filter(Boolean);
+
+  const [{ data: profiles }, { data: trainerLocations }] = await Promise.all([
+    supabase
+      .from('profiles_public')
+      .select('user_id, full_name, avatar_url, skill_rating, rating_system')
+      .in('user_id', userIds),
+    supabase
+      .from('trainer_locations')
+      .select('trainer_id, location_id, locations(id, name, city)')
+      .in('trainer_id', trainerProfileIds),
+  ]);
 
   const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
+
+  // Group locations by trainer_id
+  const locationsMap = new Map<string, any[]>();
+  (trainerLocations || []).forEach((tl: any) => {
+    const existing = locationsMap.get(tl.trainer_id) || [];
+    if (tl.locations) existing.push(tl.locations);
+    locationsMap.set(tl.trainer_id, existing);
+  });
 
   return data.map((trainer: any) => ({
     ...trainer,
     profile: trainer.trainer_profile?.user_id 
       ? profileMap.get(trainer.trainer_profile.user_id) || null 
       : null,
+    locations: trainer.trainer_profile?.id
+      ? locationsMap.get(trainer.trainer_profile.id) || []
+      : [],
   }));
 }
 
