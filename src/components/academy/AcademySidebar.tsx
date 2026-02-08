@@ -43,6 +43,7 @@ import {
   PanelLeft,
   GraduationCap,
   CheckCircle,
+  FileText,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { getMarketingUrl } from "@/lib/domains";
@@ -69,8 +70,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
     location.pathname.includes("/app/academy/trainers")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/app/academy/calendar") ||
-    location.pathname.includes("/app/academy/cycles")
+    location.pathname.includes("/app/academy/calendar")
   );
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
@@ -268,7 +268,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/app/academy/calendar") || isActive("/app/academy/cycles")
+                      className={isActive("/app/academy/calendar")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -294,21 +294,38 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/cycles"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.registrations", "Registrations")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+
+              {/* Registrations - standalone nav item */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
+                  <NavLink
+                    to="/app/academy/cycles"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Intake Requests */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.intakeRequests", "Intake Requests")}>
+                  <NavLink
+                    to="/app/academy/intake-requests"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.intakeRequests", "Intake Requests")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Locations */}
               <SidebarMenuItem>

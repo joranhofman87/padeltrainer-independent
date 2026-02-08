@@ -81,7 +81,6 @@ export function TrainerSidebar() {
     location.pathname.startsWith("/trainer/lessons")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
-    location.pathname.startsWith("/trainer/cyclus") ||
     location.pathname.startsWith("/trainer/cycles")
   );
   const [clubsOpen, setClubsOpen] = useState(false);
@@ -393,46 +392,19 @@ export function TrainerSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* Registration Group */}
-              <Collapsible
-                open={registrationOpen && !collapsed}
-                onOpenChange={setRegistrationOpen}
-                className="group/registration"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.registration")}
-                      className={isActive("/trainer/cyclus") || isActive("/trainer/cycles")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <CalendarDays className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.registration")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/registration:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/trainer/cyclus"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.cyclus")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Registrations - standalone nav item */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.registration")}>
+                  <NavLink
+                    to="/trainer/cycles"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.registration")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* My Clubs Group - Only show if trainer has clubs */}
               {trainerClubs.length > 0 && (

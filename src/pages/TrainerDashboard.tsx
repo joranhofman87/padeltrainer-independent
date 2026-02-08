@@ -897,6 +897,7 @@ export default function TrainerDashboard() {
           open={showCreateCycleDialog}
           onOpenChange={setShowCreateCycleDialog}
           trainerHourlyRate={trainerHourlyRate}
+          formType="cyclus"
           onSuccess={() => {
             handleSlotsCreated();
           }}

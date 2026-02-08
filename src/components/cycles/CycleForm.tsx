@@ -60,6 +60,8 @@ interface CycleFormProps {
   trainerLocationMap?: Record<string, string[]>;
   /** Hourly rate for trainer-owned cycles (not using trainers array) */
   trainerHourlyRate?: number;
+  /** Whether this is a registration (interest collection) or cyclus (calendar slot) */
+  formType?: 'registration' | 'cyclus';
 }
 
 export default function CycleForm({
@@ -73,11 +75,13 @@ export default function CycleForm({
   locations = [],
   trainerLocationMap = {},
   trainerHourlyRate,
+  formType = 'cyclus',
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const isEdit = !!cycle;
+  const isRegistration = formType === 'registration';
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
@@ -183,7 +187,7 @@ export default function CycleForm({
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
 
   useEffect(() => {
-    if (!watchedStartTime || !watchedEndTime || !watchedWeeks) return;
+    if (isRegistration || !watchedStartTime || !watchedEndTime || !watchedWeeks) return;
 
     // Determine hourly rate
     let hourlyRate: number | undefined;
@@ -241,9 +245,10 @@ export default function CycleForm({
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
+        type: formType,
         location_id: values.location_id || null,
-        price_per_session: values.price_per_session ? Number(values.price_per_session) : null,
-        total_price: values.total_price ? Number(values.total_price) : null,
+        price_per_session: isRegistration ? null : (values.price_per_session ? Number(values.price_per_session) : null),
+        total_price: isRegistration ? null : (values.total_price ? Number(values.total_price) : null),
         currency: values.currency,
       };
 
@@ -271,7 +276,11 @@ export default function CycleForm({
         <div className="overflow-y-auto max-h-[90vh] p-6">
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? t('editCycle') : t('createCycle')}
+            {isEdit 
+              ? t('editCycle') 
+              : isRegistration 
+                ? t('createRegistration', 'Create Registration')
+                : t('createCycle')}
           </DialogTitle>
         </DialogHeader>
 
@@ -351,7 +360,8 @@ export default function CycleForm({
               />
             </div>
 
-            {/* Timeframe */}
+            {/* Timeframe - only for cyclus */}
+            {!isRegistration && (
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -380,6 +390,7 @@ export default function CycleForm({
                 )}
               />
             </div>
+            )}
 
             <FormField
               control={form.control}
@@ -611,6 +622,8 @@ export default function CycleForm({
             </div>
 
 
+            {/* Pricing - only for cyclus */}
+            {!isRegistration && (
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
@@ -677,6 +690,7 @@ export default function CycleForm({
                 {t('form.pricingHelp')}
               </FormDescription>
             </div>
+            )}
 
             <FormField
               control={form.control}

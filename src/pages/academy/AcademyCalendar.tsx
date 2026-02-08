@@ -817,6 +817,7 @@ export default function AcademyCalendar() {
             open={showCreateCycleDialog}
             onOpenChange={setShowCreateCycleDialog}
             onSuccess={() => fetchSlots()}
+            formType="cyclus"
             trainers={trainers.map(t => ({ id: t.id, name: t.name, hourly_rate: t.hourly_rate }))}
             locations={locations}
           />

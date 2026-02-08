@@ -11,10 +11,13 @@
     "checkBackLater": "Kom later terug voor aankomende trainings-cycli."
   },
   "createCycle": "Cyclus Aanmaken",
+  "createRegistration": "Inschrijving Aanmaken",
   "editCycle": "Cyclus Bewerken",
   "deleteCycle": "Cyclus Verwijderen",
   "noCycles": "Nog geen trainingscycli",
   "noCyclesDescription": "Maak je eerste trainingscyclus aan om aanmeldingen te accepteren",
+  "noRegistrations": "Nog geen inschrijvingen",
+  "noRegistrationsDescription": "Maak een inschrijving aan om interesse van spelers te verzamelen",
   "academyDescription": "Beheer inschrijvingscycli voor je academy programma's",
   
   "status": {

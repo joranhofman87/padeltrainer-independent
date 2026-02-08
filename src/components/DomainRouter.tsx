@@ -97,6 +97,7 @@ import AcademyTrainers from '@/pages/academy/AcademyTrainers';
 import AcademyLocations from '@/pages/academy/AcademyLocations';
 import AcademyCycles from '@/pages/academy/AcademyCycles';
 import AcademyCalendar from '@/pages/academy/AcademyCalendar';
+import AcademyIntakeRequests from '@/pages/academy/AcademyIntakeRequests';
 import AcademySubscription from '@/pages/academy/AcademySubscription';
 import AcademyTrainerInvitation from '@/pages/academy/AcademyTrainerInvitation';
 import AcademyEarnings from '@/pages/academy/AcademyEarnings';
@@ -209,6 +210,7 @@ export function DomainRouter() {
         <Route path="locations" element={<AcademyLocations />} />
         <Route path="cycles" element={<AcademyCycles />} />
         <Route path="calendar" element={<AcademyCalendar />} />
+        <Route path="intake-requests" element={<AcademyIntakeRequests />} />
         <Route path="settings" element={<AcademySettings />} />
         <Route path="subscription" element={<AcademySubscription />} />
         <Route path="earnings" element={<AcademyEarnings />} />
