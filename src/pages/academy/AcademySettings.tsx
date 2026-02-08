@@ -8,8 +8,13 @@ import {
   AlertCircle, 
   ExternalLink, 
   Wallet,
-  Loader2
+  Loader2,
+  FileText
 } from 'lucide-react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import LinkExtension from '@tiptap/extension-link';
+import UnderlineExtension from '@tiptap/extension-underline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -25,6 +30,7 @@ import {
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function AcademySettings() {
   const { t } = useTranslation('academy');
@@ -37,6 +43,21 @@ export default function AcademySettings() {
   const [connectStatus, setConnectStatus] = useState<AcademyConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [savingTerms, setSavingTerms] = useState(false);
+
+  const termsEditor = useEditor({
+    extensions: [
+      StarterKit,
+      LinkExtension.configure({ openOnClick: false }),
+      UnderlineExtension,
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[200px] p-4 focus:outline-none',
+      },
+    },
+  });
 
   useEffect(() => {
     async function fetchData() {
@@ -58,6 +79,42 @@ export default function AcademySettings() {
     }
     fetchData();
   }, [activeAcademy]);
+
+  // Load terms into editor when academy changes
+  useEffect(() => {
+    if (!termsEditor || !activeAcademy) return;
+    const loadTerms = async () => {
+      const { data } = await supabase
+        .from('academy_profiles')
+        .select('general_terms')
+        .eq('id', activeAcademy.id)
+        .maybeSingle();
+      if (data?.general_terms) {
+        termsEditor.commands.setContent(data.general_terms as string);
+      }
+    };
+    loadTerms();
+  }, [activeAcademy, termsEditor]);
+
+  const handleSaveTerms = async () => {
+    if (!activeAcademy || !termsEditor) return;
+    setSavingTerms(true);
+    try {
+      const content = termsEditor.getHTML();
+      const isEmpty = termsEditor.isEmpty;
+      const { error } = await supabase
+        .from('academy_profiles')
+        .update({ general_terms: isEmpty ? null : content } as any)
+        .eq('id', activeAcademy.id);
+      if (error) throw error;
+      toast({ title: t('terms.saved', 'Terms saved successfully') });
+    } catch (error: any) {
+      logger.error('Error saving academy terms', error, { component: 'AcademySettings' });
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setSavingTerms(false);
+    }
+  };
 
   // Handle Mollie redirect callbacks
   useEffect(() => {
@@ -253,6 +310,32 @@ export default function AcademySettings() {
                 </Button>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* General Terms */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">
+                {t("terms.title", "General Terms")}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {t("terms.description", "Terms players must accept before booking lessons with your trainers.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="border rounded-lg overflow-hidden">
+              <EditorContent editor={termsEditor} />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveTerms} disabled={savingTerms}>
+                {savingTerms && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t('common.save', 'Save Changes')}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

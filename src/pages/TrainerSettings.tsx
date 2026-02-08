@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
@@ -168,6 +168,14 @@ export default function TrainerSettings() {
       route: '/settings/notifications',
       iconBg: 'bg-orange-500/10',
       iconColor: 'text-orange-600',
+    },
+    {
+      title: t('terms.title', 'General Terms'),
+      description: t('terms.settingsDescription', 'Manage your general terms and conditions'),
+      icon: FileText,
+      route: '/app/trainer/terms',
+      iconBg: 'bg-amber-500/10',
+      iconColor: 'text-amber-600',
     },
   ];
 

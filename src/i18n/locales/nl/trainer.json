@@ -410,6 +410,17 @@
     "subscribe": "Abonneren",
     "dangerZone": "Gevarenzone"
   },
+  "terms": {
+    "title": "Algemene Voorwaarden",
+    "subtitle": "Voorwaarden die spelers moeten accepteren voor het boeken",
+    "settingsDescription": "Beheer je algemene voorwaarden",
+    "saved": "Voorwaarden opgeslagen",
+    "ownTerms": "Jouw Algemene Voorwaarden",
+    "ownTermsDescription": "Schrijf je algemene voorwaarden. Spelers moeten deze accepteren voordat ze een les boeken.",
+    "academyTerms": "Voorwaarden van {{name}}",
+    "academyTermsDescription": "Deze voorwaarden worden getoond aan spelers die je academy lessen boeken.",
+    "academyOverride": "Je academy ({{name}}) heeft algemene voorwaarden ingesteld. Die voorwaarden worden aan spelers getoond in plaats van die van jou wanneer ze via de academy boeken."
+  },
   "analytics": {
     "title": "Analytics",
     "period": "Periode",

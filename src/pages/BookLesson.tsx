@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
+import { getApplicableTerms } from '@/lib/terms';
+import TermsAcceptance from '@/components/booking/TermsAcceptance';
 
 interface BookedPlayerInfo {
   skillRating: number | null;
@@ -95,6 +97,9 @@ export default function BookLesson() {
   const [booking, setBooking] = useState(false);
   const [booked, setBooked] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
+  const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
+  const [termsLoading, setTermsLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -308,6 +313,19 @@ export default function BookLesson() {
       setIndividualSlots([...standaloneSlots, ...partialCyclusSlots]);
     }
 
+    // Fetch applicable terms
+    if (trainerData?.id) {
+      setTermsLoading(true);
+      try {
+        const { terms } = await getApplicableTerms(trainerData.id);
+        setApplicableTerms(terms);
+      } catch (e) {
+        console.error('Error fetching terms:', e);
+      } finally {
+        setTermsLoading(false);
+      }
+    }
+
     setLoadingData(false);
   };
 
@@ -336,6 +354,16 @@ export default function BookLesson() {
         });
         return;
       }
+    }
+
+    // Check terms acceptance
+    if (applicableTerms && !termsAccepted) {
+      toast({
+        title: 'Terms Required',
+        description: 'Please accept the general terms before booking.',
+        variant: 'destructive',
+      });
+      return;
     }
 
     setBooking(true);
@@ -1055,6 +1083,13 @@ export default function BookLesson() {
                       />
                     </div>
 
+                    <TermsAcceptance
+                      terms={applicableTerms}
+                      loading={termsLoading}
+                      accepted={termsAccepted}
+                      onAcceptChange={setTermsAccepted}
+                    />
+
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-lg font-semibold">
                         <span>Total ({selectedCyclus.slots.length} sessions)</span>
@@ -1066,7 +1101,7 @@ export default function BookLesson() {
                       className="w-full"
                       size="lg"
                       onClick={handleBook}
-                      disabled={booking}
+                      disabled={booking || (!!applicableTerms && !termsAccepted)}
                     >
                       {booking ? 'Booking...' : `Book Entire Cycle (${selectedCyclus.slots.length} sessions)`}
                     </Button>
@@ -1158,6 +1193,13 @@ export default function BookLesson() {
                       />
                     </div>
 
+                    <TermsAcceptance
+                      terms={applicableTerms}
+                      loading={termsLoading}
+                      accepted={termsAccepted}
+                      onAcceptChange={setTermsAccepted}
+                    />
+
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-lg font-semibold">
                         <span>Total</span>
@@ -1179,7 +1221,7 @@ export default function BookLesson() {
                       className="w-full"
                       size="lg"
                       onClick={handleBook}
-                      disabled={booking}
+                      disabled={booking || (!!applicableTerms && !termsAccepted)}
                     >
                       {booking ? 'Booking...' : 'Confirm Booking'}
                     </Button>

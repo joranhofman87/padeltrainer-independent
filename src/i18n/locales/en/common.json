@@ -233,5 +233,8 @@
     "teaching_style": "Teaching Style",
     "skill_focus": "Skill Focus",
     "specialties": "Specialties"
-  }
+  },
+  "generalTerms": "General Terms",
+  "acceptTerms": "I have read and accept the general terms and conditions",
+  "loadingTerms": "Loading terms..."
 }

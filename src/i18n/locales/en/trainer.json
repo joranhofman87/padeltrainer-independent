@@ -410,6 +410,17 @@
     "subscribe": "Subscribe",
     "dangerZone": "Danger Zone"
   },
+  "terms": {
+    "title": "General Terms",
+    "subtitle": "Terms players must accept before booking",
+    "settingsDescription": "Manage your general terms and conditions",
+    "saved": "Terms saved successfully",
+    "ownTerms": "Your General Terms",
+    "ownTermsDescription": "Write your general terms and conditions. Players must accept these before booking a lesson.",
+    "academyTerms": "{{name}}'s Terms",
+    "academyTermsDescription": "These terms are shown to players booking your academy lessons.",
+    "academyOverride": "Your academy ({{name}}) has set general terms. Those terms will be shown to players instead of yours when they book through the academy."
+  },
   "analytics": {
     "title": "Analytics",
     "period": "Period",

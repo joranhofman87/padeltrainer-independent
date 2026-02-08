@@ -219,6 +219,11 @@
     "mollieConnectRefresh": "Installatie Voltooien",
     "mollieConnectRefreshDescription": "Voltooi de installatie van je betaalaccount."
   },
+  "terms": {
+    "title": "Algemene Voorwaarden",
+    "description": "Voorwaarden die spelers moeten accepteren voor het boeken van lessen bij je trainers.",
+    "saved": "Voorwaarden opgeslagen"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "trainers": "Trainers",

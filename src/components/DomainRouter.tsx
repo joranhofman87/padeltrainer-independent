@@ -40,6 +40,7 @@ import TrainerDashboard from '@/pages/TrainerDashboard';
 import TrainerGetStarted from '@/pages/TrainerGetStarted';
 import TrainerSettings from '@/pages/TrainerSettings';
 import TrainerBookingSettings from '@/pages/TrainerBookingSettings';
+import TrainerTerms from '@/pages/TrainerTerms';
 import EditProfile from '@/pages/EditProfile';
 
 import PlayerBookings from '@/pages/PlayerBookings';
@@ -148,6 +149,7 @@ export function DomainRouter() {
         <Route index element={<TrainerDashboard />} />
         <Route path="settings" element={<TrainerSettings />} />
         <Route path="settings/bookings" element={<TrainerBookingSettings />} />
+        <Route path="terms" element={<TrainerTerms />} />
         <Route path="calendar" element={<TrainerCalendar />} />
         <Route path="players" element={<TrainerPlayers />} />
         <Route path="cyclus" element={<TrainerCyclus />} />
