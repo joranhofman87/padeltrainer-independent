@@ -51,7 +51,7 @@ export interface TrainerEditData {
   rating_member_id: string | null;
   // Trainer profile info
   hourly_rate: number | null;
-  experience_years: number | null;
+  coaching_since_year: number | null;
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
@@ -108,7 +108,7 @@ export function TrainerEditDialog({
 
   // Trainer profile state
   const [hourlyRate, setHourlyRate] = useState(trainer.hourly_rate?.toString() || "");
-  const [experienceYears, setExperienceYears] = useState(trainer.experience_years?.toString() || "");
+  const [coachingSinceYear, setCoachingSinceYear] = useState(trainer.coaching_since_year?.toString() || "");
   const [coachingMethod, setCoachingMethod] = useState(trainer.coaching_method || "");
   const [favouriteQuote, setFavouriteQuote] = useState(trainer.favourite_quote || "");
   const [videoUrl, setVideoUrl] = useState(trainer.video_url || "");
@@ -157,7 +157,7 @@ export function TrainerEditDialog({
       setRatingSystem(trainer.rating_system || "knltb");
       setRatingMemberId(trainer.rating_member_id || "");
       setHourlyRate(trainer.hourly_rate?.toString() || "");
-      setExperienceYears(trainer.experience_years?.toString() || "");
+      setCoachingSinceYear(trainer.coaching_since_year?.toString() || "");
       setCoachingMethod(trainer.coaching_method || "");
       setFavouriteQuote(trainer.favourite_quote || "");
       setVideoUrl(trainer.video_url || "");
@@ -263,7 +263,7 @@ export function TrainerEditDialog({
         .from("trainer_profiles")
         .update({
           hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
-          experience_years: experienceYears ? parseInt(experienceYears) : null,
+          coaching_since_year: coachingSinceYear ? parseInt(coachingSinceYear) : null,
           coaching_method: coachingMethod || null,
           favourite_quote: favouriteQuote || null,
           video_url: videoUrl || null,
@@ -480,13 +480,15 @@ export function TrainerEditDialog({
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="experienceYears">Years of Experience</Label>
+                  <Label htmlFor="coachingSinceYear">Coaching Since (year)</Label>
                   <Input
-                    id="experienceYears"
+                    id="coachingSinceYear"
                     type="number"
-                    value={experienceYears}
-                    onChange={(e) => setExperienceYears(e.target.value)}
-                    placeholder="e.g. 5"
+                    value={coachingSinceYear}
+                    onChange={(e) => setCoachingSinceYear(e.target.value)}
+                    placeholder={`e.g. ${new Date().getFullYear() - 5}`}
+                    min="1970"
+                    max={new Date().getFullYear()}
                   />
                 </div>
               </div>
