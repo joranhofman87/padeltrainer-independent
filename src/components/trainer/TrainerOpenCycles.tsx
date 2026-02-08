@@ -117,7 +117,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                       )}
                     </div>
                     {cycle.description && (
-                      <p className="text-sm text-muted-foreground mt-2">{cycle.description}</p>
+                      <div className="text-sm text-muted-foreground mt-2 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
                     )}
                   </div>
                   

@@ -205,7 +205,7 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
 
                 {cycle.description && (
                   <CardContent className="pt-0 pb-2">
-                    <p className="text-sm text-muted-foreground">{cycle.description}</p>
+                    <div className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
                   </CardContent>
                 )}
 
