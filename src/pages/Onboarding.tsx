@@ -65,6 +65,12 @@ export default function Onboarding() {
 
   useEffect(() => {
     if (!loading) {
+      // Redirect trainers to the new onboarding flow
+      if (pendingRole === 'trainer' || storedPendingRole === 'trainer') {
+        navigate('/app/onboarding/trainer', { replace: true });
+        return;
+      }
+
       // If user signed up as club, redirect to club onboarding
       if (storedPendingRole === 'club') {
         navigate('/app/onboarding/club');
@@ -73,7 +79,7 @@ export default function Onboarding() {
       
       if (!user) {
         // Not logged in - redirect to appropriate signup
-        navigate(pendingRole === 'trainer' ? '/app/signup/trainer' : '/app/signup/player');
+        navigate('/app/signup/player');
       } else if (role) {
         // Already has a role - redirect to dashboard
         navigate(role === 'trainer' ? '/app/trainer' : '/app/player');

@@ -174,15 +174,17 @@ export default function TrainerSettings() {
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${isPublic ? 'bg-green-500/10' : 'bg-muted'}`}>
                   {isPublic ? (
-                    <Eye className={`h-5 w-5 ${isPublic ? 'text-green-600' : 'text-muted-foreground'}`} />
+                    <Eye className={`h-5 w-5 text-green-600`} />
                   ) : (
                     <EyeOff className="h-5 w-5 text-muted-foreground" />
                   )}
                 </div>
                 <div className="flex-1">
-                  <CardTitle className="text-lg">{t('settings.profileVisibility', 'Profile Visibility')}</CardTitle>
+                  <CardTitle className="text-lg">{t('settings.marketplaceVisibility', 'Marketplace visibility')}</CardTitle>
                   <CardDescription>
-                    {t('settings.profileVisibilityDescription', 'Control whether players can find you in search results')}
+                    {isPublic
+                      ? t('settings.visibleHelper', 'Visible — players can find you and request lessons')
+                      : t('settings.hiddenHelper', "Hidden — you won't appear in search and players can't book you")}
                   </CardDescription>
                 </div>
                 <Switch
@@ -192,8 +194,11 @@ export default function TrainerSettings() {
                 />
               </div>
             </CardHeader>
-            {visibilityStatus && (
-              <CardContent className="pt-0">
+            <CardContent className="pt-0 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {t('settings.visibilitySafety', 'You can switch this off anytime.')}
+              </p>
+              {visibilityStatus && (
                 <Alert variant={visibilityStatus.type === 'warning' ? 'destructive' : 'default'}>
                   {visibilityStatus.type === 'warning' && <AlertTriangle className="h-4 w-4" />}
                   <AlertDescription className="flex items-center justify-between">
@@ -205,8 +210,8 @@ export default function TrainerSettings() {
                     )}
                   </AlertDescription>
                 </Alert>
-              </CardContent>
-            )}
+              )}
+            </CardContent>
           </Card>
         </div>
 

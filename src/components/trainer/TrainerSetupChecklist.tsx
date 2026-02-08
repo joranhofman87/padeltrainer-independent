@@ -41,11 +41,11 @@ export function TrainerSetupChecklist({
   }
   
   const steps = [
-    { key: 'profileComplete', label: 'Complete your profile information', route: '/trainer/profile', complete: setupStatus.profileComplete },
-    { key: 'hasLessons', label: 'Create your first lesson', route: '/trainer/lessons', complete: setupStatus.hasLessons },
-    { key: 'hasAvailability', label: 'Create training cyclus or slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
+    { key: 'profileComplete', label: 'Complete your profile essentials', route: '/trainer/profile', complete: setupStatus.profileComplete },
+    { key: 'hasAvailability', label: 'Add 3 more time slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
+    { key: 'hasPlayers', label: 'Add your existing players', route: '/trainer/players', complete: setupStatus.hasPlayers },
     { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/trainer/earnings', complete: setupStatus.paymentsComplete, isAcademyManaged: academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled },
-    { key: 'hasPlayers', label: 'Add your players', route: '/trainer/players', complete: setupStatus.hasPlayers },
+    { key: 'isPublished', label: 'Publish your profile', route: '/trainer/settings', complete: false },
   ];
 
   const completedCount = steps.filter(s => s.complete).length;
