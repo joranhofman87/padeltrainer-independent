@@ -1,50 +1,28 @@
 
 
-# Skip Email Verification Gate on Trainer Signup
+# Fix "View Public Profile" Link to Use Slug
 
 ## Problem
-After signing up, trainers are shown a "Verification Pending" screen that blocks them from continuing to onboarding. Since verification emails can be slow, this causes drop-off.
-
-## Solution
-Auto-confirm the user's email in the `signup-user` edge function so a session is immediately available, then sign the user in right away. The verification email is still sent as a courtesy/security measure, but it no longer blocks the flow.
+The "See public profile" button in the trainer sidebar navigates to `/trainer/{UUID}` instead of `/trainer/{slug}`. UUID-based links are legacy and should no longer be used.
 
 ## Changes
 
-### 1. Edge Function: `supabase/functions/signup-user/index.ts`
-- Change `email_confirm: false` to `email_confirm: true` on line 123 so the user is created as already confirmed
-- After creating the user, call `supabaseAdmin.auth.admin.generateLink()` with type `"magiclink"` (instead of `"signup"`) to still produce a verification/welcome link for the branded email -- or simply keep sending the welcome email without a confirm action (just a "Welcome" email instead of "Confirm your email")
-- Update the email template: change subject to "Welcome to PadelTrainer" and copy to a welcome message (no action required), since the account is already confirmed
-- The email still gets sent via Resend, just with different copy
+### 1. `src/components/trainer/TrainerSidebar.tsx`
+- Store the trainer's `slug` alongside `trainerProfileId` (already available from `getTrainerProfile` which selects `*`)
+- Update `handleViewPublicProfile` to use the slug (falling back to the UUID if slug is somehow missing)
 
-### 2. Auth helper: `src/lib/auth.ts` -- `signUpWithEmail()`
-- After the edge function returns successfully with the user data, immediately sign the user in using `supabase.auth.signInWithPassword({ email, password })` to establish a session
-- Return the session from this sign-in so the signup page gets `data.session` and proceeds directly to onboarding
+**Specific edits:**
+- Add state: `const [trainerSlug, setTrainerSlug] = useState<string | null>(null);`
+- In the fetch callback (~line 100): `setTrainerSlug(trainerProfile.slug);`
+- Line 146: change `trainer/${trainerProfileId}` to `trainer/${trainerSlug || trainerProfileId}`
 
-### 3. Signup page: `src/pages/TrainerSignup.tsx`
-- The `else` branch (lines 88-97) that shows `VerificationPending` becomes a fallback/dead code path since `data.session` will now always be truthy after a successful signup
-- No structural changes needed -- the existing `if (data?.session)` branch already navigates to `/app/onboarding/trainer`
+### 2. `src/components/trainer/onboarding/OnboardingStep4Done.tsx`
+Already fetches `slug` from `trainer_profiles` and uses it correctly -- no change needed.
 
-## What stays the same
-- The branded email is still sent (just as a welcome, not a gate)
-- The `VerificationPending` component remains available for other signup flows (player, club)
-- All onboarding logic is unchanged
+### 3. Deprecate UUID-based trainer profile URLs (optional, future)
+The `TrainerProfile.tsx` page already supports both UUID and slug lookups. For now, keeping the fallback is fine, but all outgoing links should prefer the slug.
 
-## Technical Details
+## Impact
+- Single file change (`TrainerSidebar.tsx`), 3 lines modified
+- No database or routing changes needed
 
-**Edge function change** (key line):
-```
-email_confirm: true  // was: false
-```
-
-**Auth helper addition** (after edge function success):
-```typescript
-// Sign in immediately after creation
-const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-if (signInError) {
-  // User was created but sign-in failed -- fall back to manual login
-  return { data: { user: response.user, session: null }, error: null };
-}
-return { data: { user: signInData.user, session: signInData.session }, error: null };
-```
-
-**Email template update**: Change from "Confirm your email" to a welcome email that links to the app (no confirmation action needed).
