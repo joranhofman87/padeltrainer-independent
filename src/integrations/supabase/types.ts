@@ -3862,7 +3862,7 @@ export type Database = {
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string | null
-          experience_years?: number | null
+          experience_years?: never
           favourite_quote?: string | null
           hourly_rate?: number | null
           id?: string | null
@@ -3894,7 +3894,7 @@ export type Database = {
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string | null
-          experience_years?: number | null
+          experience_years?: never
           favourite_quote?: string | null
           hourly_rate?: number | null
           id?: string | null
