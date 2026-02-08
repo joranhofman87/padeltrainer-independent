@@ -220,7 +220,28 @@ export function TrainerSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* My Profile - First item */}
+              {/* Get Started - only when setup incomplete, shown first */}
+              {showGetStarted && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip={t("nav.getStarted")}>
+                    <NavLink
+                      to="/trainer/get-started"
+                      className="flex items-center gap-2"
+                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
+                      <Rocket className="h-4 w-4 text-orange-500" />
+                      {!collapsed && (
+                        <span className="flex items-center gap-2">
+                          {t("nav.getStarted")}
+                          <span className="h-2 w-2 rounded-full bg-orange-500" />
+                        </span>
+                      )}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {/* My Profile */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
                   <NavLink
@@ -250,27 +271,6 @@ export function TrainerSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
-              {/* Get Started - only when setup incomplete */}
-              {showGetStarted && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip={t("nav.getStarted")}>
-                    <NavLink
-                      to="/trainer/get-started"
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                    >
-                      <Rocket className="h-4 w-4 text-orange-500" />
-                      {!collapsed && (
-                        <span className="flex items-center gap-2">
-                          {t("nav.getStarted")}
-                          <span className="h-2 w-2 rounded-full bg-orange-500" />
-                        </span>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
 
               {/* Players Group */}
               <Collapsible
