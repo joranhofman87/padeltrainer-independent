@@ -1,57 +1,89 @@
 
 
-## CycleForm Improvements: Remove Description, Add Timeframe, Auto-fill Pricing
+## Separate Registrations from Cyclus (Calendar Slots)
 
-### Changes
+### The Problem
+Currently, "Registrations" (collecting player interest) and "Cyclus" (specific recurring calendar entries) are mixed together in the same `cycles` table and use the same `CycleForm`. These are fundamentally different things:
 
-**1. Remove the Description field**
-Take out the rich text editor for description from the form. It's not needed per slot.
+1. **Registrations** = "We're looking for players interested in training." No specific day/time. Players fill in their availability, preferences, rating, etc. All responses go to Intake Requests. From there, the trainer/academy plans the agenda.
 
-**2. Add Timeframe fields (e.g. 16:00 - 17:00)**
-Add two time inputs (`start_time` and `end_time`) next to the start date and number of weeks. This tells the system what time of day the training takes place. These will be stored in the cycle settings.
+2. **Cyclus** (or single slots) = A specific recurring training on a day and timeframe (e.g. "Tuesday 16:00-17:00, 10 weeks"). Shown on the calendar. Has a trainer, level, group size, pricing.
 
-**3. Auto-calculate pricing from trainer hourly rate**
-When a trainer is selected (or for trainer-owned cycles, using their own rate), and the timeframe + number of weeks are filled in:
-- **Price per session** = hourly_rate * (duration in hours). E.g. 1.5 hours at EUR 60/hr = EUR 90
-- **Total price** = price per session * number of weeks
+### What Changes
 
-The prices will be pre-filled but remain editable so the trainer can adjust if needed.
+**1. Simplify the Registration form (public-facing CycleApplicationForm)**
+- Remove the cycle-specific timeframe info from the registration page header (no specific day/time to show since registrations are not tied to a slot)
+- Keep the detailed player application form: availability picker (multiple time windows per day with 30-min increments), lesson type, rating, preferred trainer, notes
+- The form stays largely the same -- it already collects availability via `DayAvailabilityPicker`
+
+**2. Simplify the Registration creation form (CycleForm for registrations)**
+- When creating a Registration, remove timeframe fields (`start_time`, `end_time`) and the auto-pricing calculation -- these belong to Cyclus only
+- Keep: name, enrollment deadline, lesson types, rating requirements, location
+- The `CycleForm` will detect which mode it's in based on a new prop or a field
+
+**3. Keep the Cyclus creation form (CycleForm for cyclus)**
+- When creating a Cyclus, keep all the current fields: start date, number of weeks, start time, end time, trainer, level, group size, auto-pricing
+- This creates calendar entries and is tied to specific day/time
+
+**4. Navigation restructuring**
+
+For **Trainers**, reorganize the sidebar:
+- **Players** group:
+  - My Players
+  - Intake Requests (all intake requests across all registrations)
+- **Schedule** group:
+  - Calendar (create Cyclus/single slots here)
+  - Open Slots
+  - Lessons
+- **Registrations** -- single page (not a group): shows the list of registrations + create button + link to share. Intake requests link from here too.
+
+For **Academies**, same pattern:
+- Move "Registrations" out of the Schedule group and make it a standalone nav item
+- Add an Intake Requests page for academies (currently only trainers have one)
+
+**5. Add Intake Requests page for Academy**
+- Create `src/pages/academy/AcademyIntakeRequests.tsx` mirroring `TrainerIntakeRequests.tsx`
+- Uses `getIntakeRequestsWithProposals('academy', academyId)` -- the function already supports this owner type
+- Add route and sidebar link
+
+**6. Differentiate Registration vs Cyclus in the database**
+- Add a `type` field to the `cycles` table: `'registration'` or `'cyclus'`
+- Default to `'registration'` for backward compatibility
+- Filter by type in queries: Registrations page shows type=registration, Calendar shows type=cyclus
 
 ### Technical Details
 
-**File: `src/components/cycles/CycleForm.tsx`**
-- Remove the `description` field from schema, defaults, reset, submit, and the UI block (lines 249-265)
-- Add `start_time` (string, e.g. "16:00") and `end_time` (string, e.g. "17:00") to the Zod schema with defaults "09:00" and "10:00"
-- Add two time `<Input type="time">` fields in a row below the start date / weeks row
-- Store `start_time` and `end_time` in the cycle `settings` object on submit
-- Extend the `trainers` prop type from `{ id: string; name: string }` to `{ id: string; name: string; hourly_rate?: number }`
-- Add a `useEffect` that watches `assigned_trainer_id` (or uses own rate for trainer-owned cycles), `start_time`, `end_time`, and `number_of_weeks` -- when all are present, calculate and set `price_per_session` and `total_price` using `setValue`
-
-**File: `src/pages/TrainerDashboard.tsx`**
-- Fetch `hourly_rate` alongside `id` in the trainer profile query
-- Pass it to `CycleForm` as a new `trainerHourlyRate` prop (since trainer-owned cycles don't use the trainers array)
-
-**File: `src/pages/academy/AcademyCalendar.tsx`**
-- Include `hourly_rate` when mapping trainers to the `CycleForm` trainers prop: `trainers.map(t => ({ id: t.id, name: t.name, hourly_rate: t.hourly_rate }))`
-
-**File: `src/pages/TrainerCalendar.tsx`**
-- Same as TrainerDashboard: fetch and pass `trainerHourlyRate`
-
-**File: `src/pages/TrainerCycles.tsx`** and **`src/pages/academy/AcademyCycles.tsx`**
-- Same pattern: pass hourly rate data to CycleForm
-
-**Locale files** (`en/cycles.json`, `nl/cycles.json`)
-- Add keys for `form.startTime` ("Start Time" / "Starttijd") and `form.endTime` ("End Time" / "Eindtijd")
-
-### Pricing auto-fill logic (pseudo-code)
-```
-durationMinutes = differenceInMinutes(endTime, startTime)
-durationHours = durationMinutes / 60
-pricePerSession = trainerHourlyRate * durationHours
-totalPrice = pricePerSession * numberOfWeeks
+**Database migration:**
+```sql
+ALTER TABLE cycles ADD COLUMN type TEXT NOT NULL DEFAULT 'registration' 
+  CHECK (type IN ('registration', 'cyclus'));
 ```
 
-### What stays the same
-- Database schema (description column remains, just won't be populated from this form)
-- All other form fields (name, location, trainer, rating, lesson types, group sizes, etc.)
-- Pricing fields remain editable after auto-fill
+**CycleForm changes (`src/components/cycles/CycleForm.tsx`):**
+- Add a `formType: 'registration' | 'cyclus'` prop
+- When `formType === 'registration'`: hide start_time, end_time, auto-pricing. Show name, enrollment deadline, lesson types, rating, location
+- When `formType === 'cyclus'`: show all current fields (date, weeks, timeframe, trainer, pricing, etc.)
+- On submit, include `type` in the cycle input
+
+**SlotTypeChoiceDialog stays the same** -- "Training Cycle" opens CycleForm with `formType='cyclus'`
+
+**TrainerCycles/AcademyCycles pages** -- these become the "Registrations" pages, filtering for `type='registration'` only. Add a "Create Registration" button that opens CycleForm with `formType='registration'`.
+
+**Calendar pages** -- "Training Cycle" choice opens CycleForm with `formType='cyclus'`
+
+**New files:**
+- `src/pages/academy/AcademyIntakeRequests.tsx`
+
+**Modified files:**
+- `src/components/cycles/CycleForm.tsx` -- add `formType` prop, conditional field visibility
+- `src/lib/cycles.ts` -- add `type` to `CycleInput` and `Cycle` interfaces, update queries
+- `src/pages/TrainerCycles.tsx` -- filter by type='registration'
+- `src/pages/academy/AcademyCycles.tsx` -- filter by type='registration'
+- `src/pages/TrainerDashboard.tsx` -- pass formType='cyclus' to CycleForm
+- `src/pages/TrainerCalendar.tsx` -- pass formType='cyclus' to CycleForm
+- `src/pages/academy/AcademyCalendar.tsx` -- pass formType='cyclus' to CycleForm
+- `src/components/trainer/TrainerSidebar.tsx` -- restructure Registration nav
+- `src/components/academy/AcademySidebar.tsx` -- add Registrations + Intake nav items
+- `src/App.tsx` -- add academy intake requests route
+- `src/i18n/locales/en/cycles.json` and `nl/cycles.json` -- add new translation keys
+
