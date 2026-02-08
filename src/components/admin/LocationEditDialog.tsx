@@ -385,16 +385,18 @@ export function LocationEditDialog({
           {/* Details */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-muted-foreground">Details</h3>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={e => updateField('description', e.target.value)}
-                placeholder="Description of the venue..."
-                rows={3}
-              />
-            </div>
+            {!clubData && (
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={e => updateField('description', e.target.value)}
+                  placeholder="Description of the venue..."
+                  rows={3}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="website_url">Website URL</Label>
               <Input
