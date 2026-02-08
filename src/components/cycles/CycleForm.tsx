@@ -115,6 +115,27 @@ export default function CycleForm({
     },
   });
 
+  // Reset form when cycle prop changes (e.g. opening edit dialog)
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        name: cycle?.name || '',
+        description: cycle?.description || '',
+        start_date: cycle ? new Date(cycle.start_date) : new Date(),
+        end_date: cycle ? new Date(cycle.end_date) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
+        lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
+        show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+        max_group_size: cycle?.settings?.max_group_size || 4,
+        applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
+        location_id: cycle?.location_id || '',
+        price_per_session: cycle?.price_per_session ?? '',
+        total_price: cycle?.total_price ?? '',
+        currency: cycle?.currency || 'EUR',
+      });
+    }
+  }, [cycle, open]);
+
   // Clear selected trainers when location changes
   const watchedLocationId = form.watch('location_id');
   useEffect(() => {
