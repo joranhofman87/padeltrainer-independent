@@ -33,6 +33,7 @@ import { InvoiceList } from '@/components/trainer/InvoiceList';
 import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { logger } from '@/lib/logger';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface EarningsBooking {
   id: string;
@@ -98,6 +99,7 @@ export default function TrainerEarnings() {
   const [invoiceRefreshTrigger, setInvoiceRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [academyPaymentInfo, setAcademyPaymentInfo] = useState<AcademyPaymentInfo | null>(null);
+  const [connectStatusLoading, setConnectStatusLoading] = useState(true);
   const { t } = useTranslation('trainer');
 
   useEffect(() => {
@@ -221,6 +223,8 @@ export default function TrainerEarnings() {
     } catch (err) {
       logger.warn('Error checking connect status', { error: err, component: 'TrainerEarnings' });
       setConnectStatus({ connected: false });
+    } finally {
+      setConnectStatusLoading(false);
     }
   };
 
@@ -470,8 +474,33 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
+        {/* Mollie Connect Card Skeleton */}
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatusLoading && (
+          <Card className="mb-8">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-48" />
+                  <Skeleton className="h-4 w-72" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-56" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+                <Skeleton className="h-10 w-44" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Mollie Connect Card - only show when NOT using manual invoicing and NOT an academy trainer */}
-        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && connectStatus && !connectStatus.chargesEnabled && (
+        {!academyPaymentInfo?.isAcademyTrainer && !useManualInvoicing && !connectStatusLoading && connectStatus && !connectStatus.chargesEnabled && (
           <Card className="mb-8 border-primary/50 bg-gradient-to-r from-primary/5 to-primary/10">
             <CardHeader>
               <div className="flex items-center gap-3">
