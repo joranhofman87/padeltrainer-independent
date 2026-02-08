@@ -55,6 +55,6 @@ export function canCreateMoreLessons(tier: SubscriptionTier, currentLessonCount:
 export { getTrialDaysRemaining, isDateExpired } from './sharedSubscription';
 
 export function canBeVisible(subscription: SubscriptionInfo): boolean {
-  // Trainer can be visible if they have an active subscription OR are still in trial
-  return subscription.isSubscribed || subscription.isInTrial;
+  // Trainer can be visible only with an active paid subscription (trial alone is not enough)
+  return subscription.isSubscribed;
 }

@@ -244,7 +244,7 @@ export default function TrainerProfile() {
     const hasActiveSubscription = trainerResult.data.subscription_status === 'active';
     const hasActiveTrial = trainerResult.data.trial_ends_at && trainerResult.data.trial_ends_at > now;
     const inPaidAcademy = await isTrainerInPaidAcademy(trainerResult.data.id);
-    const hasSubscriptionAccess = hasActiveSubscription || hasActiveTrial || inPaidAcademy;
+    const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
 
     if (!trainerResult.data.is_public && !hasVerifiedClubLink && !isOwnProfile) {
       logger.debug('Trainer is not public and not linked to verified club');
