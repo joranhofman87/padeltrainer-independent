@@ -36,7 +36,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
-import CycleForm from "@/components/cycles/CycleForm";
+
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -85,8 +85,6 @@ export default function TrainerCalendar() {
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
-  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
-  const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   // Auth is now handled by TrainerLayout
 
   useEffect(() => {
@@ -112,7 +110,6 @@ export default function TrainerCalendar() {
       if (!trainerProfile) return;
 
       setTrainerId(trainerProfile.id);
-      setTrainerHourlyRate(trainerProfile.hourly_rate || undefined);
       setSettings({
         slot_duration_minutes: trainerProfile.slot_duration_minutes || 60,
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
@@ -351,7 +348,7 @@ export default function TrainerCalendar() {
   };
 
   const handleChooseCyclus = () => {
-    setShowCreateCycleDialog(true);
+    setBulkCreateOpen(true);
   };
 
   const handleSlotsCreated = () => {
@@ -708,20 +705,6 @@ export default function TrainerCalendar() {
         onBookingUpdated={handleSlotsCreated}
       />
 
-      {/* Create Cycle Dialog */}
-      {trainerId && (
-        <CycleForm
-          ownerType="trainer"
-          ownerId={trainerId}
-          open={showCreateCycleDialog}
-          onOpenChange={setShowCreateCycleDialog}
-          trainerHourlyRate={trainerHourlyRate}
-          formType="cyclus"
-          onSuccess={() => {
-            handleSlotsCreated();
-          }}
-        />
-      )}
     </>
   );
 }
