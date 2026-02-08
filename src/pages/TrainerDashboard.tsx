@@ -30,6 +30,7 @@ import { DuplicateCyclusDialog } from '@/components/trainer/DuplicateCyclusDialo
 import { DeleteSlotDialog } from '@/components/trainer/DeleteSlotDialog';
 import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
+import CycleForm from '@/components/cycles/CycleForm';
 
 interface DashboardStats {
   totalStudents: number;
@@ -91,6 +92,7 @@ export default function TrainerDashboard() {
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
+  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
 
   useEffect(() => {
     if (user && role === 'trainer') {
@@ -336,7 +338,7 @@ export default function TrainerDashboard() {
   };
 
   const handleChooseCyclus = () => {
-    setBulkCreateOpen(true);
+    setShowCreateCycleDialog(true);
   };
 
   const handleSlotsCreated = () => {
@@ -885,6 +887,19 @@ export default function TrainerDashboard() {
         trainerId={trainerId || ""}
         onBookingUpdated={handleSlotsCreated}
       />
+
+      {/* Create Cycle Dialog */}
+      {trainerId && (
+        <CycleForm
+          ownerType="trainer"
+          ownerId={trainerId}
+          open={showCreateCycleDialog}
+          onOpenChange={setShowCreateCycleDialog}
+          onSuccess={() => {
+            handleSlotsCreated();
+          }}
+        />
+      )}
     </>
   );
 }

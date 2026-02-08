@@ -38,6 +38,7 @@ import { logger } from "@/lib/logger";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+import CycleForm from "@/components/cycles/CycleForm";
 
 interface AcademySlot {
   id: string;
@@ -94,7 +95,7 @@ export default function AcademyCalendar() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
   // Cycle dialog state
-  
+  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
 
   // Slot creation dialog state
   const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
@@ -772,7 +773,7 @@ export default function AcademyCalendar() {
             open={slotTypeChoiceOpen}
             onOpenChange={setSlotTypeChoiceOpen}
             onChooseSingleSlot={() => setAddSlotOpen(true)}
-            onChooseCyclus={() => setBulkCreateOpen(true)}
+            onChooseCyclus={() => setShowCreateCycleDialog(true)}
           />
 
           <AddSlotDialog
@@ -806,6 +807,16 @@ export default function AcademyCalendar() {
             onOpenChange={setDuplicateCyclusOpen}
             trainerId={selectedSlotTrainerId || (trainers.length > 0 ? trainers[0].id : "")}
             onCyclusCreated={() => fetchSlots()}
+          />
+
+          <CycleForm
+            ownerType="academy"
+            ownerId={activeAcademy.id}
+            open={showCreateCycleDialog}
+            onOpenChange={setShowCreateCycleDialog}
+            onSuccess={() => fetchSlots()}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            locations={locations}
           />
         </>
       )}

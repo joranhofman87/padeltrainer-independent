@@ -36,6 +36,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
+import CycleForm from "@/components/cycles/CycleForm";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -84,6 +85,7 @@ export default function TrainerCalendar() {
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
+  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
 
   // Auth is now handled by TrainerLayout
 
@@ -348,7 +350,7 @@ export default function TrainerCalendar() {
   };
 
   const handleChooseCyclus = () => {
-    setBulkCreateOpen(true);
+    setShowCreateCycleDialog(true);
   };
 
   const handleSlotsCreated = () => {
@@ -704,6 +706,19 @@ export default function TrainerCalendar() {
         trainerId={trainerId || ""}
         onBookingUpdated={handleSlotsCreated}
       />
+
+      {/* Create Cycle Dialog */}
+      {trainerId && (
+        <CycleForm
+          ownerType="trainer"
+          ownerId={trainerId}
+          open={showCreateCycleDialog}
+          onOpenChange={setShowCreateCycleDialog}
+          onSuccess={() => {
+            handleSlotsCreated();
+          }}
+        />
+      )}
     </>
   );
 }
