@@ -10,6 +10,7 @@ import {
   Eye,
   Clock,
   AlertTriangle,
+  Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,28 +18,34 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubPlayers, getClubTrainers } from '@/lib/club';
 import { getClubViewStats } from '@/lib/clubProfileViews';
+import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
 export default function ClubDashboard() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
   const { activeClub, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useClubContext();
-  const [stats, setStats] = useState({ trainers: 0, players: 0, viewsLast7Days: 0, viewsLast30Days: 0 });
+  const [stats, setStats] = useState({ trainers: 0, players: 0, followers: 0, viewsLast7Days: 0, viewsLast30Days: 0 });
 
   useEffect(() => {
     async function fetchStats() {
       if (!activeClub) return;
 
       try {
-        const [trainersData, playersData, viewStats] = await Promise.all([
+        const [trainersData, playersData, viewStats, followersData] = await Promise.all([
           getClubTrainers(activeClub.id),
           getClubPlayers(activeClub.id),
           getClubViewStats(activeClub.id),
+          supabase
+            .from('club_followers')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_profile_id', activeClub.id),
         ]);
         
         setStats({
           trainers: trainersData.length,
           players: playersData.length,
+          followers: followersData.count || 0,
           viewsLast7Days: viewStats.last7Days,
           viewsLast30Days: viewStats.last30Days,
         });
@@ -97,7 +104,7 @@ export default function ClubDashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/trainers')}>
           <CardHeader className="pb-2">
             <CardDescription>{t('stats.trainers')}</CardDescription>
@@ -145,6 +152,21 @@ export default function ClubDashboard() {
           <CardContent>
             <p className="text-xs text-muted-foreground">
               {t('stats.last7Days')} · {stats.viewsLast30Days} {t('stats.last30Days').toLowerCase()}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <Bell className="h-3 w-3" />
+              {t('stats.followers', 'Followers')}
+            </CardDescription>
+            <CardTitle className="text-3xl">{stats.followers}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              {t('stats.followersDescription', 'Players following your club')}
             </p>
           </CardContent>
         </Card>

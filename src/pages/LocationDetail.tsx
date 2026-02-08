@@ -24,6 +24,7 @@ import { isLocationClaimed, isUserClubManager } from '@/lib/club';
 import { getAcademiesAtLocation } from '@/lib/academy';
 import { recordClubProfileView } from '@/lib/clubProfileViews';
 import { ClaimClubDialog } from '@/components/club/ClaimClubDialog';
+import { ClubFollowButton } from '@/components/club/ClubFollowButton';
 import { supabase } from '@/lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -400,6 +401,9 @@ export default function LocationDetail() {
             <MapPin className="h-4 w-4 mr-2" />
             {t('common:locations.getDirections')}
           </Button>
+          {clubProfile && (
+            <ClubFollowButton clubProfileId={clubProfile.id} />
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="lg" className="w-full">
