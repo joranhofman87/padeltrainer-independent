@@ -409,7 +409,7 @@ export default function TrainerProfile() {
       <ProfileLayout
         headerAction={
           !user ? (
-            <Button onClick={() => navigate(getAppUrl('/auth'))}>{t('common:signInToBook', 'Sign In to Book')}</Button>
+            <Button onClick={() => navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(window.location.pathname)}`))}>{t('common:signUpToBook', 'Sign Up to Book')}</Button>
           ) : null
         }
       >

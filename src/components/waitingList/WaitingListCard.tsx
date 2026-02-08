@@ -34,7 +34,7 @@ export default function WaitingListCard({
 
   const handleClick = () => {
     if (!user) {
-      navigate(getAppUrl(`/auth?redirect=${encodeURIComponent(window.location.pathname)}`));
+      navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(window.location.pathname)}`));
       return;
     }
     setIsOpen(true);
