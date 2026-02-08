@@ -33,6 +33,8 @@
     "endDate": "End Date",
     "numberOfWeeks": "Number of weeks",
     "endsOn": "Ends on {{date}}",
+    "startTime": "Start Time",
+    "endTime": "End Time",
     "enrollmentDeadline": "Enrollment Deadline",
     "lessonTypes": "Lesson Types Offered",
     "showPreferredTrainer": "Allow trainer preference",

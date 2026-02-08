@@ -61,6 +61,7 @@ interface Trainer {
   name: string;
   avatar: string | null;
   user_id: string;
+  hourly_rate?: number;
 }
 
 interface Location {
@@ -146,6 +147,7 @@ export default function AcademyCalendar() {
           name: t.profile?.full_name || "Unknown",
           avatar: t.profile?.avatar_url || null,
           user_id: t.trainer_profile.user_id,
+          hourly_rate: t.trainer_profile?.hourly_rate || undefined,
         }));
       
       setTrainers(trainerList);
@@ -815,7 +817,7 @@ export default function AcademyCalendar() {
             open={showCreateCycleDialog}
             onOpenChange={setShowCreateCycleDialog}
             onSuccess={() => fetchSlots()}
-            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name, hourly_rate: t.hourly_rate }))}
             locations={locations}
           />
         </>

@@ -4,11 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format, differenceInWeeks, addWeeks } from 'date-fns';
+import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -55,10 +54,12 @@ interface CycleFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: (cycle: Cycle) => void;
-  trainers?: { id: string; name: string }[];
+  trainers?: { id: string; name: string; hourly_rate?: number }[];
   locations?: { id: string; name: string; city: string }[];
   /** Map of location_id -> trainer_ids at that location */
   trainerLocationMap?: Record<string, string[]>;
+  /** Hourly rate for trainer-owned cycles (not using trainers array) */
+  trainerHourlyRate?: number;
 }
 
 export default function CycleForm({
@@ -71,6 +72,7 @@ export default function CycleForm({
   trainers = [],
   locations = [],
   trainerLocationMap = {},
+  trainerHourlyRate,
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,9 +85,10 @@ export default function CycleForm({
 
   const formSchema = z.object({
     name: z.string().min(2),
-    description: z.string().optional(),
     start_date: z.date(),
     number_of_weeks: z.coerce.number().min(1).max(52),
+    start_time: z.string().default('09:00'),
+    end_time: z.string().default('10:00'),
     enrollment_deadline: z.date().optional(),
     lesson_types: z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
@@ -111,9 +114,10 @@ export default function CycleForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: cycle?.name || '',
-      description: cycle?.description || '',
       start_date: cycle ? new Date(cycle.start_date) : new Date(),
       number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
+      start_time: (cycle?.settings as any)?.start_time || '09:00',
+      end_time: (cycle?.settings as any)?.end_time || '10:00',
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
@@ -136,9 +140,10 @@ export default function CycleForm({
     if (open) {
       form.reset({
         name: cycle?.name || '',
-        description: cycle?.description || '',
         start_date: cycle ? new Date(cycle.start_date) : new Date(),
         number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
+        start_time: (cycle?.settings as any)?.start_time || '09:00',
+        end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
         lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
@@ -171,6 +176,45 @@ export default function CycleForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedLocationId]);
 
+  // Auto-calculate pricing from trainer hourly rate + timeframe + weeks
+  const watchedStartTime = form.watch('start_time');
+  const watchedEndTime = form.watch('end_time');
+  const watchedWeeks = form.watch('number_of_weeks');
+  const watchedAssignedTrainer = form.watch('assigned_trainer_id');
+
+  useEffect(() => {
+    if (!watchedStartTime || !watchedEndTime || !watchedWeeks) return;
+
+    // Determine hourly rate
+    let hourlyRate: number | undefined;
+    if (ownerType === 'trainer') {
+      hourlyRate = trainerHourlyRate;
+    } else if (watchedAssignedTrainer) {
+      const selectedTrainer = trainers.find(t => t.id === watchedAssignedTrainer);
+      hourlyRate = selectedTrainer?.hourly_rate;
+    }
+
+    if (!hourlyRate || hourlyRate <= 0) return;
+
+    try {
+      const refDate = new Date(2000, 0, 1);
+      const start = parse(watchedStartTime, 'HH:mm', refDate);
+      const end = parse(watchedEndTime, 'HH:mm', refDate);
+      const durationMinutes = differenceInMinutes(end, start);
+      if (durationMinutes <= 0) return;
+
+      const durationHours = durationMinutes / 60;
+      const pricePerSession = Math.round(hourlyRate * durationHours * 100) / 100;
+      const totalPrice = Math.round(pricePerSession * watchedWeeks * 100) / 100;
+
+      form.setValue('price_per_session', pricePerSession);
+      form.setValue('total_price', totalPrice);
+    } catch {
+      // Invalid time format, skip
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedStartTime, watchedEndTime, watchedWeeks, watchedAssignedTrainer, trainerHourlyRate, ownerType]);
+
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
     try {
@@ -184,13 +228,14 @@ export default function CycleForm({
         max_skill_rating: values.max_skill_rating ? Number(values.max_skill_rating) : undefined,
         rating_system: values.rating_system || undefined,
         applicable_trainer_ids: values.applicable_trainer_ids,
+        start_time: values.start_time,
+        end_time: values.end_time,
       };
 
       const input: CycleInput = {
         owner_type: ownerType,
         owner_id: ownerId,
         name: values.name,
-        description: values.description,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
         end_date: format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd'),
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
@@ -240,24 +285,6 @@ export default function CycleForm({
                   <FormLabel>{t('form.name')}</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder={t('form.namePlaceholder')} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('form.description')}</FormLabel>
-                  <FormControl>
-                    <RichTextEditor
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      placeholder={t('form.descriptionPlaceholder')}
-                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -321,6 +348,36 @@ export default function CycleForm({
                     </FormItem>
                   );
                 }}
+              />
+            </div>
+
+            {/* Timeframe */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="start_time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.startTime', 'Start Time')}</FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="end_time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.endTime', 'End Time')}</FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
 

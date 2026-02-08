@@ -33,6 +33,8 @@
     "endDate": "Einddatum",
     "numberOfWeeks": "Aantal weken",
     "endsOn": "Eindigt op {{date}}",
+    "startTime": "Starttijd",
+    "endTime": "Eindtijd",
     "enrollmentDeadline": "Inschrijfdeadline",
     "lessonTypes": "Aangeboden Lesvormen",
     "showPreferredTrainer": "Trainer voorkeur toestaan",
