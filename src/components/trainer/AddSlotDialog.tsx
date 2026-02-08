@@ -436,6 +436,8 @@ export function BulkCreateSheet({
     const totalPrice = pricePerSession * recurrenceWeeks;
     return { pricePerSession: Math.round(pricePerSession * 100) / 100, totalPrice: Math.round(totalPrice * 100) / 100 };
   };
+
+  const fetchPlayers = async () => {
     if (!trainerId) return;
     const { data } = await supabase
       .from("guest_players")
