@@ -1,57 +1,19 @@
 
-# Update Quick Stats on Trainer Profile
+# Move Specializations and Certifications to Sidebar
 
 ## What changes
-Replace the current "Students" and "Lessons Given" stats (which always show 0) with more useful information:
-
-**Remove:**
-- Students (always 0)
-- Lessons Given (always 0)
-
-**Add:**
-- Hourly Rate (e.g. "EUR 75/hr" or "--" if not set)
-- Experience (e.g. "12 years" or "--")
-- Verified status (checkmark or dash)
-
-**Keep:**
-- Rating
-- Preferred Player Levels
+Move the Specializations and Certifications cards from the main content column (left) to the sidebar column (right), placing them directly below the Contact Info card.
 
 ## Technical Details
 
-### File: `src/pages/TrainerProfile.tsx` (lines 338-343)
+### File: `src/pages/TrainerProfile.tsx`
 
-Replace the `quickStats` array construction:
+**Remove from `ProfileMainColumn`** (lines 613-654):
+- The Specializations card block (lines 613-632)
+- The Certifications card block (lines 634-654)
 
-```tsx
-const quickStats = [
-  {
-    icon: <Euro className="h-4 w-4" />,
-    label: t('common:hourlyRate', 'Hourly Rate'),
-    value: trainer?.hourly_rate ? `€${trainer.hourly_rate}` : '—',
-  },
-  {
-    icon: <Calendar className="h-4 w-4" />,
-    label: t('common:experience', 'Experience'),
-    value: trainer?.experience_years
-      ? `${trainer.experience_years} ${t('common:years', 'years')}`
-      : '—',
-  },
-  {
-    icon: <CheckCircle className="h-4 w-4" />,
-    label: t('common:verified', 'Verified'),
-    value: trainer?.is_verified
-      ? t('common:yes', 'Yes')
-      : t('common:no', 'No'),
-  },
-  {
-    icon: <Star className="h-4 w-4" />,
-    label: t('common:rating', 'Rating'),
-    value: averageRating !== null ? `${averageRating} ★` : '—',
-  },
-];
-```
+**Add to `ProfileSidebarColumn`** (after the `ProfileContactCard` at line 840, before the social links):
+- Specializations card
+- Certifications card
 
-Also add `Euro` and `CheckCircle` to the lucide-react imports (CheckCircle is already imported, Euro needs adding).
-
-No database or translation changes needed -- all values are already fetched and translation keys for "Hourly Rate", "Experience", "Verified" already exist in the common namespace.
+The JSX content stays identical -- it's purely a move from the left column to the right column. No logic, data, or styling changes needed.
