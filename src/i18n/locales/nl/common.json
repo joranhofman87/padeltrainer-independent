@@ -164,7 +164,9 @@
     "academiesAtLocation": "Trainings Academies",
     "similarClubs": "Andere padelclubs in {{city}}",
     "club": "Club",
-    "clubs": "Clubs"
+    "clubs": "Clubs",
+    "followClub": "Volg Club",
+    "followingClub": "Volgend"
   },
   "profile": {
     "preferredClubs": "Favoriete Padelclubs",
