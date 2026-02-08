@@ -1,0 +1,2 @@
+ALTER TABLE public.cycles DROP CONSTRAINT cycles_owner_type_check;
+ALTER TABLE public.cycles ADD CONSTRAINT cycles_owner_type_check CHECK (owner_type = ANY (ARRAY['trainer'::text, 'club'::text, 'academy'::text]));
