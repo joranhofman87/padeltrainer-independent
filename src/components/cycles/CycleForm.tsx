@@ -158,7 +158,8 @@ export default function CycleForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden p-0">
+        <div className="overflow-y-auto max-h-[90vh] p-6">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('editCycle') : t('createCycle')}
@@ -534,6 +535,7 @@ export default function CycleForm({
             </DialogFooter>
           </form>
         </Form>
+        </div>
       </DialogContent>
     </Dialog>
   );
