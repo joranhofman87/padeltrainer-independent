@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabaseClient';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { TrainerSetupChecklist } from '@/components/trainer/TrainerSetupChecklist';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CheckCircle2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
@@ -102,6 +101,15 @@ export default function TrainerGetStarted() {
     }
   };
 
+  const handleDismiss = async () => {
+    if (!user) return;
+    await supabase
+      .from('trainer_onboarding')
+      .update({ setup_dismissed_at: new Date().toISOString() } as any)
+      .eq('user_id', user.id);
+    navigate('/app/trainer');
+  };
+
   const allComplete =
     setupStatus.profileComplete &&
     setupStatus.hasLessons &&
@@ -137,9 +145,8 @@ export default function TrainerGetStarted() {
     <div className="max-w-2xl mx-auto py-8">
       <TrainerSetupChecklist
         setupStatus={setupStatus}
-        isExpanded={true}
-        onToggle={() => {}}
         onNavigate={(path) => navigate(`/app${path}`)}
+        onDismiss={handleDismiss}
       />
     </div>
   );

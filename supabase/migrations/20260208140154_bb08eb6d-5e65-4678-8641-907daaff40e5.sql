@@ -1,0 +1,1 @@
+ALTER TABLE public.trainer_onboarding ADD COLUMN setup_dismissed_at TIMESTAMPTZ DEFAULT NULL;
