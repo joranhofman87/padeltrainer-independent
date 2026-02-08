@@ -130,7 +130,7 @@ export default function AcademyLayout() {
     ? getTrialDaysRemaining(subscription.trialEnd) 
     : 0;
   const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
-  const isOnSubscriptionPage = location.pathname === '/academy/subscription';
+  const isOnSubscriptionPage = location.pathname === '/app/academy/subscription';
 
   if (authLoading || loading) {
     return (
@@ -162,7 +162,7 @@ export default function AcademyLayout() {
           <p className="text-muted-foreground mb-6">
             {t('dashboard.noAcademies', "You haven't created any academies yet.")}
           </p>
-          <Button onClick={() => navigate('/academy/onboarding')}>
+          <Button onClick={() => navigate('/app/onboarding/academy')}>
             {t('dashboard.createAcademy', 'Create an Academy')}
           </Button>
         </div>
@@ -219,7 +219,7 @@ export default function AcademyLayout() {
         {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
           <SubscriptionOverlay
             roleName="academy"
-            subscriptionPath="/academy/subscription"
+            subscriptionPath="/app/academy/subscription"
             pricing={{
               monthly: ACADEMY_SUBSCRIPTION.monthlyPrice,
               yearly: ACADEMY_SUBSCRIPTION.yearlyPrice,
