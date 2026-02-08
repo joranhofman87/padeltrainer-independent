@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil } from 'lucide-react';
+import { Users, ExternalLink, Eye, EyeOff, Clock, UserPlus, Pencil, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -249,10 +250,11 @@ export default function AcademyTrainers() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[280px]">{t('common:name', 'Name')}</TableHead>
-                    <TableHead className="text-right">{t('trainers.hourlyRate', 'Rate')}</TableHead>
-                    <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
-                    <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
+                    <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
+                     <TableHead>{t('common:locations', 'Locations')}</TableHead>
+                     <TableHead className="text-right">{t('trainers.hourlyRate', 'Rate')}</TableHead>
+                     <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
+                     <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -274,6 +276,20 @@ export default function AcademyTrainers() {
                               {trainer.profile?.full_name || 'Trainer'}
                             </span>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {trainer.locations && trainer.locations.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {trainer.locations.map((loc: any) => (
+                                <Badge key={loc.id} variant="secondary" className="text-xs">
+                                  <MapPin className="h-3 w-3 mr-1" />
+                                  {loc.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {trainer.trainer_profile?.hourly_rate ? (
