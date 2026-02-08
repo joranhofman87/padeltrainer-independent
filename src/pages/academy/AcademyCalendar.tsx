@@ -101,7 +101,7 @@ export default function AcademyCalendar() {
 
   useEffect(() => {
     if (activeAcademy) {
-      fetchSlots();
+      fetchSlots(slots.length === 0);
     }
   }, [activeAcademy, currentDate]);
 
@@ -147,10 +147,10 @@ export default function AcademyCalendar() {
     }
   };
 
-  const fetchSlots = async () => {
+  const fetchSlots = async (showFullLoader = false) => {
     if (!activeAcademy) return;
     
-    setLoading(true);
+    if (showFullLoader) setLoading(true);
     try {
       const rangeStart = startOfWeek(currentDate, { weekStartsOn: 1 });
       const rangeEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
