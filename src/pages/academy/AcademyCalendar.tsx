@@ -16,7 +16,7 @@ import {
   isToday,
   isBefore,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, MapPin, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,9 @@ import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/acade
 import { supabase } from "@/lib/supabaseClient";
 import CycleForm from "@/components/cycles/CycleForm";
 import { logger } from "@/lib/logger";
+import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
+import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
 
 interface AcademySlot {
   id: string;
@@ -92,6 +95,30 @@ export default function AcademyCalendar() {
   
   // Cycle dialog state
   const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
+
+  // Slot creation dialog state
+  const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
+  const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
+  const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
+
+  const handleCellClick = (day: Date, hour: number) => {
+    setDefaultSlotDate(day);
+    setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
+    const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
+    setSelectedSlotTrainerId(trainerToUse);
+    setSlotTypeChoiceOpen(true);
+  };
+
+  // Lessons filtered for the selected slot trainer
+  const slotTrainerLessons = useMemo(() => {
+    if (!selectedSlotTrainerId) return lessons;
+    return lessons.filter(l => l.trainer_id === selectedSlotTrainerId);
+  }, [selectedSlotTrainerId, lessons]);
+
 
   useEffect(() => {
     if (activeAcademy) {
@@ -418,6 +445,30 @@ export default function AcademyCalendar() {
           </div>
           <div className="flex items-center gap-2">
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDefaultSlotDate(new Date());
+                setDefaultSlotTime("09:00");
+                const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
+                setSelectedSlotTrainerId(trainerToUse);
+                setSlotTypeChoiceOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.addSlot", "Slot Toevoegen")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDuplicateCyclusOpen(true)}
+              className="gap-2"
+            >
+              <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.duplicateCyclus", "Cyclus Dupliceren")}</span>
+            </Button>
+            <Button
               size="sm"
               onClick={() => setShowCreateCycleDialog(true)}
               className="gap-2"
@@ -647,11 +698,22 @@ export default function AcademyCalendar() {
                           <div
                             key={`${dayKey}-${hour}`}
                             className={cn(
-                              "border-l p-1 min-h-[48px]",
+                              "border-l p-1 min-h-[48px] group relative",
                               isToday(day) && "bg-primary/5",
-                              isPast && "bg-muted/20"
+                              isPast && "bg-muted/20",
+                              !isPast && slotsInCell.length === 0 && "cursor-pointer hover:bg-muted/50"
                             )}
+                            onClick={() => {
+                              if (!isPast && slotsInCell.length === 0) handleCellClick(day, hour);
+                            }}
                           >
+                            {!isPast && slotsInCell.length === 0 && (
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="bg-primary/10 rounded-md p-2">
+                                  <Plus className="h-4 w-4 text-primary" />
+                                </div>
+                              </div>
+                            )}
                             {slotsInCell.map((slot) => (
                               <div
                                 key={slot.id}
@@ -714,17 +776,57 @@ export default function AcademyCalendar() {
       
       {/* Create Cycle Dialog */}
       {activeAcademy && (
-        <CycleForm
-          open={showCreateCycleDialog}
-          onOpenChange={setShowCreateCycleDialog}
-          ownerType="academy"
-          ownerId={activeAcademy.id}
-          trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-          locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
-          onSuccess={() => {
-            setShowCreateCycleDialog(false);
-          }}
-        />
+        <>
+          <CycleForm
+            open={showCreateCycleDialog}
+            onOpenChange={setShowCreateCycleDialog}
+            ownerType="academy"
+            ownerId={activeAcademy.id}
+            trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+            locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+            onSuccess={() => {
+              setShowCreateCycleDialog(false);
+            }}
+          />
+
+          <SlotTypeChoiceDialog
+            open={slotTypeChoiceOpen}
+            onOpenChange={setSlotTypeChoiceOpen}
+            onChooseSingleSlot={() => setAddSlotOpen(true)}
+            onChooseCyclus={() => setBulkCreateOpen(true)}
+          />
+
+          <AddSlotDialog
+            open={addSlotOpen}
+            onOpenChange={setAddSlotOpen}
+            trainerId={selectedSlotTrainerId}
+            lessons={slotTrainerLessons.map(l => ({ id: l.id, title: l.title }))}
+            defaultDate={defaultSlotDate}
+            defaultTime={defaultSlotTime}
+            defaultDuration={60}
+            defaultWeeks={8}
+            onSlotsCreated={() => fetchSlots()}
+          />
+
+          <BulkCreateSheet
+            open={bulkCreateOpen}
+            onOpenChange={setBulkCreateOpen}
+            trainerId={selectedSlotTrainerId}
+            lessons={slotTrainerLessons.map(l => ({ id: l.id, title: l.title }))}
+            defaultDate={defaultSlotDate}
+            defaultTime={defaultSlotTime}
+            defaultDuration={60}
+            defaultWeeks={8}
+            onSlotsCreated={() => fetchSlots()}
+          />
+
+          <DuplicateCyclusDialog
+            open={duplicateCyclusOpen}
+            onOpenChange={setDuplicateCyclusOpen}
+            trainerId={selectedSlotTrainerId || (trainers.length > 0 ? trainers[0].id : "")}
+            onCyclusCreated={() => fetchSlots()}
+          />
+        </>
       )}
     </>
   );
