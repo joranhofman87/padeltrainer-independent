@@ -13,6 +13,7 @@ import { Phone, User, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES, validateRating } from '@/lib/ratingSystems';
+import { trackEvent } from '@/lib/tracking';
 
 export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
@@ -170,6 +171,8 @@ export default function Onboarding() {
         title: t('onboarding.success', 'Welcome!'),
         description: t('onboarding.successDescription', 'Your account is ready.'),
       });
+
+      trackEvent('player_onboarding_completed', { rating_system: ratingSystem });
       
       // Check for redirect URL from signup flow
       const redirectUrl = localStorage.getItem('redirectAfterOnboarding');

@@ -6,6 +6,7 @@ import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { trackEvent } from '@/lib/tracking';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
 
 const POLL_INTERVAL_MS = 2000;
@@ -131,6 +132,7 @@ export default function BookingSuccess() {
       if (result === 'paid') {
         setVerified(true);
         setVerifying(false);
+        trackEvent('booking_paid', { booking_id: bookingId });
         toast({ title: 'Payment Successful', description: 'Your booking has been confirmed!' });
         return;
       }

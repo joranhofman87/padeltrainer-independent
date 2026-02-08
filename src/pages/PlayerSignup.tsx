@@ -12,6 +12,7 @@ import { Users, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
+import { trackEvent } from '@/lib/tracking';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -62,6 +63,7 @@ export default function PlayerSignup() {
     
     if (!validateForm()) return;
     
+    trackEvent('signup_started', { role: 'player', method: 'email' });
     setIsLoading(true);
 
     const { data, error } = await signUpWithEmail(email, password, fullName);
@@ -74,6 +76,7 @@ export default function PlayerSignup() {
       });
     } else if (data?.session) {
       // Session is immediately available (auto-confirm enabled for dev)
+      trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
@@ -87,6 +90,7 @@ export default function PlayerSignup() {
       navigate('/onboarding/player');
     } else {
       // No immediate session - email verification required
+      trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
@@ -102,6 +106,7 @@ export default function PlayerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
+    trackEvent('signup_started', { role: 'player', method: 'google' });
     localStorage.setItem('pendingRole', 'player');
     // Store redirect URL if present
     const redirectUrl = searchParams.get('redirect');

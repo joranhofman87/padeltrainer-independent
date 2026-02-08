@@ -41,6 +41,7 @@ import { AcademyReviews } from '@/components/reviews/AcademyReviews';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { getMarketingUrl, MARKETING_DOMAIN } from '@/lib/domains';
+import { trackEvent } from '@/lib/tracking';
 import { logger } from '@/lib/logger';
 
 interface TrainerData {
@@ -134,6 +135,7 @@ export default function AcademyPublicProfile() {
   useEffect(() => {
     if (academy?.id) {
       recordAcademyProfileView(academy.id);
+      trackEvent('academy_profile_viewed', { academy_id: academy.id, academy_slug: slug });
     }
   }, [academy?.id]);
 

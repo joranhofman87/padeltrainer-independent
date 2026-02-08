@@ -6,6 +6,7 @@ import { SubscriptionInfo, SubscriptionTier } from '@/lib/subscription';
 import { isUserClubManager } from '@/lib/club';
 import { logger } from '@/lib/logger';
 import { isUserAcademyManager } from '@/lib/academy';
+import { identifyUser, resetUser } from '@/lib/tracking';
 
 interface AuthContextType {
   user: User | null;
@@ -67,6 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsClubManager(clubManagerStatus);
       setIsAcademyManager(academyManagerStatus);
       setProfile(userProfile);
+
+      // Link anonymous browsing history to this user in PostHog
+      identifyUser(userId, {
+        role: primaryRole,
+        email: userProfile?.email ?? null,
+        created_at: userProfile?.created_at ?? null,
+      });
     } catch (err) {
       logger.error('Failed to fetch user data', err as Error, { component: 'useAuth' });
     }
@@ -195,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsClubManager(false);
           setIsAcademyManager(false);
           setSubscription(null);
+          resetUser();
         }
         setLoading(false);
       }

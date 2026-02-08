@@ -1,8 +1,8 @@
 /**
  * Analytics helper for trainer onboarding funnel events.
- * Uses window.gtag if available (respects cookie consent),
- * falls back to console.log.
+ * Uses PostHog for production tracking.
  */
+import { trackEvent } from '@/lib/tracking';
 
 type OnboardingEvent =
   | 'onboarding_started'
@@ -21,18 +21,8 @@ export function trackOnboardingEvent(
   event: OnboardingEvent,
   params?: Record<string, string | number | boolean>
 ) {
-  const eventData = {
+  trackEvent(event, {
     event_category: 'trainer_onboarding',
     ...params,
-  };
-
-  // Google Analytics (if consent given)
-  if (typeof window !== 'undefined' && window.gtag) {
-    window.gtag('event', event, eventData);
-  }
-
-  // Dev logging
-  if (import.meta.env.DEV) {
-    console.log(`[Onboarding] ${event}`, eventData);
-  }
+  });
 }

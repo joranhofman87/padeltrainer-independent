@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { trackEvent } from '@/lib/tracking';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -144,6 +145,8 @@ export default function Auth() {
         description: error.message,
         variant: 'destructive',
       });
+    } else {
+      trackEvent('login', { method: 'email' });
     }
 
     setIsLoading(false);
@@ -151,6 +154,7 @@ export default function Auth() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
+    trackEvent('login', { method: 'google' });
     const { error } = await signInWithGoogle();
 
     if (error) {

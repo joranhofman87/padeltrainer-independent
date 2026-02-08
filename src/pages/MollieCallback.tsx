@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { trackEvent } from '@/lib/tracking';
 
 type CallbackStatus = 'processing' | 'success' | 'error';
 
@@ -24,6 +25,7 @@ export default function MollieCallback() {
     if (callbackStatus === 'success') {
       setOrganizationName(name || '');
       setStatus('success');
+      trackEvent('payment_connected', { role: entity || 'trainer' });
 
       // Redirect after short delay to show success message
       setTimeout(() => {

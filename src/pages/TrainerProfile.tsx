@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
 import { logger } from '@/lib/logger';
+import { trackEvent } from '@/lib/tracking';
 import {
   ProfileLayout,
   ProfileContentGrid,
@@ -166,6 +167,10 @@ export default function TrainerProfile() {
   useEffect(() => {
     if (trainer?.id) {
       recordProfileView(trainer.id);
+      trackEvent('trainer_profile_viewed', {
+        trainer_id: trainer.id,
+        trainer_slug: trainer.slug,
+      });
     }
   }, [trainer?.id]);
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -12,12 +12,17 @@ import { useTranslation } from 'react-i18next';
 import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { trackEvent } from '@/lib/tracking';
 
 export default function Pricing() {
   const { t } = useTranslation('marketing');
   const { data: trainerPlans, isLoading: loadingTrainer } = useTrainerPlans();
   const { data: clubPlan, isLoading: loadingClub } = useClubPlan();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+
+  useEffect(() => {
+    trackEvent('pricing_page_viewed');
+  }, []);
 
   const playerFeatureKeys = [
     'pricing.players.features.browse',
