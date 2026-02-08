@@ -29,7 +29,7 @@ import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
-  experience_years: number | null;
+  coaching_since_year: number | null;
   certifications: string[];
   specializations: string[];
   coaching_method: string;
@@ -69,7 +69,7 @@ export default function EditProfile() {
   
   const [trainerData, setTrainerData] = useState<TrainerProfileData>({
     hourly_rate: null,
-    experience_years: null,
+    coaching_since_year: null,
     certifications: [],
     specializations: [],
     coaching_method: '',
@@ -200,7 +200,7 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('id, is_public, hourly_rate, experience_years, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
+      .select('id, is_public, hourly_rate, coaching_since_year, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)
       .single();
     
@@ -209,7 +209,7 @@ export default function EditProfile() {
       setIsPublic(data.is_public ?? false);
       setTrainerData({
         hourly_rate: data.hourly_rate,
-        experience_years: data.experience_years,
+        coaching_since_year: (data as any).coaching_since_year,
         certifications: data.certifications || [],
         specializations: data.specializations || [],
         coaching_method: data.coaching_method || '',
@@ -378,7 +378,7 @@ export default function EditProfile() {
           .from('trainer_profiles')
           .update({
             hourly_rate: trainerData.hourly_rate,
-            experience_years: trainerData.experience_years,
+            coaching_since_year: trainerData.coaching_since_year,
             certifications,
             specializations,
             coaching_method: trainerData.coaching_method || null,
@@ -942,17 +942,18 @@ export default function EditProfile() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="experience_years">Years of Experience</Label>
+                      <Label htmlFor="coaching_since_year">Coaching Since (year)</Label>
                       <Input
-                        id="experience_years"
+                        id="coaching_since_year"
                         type="number"
-                        min="0"
-                        value={trainerData.experience_years || ''}
+                        min="1970"
+                        max={new Date().getFullYear()}
+                        value={trainerData.coaching_since_year || ''}
                         onChange={(e) => setTrainerData({ 
                           ...trainerData, 
-                          experience_years: e.target.value ? parseInt(e.target.value) : null 
+                          coaching_since_year: e.target.value ? parseInt(e.target.value) : null 
                         })}
-                        placeholder="5"
+                        placeholder={`e.g. ${new Date().getFullYear() - 5}`}
                       />
                     </div>
                   </div>

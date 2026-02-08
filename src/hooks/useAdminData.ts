@@ -114,7 +114,7 @@ export interface TrainerProfileAdmin {
   rating_member_id: string | null;
   // Trainer specific fields
   hourly_rate: number | null;
-  experience_years: number | null;
+  coaching_since_year: number | null;
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
@@ -148,7 +148,7 @@ export function useAdminTrainers() {
         .select(`
           id, user_id, slug, subscription_status, trial_ends_at, trial_started_at, 
           is_public, is_verified, created_at,
-          hourly_rate, experience_years, coaching_method, favourite_quote,
+          hourly_rate, coaching_since_year, coaching_method, favourite_quote,
           video_url, website_url, social_instagram, social_tiktok, 
           social_youtube, social_linkedin, business_name, business_address,
           kvk_number, btw_number, iban

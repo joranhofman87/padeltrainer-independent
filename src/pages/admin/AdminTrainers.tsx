@@ -82,7 +82,7 @@ export default function AdminTrainers() {
     rating_system: trainer.rating_system,
     rating_member_id: trainer.rating_member_id,
     hourly_rate: trainer.hourly_rate,
-    experience_years: trainer.experience_years,
+    coaching_since_year: (trainer as any).coaching_since_year,
     coaching_method: trainer.coaching_method,
     favourite_quote: trainer.favourite_quote,
     video_url: trainer.video_url,
