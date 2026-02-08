@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -136,12 +136,16 @@ export default function CycleForm({
     }
   }, [cycle, open]);
 
-  // Clear selected trainers when location changes
+  // Clear selected trainers when location changes (but not on initial form reset)
   const watchedLocationId = form.watch('location_id');
+  const prevLocationRef = React.useRef(watchedLocationId);
   useEffect(() => {
-    if (locations.length > 0 && Object.keys(trainerLocationMap).length > 0) {
-      form.setValue('applicable_trainer_ids', []);
+    if (prevLocationRef.current !== undefined && prevLocationRef.current !== watchedLocationId) {
+      if (locations.length > 0 && Object.keys(trainerLocationMap).length > 0) {
+        form.setValue('applicable_trainer_ids', []);
+      }
     }
+    prevLocationRef.current = watchedLocationId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedLocationId]);
 
@@ -371,6 +375,59 @@ export default function CycleForm({
               />
             )}
 
+            {/* Applicable Trainers - right after location */}
+            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (() => {
+              const selectedLocationId = form.watch('location_id');
+              const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
+                ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
+                : trainers;
+
+              if (!selectedLocationId && locations.length > 0) return null;
+
+              return (
+                <FormField
+                  control={form.control}
+                  name="applicable_trainer_ids"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.applicableTrainers')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.applicableTrainersHelp')}
+                      </FormDescription>
+                      {filteredTrainers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">
+                          {t('form.noTrainersAtLocation', 'No trainers assigned to this location')}
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {filteredTrainers.map(trainer => (
+                            <div key={trainer.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`trainer-${trainer.id}`}
+                                checked={field.value?.includes(trainer.id)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  if (checked) {
+                                    field.onChange([...current, trainer.id]);
+                                  } else {
+                                    field.onChange(current.filter(id => id !== trainer.id));
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`trainer-${trainer.id}`} className="text-sm font-normal">
+                                {trainer.name}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            })()}
+
             {/* Pricing Section */}
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center justify-between">
@@ -507,57 +564,6 @@ export default function CycleForm({
               )}
             />
 
-            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (() => {
-              const selectedLocationId = form.watch('location_id');
-              const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
-                ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
-                : trainers;
-
-              if (!selectedLocationId && locations.length > 0) return null; // Hide trainers until location is selected
-
-              return (
-                <FormField
-                  control={form.control}
-                  name="applicable_trainer_ids"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('form.applicableTrainers')}</FormLabel>
-                      <FormDescription className="text-xs">
-                        {t('form.applicableTrainersHelp')}
-                      </FormDescription>
-                      {filteredTrainers.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-2">
-                          {t('form.noTrainersAtLocation', 'No trainers assigned to this location')}
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          {filteredTrainers.map(trainer => (
-                            <div key={trainer.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`trainer-${trainer.id}`}
-                                checked={field.value?.includes(trainer.id)}
-                                onCheckedChange={(checked) => {
-                                  const current = field.value || [];
-                                  if (checked) {
-                                    field.onChange([...current, trainer.id]);
-                                  } else {
-                                    field.onChange(current.filter(id => id !== trainer.id));
-                                  }
-                                }}
-                              />
-                              <Label htmlFor={`trainer-${trainer.id}`} className="text-sm font-normal">
-                                {trainer.name}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              );
-            })()}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
