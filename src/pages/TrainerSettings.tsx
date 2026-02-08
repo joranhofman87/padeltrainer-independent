@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { getTrialDaysRemaining, canBeVisible } from '@/lib/subscription';
+import { isTrainerInPaidAcademy } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 
 export default function TrainerSettings() {
@@ -20,6 +21,7 @@ export default function TrainerSettings() {
   const { t } = useTranslation('trainer');
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
+  const [inPaidAcademy, setInPaidAcademy] = useState(false);
 
   // Auth is now handled by TrainerLayout
 
@@ -30,12 +32,31 @@ export default function TrainerSettings() {
     }
   }, [subscription]);
 
+  // Check academy membership for visibility eligibility
+  useEffect(() => {
+    const checkAcademy = async () => {
+      if (!subscription?.productId && user) {
+        // Only check if trainer doesn't have their own paid subscription
+        const { data: trainerProfile } = await supabase
+          .from('trainer_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (trainerProfile) {
+          const result = await isTrainerInPaidAcademy(trainerProfile.id);
+          setInPaidAcademy(result);
+        }
+      }
+    };
+    checkAcademy();
+  }, [user, subscription]);
+
   const handleVisibilityToggle = async (checked: boolean) => {
     if (!user) return;
 
-    // Check if trainer can be visible
-    if (checked && subscription && !canBeVisible(subscription)) {
-      toast.error(t('settings.visibilityRequiresSubscription', 'You need an active subscription or trial to be visible'));
+    // Check if trainer can be visible (paid subscription or paid academy)
+    if (checked && subscription && !canBeVisible(subscription) && !inPaidAcademy) {
+      toast.error(t('settings.visibilityRequiresSubscription', 'You need an active subscription to be visible'));
       return;
     }
 
@@ -73,7 +94,7 @@ export default function TrainerSettings() {
   const trialDaysRemaining = subscription?.trialEndsAt 
     ? getTrialDaysRemaining(subscription.trialEndsAt) 
     : 0;
-  const canToggleVisibility = subscription ? canBeVisible(subscription) : false;
+  const canToggleVisibility = subscription ? (canBeVisible(subscription) || inPaidAcademy) : false;
   const isTrialActive = subscription?.isInTrial && !subscription?.isSubscribed;
   const isSubscribed = subscription?.isSubscribed;
 
