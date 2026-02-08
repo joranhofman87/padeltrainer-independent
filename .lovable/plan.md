@@ -1,23 +1,57 @@
 
-# Show Academy Banner on Trainer Profile
+# Update Quick Stats on Trainer Profile
 
 ## What changes
-When a trainer belongs to an academy that has a banner image, that banner will be displayed at the top of the trainer's public profile page -- using the existing banner slot in `ProfileLayout`.
+Replace the current "Students" and "Lessons Given" stats (which always show 0) with more useful information:
+
+**Remove:**
+- Students (always 0)
+- Lessons Given (always 0)
+
+**Add:**
+- Hourly Rate (e.g. "EUR 75/hr" or "--" if not set)
+- Experience (e.g. "12 years" or "--")
+- Verified status (checkmark or dash)
+
+**Keep:**
+- Rating
+- Preferred Player Levels
 
 ## Technical Details
-This is a minimal change. All the data and UI infrastructure already exists:
 
-- `trainerAcademy` is already fetched from `academy_profiles_public` (which includes `banner_url`)
-- `ProfileLayout` already accepts a `bannerUrl` prop and renders a full-width banner image
+### File: `src/pages/TrainerProfile.tsx` (lines 338-343)
 
-### File: `src/pages/TrainerProfile.tsx`
-Pass the academy's `banner_url` to `ProfileLayout`:
+Replace the `quickStats` array construction:
 
 ```tsx
-<ProfileLayout
-  bannerUrl={trainerAcademy?.banner_url}
-  headerAction={...}
->
+const quickStats = [
+  {
+    icon: <Euro className="h-4 w-4" />,
+    label: t('common:hourlyRate', 'Hourly Rate'),
+    value: trainer?.hourly_rate ? `€${trainer.hourly_rate}` : '—',
+  },
+  {
+    icon: <Calendar className="h-4 w-4" />,
+    label: t('common:experience', 'Experience'),
+    value: trainer?.experience_years
+      ? `${trainer.experience_years} ${t('common:years', 'years')}`
+      : '—',
+  },
+  {
+    icon: <CheckCircle className="h-4 w-4" />,
+    label: t('common:verified', 'Verified'),
+    value: trainer?.is_verified
+      ? t('common:yes', 'Yes')
+      : t('common:no', 'No'),
+  },
+  {
+    icon: <Star className="h-4 w-4" />,
+    label: t('common:rating', 'Rating'),
+    value: averageRating !== null ? `${averageRating} ★` : '—',
+  },
+];
 ```
 
-That's it -- no database changes, no new components, no new queries needed.
+Also add `Euro` and `CheckCircle` to the lucide-react imports (CheckCircle is already imported, Euro needs adding).
+
+No database or translation changes needed -- all values are already fetched and translation keys for "Hourly Rate", "Experience", "Verified" already exist in the common namespace.
