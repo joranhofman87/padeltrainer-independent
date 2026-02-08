@@ -18,6 +18,16 @@ export const COUNTRIES = {
   CZ: 'Czech Republic',
   AE: 'United Arab Emirates',
   US: 'United States',
+  IE: 'Ireland',
+  PK: 'Pakistan',
+  CA: 'Canada',
+  MX: 'Mexico',
+  PH: 'Philippines',
+  AU: 'Australia',
+  UA: 'Ukraine',
+  CL: 'Chile',
+  CO: 'Colombia',
+  MY: 'Malaysia',
 } as const;
 
 export type CountryCode = keyof typeof COUNTRIES;
