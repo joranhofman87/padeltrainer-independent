@@ -31,6 +31,8 @@
     "descriptionPlaceholder": "Describe this training cycle...",
     "startDate": "Start Date",
     "endDate": "End Date",
+    "numberOfWeeks": "Number of weeks",
+    "endsOn": "Ends on {{date}}",
     "enrollmentDeadline": "Enrollment Deadline",
     "lessonTypes": "Lesson Types Offered",
     "showPreferredTrainer": "Allow trainer preference",

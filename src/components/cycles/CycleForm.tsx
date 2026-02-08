@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format } from 'date-fns';
+import { format, differenceInWeeks, addWeeks } from 'date-fns';
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -85,7 +85,7 @@ export default function CycleForm({
     name: z.string().min(2),
     description: z.string().optional(),
     start_date: z.date(),
-    end_date: z.date(),
+    number_of_weeks: z.coerce.number().min(1).max(52),
     enrollment_deadline: z.date().optional(),
     lesson_types: z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
@@ -100,9 +100,6 @@ export default function CycleForm({
     price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
     total_price: z.coerce.number().min(0).optional().or(z.literal('')),
     currency: z.string().default('EUR'),
-  }).refine(data => data.end_date > data.start_date, {
-    message: 'End date must be after start date',
-    path: ['end_date'],
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
@@ -116,7 +113,7 @@ export default function CycleForm({
       name: cycle?.name || '',
       description: cycle?.description || '',
       start_date: cycle ? new Date(cycle.start_date) : new Date(),
-      end_date: cycle ? new Date(cycle.end_date) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
@@ -141,7 +138,7 @@ export default function CycleForm({
         name: cycle?.name || '',
         description: cycle?.description || '',
         start_date: cycle ? new Date(cycle.start_date) : new Date(),
-        end_date: cycle ? new Date(cycle.end_date) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
         lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
@@ -195,7 +192,7 @@ export default function CycleForm({
         name: values.name,
         description: values.description,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
-        end_date: format(values.end_date, 'yyyy-MM-dd'),
+        end_date: format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd'),
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
@@ -305,37 +302,25 @@ export default function CycleForm({
 
               <FormField
                 control={form.control}
-                name="end_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>{t('form.endDate')}</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                name="number_of_weeks"
+                render={({ field }) => {
+                  const startDate = form.watch('start_date');
+                  const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
+                  return (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={1} max={52} {...field} />
+                      </FormControl>
+                      {computedEnd && (
+                        <p className="text-xs text-muted-foreground">
+                          {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
             </div>
 
