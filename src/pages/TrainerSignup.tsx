@@ -12,6 +12,7 @@ import { GraduationCap, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
+import { trackEvent } from '@/lib/tracking';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -62,6 +63,7 @@ export default function TrainerSignup() {
     
     if (!validateForm()) return;
     
+    trackEvent('signup_started', { role: 'trainer', method: 'email' });
     setIsLoading(true);
 
     const { data, error } = await signUpWithEmail(email, password, fullName);
@@ -74,6 +76,7 @@ export default function TrainerSignup() {
       });
     } else if (data?.session) {
       // Session is immediately available (auto-confirm enabled for dev)
+      trackEvent('signup_completed', { role: 'trainer', method: 'email' });
       localStorage.setItem('pendingRole', 'trainer');
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
@@ -87,6 +90,7 @@ export default function TrainerSignup() {
       navigate('/app/onboarding/trainer');
     } else {
       // No immediate session - email verification required
+      trackEvent('signup_completed', { role: 'trainer', method: 'email' });
       localStorage.setItem('pendingRole', 'trainer');
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
@@ -102,6 +106,7 @@ export default function TrainerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
+    trackEvent('signup_started', { role: 'trainer', method: 'google' });
     localStorage.setItem('pendingRole', 'trainer');
     // Store redirect URL if present
     const redirectUrl = searchParams.get('redirect');

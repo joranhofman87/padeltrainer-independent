@@ -26,6 +26,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
+import { trackEvent } from '@/lib/tracking';
 
 export default function TrainerSubscription() {
   const navigate = useNavigate();
@@ -44,6 +45,7 @@ export default function TrainerSubscription() {
     const canceled = searchParams.get('canceled');
 
     if (success === 'true') {
+      trackEvent('subscription_activated', { plan: subscription?.tier || 'unknown' });
       toast({
         title: 'Subscription Activated! 🎉',
         description: 'Your subscription is now active. Enjoy your new features!',
@@ -95,6 +97,11 @@ export default function TrainerSubscription() {
 
   const currentPlan = subscription?.tier || 'starter';
 
+  // Track page view with current plan context
+  useEffect(() => {
+    trackEvent('subscription_page_viewed', { current_plan: currentPlan });
+  }, [currentPlan]);
+
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
       toast({
@@ -106,6 +113,7 @@ export default function TrainerSubscription() {
 
     const planId = billingCycle === 'monthly' ? plan.tier : `${plan.tier}_yearly`;
 
+    trackEvent('subscription_checkout_started', { plan: plan.tier, billing_cycle: billingCycle });
     setProcessingPlan(plan.id);
 
     try {
@@ -170,6 +178,7 @@ export default function TrainerSubscription() {
         title: 'Subscription Canceled',
         description: data.message || 'Your subscription has been canceled.',
       });
+      trackEvent('subscription_canceled');
       
       refreshSubscription();
     } catch (err) {
