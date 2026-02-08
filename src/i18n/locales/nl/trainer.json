@@ -261,7 +261,15 @@
     "paymentPending": "In afwachting",
     "paymentPaid": "Betaald",
     "paymentWaived": "Kwijtgescholden",
-    "playerWillBeSwapped": "Speler wordt gewijzigd naar de geselecteerde"
+    "playerWillBeSwapped": "Speler wordt gewijzigd naar de geselecteerde",
+    "requests": "Verzoeken",
+    "pendingApproval": "Wacht op goedkeuring",
+    "awaitingApproval": "Wacht op goedkeuring van trainer",
+    "approve": "Goedkeuren",
+    "reject": "Afwijzen",
+    "noRequests": "Geen openstaande verzoeken",
+    "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier",
+    "booked": "geboekt"
   },
   "players": {
     "title": "Mijn Spelers",
@@ -557,15 +565,6 @@
     "manualApprovalDescriptionInvoice": "Beoordeel en keur elk verzoek goed voor bevestiging.",
     "approvalEnabled": "Goedkeuring voor boekingen is nu vereist",
     "approvalDisabled": "Boekingen worden nu automatisch geaccepteerd"
-  },
-  "bookings": {
-    "requests": "Verzoeken",
-    "pendingApproval": "Wacht op goedkeuring",
-    "awaitingApproval": "Wacht op goedkeuring van trainer",
-    "approve": "Goedkeuren",
-    "reject": "Afwijzen",
-    "noRequests": "Geen openstaande verzoeken",
-    "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. Kom binnenkort terug!",
   "clearFilters": "Filters wissen",
