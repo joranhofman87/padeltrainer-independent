@@ -1,30 +1,30 @@
 
-## Restore CycleForm Popup for "Training Cycle" Option
 
-### Problem
-When clicking "Training Cycle" in the choice dialog, it currently opens the `BulkCreateSheet` -- a sidebar drawer that only creates recurring time slots. You expected it to open the `CycleForm` popup, which includes the trainer selector, KNLTB level/rating selector, and all the registration settings you recently added.
+## Replace End Date with Number of Weeks
 
-### Solution
-Change the "Training Cycle" option in `SlotTypeChoiceDialog` to open `CycleForm` (the popup dialog) instead of `BulkCreateSheet` on both the Trainer Dashboard and Academy Calendar.
+### What changes
+In the CycleForm popup, the "End Date" date picker will be replaced with a "Number of Weeks" numeric input. The end date will be automatically calculated as `start_date + (number_of_weeks * 7 days)` and shown as a read-only hint below the input (e.g., "Ends: May 9, 2026").
 
-### Changes
+When editing an existing cycle, the number of weeks will be back-calculated from the start and end dates.
 
-**1. Trainer Dashboard (`src/pages/TrainerDashboard.tsx`)**
-- Add `CycleForm` import and state (`showCreateCycleDialog`)
-- Change `handleChooseCyclus` to open `CycleForm` instead of `BulkCreateSheet`
-- Add the `CycleForm` dialog component to the page
-- Keep `BulkCreateSheet` available for the "Duplicate Cyclus" flow (if it uses it)
+### Technical Details
 
-**2. Academy Calendar (`src/pages/academy/AcademyCalendar.tsx`)**
-- Re-add `CycleForm` import and `showCreateCycleDialog` state
-- Change the `onChooseCyclus` callback from `setBulkCreateOpen(true)` to `setShowCreateCycleDialog(true)`
-- Add the `CycleForm` dialog back, passing trainers, locations, and trainerLocationMap props
+**File: `src/components/cycles/CycleForm.tsx`**
 
-**3. Trainer Calendar (`src/pages/TrainerCalendar.tsx`)**
-- Same change: `handleChooseCyclus` opens `CycleForm` instead of `BulkCreateSheet`
+1. **Schema change**: Replace `end_date: z.date()` with `number_of_weeks: z.coerce.number().min(1).max(52)`. Remove the `end_date > start_date` refinement since it is now guaranteed by construction.
+
+2. **Default values**: Instead of defaulting `end_date` to 90 days from now, default `number_of_weeks` to `10`. When editing, back-calculate weeks from `(end_date - start_date) / 7`, rounded to nearest integer.
+
+3. **UI change**: Replace the end date `Popover + Calendar` column (lines 306-339) with a simple numeric `Input` for weeks, plus a small text line showing the computed end date: `format(addWeeks(startDate, numberOfWeeks), 'PPP')`.
+
+4. **Submit logic**: In `onSubmit`, compute `end_date` from `addWeeks(start_date, number_of_weeks)` before passing it to `createCycle` / `updateCycle`. The database field `end_date` stays unchanged.
+
+**Locale files** (`en/cycles.json`, `nl/cycles.json`):
+- Add keys: `form.numberOfWeeks` ("Number of weeks" / "Aantal weken") and `form.endsOn` ("Ends on {{date}}" / "Eindigt op {{date}}")
 
 ### What stays the same
-- `SlotTypeChoiceDialog` component itself -- no changes needed
-- `AddSlotDialog` for single slots -- unchanged
-- `BulkCreateSheet` remains in the codebase for the "Duplicate Cyclus" button functionality
-- The `CycleForm` popup with all its fields (trainer selector, rating system, min/max level, group sizes, etc.) -- unchanged
+- The database schema (still stores `end_date` as a date)
+- All display components (CycleCard, registration pages, etc.)
+- Start date picker -- unchanged
+- All other form fields
+
