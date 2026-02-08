@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -56,6 +56,8 @@ interface CycleFormProps {
   onSuccess?: (cycle: Cycle) => void;
   trainers?: { id: string; name: string }[];
   locations?: { id: string; name: string; city: string }[];
+  /** Map of location_id -> trainer_ids at that location */
+  trainerLocationMap?: Record<string, string[]>;
 }
 
 export default function CycleForm({
@@ -67,6 +69,7 @@ export default function CycleForm({
   onSuccess,
   trainers = [],
   locations = [],
+  trainerLocationMap = {},
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,6 +114,15 @@ export default function CycleForm({
       currency: cycle?.currency || 'EUR',
     },
   });
+
+  // Clear selected trainers when location changes
+  const watchedLocationId = form.watch('location_id');
+  useEffect(() => {
+    if (locations.length > 0 && Object.keys(trainerLocationMap).length > 0) {
+      form.setValue('applicable_trainer_ids', []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedLocationId]);
 
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
@@ -474,42 +486,57 @@ export default function CycleForm({
               )}
             />
 
-            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (
-              <FormField
-                control={form.control}
-                name="applicable_trainer_ids"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('form.applicableTrainers')}</FormLabel>
-                    <FormDescription className="text-xs">
-                      {t('form.applicableTrainersHelp')}
-                    </FormDescription>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      {trainers.map(trainer => (
-                        <div key={trainer.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`trainer-${trainer.id}`}
-                            checked={field.value?.includes(trainer.id)}
-                            onCheckedChange={(checked) => {
-                              const current = field.value || [];
-                              if (checked) {
-                                field.onChange([...current, trainer.id]);
-                              } else {
-                                field.onChange(current.filter(id => id !== trainer.id));
-                              }
-                            }}
-                          />
-                          <Label htmlFor={`trainer-${trainer.id}`} className="text-sm font-normal">
-                            {trainer.name}
-                          </Label>
+            {(ownerType === 'club' || ownerType === 'academy') && trainers.length > 0 && (() => {
+              const selectedLocationId = form.watch('location_id');
+              const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
+                ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
+                : trainers;
+
+              if (!selectedLocationId && locations.length > 0) return null; // Hide trainers until location is selected
+
+              return (
+                <FormField
+                  control={form.control}
+                  name="applicable_trainer_ids"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('form.applicableTrainers')}</FormLabel>
+                      <FormDescription className="text-xs">
+                        {t('form.applicableTrainersHelp')}
+                      </FormDescription>
+                      {filteredTrainers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-2">
+                          {t('form.noTrainersAtLocation', 'No trainers assigned to this location')}
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {filteredTrainers.map(trainer => (
+                            <div key={trainer.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`trainer-${trainer.id}`}
+                                checked={field.value?.includes(trainer.id)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  if (checked) {
+                                    field.onChange([...current, trainer.id]);
+                                  } else {
+                                    field.onChange(current.filter(id => id !== trainer.id));
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`trainer-${trainer.id}`} className="text-sm font-normal">
+                                {trainer.name}
+                              </Label>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            })()}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
