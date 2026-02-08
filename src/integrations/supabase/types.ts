@@ -3002,6 +3002,7 @@ export type Database = {
           goal_other_text: string | null
           icd_responses: Json | null
           id: string
+          setup_dismissed_at: string | null
           updated_at: string
           user_id: string
         }
@@ -3014,6 +3015,7 @@ export type Database = {
           goal_other_text?: string | null
           icd_responses?: Json | null
           id?: string
+          setup_dismissed_at?: string | null
           updated_at?: string
           user_id: string
         }
@@ -3026,6 +3028,7 @@ export type Database = {
           goal_other_text?: string | null
           icd_responses?: Json | null
           id?: string
+          setup_dismissed_at?: string | null
           updated_at?: string
           user_id?: string
         }

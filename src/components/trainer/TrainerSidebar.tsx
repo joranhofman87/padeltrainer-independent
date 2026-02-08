@@ -101,8 +101,8 @@ export function TrainerSidebar() {
         setTrainerProfileId(trainerProfile.id);
         setTrainerSlug(trainerProfile.slug);
 
-        // Fetch clubs, academy, and setup completion in parallel
-        const [clubs, academy, profileData, lessonCount, slotCount, mollieData, playerCount] = await Promise.all([
+        // Fetch clubs, academy, setup completion, and dismissal status in parallel
+        const [clubs, academy, profileData, lessonCount, slotCount, mollieData, playerCount, onboardingData] = await Promise.all([
           getTrainerClubs(trainerProfile.id),
           getTrainerAcademy(trainerProfile.id),
           supabase.from('profiles').select('bio').eq('user_id', user.id).maybeSingle(),
@@ -110,19 +110,25 @@ export function TrainerSidebar() {
           supabase.from('availability_slots').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerProfile.id),
           supabase.from('trainer_mollie_accounts').select('onboarding_complete, charges_enabled').eq('trainer_id', trainerProfile.id).maybeSingle(),
           supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerProfile.id),
+          supabase.from('trainer_onboarding').select('setup_dismissed_at').eq('user_id', user.id).maybeSingle(),
         ]);
 
         setTrainerClubs(clubs);
         setHasAcademy(!!academy);
 
-        // Determine if setup is incomplete
-        const profileComplete = !!(trainerProfile.hourly_rate && profileData.data?.bio);
-        const hasLessons = (lessonCount.count || 0) > 0;
-        const hasAvailability = (slotCount.count || 0) > 0;
-        const paymentsComplete = !!(mollieData.data?.onboarding_complete && mollieData.data?.charges_enabled) || !!(trainerProfile as any).use_manual_invoicing;
-        const hasPlayers = (playerCount.count || 0) > 0;
-        
-        setShowGetStarted(!(profileComplete && hasLessons && hasAvailability && paymentsComplete && hasPlayers));
+        // If dismissed, hide get started
+        if ((onboardingData.data as any)?.setup_dismissed_at) {
+          setShowGetStarted(false);
+        } else {
+          // Determine if setup is incomplete
+          const profileComplete = !!(trainerProfile.hourly_rate && profileData.data?.bio);
+          const hasLessons = (lessonCount.count || 0) > 0;
+          const hasAvailability = (slotCount.count || 0) > 0;
+          const paymentsComplete = !!(mollieData.data?.onboarding_complete && mollieData.data?.charges_enabled) || !!(trainerProfile as any).use_manual_invoicing;
+          const hasPlayers = (playerCount.count || 0) > 0;
+          
+          setShowGetStarted(!(profileComplete && hasLessons && hasAvailability && paymentsComplete && hasPlayers));
+        }
       }
     };
 
