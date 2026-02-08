@@ -21,6 +21,8 @@ interface SlotData {
   location_name: string | null;
   lesson_title: string | null;
   lesson_price: number | null;
+  lesson_max_participants: number;
+  lesson_booking_mode: string;
   spots_left: number;
 }
 
@@ -63,7 +65,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           is_marked_full,
           location_id,
           locations:location_id(name),
-          lessons:lesson_id(title, price, max_participants)
+          lessons:lesson_id(title, price, max_participants, booking_mode)
         `)
         .eq('trainer_id', trainerId)
         .eq('is_marked_full', false)
@@ -111,6 +113,8 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
             location_name: (s.locations as any)?.name || null,
             lesson_title: (s.lessons as any)?.title || null,
             lesson_price: (s.lessons as any)?.price || null,
+            lesson_max_participants: (s.lessons as any)?.max_participants || 4,
+            lesson_booking_mode: (s.lessons as any)?.booking_mode || 'full_slot',
             spots_left: maxParticipants - booked,
           };
         });
@@ -205,7 +209,9 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                   <div className="flex items-center gap-2 ml-2">
                     {slot.lesson_price != null && (
                       <Badge variant="secondary" className="font-semibold">
-                        €{slot.lesson_price}
+                        {slot.lesson_booking_mode !== 'full_slot' && slot.lesson_max_participants > 1
+                          ? `€${(slot.lesson_price / slot.lesson_max_participants).toFixed(2)}/spot`
+                          : `€${slot.lesson_price}`}
                       </Badge>
                     )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />

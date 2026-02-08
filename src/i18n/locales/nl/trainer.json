@@ -171,7 +171,14 @@
       "activeDescription": "Les is zichtbaar en boekbaar",
       "paymentTiming": "Betalingsmoment",
       "upfront": "Vooraf",
-      "after": "Na de Les"
+      "after": "Na de Les",
+      "bookingMode": "Boekingsmodus",
+      "bookingModeFullSlot": "Hele slot",
+      "bookingModeIndividual": "Individuele plekken",
+      "bookingModeFlexible": "Flexibel (kies plekken)",
+      "bookingModeFullSlotDesc": "Spelers moeten alle plekken tegelijk boeken",
+      "bookingModeIndividualDesc": "Spelers boeken 1 plek tegen een prijs per persoon",
+      "bookingModeFlexibleDesc": "Spelers kiezen hoeveel plekken ze willen boeken"
     },
     "status": {
       "active": "Actief",

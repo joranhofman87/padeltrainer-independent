@@ -33,6 +33,7 @@ interface SlotData {
   booked_count: number;
   available_spots: number;
   cyclus_id: string | null;
+  booking_mode: string;
 }
 
 export default function OpenSlots() {
@@ -84,7 +85,7 @@ export default function OpenSlots() {
           cyclus_id,
           cyclus_name,
           is_marked_full,
-          lessons(id, title, max_participants)
+          lessons(id, title, max_participants, booking_mode)
         `)
         .eq('trainer_id', tId)
         .eq('is_marked_full', false)
@@ -123,6 +124,7 @@ export default function OpenSlots() {
           booked_count: bookedCount,
           available_spots: availableSpots,
           cyclus_id: slot.cyclus_id,
+          booking_mode: (slot.lessons as any)?.booking_mode || 'full_slot',
         };
       }).filter(slot => slot.available_spots > 0);
 
@@ -357,11 +359,18 @@ export default function OpenSlots() {
                               {slot.lesson_title || t('openSlots.noLesson', 'No lesson linked')}
                             </p>
                           </div>
-                          <Badge variant="secondary">
-                            {slot.available_spots} {slot.available_spots === 1 
-                              ? t('openSlots.spotOpen', 'spot') 
-                              : t('openSlots.spotsOpen', 'spots')}
-                          </Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="secondary">
+                              {slot.available_spots} {slot.available_spots === 1 
+                                ? t('openSlots.spotOpen', 'spot') 
+                                : t('openSlots.spotsOpen', 'spots')}
+                            </Badge>
+                            {slot.booking_mode !== 'full_slot' && slot.max_participants > 1 && (
+                              <Badge variant="outline" className="text-xs">
+                                {slot.booking_mode === 'individual' ? 'Individual' : 'Flexible'}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         <Button
                           variant="outline"

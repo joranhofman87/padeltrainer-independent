@@ -1770,6 +1770,7 @@ export type Database = {
       }
       lessons: {
         Row: {
+          booking_mode: string
           created_at: string
           description: string | null
           duration_minutes: number
@@ -1793,6 +1794,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          booking_mode?: string
           created_at?: string
           description?: string | null
           duration_minutes?: number
@@ -1816,6 +1818,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          booking_mode?: string
           created_at?: string
           description?: string | null
           duration_minutes?: number

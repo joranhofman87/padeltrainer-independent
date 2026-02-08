@@ -64,6 +64,7 @@ export default function TrainerLessons() {
   const [formMaxParticipants, setFormMaxParticipants] = useState(1);
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPaymentTiming, setFormPaymentTiming] = useState<"upfront" | "after">("upfront");
+  const [formBookingMode, setFormBookingMode] = useState<"full_slot" | "individual" | "flexible">("full_slot");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -94,6 +95,7 @@ export default function TrainerLessons() {
     setFormMaxParticipants(1);
     setFormIsActive(true);
     setFormPaymentTiming("upfront");
+    setFormBookingMode("full_slot");
     setEditingLesson(null);
   };
 
@@ -106,6 +108,7 @@ export default function TrainerLessons() {
     setFormMaxParticipants(lesson.max_participants);
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
+    setFormBookingMode((lesson.booking_mode as "full_slot" | "individual" | "flexible") || "full_slot");
     setDialogOpen(true);
   };
 
@@ -139,6 +142,7 @@ export default function TrainerLessons() {
         min_skill_rating: null,
         max_skill_rating: null,
         payment_timing: formPaymentTiming as "upfront" | "after",
+        booking_mode: formMaxParticipants > 1 ? formBookingMode : "full_slot",
       };
 
       if (editingLesson) {
@@ -195,6 +199,7 @@ export default function TrainerLessons() {
     setFormMaxParticipants(lesson.max_participants);
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
+    setFormBookingMode((lesson.booking_mode as "full_slot" | "individual" | "flexible") || "full_slot");
     setDialogOpen(true);
   };
 
@@ -264,6 +269,11 @@ export default function TrainerLessons() {
                       <Badge variant="outline">{lesson.duration_minutes} min</Badge>
                       <Badge variant="outline">€{lesson.price}</Badge>
                       <Badge variant="outline">{lesson.max_participants} max</Badge>
+                      {lesson.max_participants > 1 && lesson.booking_mode !== 'full_slot' && (
+                        <Badge variant="outline">
+                          {lesson.booking_mode === 'individual' ? t("lessons.form.bookingModeIndividual", "Individual") : t("lessons.form.bookingModeFlexible", "Flexible")}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 pt-2">
                       <Button variant="ghost" size="sm" onClick={() => openEditDialog(lesson)}>
@@ -375,6 +385,27 @@ export default function TrainerLessons() {
                 </Select>
               </div>
             </div>
+
+            {formMaxParticipants > 1 && (
+              <div className="space-y-2">
+                <Label>{t("lessons.form.bookingMode", "Booking Mode")}</Label>
+                <Select value={formBookingMode} onValueChange={(v) => setFormBookingMode(v as "full_slot" | "individual" | "flexible")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_slot">{t("lessons.form.bookingModeFullSlot", "Full slot only")}</SelectItem>
+                    <SelectItem value="individual">{t("lessons.form.bookingModeIndividual", "Individual spots")}</SelectItem>
+                    <SelectItem value="flexible">{t("lessons.form.bookingModeFlexible", "Flexible (choose spots)")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {formBookingMode === 'full_slot' && t("lessons.form.bookingModeFullSlotDesc", "Players must book all spots at once")}
+                  {formBookingMode === 'individual' && t("lessons.form.bookingModeIndividualDesc", `Players book 1 spot at €${(formPrice / formMaxParticipants).toFixed(2)}/person`)}
+                  {formBookingMode === 'flexible' && t("lessons.form.bookingModeFlexibleDesc", `Players choose how many spots (€${(formPrice / formMaxParticipants).toFixed(2)}/spot)`)}
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <div>

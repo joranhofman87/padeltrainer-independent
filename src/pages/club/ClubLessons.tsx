@@ -50,6 +50,7 @@ interface Lesson {
   location: string | null;
   is_active: boolean;
   payment_timing: string;
+  booking_mode: string;
 }
 
 interface Trainer {
@@ -88,6 +89,7 @@ export default function ClubLessons() {
   const [formMaxParticipants, setFormMaxParticipants] = useState(1);
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPaymentTiming, setFormPaymentTiming] = useState<"upfront" | "after">("upfront");
+  const [formBookingMode, setFormBookingMode] = useState<"full_slot" | "individual" | "flexible">("full_slot");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -152,6 +154,7 @@ export default function ClubLessons() {
     setFormMaxParticipants(1);
     setFormIsActive(true);
     setFormPaymentTiming("upfront");
+    setFormBookingMode("full_slot");
     setEditingLesson(null);
   };
 
@@ -165,6 +168,7 @@ export default function ClubLessons() {
     setFormMaxParticipants(lesson.max_participants);
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
+    setFormBookingMode((lesson.booking_mode as "full_slot" | "individual" | "flexible") || "full_slot");
     setDialogOpen(true);
   };
 
@@ -189,6 +193,7 @@ export default function ClubLessons() {
         max_participants: formMaxParticipants,
         is_active: formIsActive,
         payment_timing: formPaymentTiming,
+        booking_mode: formMaxParticipants > 1 ? formBookingMode : 'full_slot',
       };
 
       if (editingLesson) {
@@ -262,6 +267,7 @@ export default function ClubLessons() {
     setFormMaxParticipants(lesson.max_participants);
     setFormIsActive(lesson.is_active);
     setFormPaymentTiming(lesson.payment_timing as "upfront" | "after");
+    setFormBookingMode((lesson.booking_mode as "full_slot" | "individual" | "flexible") || "full_slot");
     setDialogOpen(true);
   };
 
@@ -497,6 +503,23 @@ export default function ClubLessons() {
                 </Select>
               </div>
             </div>
+
+            {/* Booking Mode (only for multi-participant) */}
+            {formMaxParticipants > 1 && (
+              <div className="space-y-2">
+                <Label>{tTrainer("lessons.form.bookingMode", "Booking Mode")}</Label>
+                <Select value={formBookingMode} onValueChange={(v: "full_slot" | "individual" | "flexible") => setFormBookingMode(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_slot">{tTrainer("lessons.form.bookingModeFullSlot", "Full slot only")}</SelectItem>
+                    <SelectItem value="individual">{tTrainer("lessons.form.bookingModeIndividual", "Individual spots")}</SelectItem>
+                    <SelectItem value="flexible">{tTrainer("lessons.form.bookingModeFlexible", "Flexible (choose spots)")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Active Toggle */}
             <div className="flex items-center justify-between">

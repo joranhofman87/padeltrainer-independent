@@ -171,7 +171,14 @@
       "activeDescription": "Lesson is visible and bookable",
       "paymentTiming": "Payment Timing",
       "upfront": "Upfront",
-      "after": "After Lesson"
+      "after": "After Lesson",
+      "bookingMode": "Booking Mode",
+      "bookingModeFullSlot": "Full slot only",
+      "bookingModeIndividual": "Individual spots",
+      "bookingModeFlexible": "Flexible (choose spots)",
+      "bookingModeFullSlotDesc": "Players must book all spots at once",
+      "bookingModeIndividualDesc": "Players book 1 spot at a per-person price",
+      "bookingModeFlexibleDesc": "Players choose how many spots to book"
     },
     "status": {
       "active": "Active",
