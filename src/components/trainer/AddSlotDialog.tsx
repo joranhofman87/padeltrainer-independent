@@ -64,6 +64,8 @@ interface BulkSlotConfig {
   locationId: string | null;
   isMarkedFull: boolean;
   academyProfileId: string | null;
+  trainerId: string | null;
+  trainingLevel: string | null;
 }
 
 interface AddSlotDialogProps {
@@ -331,6 +333,11 @@ export function AddSlotDialog({
   );
 }
 
+interface TrainerOption {
+  id: string;
+  name: string;
+}
+
 interface BulkCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -342,6 +349,7 @@ interface BulkCreateSheetProps {
   defaultWeeks: number;
   onSlotsCreated: () => void;
   availableLocations?: SlotLocation[];
+  availableTrainers?: TrainerOption[];
 }
 
 export function BulkCreateSheet({
@@ -355,6 +363,7 @@ export function BulkCreateSheet({
   defaultWeeks,
   onSlotsCreated,
   availableLocations,
+  availableTrainers,
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -430,6 +439,8 @@ export function BulkCreateSheet({
           locationId: null,
           isMarkedFull: false,
           academyProfileId: null,
+          trainerId: trainerId,
+          trainingLevel: null,
         },
       ]);
     }
@@ -470,6 +481,8 @@ export function BulkCreateSheet({
           selectedPlayers: [],                      // Reset
           isMarkedFull: false,                      // Reset
           academyProfileId: lastSlot.academyProfileId, // Copy
+          trainerId: lastSlot.trainerId,            // Copy
+          trainingLevel: lastSlot.trainingLevel,    // Copy
         },
       ]);
     } else {
@@ -490,6 +503,8 @@ export function BulkCreateSheet({
           locationId: null,
           isMarkedFull: false,
           academyProfileId: null,
+          trainerId: trainerId,
+          trainingLevel: null,
         },
       ]);
     }
@@ -522,7 +537,23 @@ export function BulkCreateSheet({
   };
 
   const generateBulkSlots = async () => {
-    if (!trainerId || bulkSlots.length === 0) return;
+    if (bulkSlots.length === 0) return;
+    
+    // When availableTrainers is provided (academy mode), each slot must have a trainer
+    if (availableTrainers && availableTrainers.length > 0) {
+      const missingTrainer = bulkSlots.some(s => !s.trainerId);
+      if (missingTrainer) {
+        toast({
+          title: t("calendar.trainerRequired", "Trainer required"),
+          description: t("calendar.trainerRequiredDescription", "Please select a trainer for each slot."),
+          variant: "destructive",
+        });
+        return;
+      }
+    } else if (!trainerId) {
+      return;
+    }
+    
     setIsGenerating(true);
 
     try {
@@ -538,22 +569,36 @@ export function BulkCreateSheet({
         location_id: string | null;
         is_marked_full: boolean;
         academy_profile_id: string | null;
+        training_level: string | null;
       }[] = [];
 
-      // Get existing slots to avoid duplicates
+      // Get existing slots to avoid duplicates per trainer
+      const trainerIdsToCheck = availableTrainers 
+        ? availableTrainers.map(t => t.id) 
+        : (trainerId ? [trainerId] : []);
+      
       const { data: existingSlots } = await supabase
         .from("availability_slots")
-        .select("start_time")
-        .eq("trainer_id", trainerId)
+        .select("start_time, trainer_id")
+        .in("trainer_id", trainerIdsToCheck)
         .gte("start_time", today.toISOString());
 
-      const existingTimes = new Set(existingSlots?.map((s) => s.start_time) || []);
+      const existingTimesByTrainer = new Map<string, Set<string>>();
+      (existingSlots || []).forEach(s => {
+        if (!existingTimesByTrainer.has(s.trainer_id)) {
+          existingTimesByTrainer.set(s.trainer_id, new Set());
+        }
+        existingTimesByTrainer.get(s.trainer_id)!.add(s.start_time);
+      });
 
       // Map to track which cyclus_id belongs to which config index
       const configCyclusMap = new Map<number, string>();
 
       for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
         const config = bulkSlots[configIndex];
+        const slotTrainerId = config.trainerId || trainerId;
+        if (!slotTrainerId) continue;
+        
         const [startH, startM] = config.startTime.split(":").map(Number);
         let slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
@@ -561,18 +606,20 @@ export function BulkCreateSheet({
         const cyclusId = crypto.randomUUID();
         configCyclusMap.set(configIndex, cyclusId);
 
+        const trainerExistingTimes = existingTimesByTrainer.get(slotTrainerId) || new Set();
+
         // Generate slots for each week in the recurrence period
         for (let week = 0; week < config.recurrenceWeeks; week++) {
           const currentSlotStart = addWeeks(slotStart, week);
           const currentSlotEnd = addMinutes(currentSlotStart, config.durationMinutes);
 
-          // Skip if this exact time already exists
-          if (existingTimes.has(currentSlotStart.toISOString())) {
+          // Skip if this exact time already exists for this trainer
+          if (trainerExistingTimes.has(currentSlotStart.toISOString())) {
             continue;
           }
 
           slotsToInsert.push({
-            trainer_id: trainerId,
+            trainer_id: slotTrainerId,
             start_time: currentSlotStart.toISOString(),
             end_time: currentSlotEnd.toISOString(),
             lesson_id: config.lessonId,
@@ -582,10 +629,11 @@ export function BulkCreateSheet({
             location_id: config.locationId,
             is_marked_full: config.isMarkedFull,
             academy_profile_id: config.academyProfileId,
+            training_level: config.trainingLevel,
           });
 
           // Add to existing times to prevent duplicates within same batch
-          existingTimes.add(currentSlotStart.toISOString());
+          trainerExistingTimes.add(currentSlotStart.toISOString());
         }
       }
 
@@ -839,6 +887,31 @@ export function BulkCreateSheet({
                     </div>
                   </div>
 
+                  {/* Trainer (Academy mode) */}
+                  {availableTrainers && availableTrainers.length > 0 && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("calendar.trainer", "Trainer")}</Label>
+                      <Select
+                        value={slot.trainerId || "none"}
+                        onValueChange={(v) =>
+                          updateBulkSlot(index, { trainerId: v === "none" ? null : v })
+                        }
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder={t("calendar.selectTrainer", "Select trainer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">{t("calendar.selectTrainer", "Select trainer")}</SelectItem>
+                          {availableTrainers.map((trainer) => (
+                            <SelectItem key={trainer.id} value={trainer.id}>
+                              {trainer.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   {/* Lesson */}
                   <div className="space-y-1">
                     <Label className="text-xs">{t("calendar.linkLesson")}</Label>
@@ -868,7 +941,7 @@ export function BulkCreateSheet({
                     <SlotLocationPicker
                       value={slot.locationId}
                       onChange={(locationId) => updateBulkSlot(index, { locationId })}
-                      trainerId={trainerId}
+                      trainerId={slot.trainerId || trainerId}
                       availableLocations={availableLocations}
                       compact
                     />
@@ -890,6 +963,27 @@ export function BulkCreateSheet({
                         <SelectItem value="any">{t("calendar.anyCourtType", "Any")}</SelectItem>
                         <SelectItem value="indoor">{t("calendar.indoor", "Indoor")}</SelectItem>
                         <SelectItem value="outdoor">{t("calendar.outdoor", "Outdoor")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Training Level (optional) */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("calendar.trainingLevel", "Training Level")}</Label>
+                    <Select
+                      value={slot.trainingLevel || "any"}
+                      onValueChange={(v) =>
+                        updateBulkSlot(index, { trainingLevel: v === "any" ? null : v })
+                      }
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">{t("calendar.anyLevel", "Any level")}</SelectItem>
+                        <SelectItem value="beginner">{t("calendar.beginner", "Beginner")}</SelectItem>
+                        <SelectItem value="intermediate">{t("calendar.intermediate", "Intermediate")}</SelectItem>
+                        <SelectItem value="advanced">{t("calendar.advanced", "Advanced")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
