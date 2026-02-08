@@ -799,6 +799,7 @@ export default function AcademyCalendar() {
             defaultWeeks={8}
             onSlotsCreated={() => fetchSlots()}
             availableLocations={locations}
+            availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
           />
 
           <DuplicateCyclusDialog

@@ -607,6 +607,7 @@ export type Database = {
           recurrence_rule: string | null
           start_time: string
           trainer_id: string
+          training_level: string | null
         }
         Insert: {
           academy_profile_id?: string | null
@@ -624,6 +625,7 @@ export type Database = {
           recurrence_rule?: string | null
           start_time: string
           trainer_id: string
+          training_level?: string | null
         }
         Update: {
           academy_profile_id?: string | null
@@ -641,6 +643,7 @@ export type Database = {
           recurrence_rule?: string | null
           start_time?: string
           trainer_id?: string
+          training_level?: string | null
         }
         Relationships: [
           {
