@@ -20,7 +20,8 @@ import {
   ArrowLeft, MapPin, Star, Clock, Award, Mail, Euro,
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
-  Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff
+  Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff,
+  Building2, TreePine
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
@@ -100,6 +101,8 @@ interface TrainerLocationData {
     name: string;
     city: string;
     slug: string;
+    indoor_courts: number | null;
+    outdoor_courts: number | null;
   };
   club?: {
     id: string;
@@ -279,7 +282,7 @@ export default function TrainerProfile() {
           id,
           is_primary,
           relationship_type,
-          location:locations(id, name, city, slug)
+          location:locations(id, name, city, slug, indoor_courts, outdoor_courts)
         `)
         .eq('trainer_id', trainerResult.data.id)
     ]);
@@ -669,26 +672,60 @@ export default function TrainerProfile() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {trainerLocations.map((loc) => (
-                      <div key={loc.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                        <div>
-                          <p className="font-medium">{loc.location.name}</p>
-                          <p className="text-sm text-muted-foreground">{loc.location.city}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
+                <div className="space-y-3">
+                    {trainerLocations.map((loc) => {
+                      const hasIndoor = loc.location.indoor_courts && loc.location.indoor_courts > 0;
+                      const hasOutdoor = loc.location.outdoor_courts && loc.location.outdoor_courts > 0;
+                      return (
+                        <div 
+                          key={loc.id} 
+                          className={`flex items-center justify-between p-3 bg-muted rounded-lg ${loc.club ? 'cursor-pointer hover:bg-muted/80 transition-colors' : ''}`}
+                          onClick={loc.club ? () => navigate(localizePath(`/locations/${loc.location.slug}`)) : undefined}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{loc.location.name}</p>
+                              {loc.club && (
+                                <Badge variant="outline" className="text-xs shrink-0">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Club
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">{loc.location.city}</p>
+                            {(hasIndoor || hasOutdoor) && (
+                              <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                                {hasIndoor && (
+                                  <span className="flex items-center gap-1" title={t('common:indoorCourts', 'Indoor courts')}>
+                                    <Building2 className="h-3 w-3" />
+                                    {loc.location.indoor_courts} {t('common:indoor', 'indoor')}
+                                  </span>
+                                )}
+                                {hasOutdoor && (
+                                  <span className="flex items-center gap-1" title={t('common:outdoorCourts', 'Outdoor courts')}>
+                                    <TreePine className="h-3 w-3" />
+                                    {loc.location.outdoor_courts} {t('common:outdoor', 'outdoor')}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           {loc.club && (
                             <Button 
-                              variant="outline" 
+                              variant="ghost" 
                               size="sm"
-                              onClick={() => navigate(localizePath(`/locations/${loc.location.slug}`))}
+                              className="shrink-0 text-primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(localizePath(`/locations/${loc.location.slug}`));
+                              }}
                             >
-                              {t('common:viewClub', 'View Club')}
+                              {t('common:viewClub', 'View Club')} →
                             </Button>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
