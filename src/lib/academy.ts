@@ -412,6 +412,24 @@ export async function recordAcademyProfileView(academyProfileId: string, session
   });
 }
 
+// Check if a trainer is part of a paid academy (subscription_status = 'active')
+export async function isTrainerInPaidAcademy(trainerProfileId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      academy_profile:academy_profiles!inner(subscription_status)
+    `)
+    .eq('trainer_profile_id', trainerProfileId)
+    .eq('status', 'active');
+
+  if (error) {
+    logger.error('Error checking trainer paid academy status', undefined, { error });
+    return false;
+  }
+
+  return (data || []).some((row: any) => row.academy_profile?.subscription_status === 'active');
+}
+
 // ===================== Location Contract Functions =====================
 
 export interface AcademyLocationWithDetails extends AcademyLocation {

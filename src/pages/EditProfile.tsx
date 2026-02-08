@@ -11,8 +11,10 @@ import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Video, Instagram, Youtube, Linkedin, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, User, Camera, Loader2, MapPin, Quote, Video, Instagram, Youtube, Linkedin, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
@@ -21,6 +23,9 @@ import { CertificationsPicker } from '@/components/trainer/CertificationsPicker'
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
 import { isValidVideoUrl, getVideoThumbnail } from '@/lib/videoEmbed';
+import { canBeVisible } from '@/lib/subscription';
+import { isTrainerInPaidAcademy } from '@/lib/academy';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 interface TrainerProfileData {
   hourly_rate: number | null;
@@ -41,11 +46,12 @@ interface TrainerProfileData {
 }
 
 export default function EditProfile() {
-  const { user, profile, role, loading, refreshAuth } = useAuth();
+  const { user, profile, role, loading, refreshAuth, subscription } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation('player');
-  
+  const { t: tTrainer } = useTranslation('trainer');
+  const getLocalizedPath = useLocalizedPathFn();
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -93,6 +99,12 @@ export default function EditProfile() {
   
   // Trainer location state
   const [trainerLocations, setTrainerLocations] = useState<TrainerLocationSelection[]>([]);
+
+  // Visibility toggle state
+  const [isPublic, setIsPublic] = useState(false);
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [updatingVisibility, setUpdatingVisibility] = useState(false);
+  const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
 
   // Fetch rating systems from database
   useEffect(() => {
@@ -188,11 +200,13 @@ export default function EditProfile() {
   const fetchTrainerProfile = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('hourly_rate, experience_years, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
+      .select('id, is_public, hourly_rate, experience_years, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system')
       .eq('user_id', user!.id)
       .single();
     
     if (data) {
+      setTrainerProfileId(data.id);
+      setIsPublic(data.is_public ?? false);
       setTrainerData({
         hourly_rate: data.hourly_rate,
         experience_years: data.experience_years,
@@ -210,6 +224,45 @@ export default function EditProfile() {
         preferred_max_rating: data.preferred_max_rating,
         preferred_rating_system: data.preferred_rating_system || 'knltb',
       });
+    }
+  };
+
+  const handleVisibilityToggle = async (checked: boolean) => {
+    if (checked) {
+      // Check if trainer can be visible
+      const canPublish = subscription ? canBeVisible(subscription) : false;
+      const inPaidAcademy = trainerProfileId ? await isTrainerInPaidAcademy(trainerProfileId) : false;
+      
+      if (!canPublish && !inPaidAcademy) {
+        setShowUpgradeDialog(true);
+        return;
+      }
+    }
+
+    setUpdatingVisibility(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ is_public: checked })
+        .eq('user_id', user!.id);
+
+      if (error) throw error;
+
+      setIsPublic(checked);
+      toast({
+        title: tTrainer('profileVisibility.updated'),
+        description: checked
+          ? tTrainer('profileVisibility.updatedPublic')
+          : tTrainer('profileVisibility.updatedHidden'),
+      });
+    } catch (error: any) {
+      toast({
+        title: tTrainer('profileVisibility.error'),
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingVisibility(false);
     }
   };
 
@@ -413,6 +466,36 @@ export default function EditProfile() {
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Visibility Toggle (trainers only) */}
+          {role === 'trainer' && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {isPublic ? (
+                      <Eye className="h-5 w-5 text-primary" />
+                    ) : (
+                      <EyeOff className="h-5 w-5 text-muted-foreground" />
+                    )}
+                    <div>
+                      <h3 className="font-semibold">{tTrainer('profileVisibility.title')}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {isPublic
+                          ? tTrainer('profileVisibility.statusPublic')
+                          : tTrainer('profileVisibility.statusHidden')}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={isPublic}
+                    onCheckedChange={handleVisibilityToggle}
+                    disabled={updatingVisibility}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Avatar Section */}
           <Card>
             <CardContent className="p-6">
@@ -976,6 +1059,29 @@ export default function EditProfile() {
           </Button>
         </form>
       </main>
+
+      {/* Upgrade Dialog */}
+      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tTrainer('profileVisibility.upgradeTitle')}</DialogTitle>
+            <DialogDescription>
+              {tTrainer('profileVisibility.upgradeBody')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-col">
+            <Button onClick={() => { setShowUpgradeDialog(false); navigate('/app/trainer/subscription'); }}>
+              {tTrainer('profileVisibility.upgradePrimary')}
+            </Button>
+            <Button variant="outline" onClick={() => { setShowUpgradeDialog(false); navigate(getLocalizedPath('/pricing')); }}>
+              {tTrainer('profileVisibility.upgradeSecondary')}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              {tTrainer('profileVisibility.upgradeSmall')}
+            </p>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
