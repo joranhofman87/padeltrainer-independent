@@ -14,7 +14,10 @@
     "noClubs": "Je hebt nog geen club geclaimd. Bezoek een locatiepagina om je club te claimen.",
     "claimClub": "Claim een Club",
     "browseLocations": "Bekijk Locaties",
-    "viewPublicProfile": "Bekijk Publiek Profiel"
+    "viewPublicProfile": "Bekijk Publiek Profiel",
+    "pendingTitle": "Aanvraag in Behandeling",
+    "pendingDescription": "Je aanvraag om {{clubName}} te beheren wordt beoordeeld door ons team. Je ontvangt een e-mail zodra het is goedgekeurd.",
+    "pendingNote": "Dit duurt meestal 1-2 werkdagen."
   },
   "stats": {
     "trainers": "Clubtrainers",

@@ -14,7 +14,10 @@
     "noClubs": "You haven't claimed any clubs yet. Visit a location page to claim your club.",
     "claimClub": "Claim a Club",
     "browseLocations": "Browse Locations",
-    "viewPublicProfile": "View Public Profile"
+    "viewPublicProfile": "View Public Profile",
+    "pendingTitle": "Claim Under Review",
+    "pendingDescription": "Your request to manage {{clubName}} is being reviewed by our team. You'll receive an email once approved.",
+    "pendingNote": "This usually takes 1-2 business days."
   },
   "stats": {
     "trainers": "Club Trainers",
