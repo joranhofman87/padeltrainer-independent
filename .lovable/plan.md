@@ -1,57 +1,98 @@
 
+## Allow Academy Owner to Click Calendar to Add Slots
 
-# General Terms Feature
+### Overview
+Currently, the academy calendar displays slots but empty cells are not interactive. The trainer calendar allows clicking empty time slots to open a dialog for creating new slots. We'll bring this same click-to-add functionality to the academy calendar.
 
-## Overview
-Add the ability for trainers and academies to manage their own "General Terms" (Algemene Voorwaarden). Players must accept these terms when booking a lesson or signing up for a cycle. If a trainer belongs to an academy, the academy's terms apply instead of the trainer's own.
+### Changes
 
-## What Changes
+**1. Add cell click handling to the academy calendar grid (AcademyCalendar.tsx)**
 
-### 1. Database
-- Add a `general_terms` text column to `trainer_profiles` (nullable, for trainers' own terms)
-- Add a `general_terms` text column to `academy_profiles` (nullable, for academy-wide terms)
+- Add `onCellClick` behavior to empty desktop grid cells: cursor pointer, hover state, and a "+" icon overlay (matching the trainer calendar pattern)
+- Add the same behavior for the mobile view (empty time slots become clickable)
+- Track `isPast` for each cell to prevent clicking on past time slots
 
-### 2. Trainer Settings -- New "General Terms" card
-- Add a new settings card on the Trainer Settings page (alongside Subscription, Profile, etc.) linking to a new page `/app/trainer/terms`
-- New page: `TrainerTerms.tsx` -- a simple form with a rich text editor (TipTap, already installed) to write/edit their general terms, with a save button
-- If the trainer is part of an academy, show a read-only notice that the academy's terms apply, with the academy terms displayed
+**2. Add slot creation dialog states**
 
-### 3. Academy Settings -- New "General Terms" section
-- Add a new card on `AcademySettings.tsx` with a TipTap rich text editor for the academy's general terms
+- Add state for `SlotTypeChoiceDialog` (single slot vs cyclus choice)
+- Add state for `AddSlotDialog` (single slot creation)
+- Add state for `BulkCreateSheet` (cyclus/recurring creation)
+- Track `defaultSlotDate` and `defaultSlotTime` from the clicked cell
 
-### 4. Booking Flow -- Accept Terms
-- On `BookLesson.tsx`: before the player can confirm a booking, fetch the applicable terms (academy terms if trainer is in academy, otherwise trainer terms). If terms exist, show them in a scrollable area with a checkbox "I accept the general terms". Block booking until accepted.
-- On `CycleApplicationForm.tsx`: same logic -- fetch the terms for the cycle owner (trainer or academy) and require acceptance alongside the existing consent checkbox.
+**3. Add trainer selection step**
 
-### 5. Terms Resolution Logic
-- New helper function `getApplicableTerms(trainerProfileId)` in a lib file that:
-  1. Checks if the trainer belongs to an academy (via `academy_trainers` table)
-  2. If yes, returns the academy's `general_terms`
-  3. If no, returns the trainer's own `general_terms`
-  4. Returns `null` if no terms are set
+Since the academy manages multiple trainers, when clicking an empty cell:
+- If a trainer filter is already selected (not "all"), use that trainer automatically
+- If "all trainers" is selected, the `AddSlotDialog` will require the academy owner to pick a trainer -- we'll pre-filter the lessons based on the selected trainer
 
-## Technical Details
+**4. Wire up the dialogs**
 
-### Database Migration
-```sql
-ALTER TABLE public.trainer_profiles ADD COLUMN general_terms text;
-ALTER TABLE public.academy_profiles ADD COLUMN general_terms text;
+Import and render:
+- `SlotTypeChoiceDialog` -- asks "Single slot or Cyclus?"
+- `AddSlotDialog` -- for creating individual slots (with trainer ID)
+- `BulkCreateSheet` -- for creating recurring slots
+
+After slot creation, call `fetchSlots()` to refresh the calendar.
+
+**5. Add header buttons**
+
+Add "Slot Toevoegen" (Add Slot) and "Cyclus Dupliceren" (Duplicate Cyclus) buttons to the header bar alongside the existing "Cyclus Aanmaken" button, matching the trainer calendar header.
+
+### Technical Details
+
+**File: `src/pages/academy/AcademyCalendar.tsx`**
+
+New state variables:
+```typescript
+const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
+const [addSlotOpen, setAddSlotOpen] = useState(false);
+const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
+const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
+const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
 ```
 
-No new RLS policies needed -- existing policies on these tables already allow owners to update their own profiles, and terms will be read publicly (same as other profile fields).
+Cell click handler:
+```typescript
+const handleCellClick = (day: Date, hour: number) => {
+  setDefaultSlotDate(day);
+  setDefaultSlotTime(`${String(hour).padStart(2, "0")}:00`);
+  // Use filtered trainer if one is selected, otherwise first trainer
+  const trainerToUse = selectedTrainerId !== "all" ? selectedTrainerId : null;
+  setSelectedSlotTrainerId(trainerToUse);
+  setSlotTypeChoiceOpen(true);
+};
+```
 
-### New Files
-- `src/pages/TrainerTerms.tsx` -- Terms editing page for trainers
-- `src/lib/terms.ts` -- Helper to resolve applicable terms for a trainer
+Desktop grid cell update -- add to empty, non-past cells:
+```typescript
+className={cn(
+  "border-l p-1 min-h-[48px] group relative",
+  isToday(day) && "bg-primary/5",
+  isPast && "bg-muted/20",
+  !isPast && slotsInCell.length === 0 && "cursor-pointer hover:bg-muted/50"
+)}
+onClick={() => {
+  if (!isPast && slotsInCell.length === 0) handleCellClick(day, hour);
+}}
+```
 
-### Modified Files
-- `src/pages/TrainerSettings.tsx` -- Add "General Terms" settings card
-- `src/pages/academy/AcademySettings.tsx` -- Add terms editor card
-- `src/pages/BookLesson.tsx` -- Add terms acceptance before booking
-- `src/components/cycles/CycleApplicationForm.tsx` -- Add terms acceptance
-- `src/components/DomainRouter.tsx` -- Add route for `/app/trainer/terms`
-- Translation files (en/nl) for trainer and academy namespaces
+Plus icon overlay on hover (matching trainer calendar):
+```tsx
+{!isPast && slotsInCell.length === 0 && (
+  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="bg-primary/10 rounded-md p-2">
+      <Plus className="h-4 w-4 text-primary" />
+    </div>
+  </div>
+)}
+```
 
-### Route
-- `/app/trainer/terms` -- nested under TrainerLayout
+New imports:
+```typescript
+import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
+import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
+import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+```
 
+Render dialogs at the bottom, passing the appropriate trainer ID and filtered lessons.
