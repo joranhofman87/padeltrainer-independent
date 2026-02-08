@@ -50,6 +50,10 @@ export interface CycleSettings {
   default_duration_minutes?: number;
   max_group_size?: number;
   min_group_size?: number;
+  assigned_trainer_id?: string;
+  min_skill_rating?: number;
+  max_skill_rating?: number;
+  rating_system?: string;
   applicable_trainer_ids?: string[];
   scoring_weights?: ScoringWeights;
   max_rating_spread?: number;
