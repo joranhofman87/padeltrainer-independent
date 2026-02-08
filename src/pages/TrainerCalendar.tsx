@@ -716,6 +716,7 @@ export default function TrainerCalendar() {
           open={showCreateCycleDialog}
           onOpenChange={setShowCreateCycleDialog}
           trainerHourlyRate={trainerHourlyRate}
+          formType="cyclus"
           onSuccess={() => {
             handleSlotsCreated();
           }}

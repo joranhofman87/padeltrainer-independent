@@ -1,5 +1,5 @@
 
-
+# ✅ IMPLEMENTED
 ## Separate Registrations from Cyclus (Calendar Slots)
 
 ### The Problem

@@ -1,0 +1,1 @@
+ALTER TABLE cycles ADD COLUMN type TEXT NOT NULL DEFAULT 'registration' CHECK (type IN ('registration', 'cyclus'));

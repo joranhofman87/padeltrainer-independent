@@ -140,14 +140,14 @@ export default function AcademyCycles() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <h1 className="text-2xl font-bold">{t('registration.openCycles', 'Registrations')}</h1>
           <p className="text-muted-foreground hidden sm:block">
-            {t('academyDescription')}
+            {t('noRegistrationsDescription', 'Create registrations to collect player interest')}
           </p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          {t('createCycle')}
+          {t('createRegistration', 'Create Registration')}
         </Button>
       </div>
 
@@ -157,13 +157,13 @@ export default function AcademyCycles() {
           <div className="mx-auto h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
             <CalendarDays className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="font-semibold mb-1 text-lg">{t('noCycles')}</h3>
+          <h3 className="font-semibold mb-1 text-lg">{t('noRegistrations', 'No registrations yet')}</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            {t('noCyclesDescription')}
+            {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
           </p>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            {t('createCycle')}
+            {t('createRegistration', 'Create Registration')}
           </Button>
         </div>
       ) : (
@@ -191,6 +191,7 @@ export default function AcademyCycles() {
           ownerType="academy"
           ownerId={activeAcademy.id}
           onSuccess={handleCycleCreated}
+          formType="registration"
           trainers={trainers}
           locations={locations}
           trainerLocationMap={trainerLocationMap}

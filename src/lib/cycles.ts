@@ -15,6 +15,7 @@ export interface Cycle {
   enrollment_deadline: string | null;
   settings: CycleSettings;
   status: 'draft' | 'open' | 'closed' | 'archived';
+  type: 'registration' | 'cyclus';
   location_id: string | null;
   price_per_session: number | null;
   total_price: number | null;
@@ -166,6 +167,7 @@ export interface CycleInput {
   enrollment_deadline?: string;
   settings?: CycleSettings;
   status?: 'draft' | 'open' | 'closed' | 'archived';
+  type?: 'registration' | 'cyclus';
   location_id?: string | null;
   price_per_session?: number | null;
   total_price?: number | null;
@@ -326,6 +328,7 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     enrollment_deadline: input.enrollment_deadline || null,
     settings: (input.settings || {}) as Json,
     status: input.status || 'draft',
+    type: input.type || 'registration',
     location_id: input.location_id || null,
     price_per_session: input.price_per_session ?? null,
     total_price: input.total_price ?? null,
@@ -391,7 +394,7 @@ export async function getIntakeRequests(cycleId: string): Promise<IntakeRequest[
 }
 
 export async function getIntakeRequestsByOwner(
-  ownerType: 'trainer' | 'club',
+  ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
   status?: string
 ): Promise<IntakeRequest[]> {
@@ -426,7 +429,7 @@ export async function getIntakeRequestsByOwner(
 
 // Fetch intake requests with their proposal details bundled
 export async function getIntakeRequestsWithProposals(
-  ownerType: 'trainer' | 'club',
+  ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string
 ): Promise<IntakeRequestWithProposal[]> {
   // First get all requests

@@ -11,10 +11,13 @@
     "checkBackLater": "Check back later for upcoming training cycles."
   },
   "createCycle": "Create Cycle",
+  "createRegistration": "Create Registration",
   "editCycle": "Edit Cycle",
   "deleteCycle": "Delete Cycle",
   "noCycles": "No training cycles yet",
   "noCyclesDescription": "Create your first training cycle to start accepting applications",
+  "noRegistrations": "No registrations yet",
+  "noRegistrationsDescription": "Create a registration to start collecting player interest",
   "academyDescription": "Create and manage registration cycles for your academy programs",
   
   "status": {
