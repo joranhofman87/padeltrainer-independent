@@ -8,6 +8,10 @@ let isInitialized = false;
 export function initializePostHog() {
   if (isInitialized) return;
 
+  const isProduction = !window.location.hostname.includes('lovable.app')
+    && !window.location.hostname.includes('localhost');
+  if (!isProduction) return;
+
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     persistence: 'memory',
