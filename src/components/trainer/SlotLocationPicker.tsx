@@ -19,11 +19,11 @@ import {
 } from "@/components/ui/command";
 import { supabase } from "@/lib/supabaseClient";
 
-interface Location {
+export interface SlotLocation {
   id: string;
   name: string;
   city: string;
-  country: string;
+  country?: string;
 }
 
 interface SlotLocationPickerProps {
@@ -32,6 +32,7 @@ interface SlotLocationPickerProps {
   trainerId: string | null;
   disabled?: boolean;
   compact?: boolean;
+  availableLocations?: SlotLocation[];
 }
 
 export function SlotLocationPicker({
@@ -40,18 +41,27 @@ export function SlotLocationPicker({
   trainerId,
   disabled = false,
   compact = false,
+  availableLocations,
 }: SlotLocationPickerProps) {
   const { t } = useTranslation("trainer");
   const [open, setOpen] = useState(false);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<SlotLocation[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // If availableLocations are provided externally, use those instead of fetching
+    if (availableLocations) {
+      setLocations(availableLocations);
+      if (!value && availableLocations.length === 1) {
+        onChange(availableLocations[0].id);
+      }
+      return;
+    }
+
     const fetchLocations = async () => {
       if (!trainerId) return;
       setLoading(true);
       try {
-        // Fetch trainer_locations with locations data directly using trainer_id
         const { data: trainerLocations, error } = await supabase
           .from("trainer_locations")
           .select(`
@@ -70,10 +80,9 @@ export function SlotLocationPicker({
         if (!error && trainerLocations) {
           const locs = trainerLocations
             .map((tl: any) => tl.locations)
-            .filter(Boolean) as Location[];
+            .filter(Boolean) as SlotLocation[];
           setLocations(locs);
           
-          // Auto-select first location if no value set and only one exists
           if (!value && locs.length === 1) {
             onChange(locs[0].id);
           }
@@ -86,7 +95,7 @@ export function SlotLocationPicker({
     };
 
     fetchLocations();
-  }, [trainerId]);
+  }, [trainerId, availableLocations]);
 
   const selectedLocation = useMemo(() => {
     return locations.find((l) => l.id === value) || null;

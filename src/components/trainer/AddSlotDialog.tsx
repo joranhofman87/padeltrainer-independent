@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
-import { SlotLocationPicker } from "./SlotLocationPicker";
+import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -76,6 +76,7 @@ interface AddSlotDialogProps {
   defaultDuration: number;
   defaultWeeks: number;
   onSlotsCreated: () => void;
+  availableLocations?: SlotLocation[];
 }
 
 export function AddSlotDialog({
@@ -88,6 +89,7 @@ export function AddSlotDialog({
   defaultDuration,
   defaultWeeks,
   onSlotsCreated,
+  availableLocations,
 }: AddSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -265,6 +267,7 @@ export function AddSlotDialog({
               value={slotLocationId}
               onChange={setSlotLocationId}
               trainerId={trainerId}
+              availableLocations={availableLocations}
             />
           </div>
 
@@ -338,6 +341,7 @@ interface BulkCreateSheetProps {
   defaultDuration: number;
   defaultWeeks: number;
   onSlotsCreated: () => void;
+  availableLocations?: SlotLocation[];
 }
 
 export function BulkCreateSheet({
@@ -350,6 +354,7 @@ export function BulkCreateSheet({
   defaultDuration,
   defaultWeeks,
   onSlotsCreated,
+  availableLocations,
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
@@ -864,6 +869,7 @@ export function BulkCreateSheet({
                       value={slot.locationId}
                       onChange={(locationId) => updateBulkSlot(index, { locationId })}
                       trainerId={trainerId}
+                      availableLocations={availableLocations}
                       compact
                     />
                   </div>
