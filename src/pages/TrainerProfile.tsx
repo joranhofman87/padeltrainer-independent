@@ -80,17 +80,7 @@ interface ProfileData {
   location: string | null;
 }
 
-interface LessonData {
-  id: string;
-  title: string;
-  description: string | null;
-  price: number;
-  duration_minutes: number;
-  location: string | null;
-  min_skill_rating: number | null;
-  max_skill_rating: number | null;
-  is_active: boolean;
-}
+// LessonData removed - lessons table no longer exists
 
 interface TrainerLocationData {
   id: string;
@@ -116,7 +106,7 @@ export default function TrainerProfile() {
   const { t } = useTranslation(['trainer', 'common']);
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [lessons, setLessons] = useState<LessonData[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
   const [trainerLocations, setTrainerLocations] = useState<TrainerLocationData[]>([]);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -268,14 +258,8 @@ export default function TrainerProfile() {
     
     setTrainer(trainerResult.data);
     
-    const [ratingRes, lessonsResult, locationsResult] = await Promise.all([
+    const [ratingRes, locationsResult] = await Promise.all([
       getTrainerAverageRating(trainerResult.data.id),
-      supabase
-        .from('lessons')
-        .select('id, title, description, price, duration_minutes, location, min_skill_rating, max_skill_rating, is_active')
-        .eq('trainer_id', trainerResult.data.id)
-        .eq('is_active', true)
-        .order('title'),
       supabase
         .from('trainer_locations')
         .select(`
@@ -289,10 +273,6 @@ export default function TrainerProfile() {
 
     setAverageRating(ratingRes.average);
     setReviewCount(ratingRes.count);
-    
-    if (lessonsResult.data) {
-      setLessons(lessonsResult.data);
-    }
     
     if (locationsResult.data) {
       const locationIds = locationsResult.data
@@ -729,68 +709,21 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Available Lessons */}
+            {/* Book a Lesson CTA */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  {t('common:availableLessons', 'Available Lessons')}
-                </CardTitle>
-                <CardDescription>
-                  {t('common:lessonTypesOffered', 'Lesson types offered by this trainer')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {lessons.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>{t('common:noLessonsAvailable', 'No lessons available yet')}</p>
-                    <p className="text-sm">{t('common:checkBackSoon', 'Check back soon for available training sessions')}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {lessons.map((lesson) => (
-                      <div key={lesson.id} className="p-4 border rounded-lg hover:border-primary/50 transition-colors">
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-semibold">{lesson.title}</h4>
-                          <Badge variant="secondary" className="text-primary font-semibold">
-                            €{lesson.price}
-                          </Badge>
-                        </div>
-                        {lesson.description && (
-                          <p className="text-sm text-muted-foreground mb-2">{lesson.description}</p>
-                        )}
-                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {lesson.duration_minutes} min
-                          </span>
-                          {lesson.location && (
-                            <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {lesson.location}
-                            </span>
-                          )}
-                          {(lesson.min_skill_rating || lesson.max_skill_rating) && (
-                            <span className="flex items-center gap-1">
-                              <Star className="h-3 w-3" />
-                              Level: {lesson.min_skill_rating || '0'} - {lesson.max_skill_rating || '∞'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {lessons.length > 0 && (
-                  <Button 
-                    className="w-full mt-4" 
-                    onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    {t('common:bookALesson', 'Book a Lesson')}
-                  </Button>
-                )}
+              <CardContent className="p-6 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-3 text-primary opacity-70" />
+                <h3 className="font-semibold mb-2">{t('common:bookALesson', 'Book a Lesson')}</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {t('common:checkAvailableSlots', 'Check available training slots and book your session')}
+                </p>
+                <Button 
+                  className="w-full" 
+                  onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {t('common:bookALesson', 'Book a Lesson')}
+                </Button>
               </CardContent>
             </Card>
 

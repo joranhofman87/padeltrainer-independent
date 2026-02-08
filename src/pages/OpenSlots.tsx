@@ -19,12 +19,11 @@ import { logger } from '@/lib/logger';
 interface CyclusGroup {
   cyclus_id: string;
   cyclus_name: string;
-  lesson_title: string | null;
   open_slots: number;
   total_slots: number;
   slots: SlotData[];
-  is_public: boolean; // derived: all slots public?
-  day_time: string; // e.g. "Wednesday 18:00"
+  is_public: boolean;
+  day_time: string;
   first_date: string;
   last_date: string;
 }
@@ -33,13 +32,10 @@ interface SlotData {
   id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
-  lesson_title: string | null;
   max_participants: number;
   booked_count: number;
   available_spots: number;
   cyclus_id: string | null;
-  booking_mode: string;
   is_public: boolean;
   location_name: string | null;
 }
@@ -87,14 +83,13 @@ export default function OpenSlots() {
           id,
           start_time,
           end_time,
-          lesson_id,
+          max_participants,
           cyclus_id,
           cyclus_name,
           is_marked_full,
           is_public,
           location_id,
-          locations:location_id(name),
-          lessons(id, title, max_participants, booking_mode)
+          locations:location_id(name)
         `)
         .eq('trainer_id', tId)
         .eq('is_marked_full', false)
@@ -116,19 +111,16 @@ export default function OpenSlots() {
       });
 
       const processedSlots: SlotData[] = (slots || []).map(slot => {
-        const maxParticipants = slot.lessons?.max_participants || 4;
+        const maxParticipants = slot.max_participants || 4;
         const bookedCount = bookingCounts[slot.id] || 0;
         return {
           id: slot.id,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          lesson_id: slot.lesson_id,
-          lesson_title: slot.lessons?.title || null,
           max_participants: maxParticipants,
           booked_count: bookedCount,
           available_spots: maxParticipants - bookedCount,
           cyclus_id: slot.cyclus_id,
-          booking_mode: (slot.lessons as any)?.booking_mode || 'full_slot',
           is_public: slot.is_public ?? true,
           location_name: (slot.locations as any)?.name || null,
         };
@@ -155,8 +147,7 @@ export default function OpenSlots() {
           } else {
             cyclusMap.set(slot.cyclus_id, {
               cyclus_id: slot.cyclus_id,
-              cyclus_name: slotInfo?.cyclus_name || `Cyclus ${slot.cyclus_id.slice(0, 8)}`,
-              lesson_title: slot.lesson_title,
+              cyclus_name: (slots?.find(s => s.id === slot.id) as any)?.cyclus_name || `Cyclus ${slot.cyclus_id.slice(0, 8)}`,
               open_slots: 1,
               total_slots: 1,
               slots: [slot],
@@ -401,9 +392,7 @@ export default function OpenSlots() {
                                       )}
                                     </div>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                                      {cyclus.lesson_title && (
-                                        <p className="text-sm text-muted-foreground">{cyclus.lesson_title}</p>
-                                      )}
+                                      <p className="text-sm text-muted-foreground capitalize">{cyclus.day_time}</p>
                                       <p className="text-sm text-muted-foreground capitalize">{cyclus.day_time}</p>
                                       <p className="text-sm text-muted-foreground">
                                         {format(new Date(cyclus.first_date), 'd MMM', { locale: dateLocale })} – {format(new Date(cyclus.last_date), 'd MMM', { locale: dateLocale })}
@@ -489,9 +478,6 @@ export default function OpenSlots() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex-1 min-w-0">
                             <p className="font-medium">{formatSlotTimeRange(slot.start_time, slot.end_time)}</p>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {slot.lesson_title || t('openSlots.noLesson', 'No lesson linked')}
-                            </p>
                             {slot.location_name && (
                               <p className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                                 <MapPin className="h-3 w-3 shrink-0" />
@@ -511,11 +497,6 @@ export default function OpenSlots() {
                                 ? t('openSlots.spotOpen', 'spot')
                                 : t('openSlots.spotsOpen', 'spots')}
                             </Badge>
-                            {slot.booking_mode !== 'full_slot' && slot.max_participants > 1 && (
-                              <Badge variant="outline" className="text-xs">
-                                {slot.booking_mode === 'individual' ? 'Individual' : 'Flexible'}
-                              </Badge>
-                            )}
                             {!slot.is_public && (
                               <Badge variant="outline" className="text-xs">
                                 <EyeOff className="h-3 w-3 mr-1" />
@@ -553,15 +534,10 @@ export default function OpenSlots() {
             id: selectedSlot.id,
             start_time: selectedSlot.start_time,
             end_time: selectedSlot.end_time,
-            lesson_id: selectedSlot.lesson_id,
+            lesson_id: null,
             cyclus_id: selectedSlot.cyclus_id,
           }}
-          lesson={selectedSlot.lesson_title ? {
-            id: selectedSlot.lesson_id || '',
-            title: selectedSlot.lesson_title,
-            price: 0,
-            location: null,
-          } : null}
+          lesson={null}
           onBookingCreated={handleBookingCreated}
         />
       )}

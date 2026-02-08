@@ -70,11 +70,7 @@ interface Location {
   city: string;
 }
 
-interface Lesson {
-  id: string;
-  title: string;
-  trainer_id: string;
-}
+// Lesson interface removed - lessons table no longer exists
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 8); // 08:00 to 21:00
 
@@ -91,7 +87,7 @@ export default function AcademyCalendar() {
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [lessons, setLessons] = useState<any[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
@@ -158,17 +154,8 @@ export default function AcademyCalendar() {
       }));
       setLocations(locationList);
       
-      // Load lessons for all trainers
-      if (trainerList.length > 0) {
-        const trainerIds = trainerList.map(t => t.id);
-        const { data: lessonsData } = await supabase
-          .from("lessons")
-          .select("id, title, trainer_id")
-          .in("trainer_id", trainerIds)
-          .eq("is_active", true);
-        
-        setLessons(lessonsData || []);
-      }
+      // Lessons table removed
+      setLessons([]);
     } catch (error) {
       logger.error("Error loading academy data", error as Error, { component: "AcademyCalendar", academyId: activeAcademy?.id });
     }
@@ -202,10 +189,9 @@ export default function AcademyCalendar() {
           trainer_id,
           start_time,
           end_time,
-          lesson_id,
+          max_participants,
           is_marked_full,
           location_id,
-          lessons(title, max_participants),
           locations(name)
         `)
         .in("trainer_id", trainerIds)
@@ -263,10 +249,10 @@ export default function AcademyCalendar() {
           trainer_id: slot.trainer_id,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          lesson_id: slot.lesson_id,
+          lesson_id: null,
           is_marked_full: slot.is_marked_full,
           location_id: slot.location_id,
-          lessons: slot.lessons,
+          lessons: null,
           trainer_name: profile?.full_name || "Unknown",
           trainer_avatar: profile?.avatar_url || null,
           location_name: slot.locations?.name || null,
