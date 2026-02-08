@@ -8,12 +8,17 @@ import {
   addWeeks,
   subWeeks,
   addDays,
+  subDays,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
   isToday,
   isBefore,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar, Plus, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +78,7 @@ export default function AcademyCalendar() {
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   
+  const [view, setView] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [slots, setSlots] = useState<AcademySlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -312,8 +318,16 @@ export default function AcademyCalendar() {
     }
   }, [currentDate]);
 
-  const navigatePrevious = () => setCurrentDate(subWeeks(currentDate, 1));
-  const navigateNext = () => setCurrentDate(addWeeks(currentDate, 1));
+  const navigatePrevious = () => {
+    if (view === "day") setCurrentDate(subDays(currentDate, 1));
+    else if (view === "week") setCurrentDate(subWeeks(currentDate, 1));
+    else setCurrentDate(subMonths(currentDate, 1));
+  };
+  const navigateNext = () => {
+    if (view === "day") setCurrentDate(addDays(currentDate, 1));
+    else if (view === "week") setCurrentDate(addWeeks(currentDate, 1));
+    else setCurrentDate(addMonths(currentDate, 1));
+  };
   const goToToday = () => {
     setCurrentDate(new Date());
     setMobileSelectedDay(new Date());
@@ -342,10 +356,25 @@ export default function AcademyCalendar() {
   };
 
   const getDateRangeLabel = () => {
-    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-    const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-    return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    if (view === "day") return format(currentDate, "EEEE, MMMM d, yyyy");
+    if (view === "week") {
+      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+      const end = endOfWeek(currentDate, { weekStartsOn: 1 });
+      return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    }
+    return format(currentDate, "MMMM yyyy");
   };
+
+  // Stats
+  const freeSlots = slots.filter(
+    (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings === 0 && s.pending_bookings === 0
+  ).length;
+  const bookedSlots = slots.filter(
+    (s) => !isBefore(new Date(s.start_time), new Date()) && s.active_bookings > 0
+  ).length;
+  const pendingSlots = slots.filter(
+    (s) => !isBefore(new Date(s.start_time), new Date()) && s.pending_bookings > 0 && s.active_bookings === 0
+  ).length;
 
   const getSlotColor = (slot: AcademySlot) => {
     const now = new Date();
@@ -367,61 +396,91 @@ export default function AcademyCalendar() {
 
   if (loading && slots.length === 0) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="min-h-screen bg-background p-4">
         <Skeleton className="h-8 w-48 mb-4" />
-        <Skeleton className="h-[500px] w-full" />
+        <Skeleton className="h-[600px] w-full" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex flex-col gap-4">
-            {/* Top row: Navigation + Action buttons */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              {/* Navigation controls */}
-              <div className="flex items-center gap-2">
-                {/* Mobile: Day navigation */}
-                <div className="flex items-center gap-1 sm:hidden">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-xs px-2" onClick={goToToday}>
-                    {t("calendar.today", "Today")}
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                {/* Desktop: Week navigation */}
-                <div className="hidden sm:flex items-center gap-2">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigatePrevious}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={goToToday}>
-                    {t("calendar.today", "Today")}
-                  </Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={navigateNext}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="text-sm font-medium hidden sm:block ml-4">{getDateRangeLabel()}</div>
-              </div>
-              
-              {/* Action button */}
-              <Button 
-                onClick={() => setShowCreateCycleDialog(true)}
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {t("calendar.addCycle", "Add Cycle")}
-              </Button>
+    <>
+      {/* Sub-page Header */}
+      <div className="border-b bg-background/60">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/app/academy")}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold">{t("calendar.title", "Agenda")}</h1>
             </div>
-            
-            {/* Filters row */}
-            <div className="flex items-center gap-2 flex-wrap">
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setShowCreateCycleDialog(true)}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("calendar.addCycle", "Cyclus Aanmaken")}</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Controls */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+              {/* Date Navigation */}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={navigatePrevious}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="min-w-[120px] sm:min-w-[200px] text-center font-medium text-sm sm:text-base">
+                  {getDateRangeLabel()}
+                </div>
+                <Button variant="outline" size="icon" onClick={navigateNext}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" onClick={goToToday}>
+                  {t("calendar.today", "Today")}
+                </Button>
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={view === "day" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setView("day")}
+                >
+                  <Calendar className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.dayView", "Day")}</span>
+                </Button>
+                <Button
+                  variant={view === "week" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setView("week")}
+                >
+                  <CalendarDays className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.weekView", "Week")}</span>
+                </Button>
+                <Button
+                  variant={view === "month" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setView("month")}
+                >
+                  <LayoutGrid className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("calendar.monthView", "Month")}</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t">
               <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                 <SelectTrigger className="w-[160px] h-8">
                   <SelectValue placeholder={t("calendar.allLocations", "All Locations")} />
@@ -450,174 +509,208 @@ export default function AcademyCalendar() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <p className="text-xs text-muted-foreground sm:hidden mt-2">{format(mobileSelectedDay, "EEEE, MMMM d")}</p>
-        </CardHeader>
-        <CardContent className="p-0">
-          {/* Mobile View */}
-          <div className="block sm:hidden p-3 space-y-3">
-            {mobileDaySlots.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Calendar className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                <p>{t("calendar.noSlots", "No slots scheduled")}</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {mobileDaySlots.map((slot) => (
-                  <div
-                    key={slot.id}
-                    className={cn(
-                      "p-3 rounded-lg border",
-                      getSlotColor(slot)
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={slot.trainer_avatar || undefined} />
-                        <AvatarFallback className="text-xs">
-                          {getInitials(slot.trainer_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">
-                            {format(new Date(slot.start_time), "HH:mm")} - {format(new Date(slot.end_time), "HH:mm")}
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            {slot.active_bookings}/{slot.lessons?.max_participants || 4}
-                          </Badge>
-                        </div>
-                        <div className="text-sm truncate">{slot.trainer_name}</div>
-                        {slot.location_name && (
-                          <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {slot.location_name}
-                          </div>
-                        )}
-                        {slot.lessons?.title && (
-                          <div className="text-xs text-muted-foreground truncate">
-                            {slot.lessons.title}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {/* Desktop View */}
-          <div className="hidden sm:block overflow-x-auto">
-            <div className="min-w-[800px]">
-              {/* Header */}
-              <div className="grid grid-cols-8 border-b border-t bg-muted/30">
-                <div className="p-2 text-xs font-medium text-muted-foreground" />
-                {weekDays.map((day) => (
-                  <div
-                    key={day.toISOString()}
-                    className={cn(
-                      "p-2 text-center border-l",
-                      isToday(day) && "bg-primary/10"
-                    )}
-                  >
-                    <div className="text-xs text-muted-foreground uppercase">
-                      {format(day, "EEE")}
-                    </div>
+            {/* Quick Stats */}
+            <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-muted border border-border" />
+                <span className="text-sm">
+                  {t("calendar.available", "Available")}: {freeSlots}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-orange-100 dark:bg-orange-900/30 border border-orange-300 dark:border-orange-700" />
+                <span className="text-sm">
+                  {t("calendar.pending", "Pending")}: {pendingSlots}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700" />
+                <span className="text-sm">
+                  {t("calendar.booked", "Booked")}: {bookedSlots}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Calendar Grid */}
+        <Card>
+          <CardContent className="p-0 sm:p-4">
+            {/* Mobile View */}
+            <div className="block sm:hidden p-3 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigatePreviousDay}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium">{format(mobileSelectedDay, "EEEE, MMMM d")}</span>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={navigateNextDay}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              {mobileDaySlots.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p>{t("calendar.noSlots", "No slots scheduled")}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {mobileDaySlots.map((slot) => (
                     <div
+                      key={slot.id}
                       className={cn(
-                        "text-lg font-semibold",
-                        isToday(day) && "text-primary"
+                        "p-3 rounded-lg border",
+                        getSlotColor(slot)
                       )}
                     >
-                      {format(day, "d")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Time Grid */}
-              <div className="relative">
-                {HOURS.map((hour) => (
-                  <div key={hour} className="grid grid-cols-8 border-b min-h-[48px]">
-                    <div className="p-1 text-xs text-muted-foreground text-right pr-2 pt-1">
-                      {String(hour).padStart(2, "0")}:00
-                    </div>
-                    {weekDays.map((day) => {
-                      const dayKey = format(day, "yyyy-MM-dd");
-                      const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
-                      const isPast = isBefore(
-                        new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
-                        new Date()
-                      );
-
-                      return (
-                        <div
-                          key={`${dayKey}-${hour}`}
-                          className={cn(
-                            "border-l p-1 min-h-[48px]",
-                            isToday(day) && "bg-primary/5",
-                            isPast && "bg-muted/20"
-                          )}
-                        >
-                          {slotsInCell.map((slot) => (
-                            <div
-                              key={slot.id}
-                              className={cn(
-                                "text-xs p-1.5 rounded border mb-1",
-                                getSlotColor(slot)
-                              )}
-                              title={`${slot.trainer_name} - ${slot.lessons?.title || "Open Slot"}${slot.location_name ? ` @ ${slot.location_name}` : ""}`}
-                            >
-                              <div className="flex items-center gap-1 mb-0.5">
-                                <span className="font-medium">
-                                  {format(new Date(slot.start_time), "HH:mm")}
-                                </span>
-                                <span className="opacity-70">
-                                  {slot.active_bookings}/{slot.lessons?.max_participants || 4}
-                                </span>
-                              </div>
-                              <div className="truncate text-[10px] opacity-80">
-                                {slot.trainer_name}
-                              </div>
-                              {slot.location_name && (
-                                <div className="truncate text-[10px] opacity-60 flex items-center gap-0.5">
-                                  <MapPin className="h-2.5 w-2.5" />
-                                  {slot.location_name}
-                                </div>
-                              )}
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={slot.trainer_avatar || undefined} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(slot.trainer_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {format(new Date(slot.start_time), "HH:mm")} - {format(new Date(slot.end_time), "HH:mm")}
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {slot.active_bookings}/{slot.lessons?.max_participants || 4}
+                            </Badge>
+                          </div>
+                          <div className="text-sm truncate">{slot.trainer_name}</div>
+                          {slot.location_name && (
+                            <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {slot.location_name}
                             </div>
-                          ))}
+                          )}
+                          {slot.lessons?.title && (
+                            <div className="text-xs text-muted-foreground truncate">
+                              {slot.lessons.title}
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              {/* Legend */}
-              <div className="flex items-center gap-4 p-3 border-t bg-muted/20 text-xs">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-green-200 border border-green-300" />
-                  <span>{t("calendar.open", "Open")}</span>
+            {/* Desktop View */}
+            <div className="hidden sm:block overflow-x-auto">
+              <div className="min-w-[800px]">
+                {/* Header */}
+                <div className="grid grid-cols-8 border-b border-t bg-muted/30">
+                  <div className="p-2 text-xs font-medium text-muted-foreground" />
+                  {weekDays.map((day) => (
+                    <div
+                      key={day.toISOString()}
+                      className={cn(
+                        "p-2 text-center border-l",
+                        isToday(day) && "bg-primary/10"
+                      )}
+                    >
+                      <div className="text-xs text-muted-foreground uppercase">
+                        {format(day, "EEE")}
+                      </div>
+                      <div
+                        className={cn(
+                          "text-lg font-semibold",
+                          isToday(day) && "text-primary"
+                        )}
+                      >
+                        {format(day, "d")}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-orange-200 border border-orange-300" />
-                  <span>{t("calendar.partial", "Partial")}</span>
+
+                {/* Time Grid */}
+                <div className="relative">
+                  {HOURS.map((hour) => (
+                    <div key={hour} className="grid grid-cols-8 border-b min-h-[48px]">
+                      <div className="p-1 text-xs text-muted-foreground text-right pr-2 pt-1">
+                        {String(hour).padStart(2, "0")}:00
+                      </div>
+                      {weekDays.map((day) => {
+                        const dayKey = format(day, "yyyy-MM-dd");
+                        const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
+                        const isPast = isBefore(
+                          new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
+                          new Date()
+                        );
+
+                        return (
+                          <div
+                            key={`${dayKey}-${hour}`}
+                            className={cn(
+                              "border-l p-1 min-h-[48px]",
+                              isToday(day) && "bg-primary/5",
+                              isPast && "bg-muted/20"
+                            )}
+                          >
+                            {slotsInCell.map((slot) => (
+                              <div
+                                key={slot.id}
+                                className={cn(
+                                  "text-xs p-1.5 rounded border mb-1",
+                                  getSlotColor(slot)
+                                )}
+                                title={`${slot.trainer_name} - ${slot.lessons?.title || "Open Slot"}${slot.location_name ? ` @ ${slot.location_name}` : ""}`}
+                              >
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <span className="font-medium">
+                                    {format(new Date(slot.start_time), "HH:mm")}
+                                  </span>
+                                  <span className="opacity-70">
+                                    {slot.active_bookings}/{slot.lessons?.max_participants || 4}
+                                  </span>
+                                </div>
+                                <div className="truncate text-[10px] opacity-80">
+                                  {slot.trainer_name}
+                                </div>
+                                {slot.location_name && (
+                                  <div className="truncate text-[10px] opacity-60 flex items-center gap-0.5">
+                                    <MapPin className="h-2.5 w-2.5" />
+                                    {slot.location_name}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-blue-200 border border-blue-300" />
-                  <span>{t("calendar.full", "Full")}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-purple-200 border border-purple-300" />
-                  <span>{t("calendar.private", "Private")}</span>
+
+                {/* Legend */}
+                <div className="flex items-center gap-4 p-3 border-t bg-muted/20 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-green-200 dark:bg-green-900/30 border border-green-300 dark:border-green-700" />
+                    <span>{t("calendar.open", "Open")}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-orange-200 dark:bg-orange-900/30 border border-orange-300 dark:border-orange-700" />
+                    <span>{t("calendar.partial", "Partial")}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-blue-200 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700" />
+                    <span>{t("calendar.full", "Full")}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-purple-200 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700" />
+                    <span>{t("calendar.private", "Private")}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </main>
       
       {/* Create Cycle Dialog */}
       {activeAcademy && (
@@ -627,11 +720,12 @@ export default function AcademyCalendar() {
           ownerType="academy"
           ownerId={activeAcademy.id}
           trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
+          locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
           onSuccess={() => {
             setShowCreateCycleDialog(false);
           }}
         />
       )}
-    </div>
+    </>
   );
 }
