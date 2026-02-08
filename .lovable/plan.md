@@ -1,39 +1,59 @@
 
-## Fix: Show Academy Trainers on Public Location Page
+## Add Minimum Group Size to Cycles
 
-### Problem
-Trainers assigned to a location by an academy (with `relationship_type = 'academy_trainer'`) have `show_on_club_page` defaulting to `false`. The public location page query in `getTrainersAtLocation()` filters by `show_on_club_page = true`, so these trainers never appear.
+### What this does
+Adds a "minimum players" setting when creating a cycle (cyclus), so academy owners can enforce rules like "evening sessions require exactly 4 players." When a player books a session from that cycle, the booking flow will enforce that they book at least the minimum number of spots -- they cannot book fewer players than required.
 
-### Solution
+### Changes
 
-**1. Update `getTrainersAtLocation()` in `src/lib/locations.ts`**
+**1. Add `min_group_size` field to the Cycle Form**
 
-Change the query filter so that trainers are shown if:
-- `show_on_club_page` is `true` (club-managed trainers, existing behavior), **OR**
-- `relationship_type` is `'academy_trainer'` (academy-assigned trainers should always be visible)
+In the cycle creation/edit form (`CycleForm.tsx`), add a new number input for "Minimum group size" right next to the existing "Maximum group size" field. This gets stored in `cycle.settings.min_group_size`.
 
-This uses Supabase's `.or()` filter:
-```typescript
-.or('show_on_club_page.eq.true,relationship_type.eq.academy_trainer')
-```
+- Default value: 1 (no minimum enforced)
+- Validation: must be between 1 and the max_group_size value
+- Side-by-side layout with the existing max field
 
-**2. Set existing academy trainer records to visible**
+**2. Update the `CycleSettings` type**
 
-Run a migration to set `show_on_club_page = true` for all existing `academy_trainer` records, so the behavior is consistent going forward:
-```sql
-UPDATE trainer_locations
-SET show_on_club_page = true
-WHERE relationship_type = 'academy_trainer';
-```
+Add `min_group_size?: number` to the `CycleSettings` interface in `src/lib/cycles.ts`.
 
-**3. Update academy trainer creation to default `show_on_club_page` to `true`**
+**3. Enforce minimum on the Booking Page**
 
-Check where academy trainers are inserted into `trainer_locations` (likely in `src/lib/academy.ts` or the `create-academy-trainer` edge function) and ensure `show_on_club_page` defaults to `true` for `academy_trainer` relationship types.
+On the booking page (`BookLesson.tsx`), when a player selects a slot that belongs to a cycle with `min_group_size` set:
+
+- In "flexible" booking mode: the quantity picker's minimum becomes `min_group_size` instead of 1
+- In "individual" booking mode: if `min_group_size > 1`, show a message explaining the slot requires booking multiple spots
+- In "full_slot" mode: no change needed (already books all spots)
+- Display a clear message like "This session requires a minimum of 4 players"
+
+**4. Pass cycle settings through to slots**
+
+The cycle's `min_group_size` needs to be accessible when viewing a slot. The slot already has a `cyclus_id` reference. We'll fetch the cycle settings when displaying booking details for cycle-linked slots, or store the min_group_size on the slot/lesson level.
 
 ### Technical Details
 
-- **File**: `src/lib/locations.ts` -- update `getTrainersAtLocation()` filter (line ~159)
-- **Migration**: update existing rows and optionally add a default trigger
-- **Edge function / lib**: update academy trainer insertion to set `show_on_club_page = true`
+**File: `src/lib/cycles.ts`**
+- Add `min_group_size?: number` to `CycleSettings` interface (line ~51)
 
-This is a minimal, targeted fix that preserves the existing club trainer visibility toggle while ensuring academy-assigned trainers are visible by default.
+**File: `src/components/cycles/CycleForm.tsx`**
+- Add `min_group_size` to the form schema (default 1, min 1)
+- Add form field next to the existing `max_group_size` field in a grid layout
+- Include in the `settings` object on submit
+- Add validation: `min_group_size` must be less than or equal to `max_group_size`
+
+**File: `src/pages/BookLesson.tsx`**
+- When loading slots, also fetch cycle settings for slots with `cyclus_id`
+- In the quantity picker section, use `min_group_size` as the lower bound instead of hardcoded 1
+- Show informational message when minimum is enforced: "This session requires at least X players"
+- Disable the "Confirm Booking" button if quantity is below the minimum
+
+**File: `src/i18n/locales/en/cycles.json` and `nl/cycles.json`**
+- Add translation keys: `form.minGroupSize`, `form.minGroupSizeHelp`
+
+### Example User Flow
+
+1. Academy owner creates a cycle, sets min group size = 4, max group size = 4
+2. Player opens a session from that cycle to book
+3. The quantity picker starts at 4 (minimum) and maxes at 4 -- effectively "exactly 4 players"
+4. Player must provide details for all 4 players before confirming
