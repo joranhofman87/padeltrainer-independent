@@ -10,8 +10,8 @@ export function usePageTracking() {
     trackPostHogPageView(path);
 
     // Also fire GA pageview if available
-    if (window.gtag) {
-      window.gtag('event', 'page_view', {
+    if ((window as any).gtag) {
+      (window as any).gtag('event', 'page_view', {
         page_path: path,
       });
     }

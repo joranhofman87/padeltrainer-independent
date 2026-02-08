@@ -81,7 +81,7 @@ export default function Auth() {
   const hasCheckedRoles = useRef(false);
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !isProcessingMagicLink) {
       const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
       
       if (role) {
