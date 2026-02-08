@@ -334,6 +334,7 @@ export function EditAcademyTrainerDialog({
             trainer_id: trainerId,
             location_id: locationId,
             relationship_type: 'academy_trainer',
+            show_on_club_page: true,
           }))
         );
       }
