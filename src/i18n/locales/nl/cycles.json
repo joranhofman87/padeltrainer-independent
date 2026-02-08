@@ -31,6 +31,8 @@
     "descriptionPlaceholder": "Beschrijf deze trainingscyclus...",
     "startDate": "Startdatum",
     "endDate": "Einddatum",
+    "numberOfWeeks": "Aantal weken",
+    "endsOn": "Eindigt op {{date}}",
     "enrollmentDeadline": "Inschrijfdeadline",
     "lessonTypes": "Aangeboden Lesvormen",
     "showPreferredTrainer": "Trainer voorkeur toestaan",
