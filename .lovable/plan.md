@@ -1,24 +1,35 @@
 
+# Fix: Udenhout Location Not Found in LocationPicker
 
-# Fix: Show Club Description in Admin Location Edit
+## Root Cause
+The location "Tennis- en Padelvereniging Udenhout" has `country = 'Netherlands'` in the database, while the LocationPicker's country filter defaults to `'NL'`. This means all 345 locations stored with `country = 'Netherlands'` (plus 1 with `'Netherlands flag emoji'`) are invisible in the picker.
 
-## Problem
-The admin dialog has two separate description fields:
-1. **Location description** (under "Details") -- reads from `locations.description` -- this is what you see empty
-2. **Club profile description** (under "Club Profile Details") -- reads from `club_profiles.description` -- this is where the club owner saved their text
-
-They are not connected, so the visible description field appears empty even though the club has text.
+The country data across locations is highly inconsistent (e.g., `NL`, `Netherlands`, `Netherlands emoji`, `Belgium.`, city names used as countries, etc.).
 
 ## Solution
-When a club profile is linked to the location, hide the location-level description field in the "Details" section. The club's description (already shown in the "Club Profile Details" section below) becomes the single source of truth.
+Two-pronged fix:
 
-This avoids confusion and ensures the admin always sees the same description the club owner edits.
+### 1. Database Migration: Normalize Country Codes
+Run a migration to standardize all country values to ISO 2-letter codes. This fixes the data at the source:
+- `Netherlands` / `Netherlands emoji` -> `NL`
+- `Belgium` / `Belgium.` / `Maasmechelen` -> `BE`
+- `Spain` / `Motril` / `Ripollet` -> `ES`
+- `France` / `Gradignan` -> `FR`
+- `United Kingdom` / `United Kingdom emoji` / `UK` -> `GB`
+- `Germany` -> `DE`
+- `United States` -> `US`
+- `United Arab Emirates` / `Abu Dhabi` -> `AE`
+- And similar for all other full-name entries
 
-## Technical Changes
+### 2. Update LocationPicker Country Map
+Expand the `COUNTRIES` dictionary in `LocationPicker.tsx` to include labels for all ISO country codes present in the data (e.g., `ES: 'Espana'`, `BE: 'Belgie'`, `FR: 'France'`, etc.) so users can filter by any country.
 
-### `src/components/admin/LocationEditDialog.tsx`
-- In the "Details" section (around line 388-397), conditionally hide the location description textarea when `clubData` is present
-- This means: no club linked = location description is shown as before; club linked = only the club profile description (already in the Club Management section) is visible
+## Files Changed
+- **Database migration**: Normalize `locations.country` values to ISO codes
+- **`src/components/locations/LocationPicker.tsx`**: Expand `COUNTRIES` map with all relevant country codes
 
-One small change, no new files.
-
+## Impact
+- Immediately fixes the Udenhout visibility issue
+- Fixes 345+ other Dutch locations that were also hidden
+- Prevents future recurrence by standardizing the data
+- All location pickers across the app (academy, trainer, admin) benefit from this fix
