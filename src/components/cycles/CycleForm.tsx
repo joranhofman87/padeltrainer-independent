@@ -84,6 +84,7 @@ export default function CycleForm({
     lesson_types: z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
+    min_group_size: z.coerce.number().min(1).max(20).optional(),
     applicable_trainer_ids: z.array(z.string()).optional(),
     location_id: z.string().optional(),
     price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
@@ -92,6 +93,9 @@ export default function CycleForm({
   }).refine(data => data.end_date > data.start_date, {
     message: 'End date must be after start date',
     path: ['end_date'],
+  }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
+    message: 'Min group size must be ≤ max group size',
+    path: ['min_group_size'],
   });
 
   type FormValues = z.infer<typeof formSchema>;
@@ -107,6 +111,7 @@ export default function CycleForm({
       lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
+      min_group_size: cycle?.settings?.min_group_size || 1,
       applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
       location_id: cycle?.location_id || '',
       price_per_session: cycle?.price_per_session ?? '',
@@ -127,6 +132,7 @@ export default function CycleForm({
         lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
         max_group_size: cycle?.settings?.max_group_size || 4,
+        min_group_size: cycle?.settings?.min_group_size || 1,
         applicable_trainer_ids: cycle?.settings?.applicable_trainer_ids || [],
         location_id: cycle?.location_id || '',
         price_per_session: cycle?.price_per_session ?? '',
@@ -156,6 +162,7 @@ export default function CycleForm({
         lesson_types: values.lesson_types as CycleSettings['lesson_types'],
         show_preferred_trainer: values.show_preferred_trainer,
         max_group_size: values.max_group_size,
+        min_group_size: values.min_group_size,
         applicable_trainer_ids: values.applicable_trainer_ids,
       };
 
@@ -550,19 +557,37 @@ export default function CycleForm({
               />
             )}
 
-            <FormField
-              control={form.control}
-              name="max_group_size"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('form.maxGroupSize')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="number" min={2} max={20} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="min_group_size"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.minGroupSize', 'Min Group Size')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="number" min={1} max={20} />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.minGroupSizeHelp', 'Minimum players required per session')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="max_group_size"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.maxGroupSize')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="number" min={2} max={20} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
 
             <DialogFooter className="gap-2 sm:gap-0">

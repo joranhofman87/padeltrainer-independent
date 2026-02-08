@@ -62,6 +62,7 @@ interface CyclusBundle {
   lastDate: string;
   lesson: SlotWithDetails['lessons'];
   location?: SlotWithDetails['location'];
+  min_group_size?: number;
 }
 
 interface TrainerWithProfile {
@@ -100,6 +101,7 @@ export default function BookLesson() {
   const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number }>>({});
 
   useEffect(() => {
     if (!loading) {
@@ -260,11 +262,32 @@ export default function BookLesson() {
 
       // Also count total slots per cyclus (including ones with bookings)
       const totalSlotsPerCyclus: Record<string, number> = {};
+      const cyclusIds: string[] = [];
       slotsData.forEach((s) => {
         if (s.cyclus_id) {
           totalSlotsPerCyclus[s.cyclus_id] = (totalSlotsPerCyclus[s.cyclus_id] || 0) + 1;
+          if (!cyclusIds.includes(s.cyclus_id)) cyclusIds.push(s.cyclus_id);
         }
       });
+
+      // Fetch cycle settings for min_group_size
+      let cycleSettingsMap: Record<string, { min_group_size?: number }> = {};
+      if (cyclusIds.length > 0) {
+        const { data: cyclesData } = await supabase
+          .from('cycles')
+          .select('id, settings')
+          .in('id', cyclusIds);
+        if (cyclesData) {
+          for (const c of cyclesData) {
+            const settings = c.settings as Record<string, unknown> | null;
+            cycleSettingsMap[c.id] = {
+              min_group_size: (settings?.min_group_size as number) || undefined,
+            };
+          }
+        }
+      }
+
+      setCycleSettingsMap(cycleSettingsMap);
 
       availableSlots.forEach((slot) => {
         if (slot.cyclus_id) {
@@ -302,6 +325,7 @@ export default function BookLesson() {
             lastDate: sortedSlots[sortedSlots.length - 1].start_time,
             lesson: sortedSlots[0].lessons,
             location: sortedSlots[0].location,
+            min_group_size: cycleSettingsMap[cyclusId]?.min_group_size,
           });
         } else {
           // Partial cyclus - show remaining slots individually
@@ -934,13 +958,14 @@ export default function BookLesson() {
                           if (!isIneligible) {
                             setSelectedSlot(slot);
                             setSelectedCyclus(null);
-                            // Reset quantity based on booking mode
+                            // Reset quantity based on booking mode and min_group_size
                             const mode = slot.lessons?.booking_mode || 'full_slot';
                             const maxP = slot.lessons?.max_participants || 1;
+                            const minGroup = slot.cyclus_id ? (cycleSettingsMap[slot.cyclus_id]?.min_group_size || 1) : 1;
                             if (mode === 'full_slot') {
                               setQuantity(maxP);
                             } else {
-                              setQuantity(1);
+                              setQuantity(Math.max(minGroup, 1));
                             }
                           }
                         }}
@@ -1137,6 +1162,7 @@ export default function BookLesson() {
                       const maxP = selectedSlot.lessons?.max_participants || 1;
                       const spotsAvailable = selectedSlot.spotsLeft || maxP;
                       const perSpot = maxP > 1 && bm !== 'full_slot' ? (selectedSlot.lessons?.price || 0) / maxP : 0;
+                      const minGroup = selectedSlot.cyclus_id ? (cycleSettingsMap[selectedSlot.cyclus_id]?.min_group_size || 1) : 1;
 
                       if (bm === 'flexible' && maxP > 1) {
                         return (
@@ -1147,8 +1173,8 @@ export default function BookLesson() {
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                disabled={quantity <= 1}
+                                onClick={() => setQuantity(Math.max(minGroup, quantity - 1))}
+                                disabled={quantity <= minGroup}
                               >
                                 <Minus className="h-4 w-4" />
                               </Button>
@@ -1169,10 +1195,51 @@ export default function BookLesson() {
                             <p className="text-xs text-muted-foreground">
                               €{perSpot.toFixed(2)} per spot
                             </p>
+                            {minGroup > 1 && (
+                              <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                                <Users className="h-3.5 w-3.5" />
+                                This session requires a minimum of {minGroup} players
+                              </div>
+                            )}
                           </div>
                         );
                       }
                       if (bm === 'individual' && maxP > 1) {
+                        if (minGroup > 1) {
+                          return (
+                            <div className="space-y-2">
+                              <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                This session requires booking at least {minGroup} spots
+                              </div>
+                              <Label>Number of spots</Label>
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => setQuantity(Math.max(minGroup, quantity - 1))}
+                                  disabled={quantity <= minGroup}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <span className="font-semibold text-lg w-8 text-center">{quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => setQuantity(Math.min(spotsAvailable, quantity + 1))}
+                                  disabled={quantity >= spotsAvailable}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                €{perSpot.toFixed(2)} per spot
+                              </p>
+                            </div>
+                          );
+                        }
                         return (
                           <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
                             <Users className="h-4 w-4 inline mr-1" />

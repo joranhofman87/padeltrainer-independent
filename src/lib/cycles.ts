@@ -49,6 +49,7 @@ export interface CycleSettings {
   show_preferred_trainer?: boolean;
   default_duration_minutes?: number;
   max_group_size?: number;
+  min_group_size?: number;
   applicable_trainer_ids?: string[];
   scoring_weights?: ScoringWeights;
   max_rating_spread?: number;

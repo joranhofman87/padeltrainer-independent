@@ -36,6 +36,8 @@
     "showPreferredTrainer": "Allow trainer preference",
     "showPreferredTrainerHelp": "Players can indicate a preferred trainer when applying",
     "maxGroupSize": "Max Group Size",
+    "minGroupSize": "Min Group Size",
+    "minGroupSizeHelp": "Minimum players required per session",
     "applicableTrainers": "Applicable Trainers",
     "applicableTrainersHelp": "Which trainers can be assigned to this cycle",
     "location": "Training Location",
