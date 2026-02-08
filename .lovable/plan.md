@@ -1,35 +1,71 @@
 
-## Fix: "Training Cycle" on Calendar Should Create Slots, Not Registrations
 
-### The Problem
-When clicking "Training Cycle" from the calendar's slot type chooser, it opens `CycleForm` which creates a record in the `cycles` table (a registration). Instead, it should create `availability_slots` directly on the calendar -- exactly what `BulkCreateSheet` already does.
+## Enhance BulkCreateSheet: Remove Lesson, Add Pricing and Participant Controls
 
-`BulkCreateSheet` already handles recurring slot creation: it picks a day, time, duration, number of weeks, lesson type, location, and generates all the `availability_slots` with a shared `cyclus_id` and `cyclus_name`. This is the correct behavior for a "Training Cycle" on the calendar.
+### What Changes
 
-### The Fix
+1. **Remove the "Lesson" (Koppel aan Les) field** from the cyclus creation sheet -- it's not needed since pricing comes from the trainer's hourly rate.
 
-**1. Wire "Training Cycle" to open BulkCreateSheet instead of CycleForm**
+2. **Show pricing based on trainer's hourly rate**: Display the price per hour and total cyclus price, calculated from the selected trainer's `hourly_rate` and session duration/count. Both values are editable so the academy can adjust.
 
-In both `TrainerCalendar.tsx` and `AcademyCalendar.tsx`:
-- Change `handleChooseCyclus` / `onChooseCyclus` to open `BulkCreateSheet` instead of `CycleForm`
-- Remove the `CycleForm` import and usage from both calendar pages (it no longer belongs here)
-- Remove the `showCreateCycleDialog` state and related `trainerHourlyRate` fetching that was only needed for CycleForm
+3. **"Allow single slot booking" checkbox**: Default off. When enabled, players can book and pay for individual slots from the cyclus instead of the full cycle.
 
-**2. Files to change**
+4. **Min + max participants per cyclus/slot**: Two number inputs for minimum and maximum number of players.
 
-`src/pages/TrainerCalendar.tsx`:
-- Change `handleChooseCyclus` from `setShowCreateCycleDialog(true)` to `setBulkCreateOpen(true)`
-- Remove the `CycleForm` component at the bottom
-- Remove `showCreateCycleDialog` state, `trainerHourlyRate` state, and CycleForm import
-- Keep `trainerHourlyRate` fetch only if used elsewhere (it's not -- can be removed)
+### Database Migration
 
-`src/pages/academy/AcademyCalendar.tsx`:
-- Change `onChooseCyclus` callback from `setShowCreateCycleDialog(true)` to `setBulkCreateOpen(true)`
-- Remove the `CycleForm` component at the bottom
-- Remove `showCreateCycleDialog` state and CycleForm import
+Add new columns to `availability_slots`:
 
-**3. What stays the same**
-- `CycleForm` continues to exist and is used on the Registrations pages (`TrainerCycles.tsx`, `AcademyCycles.tsx`) for creating registration-type cycles
-- `BulkCreateSheet` already handles all the cyclus functionality: day, time, duration, weeks, lesson, location, players, court type
-- `AddSlotDialog` stays for single slot creation
-- The `SlotTypeChoiceDialog` stays -- "Single Slot" opens `AddSlotDialog`, "Training Cycle" opens `BulkCreateSheet`
+```sql
+ALTER TABLE public.availability_slots
+  ADD COLUMN price_per_session numeric DEFAULT NULL,
+  ADD COLUMN total_price numeric DEFAULT NULL,
+  ADD COLUMN allow_single_booking boolean DEFAULT false,
+  ADD COLUMN min_participants integer DEFAULT NULL,
+  ADD COLUMN max_participants integer DEFAULT NULL;
+```
+
+These are stored per-slot so each generated slot in a cyclus carries its pricing and participant rules.
+
+### Technical Details
+
+**File: `src/components/trainer/AddSlotDialog.tsx`**
+
+- Update `BulkSlotConfig` interface to add: `pricePerSession`, `totalPrice`, `allowSingleBooking`, `minParticipants`, `maxParticipants`
+- Remove `lessonId` from the config and remove the lesson selector UI
+- Remove `lessons` from `BulkCreateSheetProps` (and `AddSlotDialogProps` if only used here)
+- When a trainer is selected (or pre-set), fetch their `hourly_rate` from `trainer_profiles`
+- Auto-calculate: `pricePerSession = (hourlyRate / 60) * durationMinutes` and `totalPrice = pricePerSession * recurrenceWeeks`
+- Show both as editable number inputs so the user can override
+- Recalculate when duration, weeks, or trainer changes (but not if user manually edited)
+- Add the "Allow single slot booking" checkbox (default unchecked)
+- Add min/max participants number inputs
+- Update `generateBulkSlots` to include the new fields in the insert payload and remove `lesson_id`
+
+**Files: `src/pages/TrainerCalendar.tsx` and `src/pages/academy/AcademyCalendar.tsx`**
+
+- Stop passing `lessons` prop to `BulkCreateSheet` (cleanup)
+
+**File: `src/components/trainer/AddSlotDialog.tsx` (AddSlotDialog)**
+
+- The single-slot `AddSlotDialog` can keep the lesson field for now (separate scope)
+
+### UI Layout in the Sheet
+
+After the Trainer / Location / Court Type / Training Level fields:
+
+```text
+-- Pricing --
+Price per session:  [auto-calculated, editable]  (e.g. EUR 40.00)
+Total cyclus price: [auto-calculated, editable]  (e.g. EUR 320.00)
+
+-- Participants --
+Min participants:   [number input]
+Max participants:   [number input]
+
+-- Booking --
+[x] Allow players to book individual slots
+    (When enabled, players can book and pay for single sessions)
+```
+
+The cyclus name, players, and private toggle remain below as they are now.
