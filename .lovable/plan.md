@@ -1,26 +1,52 @@
 
-
-# Fix: Auto-forward invoices after Mollie payment
+# Gate marketplace visibility behind paid subscription
 
 ## Problem
-The "Facturen doorsturen" email addresses configured in trainer settings only receive invoices when:
-- A trainer manually marks an invoice as paid (via the UI)
-- A trainer manually clicks the forward button
+Trainers on a free trial can currently toggle their profile to "public" and appear in the marketplace. The business requirement is that only trainers with a **paid subscription** (either their own or via an academy with an active subscription) should be visible.
 
-When invoices are automatically created after a Mollie payment (the most common flow for paid invoices), the `auto-create-invoice` edge function does NOT call `forward-invoice`. So the configured email addresses never receive invoices for online payments.
+## Changes
 
-## Solution
-Add a call to `forward-invoice` at the end of the `auto-create-invoice` function, right after the invoice is successfully created and the PDF is generated. This ensures that every auto-generated paid invoice is immediately forwarded to the configured bookkeeping email addresses.
+### 1. Update `canBeVisible()` logic
+**File: `src/lib/subscription.ts`**
 
-## Technical Details
+Change `canBeVisible` to only return `true` when the trainer has an active **paid** subscription (`isSubscribed`), removing the trial allowance (`isInTrial`).
 
-### File: `supabase/functions/auto-create-invoice/index.ts`
+```
+// Before
+return subscription.isSubscribed || subscription.isInTrial;
 
-After the PDF generation step (around line 214), add logic to:
+// After
+return subscription.isSubscribed;
+```
 
-1. Fetch the trainer's `invoice_forward_emails` from `trainer_profiles` (this field is not currently selected in the query on line 73 -- add it)
-2. If the invoice status is `paid` and forward emails are configured, invoke the `forward-invoice` function with the new invoice ID
-3. Log the result but treat failures as non-fatal (same pattern as the PDF generation)
+### 2. Fix TrainerSettings.tsx visibility check
+**File: `src/pages/TrainerSettings.tsx`**
 
-The change is small -- roughly 10-15 lines added. No frontend changes needed since the feature is already wired up in the settings UI.
+The settings page has a second visibility toggle that currently does NOT check whether the trainer belongs to a paid academy. Add the same `isTrainerInPaidAcademy` check that `EditProfile.tsx` already uses:
+- Import `isTrainerInPaidAcademy` from `@/lib/academy`
+- Make `handleVisibilityToggle` async
+- When toggling on and `canBeVisible` is false, also check `isTrainerInPaidAcademy` before blocking
+- Update `canToggleVisibility` to account for academy membership (fetch once on mount or use a state variable)
 
+### 3. Update TrainerProfile.tsx public page guard
+**File: `src/pages/TrainerProfile.tsx`**
+
+The public profile page already checks `hasSubscriptionAccess` which includes `hasActiveTrial`. Update this to exclude trial-only trainers from being publicly accessible:
+
+```
+// Before
+const hasSubscriptionAccess = hasActiveSubscription || hasActiveTrial || inPaidAcademy;
+
+// After  
+const hasSubscriptionAccess = hasActiveSubscription || inPaidAcademy;
+```
+
+This ensures that even if a trial trainer somehow sets `is_public = true`, their profile page won't be accessible to anonymous visitors.
+
+### 4. No database changes needed
+The `is_public` column and existing RLS policies remain unchanged. The gating is enforced at the application level in all three locations where visibility is controlled or checked.
+
+## Summary of files modified
+- `src/lib/subscription.ts` -- remove trial from `canBeVisible`
+- `src/pages/TrainerSettings.tsx` -- add academy membership check to visibility toggle
+- `src/pages/TrainerProfile.tsx` -- remove trial from public profile access guard
