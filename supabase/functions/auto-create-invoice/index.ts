@@ -70,7 +70,7 @@ serve(async (req) => {
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate")
+      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails")
       .eq("id", trainerId)
       .single();
 
@@ -211,6 +211,20 @@ serve(async (req) => {
       logStep("PDF generated");
     } catch (pdfErr) {
       logStep("PDF generation failed (non-fatal)", { error: String(pdfErr) });
+    }
+
+    // Auto-forward invoice to configured bookkeeping emails
+    const forwardEmails = (trainerProfile as any).invoice_forward_emails;
+    if (allPaid && forwardEmails && forwardEmails.length > 0) {
+      try {
+        const forwardRes = await supabase.functions.invoke("forward-invoice", {
+          body: { invoiceId: invoice.id },
+          headers: { Authorization: `Bearer ${supabaseServiceKey}` },
+        });
+        logStep("Invoice forwarded", { emails: forwardEmails.length, result: forwardRes.data });
+      } catch (fwdErr) {
+        logStep("Invoice forwarding failed (non-fatal)", { error: String(fwdErr) });
+      }
     }
 
     return new Response(JSON.stringify({ success: true, invoiceId: invoice.id, invoiceNumber }), {

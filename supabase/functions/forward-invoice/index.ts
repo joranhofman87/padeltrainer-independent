@@ -34,12 +34,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+
+    // Allow service-role calls (from auto-create-invoice) to skip user ownership check
+    const isServiceRole = token === supabaseServiceKey;
+    let authenticatedUserId: string | null = null;
+
+    if (!isServiceRole) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      authenticatedUserId = user.id;
     }
 
     const { invoiceId } = await req.json();
@@ -71,7 +79,7 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("id", invoice.trainer_id)
       .single();
 
-    if (!trainerProfile || trainerProfile.user_id !== user.id) {
+    if (!isServiceRole && (!trainerProfile || trainerProfile.user_id !== authenticatedUserId)) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
