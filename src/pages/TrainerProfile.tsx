@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
-  ArrowLeft, MapPin, Star, Clock, Award, Mail, 
+  ArrowLeft, MapPin, Star, Clock, Award, Mail, Euro,
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
   Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff
@@ -337,8 +337,9 @@ export default function TrainerProfile() {
 
   // Build quick stats
   const quickStats = [
-    { icon: <Users className="h-4 w-4" />, label: t('common:students', 'Students'), value: '0' },
-    { icon: <Calendar className="h-4 w-4" />, label: t('common:lessonsGiven', 'Lessons Given'), value: '0' },
+    { icon: <Euro className="h-4 w-4" />, label: t('common:hourlyRate', 'Hourly Rate'), value: trainer?.hourly_rate ? `€${trainer.hourly_rate}` : '—' },
+    { icon: <Calendar className="h-4 w-4" />, label: t('common:experience', 'Experience'), value: trainer?.experience_years ? `${trainer.experience_years} ${t('common:years', 'years')}` : '—' },
+    { icon: <CheckCircle className="h-4 w-4" />, label: t('common:verified', 'Verified'), value: trainer?.is_verified ? t('common:yes', 'Yes') : t('common:no', 'No') },
     { icon: <Star className="h-4 w-4" />, label: t('common:rating', 'Rating'), value: averageRating !== null ? `${averageRating} ★` : '—' },
   ];
 
