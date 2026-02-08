@@ -101,11 +101,10 @@ export function TrainerSidebar() {
         setTrainerSlug(trainerProfile.slug);
 
         // Fetch clubs, academy, setup completion, and dismissal status in parallel
-        const [clubs, academy, profileData, lessonCount, slotCount, mollieData, playerCount, onboardingData] = await Promise.all([
+        const [clubs, academy, profileData, slotCount, mollieData, playerCount, onboardingData] = await Promise.all([
           getTrainerClubs(trainerProfile.id),
           getTrainerAcademy(trainerProfile.id),
           supabase.from('profiles').select('bio').eq('user_id', user.id).maybeSingle(),
-          supabase.from('lessons').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerProfile.id),
           supabase.from('availability_slots').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerProfile.id),
           supabase.from('trainer_mollie_accounts').select('onboarding_complete, charges_enabled').eq('trainer_id', trainerProfile.id).maybeSingle(),
           supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', trainerProfile.id),

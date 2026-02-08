@@ -539,9 +539,8 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
       trainer_id,
       start_time,
       end_time,
-      lesson_id,
       is_marked_full,
-      lessons:lesson_id(title, max_participants)
+      max_participants
     `)
     .in('trainer_id', trainerIds)
     .eq('location_id', clubProfile.location_id)

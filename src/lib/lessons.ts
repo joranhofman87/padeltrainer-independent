@@ -1,38 +1,9 @@
 import { supabase } from '@/lib/supabaseClient';
 
-export interface Lesson {
-  id: string;
-  trainer_id: string;
-  title: string;
-  description: string | null;
-  duration_minutes: number;
-  price: number;
-  max_participants: number;
-  min_skill_rating: number | null;
-  max_skill_rating: number | null;
-  location: string | null;
-  is_active: boolean;
-  // Recurring lesson fields
-  is_recurring: boolean;
-  recurrence_type: 'daily' | 'weekly' | 'monthly' | null;
-  recurrence_day: number | null; // 0-6 for weekly (0 = Sunday), 1-31 for monthly
-  recurrence_time: string | null; // HH:MM format
-  recurrence_count: number | null; // Number of sessions
-  recurrence_end_date: string | null;
-  start_date: string | null; // When the recurring cycle begins
-  // Payment settings
-  payment_timing: 'upfront' | 'after';
-  // Booking mode
-  booking_mode: 'full_slot' | 'individual' | 'flexible';
-  created_at: string;
-  updated_at: string;
-}
-
 export interface Booking {
   id: string;
   slot_id: string;
   player_id: string;
-  lesson_id: string | null;
   status: 'pending' | 'pending_approval' | 'confirmed' | 'cancelled' | 'completed' | 'rejected';
   notes: string | null;
   payment_status: 'pending' | 'paid' | 'refunded' | 'waived';
@@ -45,48 +16,11 @@ export interface Booking {
 export interface AvailabilitySlot {
   id: string;
   trainer_id: string;
-  lesson_id: string | null;
   start_time: string;
   end_time: string;
   is_recurring: boolean;
   recurrence_rule: string | null;
   created_at: string;
-}
-
-// Lesson CRUD
-export async function createLesson(trainerId: string, data: Omit<Lesson, 'id' | 'trainer_id' | 'created_at' | 'updated_at'>) {
-  return supabase
-    .from('lessons')
-    .insert({
-      trainer_id: trainerId,
-      ...data,
-    })
-    .select()
-    .single();
-}
-
-export async function getTrainerLessons(trainerId: string) {
-  return supabase
-    .from('lessons')
-    .select('*')
-    .eq('trainer_id', trainerId)
-    .order('created_at', { ascending: false });
-}
-
-export async function updateLesson(lessonId: string, data: Partial<Lesson>) {
-  return supabase
-    .from('lessons')
-    .update(data)
-    .eq('id', lessonId)
-    .select()
-    .single();
-}
-
-export async function deleteLesson(lessonId: string) {
-  return supabase
-    .from('lessons')
-    .delete()
-    .eq('id', lessonId);
 }
 
 // Availability CRUD
@@ -104,19 +38,17 @@ export async function createAvailabilitySlot(trainerId: string, data: Omit<Avail
 export async function getTrainerAvailability(trainerId: string) {
   return supabase
     .from('availability_slots')
-    .select('*, lessons(*)')
+    .select('*')
     .eq('trainer_id', trainerId)
     .gte('start_time', new Date().toISOString())
     .order('start_time', { ascending: true });
 }
 
 export async function getAvailableSlotsForTrainer(trainerId: string) {
-  // Get slots that don't have confirmed bookings
   const { data: slots, error } = await supabase
     .from('availability_slots')
     .select(`
       *,
-      lessons(*),
       bookings(id, status)
     `)
     .eq('trainer_id', trainerId)
@@ -125,10 +57,9 @@ export async function getAvailableSlotsForTrainer(trainerId: string) {
 
   if (error) return { data: null, error };
 
-  // Filter out slots that are fully booked
   const availableSlots = slots?.filter(slot => {
     const confirmedBookings = slot.bookings?.filter((b: any) => b.status === 'confirmed' || b.status === 'pending') || [];
-    const maxParticipants = slot.lessons?.max_participants || 1;
+    const maxParticipants = (slot as any).max_participants || 4;
     return confirmedBookings.length < maxParticipants;
   });
 
@@ -143,22 +74,21 @@ export async function deleteAvailabilitySlot(slotId: string) {
 }
 
 // Booking CRUD
-export async function createBooking(playerId: string, slotId: string, lessonId: string | null, notes?: string) {
+export interface PaginationOptions {
+  page?: number;
+  pageSize?: number;
+}
+
+export async function createBooking(playerId: string, slotId: string, notes?: string) {
   return supabase
     .from('bookings')
     .insert({
       player_id: playerId,
       slot_id: slotId,
-      lesson_id: lessonId,
       notes,
     })
     .select()
     .single();
-}
-
-export interface PaginationOptions {
-  page?: number;
-  pageSize?: number;
 }
 
 export async function getPlayerBookings(
@@ -173,8 +103,7 @@ export async function getPlayerBookings(
     .from('bookings')
     .select(`
       *,
-      availability_slots(*),
-      lessons(*)
+      availability_slots(*)
     `, { count: 'exact' })
     .eq('player_id', playerId)
     .order('created_at', { ascending: false })
@@ -194,7 +123,6 @@ export async function getTrainerBookings(
     .select(`
       *,
       availability_slots!inner(*),
-      lessons(*),
       profiles:player_id(*)
     `, { count: 'exact' })
     .eq('availability_slots.trainer_id', trainerId)
@@ -210,7 +138,6 @@ export async function updateBookingStatus(bookingId: string, status: Booking['st
     .select()
     .single();
 
-  // Trigger calendar sync for status changes
   if (result.data && (status === 'confirmed' || status === 'cancelled')) {
     try {
       await supabase.functions.invoke('sync-calendar-event', {
@@ -232,30 +159,25 @@ export async function cancelBooking(bookingId: string) {
 }
 
 export async function approveBookingRequest(bookingId: string) {
-  const result = await supabase
+  return supabase
     .from('bookings')
     .update({ status: 'pending' })
     .eq('id', bookingId)
     .select()
     .single();
-
-  return result;
 }
 
 export async function rejectBookingRequest(bookingId: string) {
-  const result = await supabase
+  return supabase
     .from('bookings')
     .update({ status: 'rejected' })
     .eq('id', bookingId)
     .select()
     .single();
-
-  return result;
 }
 
 export async function confirmBookingAfterApproval(bookingId: string) {
-  // Used for manual invoicing - set to confirmed directly
-  const result = await supabase
+  return supabase
     .from('bookings')
     .update({ 
       status: 'confirmed',
@@ -264,6 +186,4 @@ export async function confirmBookingAfterApproval(bookingId: string) {
     .eq('id', bookingId)
     .select()
     .single();
-
-  return result;
 }
