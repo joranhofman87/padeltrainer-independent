@@ -44,6 +44,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { signOut } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/Logo";
 
 export function PlayerSidebar() {
   const { t } = useTranslation("player");
@@ -83,6 +84,11 @@ export function PlayerSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <Logo className="h-6" />
+          </div>
+        )}
         <div
           className={cn(
             "flex px-2 py-2",

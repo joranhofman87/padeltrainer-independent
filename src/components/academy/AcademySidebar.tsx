@@ -48,6 +48,7 @@ import { signOut } from "@/lib/auth";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/Logo";
 import type { AcademyProfile } from "@/lib/academy";
 
 interface AcademySidebarProps {
@@ -112,6 +113,11 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <Logo className="h-6" />
+          </div>
+        )}
         <div className={cn(
           "flex px-2 py-2",
           collapsed ? "flex-col items-center gap-2" : "items-center justify-between"

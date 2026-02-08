@@ -53,6 +53,7 @@ import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { Logo } from "@/components/Logo";
 
 export function TrainerSidebar() {
   const { t, i18n } = useTranslation("trainer");
@@ -160,6 +161,11 @@ export function TrainerSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <Logo className="h-6" />
+          </div>
+        )}
         <div className={cn(
           "flex px-2 py-2",
           collapsed ? "flex-col items-center gap-2" : "items-center justify-between"

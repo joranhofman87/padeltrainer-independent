@@ -10,6 +10,7 @@ import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
+import { Logo } from '@/components/Logo';
 
 const getDashboardPath = (role?: string | null) => {
   switch (role) {
@@ -63,9 +64,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
             <LocalizedLink to="/" className="flex items-center gap-2">
-              <span className="font-bold text-xl tracking-tight">
-                PadelTrainer<span className="text-primary">.ai</span>
-              </span>
+              <Logo className="h-7" />
             </LocalizedLink>
 
             {/* Desktop Navigation */}
@@ -173,9 +172,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             {/* Brand */}
             <div className="col-span-2 md:col-span-1">
               <LocalizedLink to="/" className="flex items-center gap-2 mb-4">
-                <span className="font-bold text-lg">
-                  PadelTrainer<span className="text-primary">.ai</span>
-                </span>
+                <Logo className="h-6" />
               </LocalizedLink>
               <p className="text-sm text-muted-foreground">
                 {t('footer.tagline')}
