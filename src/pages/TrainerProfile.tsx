@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +20,7 @@ import {
   ArrowLeft, MapPin, Star, Clock, Award, Mail, 
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
-  Target, Sparkles, Linkedin, GraduationCap
+  Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
@@ -54,6 +55,7 @@ interface TrainerData {
   certifications: string[] | null;
   specializations: string[] | null;
   is_verified: boolean;
+  is_public: boolean;
   coaching_method: string | null;
   favourite_quote: string | null;
   video_url: string | null;
@@ -232,7 +234,10 @@ export default function TrainerProfile() {
       (link: any) => link.show_on_club_page && link.location?.club_profiles?.is_verified
     );
 
-    if (!trainerResult.data.is_public && !hasVerifiedClubLink) {
+    // Allow the trainer to view their own profile even if not public
+    const isOwnProfile = user?.id === trainerResult.data.user_id;
+
+    if (!trainerResult.data.is_public && !hasVerifiedClubLink && !isOwnProfile) {
       logger.debug('Trainer is not public and not linked to verified club');
       setLoading(false);
       return;
@@ -393,6 +398,35 @@ export default function TrainerProfile() {
           ) : null
         }
       >
+        {/* Preview Mode Banner */}
+        {user?.id === trainer.user_id && !trainer.is_public && (
+          <Alert className="mb-6 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
+            <EyeOff className="h-4 w-4 text-amber-600" />
+            <AlertDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-300">Preview mode</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">Players can't see this yet. This is how your profile will look when you publish.</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/profile')}>Edit profile</Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>Add availability</Button>
+                  <Button size="sm" onClick={async () => {
+                    const { error } = await supabase
+                      .from('trainer_profiles')
+                      .update({ is_public: true })
+                      .eq('user_id', user.id);
+                    if (!error) {
+                      toast.success('Profile published!');
+                      fetchTrainerProfile();
+                    }
+                  }}>Publish profile</Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Hero Card */}
         <ProfileHeroCard
           name={profile.full_name || 'Trainer'}

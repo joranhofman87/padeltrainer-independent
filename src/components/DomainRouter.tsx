@@ -34,6 +34,7 @@ import TrainerSignup from '@/pages/TrainerSignup';
 import ClubSignup from '@/pages/ClubSignup';
 import ClubOnboarding from '@/pages/ClubOnboarding';
 import Onboarding from '@/pages/Onboarding';
+import TrainerOnboarding from '@/pages/TrainerOnboarding';
 import PlayerDashboard from '@/pages/PlayerDashboard';
 import TrainerDashboard from '@/pages/TrainerDashboard';
 import TrainerGetStarted from '@/pages/TrainerGetStarted';
@@ -127,6 +128,7 @@ export function DomainRouter() {
       <Route path="/app/signup/club" element={<ClubSignup />} />
       <Route path="/app/signup/academy" element={<AcademySignup />} />
       <Route path="/app/onboarding/club" element={<ClubOnboarding />} />
+      <Route path="/app/onboarding/trainer" element={<TrainerOnboarding />} />
       <Route path="/app/onboarding/:role" element={<Onboarding />} />
       <Route path="/app/academy/onboarding" element={<AcademyOnboarding />} />
       

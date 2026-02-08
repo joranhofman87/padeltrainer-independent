@@ -2986,6 +2986,45 @@ export type Database = {
           },
         ]
       }
+      trainer_onboarding: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_step: number
+          followup_answer: string | null
+          goal: string | null
+          goal_other_text: string | null
+          icd_responses: Json | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          followup_answer?: string | null
+          goal?: string | null
+          goal_other_text?: string | null
+          icd_responses?: Json | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          followup_answer?: string | null
+          goal?: string | null
+          goal_other_text?: string | null
+          icd_responses?: Json | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trainer_profile_views: {
         Row: {
           id: string
