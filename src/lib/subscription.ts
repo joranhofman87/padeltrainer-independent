@@ -13,7 +13,7 @@ export interface SubscriptionInfo {
 // Trial configuration
 export const TRIAL_DURATION_DAYS = 7;
 
-// Subscription tier configuration (database-driven, no Stripe IDs)
+// Subscription tier configuration (database-driven)
 export const SUBSCRIPTION_TIERS = {
   professional: {
     name: 'Professional',

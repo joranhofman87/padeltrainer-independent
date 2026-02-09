@@ -69,7 +69,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #16a34a;">Booking Confirmed! 🎾</h1>
             <p>Hi ${data.playerName},</p>
-            <p>Your lesson has been successfully booked!</p>
+            <p>Your training session has been successfully booked!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Trainer:</strong> ${data.trainerName}</p>
@@ -86,12 +86,12 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
 
     case "booking_reminder":
       return {
-        subject: `Reminder: Lesson Tomorrow - ${data.lessonTitle}`,
+        subject: `Reminder: Training Session Tomorrow - ${data.lessonTitle}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">Lesson Reminder 🎾</h1>
+            <h1 style="color: #2563eb;">Session Reminder 🎾</h1>
             <p>Hi ${data.playerName},</p>
-            <p>This is a reminder that you have a lesson scheduled for tomorrow!</p>
+            <p>This is a reminder that you have a training session scheduled for tomorrow!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Trainer:</strong> ${data.trainerName}</p>
@@ -134,7 +134,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             <p>Hi ${data.trainerName},</p>
             <p>You've received a new ${data.rating}-star review from ${data.playerName}!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <p><strong>Lesson:</strong> ${data.lessonTitle}</p>
+              <p><strong>Session:</strong> ${data.lessonTitle}</p>
               <p><strong>Rating:</strong> ${"⭐".repeat(data.rating || 0)}</p>
             </div>
             <p>Keep up the great work!</p>
@@ -150,7 +150,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #16a34a;">Payment Successful! 💳</h1>
             <p>Hi ${data.playerName},</p>
-            <p>Your payment has been confirmed and your lesson is booked!</p>
+            <p>Your payment has been confirmed and your training session is booked!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Trainer:</strong> ${data.trainerName}</p>
@@ -159,7 +159,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Location:</strong> ${data.location || "TBD"}</p>
               <p style="font-size: 18px; color: #16a34a;"><strong>Amount Paid:</strong> €${data.price}</p>
             </div>
-            <p>Get ready for your lesson! 🎾</p>
+            <p>Get ready for your session! 🎾</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,
@@ -172,7 +172,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #16a34a;">You've Got a New Booking! 🎉</h1>
             <p>Hi ${data.trainerName},</p>
-            <p>Great news! <strong>${data.playerName}</strong> has just paid for a lesson with you.</p>
+            <p>Great news! <strong>${data.playerName}</strong> has just paid for a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Player:</strong> ${data.playerName}</p>
@@ -180,7 +180,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Time:</strong> ${data.lessonTime}</p>
               <p><strong>Location:</strong> ${data.location || "TBD"}</p>
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
-              <p><strong>Lesson Price:</strong> €${data.price}</p>
+              <p><strong>Session Price:</strong> €${data.price}</p>
               <p><strong>Platform Fee:</strong> -€${data.platformFee?.toFixed(2) || '1.00'}</p>
               <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price - (data.platformFee || 1.00)).toFixed(2) : '0.00')}</p>
             </div>
@@ -197,7 +197,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #2563eb;">New Booking Request! 📅</h1>
             <p>Hi ${data.trainerName},</p>
-            <p><strong>${data.playerName}</strong> wants to book a lesson with you.</p>
+            <p><strong>${data.playerName}</strong> wants to book a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Player:</strong> ${data.playerName}</p>
@@ -265,12 +265,12 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
 
     case "manual_booking_confirmation":
       return {
-        subject: `Lesson Booked: ${data.lessonTitle} 🎾`,
+        subject: `Session Booked: ${data.lessonTitle} 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #16a34a;">You're Booked! 🎾</h1>
             <p>Hi ${data.playerName},</p>
-            <p>Your trainer has booked a lesson for you!</p>
+            <p>Your trainer has booked a training session for you!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Date:</strong> ${data.lessonDate}</p>
@@ -294,7 +294,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #2563eb;">New Booking Request! 📬</h1>
             <p>Hi ${data.trainerName},</p>
-            <p><strong>${data.playerName}</strong> has requested to book a lesson with you.</p>
+            <p><strong>${data.playerName}</strong> has requested to book a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">${data.lessonTitle}</h3>
               <p><strong>Player:</strong> ${data.playerName}</p>

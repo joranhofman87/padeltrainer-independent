@@ -33,15 +33,15 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
   const { user } = useAuth();
   const [trainerId, setTrainerId] = useState<string | null>(null);
 
-  // Lesson fields
+  // Training session fields
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState('60');
   const [price, setPrice] = useState('');
   const [maxParticipants, setMaxParticipants] = useState('1');
   const [paymentTiming, setPaymentTiming] = useState<'upfront' | 'after'>('after');
-  const [lessonCreated, setLessonCreated] = useState(false);
-  const [lessonId, setLessonId] = useState<string | null>(null);
-  const [creatingLesson, setCreatingLesson] = useState(false);
+  const [sessionCreated, setSessionCreated] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
 
   // Slot mode choice
   const [slotMode, setSlotMode] = useState<SlotMode>(null);
@@ -76,32 +76,30 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
     }
   }, [user]);
 
-  const handleCreateLesson = async () => {
+  const handleCreateSession = async () => {
     if (!trainerId || !title.trim() || !price) return;
 
-    setCreatingLesson(true);
+    setCreatingSession(true);
     try {
-      // Set hourly_rate on trainer profile (lessons table removed)
       await supabase
         .from('trainer_profiles')
         .update({ hourly_rate: parseFloat(price) })
         .eq('id', trainerId);
 
-      // We no longer create a "lesson" row - just mark as ready
-      setLessonId(trainerId); // use trainerId as placeholder
-      setLessonCreated(true);
-      toast.success('Lesson settings saved!');
+      setSessionId(trainerId);
+      setSessionCreated(true);
+      toast.success('Training session settings saved!');
     } catch (error: any) {
-      console.error('Error saving lesson settings:', error);
-      toast.error('Failed to save lesson settings');
+      console.error('Error saving session settings:', error);
+      toast.error('Failed to save training session settings');
     } finally {
-      setCreatingLesson(false);
+      setCreatingSession(false);
     }
   };
 
   // --- Single slot handlers ---
   const handleAddSlot = async () => {
-    if (!trainerId || !lessonId || !slotDate || !slotTime) return;
+    if (!trainerId || !sessionId || !slotDate || !slotTime) return;
 
     setAddingSlot(true);
     try {
@@ -154,7 +152,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
 
   // --- Cyclus handler ---
   const handleCreateCyclus = async () => {
-    if (!trainerId || !lessonId || !cyclusDate || !cyclusTime) return;
+    if (!trainerId || !sessionId || !cyclusDate || !cyclusTime) return;
 
     setCreatingCyclus(true);
     try {
@@ -206,30 +204,30 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
     onNext();
   };
 
-  const canCreateLesson = title.trim() && price && parseFloat(price) > 0;
+  const canCreateSession = title.trim() && price && parseFloat(price) > 0;
   const hasSlots = slotMode === 'single' ? slots.length > 0 : cyclusCreated;
 
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">Create your first bookable lesson</h1>
-        <p className="text-muted-foreground">Define a lesson and add time slots so players can book</p>
+        <h1 className="text-2xl font-bold">Set up your first training session</h1>
+        <p className="text-muted-foreground">Define your rate and add time slots so players can book</p>
       </div>
 
       {/* Part A: Lesson Creation */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            {lessonCreated ? (
+            {sessionCreated ? (
               <CheckCircle2 className="h-5 w-5 text-green-500" />
             ) : (
               <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">A</span>
             )}
-            Lesson details
+            Session details
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {lessonCreated ? (
+          {sessionCreated ? (
             <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
               <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
               <div>
@@ -312,10 +310,10 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
 
               <Button
                 className="w-full"
-                disabled={!canCreateLesson || creatingLesson}
-                onClick={handleCreateLesson}
+                disabled={!canCreateSession || creatingSession}
+                onClick={handleCreateSession}
               >
-                {creatingLesson ? 'Creating...' : 'Create lesson'}
+                {creatingSession ? 'Saving...' : 'Save session settings'}
               </Button>
             </div>
           )}
@@ -323,7 +321,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       </Card>
 
       {/* Part B: Slot Type Choice + Creation */}
-      <Card className={cn(!lessonCreated && 'opacity-50 pointer-events-none')}>
+      <Card className={cn(!sessionCreated && 'opacity-50 pointer-events-none')}>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             {hasSlots ? (
@@ -550,7 +548,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
         <Button
           size="lg"
           className="flex-1"
-          disabled={!lessonCreated || saving}
+          disabled={!sessionCreated || saving}
           onClick={handleContinue}
         >
           Continue

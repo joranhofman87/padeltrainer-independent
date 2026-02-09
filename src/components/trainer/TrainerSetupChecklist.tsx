@@ -6,7 +6,6 @@ import { type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 
 interface SetupStatus {
   profileComplete: boolean;
-  hasLessons: boolean;
   hasAvailability: boolean;
   paymentsComplete: boolean;
   hasPlayers: boolean;

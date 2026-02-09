@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Use check-mollie-subscription with type: "trainer" instead of legacy check-trainer-subscription
+      // Check trainer subscription status via Mollie
       const { data, error } = await supabase.functions.invoke('check-mollie-subscription', {
         body: { type: 'trainer' },
         headers: {
