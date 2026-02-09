@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 import { toast } from 'sonner';
 
-interface OnboardingStep3LessonProps {
+interface OnboardingStep3ScheduleProps {
   onNext: () => void;
   onBack: () => void;
 }
@@ -29,7 +29,7 @@ interface SlotEntry {
 
 type SlotMode = null | 'single' | 'cyclus';
 
-export function OnboardingStep3Lesson({ onNext, onBack }: OnboardingStep3LessonProps) {
+export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3ScheduleProps) {
   const { user } = useAuth();
   const [trainerId, setTrainerId] = useState<string | null>(null);
 
