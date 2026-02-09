@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -363,6 +364,10 @@ export default function TrainerProfile() {
     );
   }
 
+  // Get primary city for cross-linking
+  const trainerCity = profile?.location || trainerLocations[0]?.location?.city;
+  const trainerCitySlug = trainerCity?.toLowerCase().replace(/\s+/g, '-');
+
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Person",
@@ -385,6 +390,17 @@ export default function TrainerProfile() {
     } : {})
   };
 
+  const breadcrumbData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
+      { "@type": "ListItem", "position": 2, "name": "Trainers", "item": "https://padeltrainer.ai/en/trainers" },
+      ...(trainerCity ? [{ "@type": "ListItem", "position": 3, "name": trainerCity, "item": `https://padeltrainer.ai/en/trainers/${trainerCitySlug}` }] : []),
+      { "@type": "ListItem", "position": trainerCity ? 4 : 3, "name": profile.full_name || 'Trainer' }
+    ]
+  };
+
   return (
     <>
       <SEO
@@ -392,9 +408,8 @@ export default function TrainerProfile() {
         description={profile.bio || `Book padel lessons with ${profile.full_name || 'this trainer'} in ${profile.location || 'the Netherlands'}. ${trainer.experience_years ? `${trainer.experience_years} years of experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`}
         url={`/trainer/${trainerSlug}`}
         image={profile.avatar_url || undefined}
-        structuredData={structuredData}
+        structuredData={[structuredData, breadcrumbData]}
       />
-
       <ProfileLayout
         bannerUrl={trainerAcademy?.banner_url}
         headerAction={
@@ -705,6 +720,21 @@ export default function TrainerProfile() {
                       );
                     })}
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* City Cross-Link */}
+            {trainerCity && trainerCitySlug && (
+              <Card>
+                <CardContent className="p-4">
+                  <LocalizedLink 
+                    to={`/trainers/${trainerCitySlug}`}
+                    className="flex items-center gap-2 text-primary hover:underline font-medium"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    {t('common:viewAllTrainersIn', { city: trainerCity, defaultValue: `View all trainers in ${trainerCity}` })} →
+                  </LocalizedLink>
                 </CardContent>
               </Card>
             )}
