@@ -126,3 +126,6 @@ verify_jwt = false
 
 [functions.llms-full-txt]
 verify_jwt = false
+
+[functions.render-page]
+verify_jwt = false
