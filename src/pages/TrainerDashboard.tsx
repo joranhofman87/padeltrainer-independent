@@ -30,7 +30,7 @@ import { DuplicateCyclusDialog } from '@/components/trainer/DuplicateCyclusDialo
 import { DeleteSlotDialog } from '@/components/trainer/DeleteSlotDialog';
 import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
-import CycleForm from '@/components/cycles/CycleForm';
+
 
 interface DashboardStats {
   totalStudents: number;
@@ -87,7 +87,6 @@ export default function TrainerDashboard() {
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
-  const [showCreateCycleDialog, setShowCreateCycleDialog] = useState(false);
   const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   useEffect(() => {
     if (user && role === 'trainer') {
@@ -322,7 +321,7 @@ export default function TrainerDashboard() {
   };
 
   const handleChooseCyclus = () => {
-    setShowCreateCycleDialog(true);
+    setBulkCreateOpen(true);
   };
 
   const handleSlotsCreated = () => {
@@ -776,7 +775,6 @@ export default function TrainerDashboard() {
         open={addSlotOpen}
         onOpenChange={setAddSlotOpen}
         trainerId={trainerId}
-        lessons={lessons}
         defaultDate={defaultSlotDate}
         defaultTime={defaultSlotTime}
         defaultDuration={settings.slot_duration_minutes}
@@ -789,7 +787,7 @@ export default function TrainerDashboard() {
         open={bulkCreateOpen}
         onOpenChange={setBulkCreateOpen}
         trainerId={trainerId}
-        lessons={lessons}
+        
         defaultDate={defaultSlotDate}
         defaultTime={defaultSlotTime}
         defaultDuration={settings.slot_duration_minutes}
@@ -865,20 +863,6 @@ export default function TrainerDashboard() {
         onBookingUpdated={handleSlotsCreated}
       />
 
-      {/* Create Cycle Dialog */}
-      {trainerId && (
-        <CycleForm
-          ownerType="trainer"
-          ownerId={trainerId}
-          open={showCreateCycleDialog}
-          onOpenChange={setShowCreateCycleDialog}
-          trainerHourlyRate={trainerHourlyRate}
-          formType="cyclus"
-          onSuccess={() => {
-            handleSlotsCreated();
-          }}
-        />
-      )}
     </>
   );
 }
