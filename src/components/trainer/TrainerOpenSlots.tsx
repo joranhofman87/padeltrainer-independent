@@ -25,6 +25,20 @@ interface SlotData {
   spots_left: number;
 }
 
+interface CycleGroup {
+  cyclus_id: string;
+  cyclus_name: string;
+  slots: SlotData[];
+  firstDate: Date;
+  lastDate: Date;
+  sessionCount: number;
+  dayPattern: string;
+  timePattern: string;
+  location_name: string | null;
+  minSpotsLeft: number;
+  totalPrice: number | null;
+}
+
 interface DayGroup {
   date: Date;
   slots: SlotData[];
@@ -44,6 +58,8 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
 
   const localizePath = useLocalizedPathFn();
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
+
+  const [cycleGroups, setCycleGroups] = useState<CycleGroup[]>([]);
 
   useEffect(() => {
     fetchOpenSlots();
@@ -77,6 +93,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
 
       if (!slotsData || slotsData.length === 0) {
         setDayGroups([]);
+        setCycleGroups([]);
         setLoading(false);
         return;
       }
@@ -119,9 +136,50 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
           };
         });
 
-      // Group by day
-      const groups: DayGroup[] = [];
+      // Separate individual slots vs cycle-grouped slots
+      const individualSlots: SlotData[] = [];
+      const cycleSlotMap = new Map<string, SlotData[]>();
+
       for (const slot of availableSlots) {
+        if (slot.cyclus_id && !slot.allow_single_booking) {
+          const existing = cycleSlotMap.get(slot.cyclus_id) || [];
+          existing.push(slot);
+          cycleSlotMap.set(slot.cyclus_id, existing);
+        } else {
+          individualSlots.push(slot);
+        }
+      }
+
+      // Build cycle groups
+      const builtCycleGroups: CycleGroup[] = [];
+      for (const [cyclusId, slots] of cycleSlotMap) {
+        const sorted = slots.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+        const firstSlot = sorted[0];
+        const lastSlot = sorted[sorted.length - 1];
+        const firstDate = parseISO(firstSlot.start_time);
+        const dayName = format(firstDate, 'EEEE', { locale: dateLocale });
+        const timeStart = format(firstDate, 'HH:mm');
+        const timeEnd = format(parseISO(firstSlot.end_time), 'HH:mm');
+
+        builtCycleGroups.push({
+          cyclus_id: cyclusId,
+          cyclus_name: firstSlot.cyclus_name || cyclusId,
+          slots: sorted,
+          firstDate,
+          lastDate: parseISO(lastSlot.start_time),
+          sessionCount: sorted.length,
+          dayPattern: dayName,
+          timePattern: `${timeStart} - ${timeEnd}`,
+          location_name: firstSlot.location_name,
+          minSpotsLeft: Math.min(...sorted.map(s => s.spots_left)),
+          totalPrice: firstSlot.price_per_session ? Math.round(firstSlot.price_per_session * sorted.length * 100) / 100 : null,
+        });
+      }
+      setCycleGroups(builtCycleGroups);
+
+      // Group individual slots by day
+      const groups: DayGroup[] = [];
+      for (const slot of individualSlots) {
         const slotDate = parseISO(slot.start_time);
         const existingGroup = groups.find(g => isSameDay(g.date, slotDate));
         if (existingGroup) {
@@ -139,11 +197,11 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
     }
   };
 
-  if (loading || dayGroups.length === 0) {
+  if (loading || (dayGroups.length === 0 && cycleGroups.length === 0)) {
     return null;
   }
 
-  const totalSlots = dayGroups.reduce((sum, g) => sum + g.slots.length, 0);
+  const totalSlots = dayGroups.reduce((sum, g) => sum + g.slots.length, 0) + cycleGroups.length;
   const displayGroups = showAll ? dayGroups : dayGroups.slice(0, 3);
   const bookUrl = localizePath(`/book/${trainerSlug || trainerId}`);
 
@@ -164,6 +222,49 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Cycle summary cards */}
+        {cycleGroups.map(cg => (
+          <div
+            key={cg.cyclus_id}
+            className="p-4 border rounded-lg hover:border-primary/50 transition-colors cursor-pointer space-y-2"
+            onClick={() => navigate(bookUrl)}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm">{cg.cyclus_name}</h4>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {format(cg.firstDate, 'd MMM', { locale: dateLocale })} – {format(cg.lastDate, 'd MMM', { locale: dateLocale })}
+              </span>
+              <span>{cg.sessionCount} {t('cycles:form.sessions', 'sessions')}</span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {cg.dayPattern} {cg.timePattern}
+              </span>
+              {cg.location_name && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {cg.location_name}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {cg.minSpotsLeft} {cg.minSpotsLeft === 1 ? t('common:spotLeft', 'spot left') : t('common:spotsLeft', 'spots left')}
+              </span>
+              {cg.totalPrice != null && cg.totalPrice > 0 && (
+                <Badge variant="secondary" className="font-semibold">
+                  {formatPrice(cg.totalPrice)}
+                </Badge>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Individual slots grouped by day */}
         {displayGroups.map(group => (
           <div key={group.date.toISOString()} className="space-y-2">
             <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">

@@ -66,7 +66,15 @@
     "currency": "Valuta",
     "pricingHelp": "Stel een prijs per les of een vast pakketprijs in",
     "save": "Cyclus Opslaan",
-    "saveAndOpen": "Opslaan & Inschrijving Openen"
+    "saveAndOpen": "Opslaan & Inschrijving Openen",
+    "allowSingleBooking": "Individuele les boeking toestaan",
+    "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
+    "extraCosts": "Extra Kosten",
+    "extraCostsHelp": "Voeg terugkerende kosten toe zoals baanhuur die als aparte factuurregel verschijnen",
+    "addCost": "Kosten toevoegen",
+    "costDescription": "Omschrijving",
+    "costPrice": "Prijs per sessie",
+    "sessions": "sessies"
   },
   
   "actions": {

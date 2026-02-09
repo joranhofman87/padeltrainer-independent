@@ -45,6 +45,11 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   sessions_per_week: 10,
 };
 
+export interface ExtraCost {
+  description: string;
+  price: number;
+}
+
 export interface CycleSettings {
   lesson_types?: ('private' | 'duo' | 'group' | 'kids')[];
   show_preferred_trainer?: boolean;
@@ -59,6 +64,8 @@ export interface CycleSettings {
   scoring_weights?: ScoringWeights;
   max_rating_spread?: number;
   rating_spread_system?: string;
+  allow_single_booking?: boolean;
+  extra_costs?: ExtraCost[];
   [key: string]: unknown; // Allow for Json compatibility
 }
 
