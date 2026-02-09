@@ -114,9 +114,9 @@
     "certifications": "Certificeringen",
     "specializations": "Specialisaties",
     "knltbRating": "KNLTB Rating",
-    "lessons": "Beschikbare Lessen",
-    "noLessons": "Momenteel geen lessen beschikbaar",
-    "bookLesson": "Boek Les",
+    "lessons": "Beschikbare Sessies",
+    "noLessons": "Momenteel geen sessies beschikbaar",
+    "bookLesson": "Boek Sessie",
     "reviews": "Reviews",
     "noReviews": "Nog geen reviews",
     "follow": "Volgen",
@@ -124,13 +124,13 @@
     "followers": "{{count}} volgers"
   },
   "booking": {
-    "title": "Boek een Les",
+    "title": "Boek een Sessie",
     "selectSlot": "Selecteer een Tijdslot",
-    "noSlots": "Geen beschikbare slots voor deze les",
+    "noSlots": "Geen beschikbare slots voor deze sessie",
     "notes": "Notities voor de trainer (optioneel)",
     "notesPlaceholder": "Speciale verzoeken of informatie voor de trainer...",
     "summary": "Boekingsoverzicht",
-    "lesson": "Les",
+    "lesson": "Sessie",
     "trainer": "Trainer",
     "date": "Datum",
     "time": "Tijd",
@@ -140,13 +140,13 @@
     "processing": "Verwerken...",
     "success": {
       "title": "Boeking Bevestigd!",
-      "description": "Je les is succesvol geboekt."
+      "description": "Je sessie is succesvol geboekt."
     }
   },
   "bookings": {
     "title": "Mijn Boekingen",
     "empty": "Nog geen boekingen",
-    "emptyDescription": "Boek je eerste les om te beginnen!",
+    "emptyDescription": "Boek je eerste sessie om te beginnen!",
     "findTrainer": "Vind een Trainer",
     "tabs": {
       "upcoming": "Aankomend",

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthRedirectUrl } from "@/lib/domains";
+import { logger } from '@/lib/logger';
 
 export type UserRole = 'player' | 'trainer' | 'admin' | 'club';
 
@@ -48,7 +49,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
     });
 
     if (invokeError) {
-      console.error('Signup function error:', invokeError);
+      logger.error('Signup function error', invokeError as Error, { component: 'auth' });
       return { 
         data: { user: null, session: null }, 
         error: { message: invokeError.message || 'Failed to create account', name: 'SignupError' } as any 
@@ -70,7 +71,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
     });
 
     if (signInError) {
-      console.error('Auto sign-in after signup failed:', signInError);
+      logger.error('Auto sign-in after signup failed', signInError as Error, { component: 'auth' });
       // User was created but sign-in failed — fall back to manual login
       return { 
         data: { user: response?.user || null, session: null }, 
@@ -86,7 +87,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
       error: null 
     };
   } catch (err: any) {
-    console.error('Signup error:', err);
+    logger.error('Signup error', err as Error, { component: 'auth' });
     return { 
       data: { user: null, session: null }, 
       error: { message: err.message || 'Failed to create account', name: 'SignupError' } as any 
@@ -220,7 +221,7 @@ export async function sendPasswordResetEmail(email: string) {
     
     return { data, error: null };
   } catch (error: any) {
-    console.error('Failed to send password reset email:', error);
+    logger.error('Failed to send password reset email', error as Error, { component: 'auth' });
     // Fallback to Supabase default if custom email fails
     const { data, error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: getAuthRedirectUrl('/app/reset-password'),

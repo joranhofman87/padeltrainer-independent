@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from '@/lib/logger';
 
 export interface AcademyConnectStatus {
   connected: boolean;
@@ -52,7 +53,7 @@ export async function getAcademyMollieAccount(academyProfileId: string) {
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching academy mollie account:', error);
+    logger.error('Error fetching academy mollie account', error as Error, { component: 'academyPayments' });
     return null;
   }
 

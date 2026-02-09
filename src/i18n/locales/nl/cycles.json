@@ -88,9 +88,9 @@
   },
   
   "application": {
-    "title": "Aanmelden voor Lessen",
+    "title": "Aanmelden voor Training",
     "subtitle": "Dien je aanmelding in voor {{cycleName}}",
-    "applyButton": "Aanmelden voor Lessen",
+    "applyButton": "Aanmelden voor Training",
     "loginRequired": "Log in om je aan te melden",
     "alreadyApplied": "Je hebt je al aangemeld",
     "enrollmentClosed": "Inschrijving is gesloten",

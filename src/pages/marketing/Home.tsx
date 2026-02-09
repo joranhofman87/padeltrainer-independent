@@ -82,7 +82,7 @@ export default function Home() {
 
   const stats = [
     { value: platformStats.loading ? '...' : formatStat(platformStats.trainers), labelKey: 'home.stats.trainers' },
-    { value: platformStats.loading ? '...' : formatStat(platformStats.lessons), labelKey: 'home.stats.lessons' },
+    { value: platformStats.loading ? '...' : formatStat(platformStats.sessions), labelKey: 'home.stats.lessons' },
     { value: platformStats.loading ? '...' : platformStats.avgRating.toString(), labelKey: 'home.stats.rating' },
     { value: platformStats.loading ? '...' : formatStat(platformStats.cities), labelKey: 'home.stats.cities' }
   ];

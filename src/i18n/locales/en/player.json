@@ -114,9 +114,9 @@
     "certifications": "Certifications",
     "specializations": "Specializations",
     "knltbRating": "KNLTB Rating",
-    "lessons": "Available Lessons",
-    "noLessons": "No lessons available at this time",
-    "bookLesson": "Book Lesson",
+    "lessons": "Available Sessions",
+    "noLessons": "No sessions available at this time",
+    "bookLesson": "Book Session",
     "reviews": "Reviews",
     "noReviews": "No reviews yet",
     "follow": "Follow",
@@ -124,13 +124,13 @@
     "followers": "{{count}} followers"
   },
   "booking": {
-    "title": "Book a Lesson",
+    "title": "Book a Session",
     "selectSlot": "Select a Time Slot",
-    "noSlots": "No available slots for this lesson",
+    "noSlots": "No available slots for this session",
     "notes": "Notes for the trainer (optional)",
     "notesPlaceholder": "Any special requests or information for the trainer...",
     "summary": "Booking Summary",
-    "lesson": "Lesson",
+    "lesson": "Session",
     "trainer": "Trainer",
     "date": "Date",
     "time": "Time",
@@ -140,13 +140,13 @@
     "processing": "Processing...",
     "success": {
       "title": "Booking Confirmed!",
-      "description": "Your lesson has been booked successfully."
+      "description": "Your session has been booked successfully."
     }
   },
   "bookings": {
     "title": "My Bookings",
     "empty": "No bookings yet",
-    "emptyDescription": "Book your first lesson to get started!",
+    "emptyDescription": "Book your first session to get started!",
     "findTrainer": "Find a Trainer",
     "tabs": {
       "upcoming": "Upcoming",

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export type OwnerType = 'academy' | 'trainer' | 'location';
 export type LessonType = 'private' | 'duo' | 'group' | 'kids';
@@ -119,7 +120,7 @@ export async function hasActiveEntry(
     .maybeSingle();
 
   if (error) {
-    console.error('Error checking active entry:', error);
+    logger.error('Error checking active entry', error as Error, { component: 'waitingList' });
     return false;
   }
 
@@ -170,7 +171,7 @@ export async function getActiveWaitingListCount(
     .eq('status', 'active');
 
   if (error) {
-    console.error('Error getting waiting list count:', error);
+    logger.error('Error getting waiting list count', error as Error, { component: 'waitingList' });
     return 0;
   }
 

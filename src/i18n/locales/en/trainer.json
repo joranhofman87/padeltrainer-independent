@@ -19,7 +19,7 @@
     "settings": "Settings",
     "viewPublicProfile": "View Public Profile",
     "myClubs": "My Clubs",
-    "lessons": "Lessons",
+    "lessons": "Sessions",
     "getStarted": "Get Started"
   },
   "profile": {
@@ -46,8 +46,8 @@
   },
   "dashboard": {
     "welcome": "Welcome back, Coach {{name}}! 💪",
-    "subtitle": "Manage your lessons, view bookings, and grow your padel training business",
-    "createLesson": "Create Lesson",
+    "subtitle": "Manage your training sessions, view bookings, and grow your padel training business",
+    "createLesson": "Create Session",
     "trialBanner": {
       "daysLeft": "{{days}} days left in your free trial",
       "lastDay": "Last day of your free trial",
@@ -56,7 +56,7 @@
       "subscribe": "Subscribe to continue"
     },
     "stats": {
-      "upcomingLessons": "Upcoming Lessons",
+      "upcomingLessons": "Upcoming Sessions",
       "totalStudents": "Total Students",
       "openSlots": "Open Slots",
       "revenue": "Revenue",
@@ -119,8 +119,8 @@
           "description": "Add bio, photo, and hourly rate"
         },
         "lessons": {
-          "title": "Create Lessons",
-          "description": "Add your first lesson type"
+          "title": "Create Schedule",
+          "description": "Add your first training session"
         },
         "availability": {
           "title": "Create Schedule",
@@ -150,12 +150,12 @@
     "viewAcademyDashboard": "View in academy dashboard"
   },
   "lessons": {
-    "title": "My Lessons",
-    "createNew": "Create New Lesson",
-    "empty": "No lessons created yet",
-    "emptyDescription": "Create your first lesson to start receiving bookings.",
+    "title": "My Sessions",
+    "createNew": "Create New Session",
+    "empty": "No sessions created yet",
+    "emptyDescription": "Create your first session to start receiving bookings.",
     "form": {
-      "title": "Lesson Title",
+      "title": "Session Title",
       "titlePlaceholder": "e.g. Beginner Padel Basics",
       "description": "Description",
       "descriptionPlaceholder": "Describe what players will learn...",
@@ -168,10 +168,10 @@
       "minSkill": "Min Skill",
       "maxSkill": "Max Skill",
       "active": "Active",
-      "activeDescription": "Lesson is visible and bookable",
+      "activeDescription": "Session is visible and bookable",
       "paymentTiming": "Payment Timing",
       "upfront": "Upfront",
-      "after": "After Lesson",
+      "after": "After Session",
       "bookingMode": "Booking Mode",
       "bookingModeFullSlot": "Full slot only",
       "bookingModeIndividual": "Individual spots",
@@ -190,7 +190,7 @@
     "subtitle": "Add one-off time slots outside your regular schedule",
     "addSlot": "Add Slot",
     "noSlots": "No availability slots set",
-    "noSlotsDescription": "Add time slots when you're available for lessons.",
+    "noSlotsDescription": "Add time slots when you're available for sessions.",
     "goToSchedule": "Need regular schedule? Use Working Hours"
   },
   "schedule": {
@@ -216,7 +216,7 @@
   "bookings": {
     "title": "Bookings",
     "empty": "No bookings yet",
-    "emptyDescription": "Bookings will appear here when players book your lessons.",
+    "emptyDescription": "Bookings will appear here when players book your sessions.",
     "tabs": {
       "upcoming": "Upcoming",
       "past": "Past",
@@ -280,16 +280,16 @@
   },
   "players": {
     "title": "My Players",
-    "subtitle": "Manage your guest players and book lessons for them",
+    "subtitle": "Manage your guest players and book sessions for them",
     "addPlayer": "Add Player",
-    "addPlayerDescription": "Add a new guest player to book lessons for",
+    "addPlayerDescription": "Add a new guest player to book sessions for",
     "guestPlayers": "Guest Players",
     "guestPlayersDescription": "{{count}} players managed by you",
     "searchPlayers": "Search players...",
     "noPlayers": "No players added yet",
     "noPlayersFound": "No players found",
     "tryDifferentSearch": "Try a different search term",
-    "createFirst": "Add your first player to book them for lessons",
+    "createFirst": "Add your first player to book them for sessions",
     "fullName": "Full Name",
     "fullNamePlaceholder": "e.g. John Doe",
     "email": "Email",
@@ -309,7 +309,7 @@
     "active": "Active",
     "edit": "Edit",
     "delete": "Delete",
-    "bookLesson": "Book Lesson",
+    "bookLesson": "Book Session",
     "editPlayer": "Edit Player",
     "editPlayerDescription": "Update player details",
     "saveChanges": "Save Changes",
@@ -466,7 +466,7 @@
     "noCyclusConfigured": "No cyclus configured. Add your first recurring slot.",
     "sessions": "sessions",
     "addSlotTitle": "Add Time Slot",
-    "addSlotDescription": "Create a new availability slot for lessons",
+    "addSlotDescription": "Create a new availability slot for sessions",
     "bulkCreateTitle": "Bulk Create Slots",
     "bulkCreateDescription": "Create multiple recurring slots at once",
     "date": "Date",
@@ -476,8 +476,8 @@
     "player": "Player",
     "selectPlayer": "Select player...",
     "playersAddedToCyclus": "{{count}} player(s) added to all {{sessions}} sessions",
-    "linkLesson": "Link to Lesson",
-    "noLesson": "No lesson linked",
+    "linkLesson": "Link to Session",
+    "noLesson": "No session linked",
     "slotCreated": "Slot created successfully",
     "noSlotsConfigured": "No slots configured. Add your first recurring slot.",
     "slot": "Slot",
@@ -559,7 +559,7 @@
     "spotsOpen": "spots",
     "sessionsOpen": "sessions open",
     "spotsAvailable": "spots available",
-    "noLesson": "No lesson linked",
+    "noLesson": "No session linked",
     "bookPlayer": "Book player",
     "noOpenSlots": "No open slots available",
     "noOpenSlotsDescription": "All your training slots are either fully booked or marked as private.",

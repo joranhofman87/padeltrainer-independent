@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export interface ClubTournament {
   id: string;
@@ -26,7 +27,7 @@ export async function getClubTournaments(clubProfileId: string): Promise<ClubTou
     .order('start_date', { ascending: true });
 
   if (error) {
-    console.error('Error fetching club tournaments:', error);
+    logger.error('Error fetching club tournaments', error as Error, { component: 'tournaments' });
     return [];
   }
 
@@ -44,7 +45,7 @@ export async function getPublishedTournaments(clubProfileId: string): Promise<Cl
     .order('start_date', { ascending: true });
 
   if (error) {
-    console.error('Error fetching published tournaments:', error);
+    logger.error('Error fetching published tournaments', error as Error, { component: 'tournaments' });
     return [];
   }
 
@@ -62,7 +63,7 @@ export async function createTournament(
     .single();
 
   if (error) {
-    console.error('Error creating tournament:', error);
+    logger.error('Error creating tournament', error as Error, { component: 'tournaments' });
     return null;
   }
 
@@ -82,7 +83,7 @@ export async function updateTournament(
     .single();
 
   if (error) {
-    console.error('Error updating tournament:', error);
+    logger.error('Error updating tournament', error as Error, { component: 'tournaments' });
     return null;
   }
 
@@ -97,7 +98,7 @@ export async function deleteTournament(id: string): Promise<boolean> {
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting tournament:', error);
+    logger.error('Error deleting tournament', error as Error, { component: 'tournaments' });
     return false;
   }
 

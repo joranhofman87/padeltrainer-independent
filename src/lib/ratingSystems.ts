@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from '@/lib/logger';
 
 export interface RatingSystemConfig {
   id: string;
@@ -33,7 +34,7 @@ export async function getRatingSystems(): Promise<RatingSystemConfig[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    console.error("Error fetching rating systems:", error);
+    logger.error("Error fetching rating systems", error as Error, { component: 'ratingSystems' });
     return getDefaultSystems();
   }
 
