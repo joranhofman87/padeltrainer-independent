@@ -124,7 +124,8 @@ export interface EnrichedProposedAssignment extends ProposedAssignment {
     start_time: string;
     end_time: string;
     location_id: string | null;
-    lessons?: { id: string; title: string } | null;
+    cyclus_name?: string | null;
+    max_participants?: number | null;
   };
   trainer?: {
     id: string;
@@ -704,8 +705,7 @@ export async function getProposedAssignmentForRequest(
     .select(`
       *,
       slot:availability_slots(
-        id, start_time, end_time, location_id,
-        lessons(id, title)
+        id, start_time, end_time, location_id, cyclus_name, max_participants
       ),
       trainer:trainer_profiles(
         id,

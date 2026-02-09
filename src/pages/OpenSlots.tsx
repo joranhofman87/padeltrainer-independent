@@ -534,10 +534,10 @@ export default function OpenSlots() {
             id: selectedSlot.id,
             start_time: selectedSlot.start_time,
             end_time: selectedSlot.end_time,
-            lesson_id: null,
+            
             cyclus_id: selectedSlot.cyclus_id,
           }}
-          lesson={null}
+          
           onBookingCreated={handleBookingCreated}
         />
       )}

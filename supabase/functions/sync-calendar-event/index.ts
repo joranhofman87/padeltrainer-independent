@@ -138,7 +138,6 @@ serve(async (req) => {
         id,
         notes,
         status,
-        lesson_id,
         player_id,
         slot_id
       `)
@@ -153,21 +152,10 @@ serve(async (req) => {
       );
     }
 
-    // Fetch lesson details if exists
-    let lesson: { title: string; description: string | null; duration_minutes: number; location: string | null; trainer_id: string } | null = null;
-    if (booking.lesson_id) {
-      const { data: lessonData } = await supabase
-        .from('lessons')
-        .select('title, description, duration_minutes, location, trainer_id')
-        .eq('id', booking.lesson_id)
-        .single();
-      lesson = lessonData;
-    }
-
     // Fetch availability slot
     const { data: slot } = await supabase
       .from('availability_slots')
-      .select('start_time, end_time, trainer_id')
+      .select('start_time, end_time, trainer_id, cyclus_name')
       .eq('id', booking.slot_id)
       .single();
 
@@ -187,7 +175,7 @@ serve(async (req) => {
       .single();
 
     // Get trainer profile and user_id
-    const trainerId = lesson?.trainer_id || slot?.trainer_id;
+    const trainerId = slot?.trainer_id;
     const { data: trainerProfile } = await supabase
       .from('trainer_profiles')
       .select('user_id')
@@ -275,13 +263,12 @@ serve(async (req) => {
 
         // Create event
         const event: CalendarEvent = {
-          summary: `Tennis: ${lesson?.title || 'Lesson'}`,
+          summary: `Tennis: ${slot.cyclus_name || 'Lesson'}`,
           description: [
             `${roleLabel}: ${otherPersonName || 'TBD'}`,
-            lesson?.description || '',
             booking.notes ? `Notes: ${booking.notes}` : '',
           ].filter(Boolean).join('\n'),
-          location: lesson?.location || undefined,
+          location: undefined,
           start: {
             dateTime: slot.start_time,
             timeZone: 'Europe/Amsterdam',

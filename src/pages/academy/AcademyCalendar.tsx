@@ -45,10 +45,10 @@ interface AcademySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   is_marked_full: boolean;
   location_id: string | null;
-  lessons: { title: string; max_participants: number } | null;
+  max_participants: number;
+  cyclus_name: string | null;
   trainer_name: string;
   trainer_avatar: string | null;
   location_name: string | null;
@@ -249,10 +249,10 @@ export default function AcademyCalendar() {
           trainer_id: slot.trainer_id,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          lesson_id: null,
           is_marked_full: slot.is_marked_full,
           location_id: slot.location_id,
-          lessons: null,
+          max_participants: slot.max_participants || 4,
+          cyclus_name: slot.cyclus_name || null,
           trainer_name: profile?.full_name || "Unknown",
           trainer_avatar: profile?.avatar_url || null,
           location_name: slot.locations?.name || null,
@@ -392,7 +392,7 @@ export default function AcademyCalendar() {
   const getSlotColor = (slot: AcademySlot) => {
     const now = new Date();
     const isPast = new Date(slot.start_time) < now;
-    const maxParticipants = slot.lessons?.max_participants || 4;
+    const maxParticipants = slot.max_participants || 4;
 
     if (isPast) return "bg-muted text-muted-foreground";
     if (slot.is_marked_full) return "bg-purple-100 dark:bg-purple-900/50 border-purple-300";
@@ -604,7 +604,7 @@ export default function AcademyCalendar() {
                               {format(new Date(slot.start_time), "HH:mm")} - {format(new Date(slot.end_time), "HH:mm")}
                             </span>
                             <Badge variant="outline" className="text-xs">
-                              {slot.active_bookings}/{slot.lessons?.max_participants || 4}
+                              {slot.active_bookings}/{slot.max_participants || 4}
                             </Badge>
                           </div>
                           <div className="text-sm truncate">{slot.trainer_name}</div>
@@ -614,9 +614,9 @@ export default function AcademyCalendar() {
                               {slot.location_name}
                             </div>
                           )}
-                          {slot.lessons?.title && (
+                          {slot.cyclus_name && (
                             <div className="text-xs text-muted-foreground truncate">
-                              {slot.lessons.title}
+                              {slot.cyclus_name}
                             </div>
                           )}
                         </div>
@@ -698,14 +698,14 @@ export default function AcademyCalendar() {
                                   "text-xs p-1.5 rounded border mb-1",
                                   getSlotColor(slot)
                                 )}
-                                title={`${slot.trainer_name} - ${slot.lessons?.title || "Open Slot"}${slot.location_name ? ` @ ${slot.location_name}` : ""}`}
+                                title={`${slot.trainer_name} - ${slot.cyclus_name || "Open Slot"}${slot.location_name ? ` @ ${slot.location_name}` : ""}`}
                               >
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <span className="font-medium">
                                     {format(new Date(slot.start_time), "HH:mm")}
                                   </span>
                                   <span className="opacity-70">
-                                    {slot.active_bookings}/{slot.lessons?.max_participants || 4}
+                                    {slot.active_bookings}/{slot.max_participants || 4}
                                   </span>
                                 </div>
                                 <div className="truncate text-[10px] opacity-80">

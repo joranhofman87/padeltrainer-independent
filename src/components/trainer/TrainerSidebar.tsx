@@ -77,8 +77,7 @@ export function TrainerSidebar() {
   );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/trainer/calendar") ||
-    location.pathname.startsWith("/trainer/open-slots") ||
-    location.pathname.startsWith("/trainer/lessons")
+    location.pathname.startsWith("/trainer/open-slots")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.startsWith("/trainer/cycles")
@@ -337,7 +336,7 @@ export function TrainerSidebar() {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots") || isActive("/trainer/lessons")
+                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >

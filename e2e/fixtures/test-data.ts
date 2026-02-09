@@ -78,7 +78,7 @@ export const ROUTES = {
   clubProfile: '/club/profile',
   clubSettings: '/club/settings',
   clubSubscription: '/club/subscription',
-  clubLessons: '/club/lessons',
+  
   
   // Academy Dashboard
   academyDashboard: '/academy',

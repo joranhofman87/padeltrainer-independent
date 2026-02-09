@@ -53,9 +53,9 @@ interface ClubSlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   is_marked_full: boolean;
-  lessons: { title: string; max_participants: number } | null;
+  max_participants: number;
+  cyclus_name: string | null;
   trainer_name: string;
   trainer_avatar: string | null;
   active_bookings: number;
@@ -182,7 +182,7 @@ export function ClubSlotDetailSheet({
 
   if (!slot) return null;
 
-  const maxParticipants = slot.lessons?.max_participants || 4;
+  const maxParticipants = slot.max_participants || 4;
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
   const slotDate = format(new Date(slot.start_time), "EEEE, MMMM d, yyyy");
@@ -198,7 +198,7 @@ export function ClubSlotDetailSheet({
               <AvatarFallback>{getInitials(slot.trainer_name)}</AvatarFallback>
             </Avatar>
             <div>
-              <SheetTitle>{slot.lessons?.title || t("calendar.openSlot", "Open Slot")}</SheetTitle>
+              <SheetTitle>{slot.cyclus_name || t("calendar.openSlot", "Open Slot")}</SheetTitle>
               <SheetDescription>{slot.trainer_name}</SheetDescription>
             </div>
           </div>

@@ -30,7 +30,6 @@ export const SUBSCRIPTION_TIERS = {
 
 export const STARTER_TIER = {
   name: 'Starter',
-  maxLessons: 3,
   monthlyPrice: 10,
   yearlyPrice: 96,
 };
@@ -42,13 +41,6 @@ export const STARTER_TIER = {
 export function getTierFromProductId(productId: string | null): SubscriptionTier {
   // With Mollie, tier comes directly from database - no product ID mapping needed
   return 'trial';
-}
-
-export function canCreateMoreLessons(tier: SubscriptionTier, currentLessonCount: number): boolean {
-  if (tier === 'trial') {
-    return currentLessonCount < STARTER_TIER.maxLessons;
-  }
-  return true; // Professional and Academy have unlimited lessons
 }
 
 // Re-export shared utilities
