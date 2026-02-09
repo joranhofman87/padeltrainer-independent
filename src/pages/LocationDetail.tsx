@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { LocalizedLink } from '@/components/LocalizedLink';
 import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Mail, Share2, Copy, Check, MessageCircle, GraduationCap, Award, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
@@ -276,6 +277,21 @@ export default function LocationDetail() {
     };
   };
 
+  const getBreadcrumbData = () => {
+    if (!location) return null;
+    return {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
+        { "@type": "ListItem", "position": 2, "name": "Locations", "item": "https://padeltrainer.ai/en/locations" },
+        { "@type": "ListItem", "position": 3, "name": location.name }
+      ]
+    };
+  };
+
+  const citySlug = location?.city?.toLowerCase().replace(/\s+/g, '-');
+
   // Build social links array
   const socialLinks = [];
   if (clubProfile?.social_instagram) socialLinks.push({ platform: 'instagram' as const, handle: clubProfile.social_instagram });
@@ -339,6 +355,8 @@ export default function LocationDetail() {
     { label: location.name },
   ];
 
+  const allStructuredData = [getStructuredData(), getBreadcrumbData()].filter(Boolean);
+
   return (
     <>
       <SEO
@@ -347,7 +365,7 @@ export default function LocationDetail() {
         url={`/locations/${location.slug}`}
         type="place"
         image={displayLogo || clubProfile?.banner_url || 'https://padeltrainer.ai/og-locations.png'}
-        structuredData={getStructuredData() || undefined}
+        structuredData={allStructuredData.length > 0 ? allStructuredData : undefined}
       />
 
     <ProfileLayout
@@ -535,6 +553,21 @@ export default function LocationDetail() {
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* City Trainers Cross-Link */}
+            {citySlug && (
+              <Card>
+                <CardContent className="p-4">
+                  <LocalizedLink 
+                    to={`/trainers/${citySlug}`}
+                    className="flex items-center gap-2 text-primary hover:underline font-medium"
+                  >
+                    <Users className="h-4 w-4" />
+                    {t('common:findMoreTrainersIn', { city: location.city, defaultValue: `Find more trainers in ${location.city}` })} →
+                  </LocalizedLink>
                 </CardContent>
               </Card>
             )}

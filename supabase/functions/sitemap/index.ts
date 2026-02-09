@@ -78,10 +78,10 @@ Deno.serve(async (req) => {
       { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
     ];
 
-    // Fetch all trainers with public profiles
+    // Fetch all trainers with public profiles (use slug for SEO-friendly URLs)
     const { data: trainers, error: trainersError } = await supabase
       .from('trainer_profiles')
-      .select('user_id, updated_at');
+      .select('user_id, slug, updated_at');
 
     if (trainersError) {
       console.error('Error fetching trainers:', trainersError);
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
         const lastmod = trainer.updated_at 
           ? new Date(trainer.updated_at).toISOString().split('T')[0] 
           : today;
-        xml += generateUrlEntry(`/trainer/${trainer.user_id}`, lastmod, 'weekly', '0.7');
+        xml += generateUrlEntry(`/trainer/${trainer.slug || trainer.user_id}`, lastmod, 'weekly', '0.7');
       }
     }
 

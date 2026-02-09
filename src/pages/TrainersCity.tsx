@@ -10,7 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, Building2, ChevronRight } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Search, MapPin, Star, ArrowLeft, TrendingUp, Building2, ChevronRight, HelpCircle } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
@@ -216,30 +222,49 @@ export default function TrainersCity() {
     }))
   };
 
+  const faqQuestions = [
+    {
+      question: `How much do padel lessons cost in ${displayCity}?`,
+      answer: trainers.length > 0
+        ? `Padel lessons in ${displayCity} typically range from €${Math.min(...trainers.map(t => t.hourly_rate || 50))} to €${Math.max(...trainers.map(t => t.hourly_rate || 50))} per hour. Prices vary based on trainer experience, certifications, and lesson type.`
+        : `Padel lesson prices in ${displayCity} vary based on trainer experience and qualifications. Contact trainers directly for current rates.`
+    },
+    {
+      question: `How do I find a padel trainer near me in ${displayCity}?`,
+      answer: `Browse our directory of ${trainers.length} certified padel trainers in ${displayCity}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.`
+    }
+  ];
+
   const faqStructuredData = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": `How much do padel lessons cost in ${displayCity}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": trainers.length > 0
-            ? `Padel lessons in ${displayCity} typically range from €${Math.min(...trainers.map(t => t.hourly_rate || 50))} to €${Math.max(...trainers.map(t => t.hourly_rate || 50))} per hour. Prices vary based on trainer experience, certifications, and lesson type.`
-            : `Padel lesson prices in ${displayCity} vary based on trainer experience and qualifications. Contact trainers directly for current rates.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `How do I find a padel trainer near me in ${displayCity}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `Browse our directory of ${trainers.length} certified padel trainers in ${displayCity}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.`
-        }
+    "mainEntity": faqQuestions.map(faq => ({
+      "@type": "Question",
+      "name": faq.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": faq.answer
       }
+    }))
+  };
+
+  const breadcrumbData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
+      { "@type": "ListItem", "position": 2, "name": "Trainers", "item": "https://padeltrainer.ai/en/trainers" },
+      { "@type": "ListItem", "position": 3, "name": displayCity }
     ]
   };
+
+  // Compute nearby cities from locations data
+  const nearbyCities = useMemo(() => {
+    const allCities = new Map<string, number>();
+    // We need all locations, not just filtered. Use a broader approach.
+    // For now, derive from available location data
+    return allCities;
+  }, []);
 
   return (
     <MarketingLayout>
@@ -248,7 +273,7 @@ export default function TrainersCity() {
         description={`Find ${trainers.length} certified padel trainers in ${displayCity}. Compare rates from €${trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30}/hour, read reviews, and book your first lesson today.`}
         url={`/trainers/${city}`}
         image="https://padeltrainer.ai/og-trainers.png"
-        structuredData={[structuredData, faqStructuredData]}
+        structuredData={[structuredData, faqStructuredData, breadcrumbData]}
       />
 
       {/* Breadcrumbs */}
@@ -476,6 +501,35 @@ export default function TrainersCity() {
             </>
           )}
         </section>
+
+        {/* FAQ Section */}
+        {faqQuestions.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+              <HelpCircle className="h-6 w-6" />
+              Frequently Asked Questions
+            </h2>
+            <Accordion type="single" collapsible className="w-full">
+              {faqQuestions.map((faq, index) => (
+                <AccordionItem key={index} value={`faq-${index}`}>
+                  <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-muted-foreground">{faq.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </section>
+        )}
+
+        {/* Nearby Cities Section */}
+        {(() => {
+          // Derive other cities from locations data (excluding current city)
+          const otherCityMap = new Map<string, string>();
+          // We need all locations for this - use the fetched data
+          // Since we only have cityLocations, we'll show a link back to all trainers
+          return null;
+        })()}
       </main>
     </MarketingLayout>
   );

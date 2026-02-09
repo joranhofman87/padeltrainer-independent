@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getBlogPostBySlug } from '@/lib/contentful';
@@ -135,8 +136,37 @@ export default function BlogPost() {
     );
   }
 
+  const articleStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": post.title,
+    "image": post.image,
+    "datePublished": post.date,
+    "author": {
+      "@type": "Organization",
+      "name": "PadelTrainer.ai"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "PadelTrainer.ai",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://padeltrainer.ai/favicon.png"
+      }
+    },
+    "description": post.excerpt ? post.excerpt.slice(0, 155) : post.title
+  };
+
   return (
     <MarketingLayout>
+      <SEO
+        title={post.title}
+        description={post.excerpt ? post.excerpt.slice(0, 155) : `Read about ${post.title} on PadelTrainer.ai`}
+        url={`/blog/${slug}`}
+        type="article"
+        image={post.image}
+        structuredData={articleStructuredData}
+      />
       {/* Back Button */}
         <div className="container mx-auto px-4 pt-8">
           <Button variant="ghost" asChild>

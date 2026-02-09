@@ -7,5 +7,6 @@ Disallow: /app/
 # Sitemap location
 Sitemap: https://padeltrainer.ai/sitemap.xml
 
-# LLM context file for AI crawlers
+# LLM context files for AI crawlers
 # See: https://padeltrainer.ai/llms.txt
+# Full entity catalog: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt

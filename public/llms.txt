@@ -2,6 +2,8 @@
 
 > The marketplace connecting padel players with professional trainers in the Netherlands.
 
+llms-full.txt: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt
+
 ## Overview
 
 PadelTrainer.ai is a specialized platform for the growing padel community in the Netherlands. It serves three main user groups:

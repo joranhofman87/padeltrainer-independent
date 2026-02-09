@@ -123,3 +123,6 @@ verify_jwt = false
 
 [functions.auto-create-invoice]
 verify_jwt = false
+
+[functions.llms-full-txt]
+verify_jwt = false
