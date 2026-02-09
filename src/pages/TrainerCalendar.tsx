@@ -76,7 +76,7 @@ export default function TrainerCalendar() {
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<SlotWithBookings | null>(null);
   const [bookingToEdit, setBookingToEdit] = useState<any>(null);
-  const [selectedLesson, setSelectedLesson] = useState<any>(null);
+  
   const [preselectedCyclusId, setPreselectedCyclusId] = useState<string | undefined>();
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date | undefined>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string | undefined>();
@@ -340,7 +340,7 @@ export default function TrainerCalendar() {
 
   const handleBookForPlayer = (slot: SlotWithBookings) => {
     setSelectedSlot(slot);
-    setSelectedLesson(null);
+    
     setBookForPlayerOpen(true);
   };
 
@@ -620,7 +620,7 @@ export default function TrainerCalendar() {
             setBookForPlayerOpen(open);
             if (!open) {
               setSelectedSlot(null);
-              setSelectedLesson(null);
+              
             }
           }}
           trainerId={trainerId!}
@@ -628,12 +628,12 @@ export default function TrainerCalendar() {
             id: selectedSlot.id,
             start_time: selectedSlot.start_time,
             end_time: selectedSlot.end_time,
-            lesson_id: selectedSlot.lesson_id,
+            
             cyclus_id: selectedSlot.cyclus_id,
             cyclus_name: selectedSlot.cyclus_name,
             booked_players: selectedSlot.booked_players,
           }}
-          lesson={selectedLesson}
+          
           onBookingCreated={handleSlotsCreated}
         />
       )}

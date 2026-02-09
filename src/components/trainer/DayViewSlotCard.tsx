@@ -147,8 +147,8 @@ export function DayViewSlotCard({
             </div>
             
             <div className="flex items-center gap-4 flex-wrap">
-              {slot.lesson_title && (
-                <div className="font-medium text-lg">{slot.lesson_title}</div>
+              {slot.cyclus_name && (
+                <div className="font-medium text-lg">{slot.cyclus_name}</div>
               )}
               {slot.price && (
                 <Badge variant="outline" className="font-semibold">

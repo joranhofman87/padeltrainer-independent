@@ -312,7 +312,7 @@ export function DeleteSlotDialog({
               <p className="text-sm text-muted-foreground">
                 {format(new Date(slot.start_time), "HH:mm")} -{" "}
                 {format(new Date(slot.end_time), "HH:mm")}
-                {slot.lesson_title && ` • ${slot.lesson_title}`}
+                {slot.cyclus_name && ` • ${slot.cyclus_name}`}
               </p>
             </div>
           </div>

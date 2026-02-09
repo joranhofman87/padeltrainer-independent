@@ -105,8 +105,8 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
   const trainerAvatar = trainerProfile?.avatar_url;
   const trainerInitials = trainerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
-  // Get lesson title if available
-  const lessonTitle = proposal.slot?.lessons?.title;
+  // Get cyclus name if available
+  const cyclusName = proposal.slot?.cyclus_name;
 
   return (
     <Card className={proposal.status === 'confirmed' ? 'border-green-500/30' : ''}>
@@ -120,8 +120,8 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
             {slotTime && (
               <p className="text-lg font-semibold text-foreground">{slotTime}</p>
             )}
-            {lessonTitle && (
-              <p className="text-xs text-muted-foreground">{lessonTitle}</p>
+            {cyclusName && (
+              <p className="text-xs text-muted-foreground">{cyclusName}</p>
             )}
           </div>
           <div className="flex items-center gap-2">

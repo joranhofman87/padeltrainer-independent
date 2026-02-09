@@ -106,7 +106,7 @@ export default function TrainerProfile() {
   const { t } = useTranslation(['trainer', 'common']);
   const [trainer, setTrainer] = useState<TrainerData | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [lessons, setLessons] = useState<any[]>([]);
+  
   const [trainerLocations, setTrainerLocations] = useState<TrainerLocationData[]>([]);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [loading, setLoading] = useState(true);

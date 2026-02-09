@@ -33,18 +33,10 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { SlotWithBookings } from "./CalendarSlotCard";
 
-interface Lesson {
-  id: string;
-  title: string;
-  price: number;
-  duration_minutes: number;
-}
-
 interface EditSlotDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   slot: SlotWithBookings | null;
-  lessons: Lesson[];
   onSlotUpdated: () => void;
 }
 
@@ -52,7 +44,6 @@ export function EditSlotDialog({
   open,
   onOpenChange,
   slot,
-  lessons,
   onSlotUpdated,
 }: EditSlotDialogProps) {
   const { t } = useTranslation("trainer");
@@ -61,7 +52,7 @@ export function EditSlotDialog({
   const [date, setDate] = useState<Date | undefined>();
   const [startTime, setStartTime] = useState("09:00");
   const [durationMinutes, setDurationMinutes] = useState(60);
-  const [lessonId, setLessonId] = useState<string | null>(null);
+  
   const [cyclusName, setCyclusName] = useState("");
   const [applyToCyclus, setApplyToCyclus] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,7 +68,7 @@ export function EditSlotDialog({
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
       setDurationMinutes(duration);
       
-      setLessonId(slot.lesson_id);
+      
       setCyclusName(slot.cyclus_name || "");
       setApplyToCyclus(false);
     }
@@ -137,7 +128,6 @@ export function EditSlotDialog({
               .update({
                 start_time: csStart.toISOString(),
                 end_time: csEnd.toISOString(),
-                lesson_id: lessonId,
                 cyclus_name: cyclusName || null,
               })
               .eq("id", cs.id);
@@ -155,7 +145,6 @@ export function EditSlotDialog({
           .update({
             start_time: startDateTime.toISOString(),
             end_time: endDateTime.toISOString(),
-            lesson_id: lessonId,
             cyclus_name: cyclusName || null,
           })
           .eq("id", slot.id);
@@ -267,26 +256,6 @@ export function EditSlotDialog({
             </div>
           </div>
 
-          {/* Lesson */}
-          <div className="space-y-2">
-            <Label>{t("calendar.linkLesson")}</Label>
-            <Select
-              value={lessonId || "none"}
-              onValueChange={(v) => setLessonId(v === "none" ? null : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("calendar.noLesson")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{t("calendar.noLesson")}</SelectItem>
-                {lessons.map((lesson) => (
-                  <SelectItem key={lesson.id} value={lesson.id}>
-                    {lesson.title} - €{lesson.price}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
 
           {/* Cyclus Name */}
           {slot.cyclus_id && (

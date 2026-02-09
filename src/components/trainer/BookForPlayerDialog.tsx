@@ -35,18 +35,12 @@ import { cn } from "@/lib/utils";
 import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 
-interface Lesson {
-  id: string;
-  title: string;
-  price: number;
-  location: string | null;
-}
+// Lesson interface removed - pricing now on slots
 
 interface Slot {
   id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   cyclus_id?: string | null;
   cyclus_name?: string | null;
   booked_players?: BookedPlayer[];
@@ -57,7 +51,6 @@ interface BookForPlayerDialogProps {
   onOpenChange: (open: boolean) => void;
   trainerId: string;
   slot: Slot | null;
-  lesson: Lesson | null;
   onBookingCreated?: () => void;
 }
 
@@ -68,7 +61,6 @@ export function BookForPlayerDialog({
   onOpenChange,
   trainerId,
   slot,
-  lesson,
   onBookingCreated,
 }: BookForPlayerDialogProps) {
   const { t } = useTranslation("trainer");
@@ -257,7 +249,7 @@ export function BookForPlayerDialog({
             return {
               slot_id: s.id,
               guest_player_id: player.id,
-              lesson_id: lesson?.id || null,
+              lesson_id: null,
               status: "confirmed",
               payment_status: "pending",
               original_amount: slotPrice,
@@ -288,10 +280,10 @@ export function BookForPlayerDialog({
                 to: player.email,
                 data: {
                   playerName: player.full_name,
-                  lessonTitle: `${slot.cyclus_name || lesson?.title || t("bookings.lesson")} (${slotsToBook.length} ${t("calendar.sessions")})`,
+                  lessonTitle: `${slot.cyclus_name || t("bookings.lesson")} (${slotsToBook.length} ${t("calendar.sessions")})`,
                   lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
                   lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
-                  location: lesson?.location,
+                  location: null,
                   price: finalPricePerPlayer,
                 },
               },
@@ -319,7 +311,7 @@ export function BookForPlayerDialog({
           return {
             slot_id: slot.id,
             guest_player_id: player.id,
-            lesson_id: lesson?.id || null,
+            lesson_id: null,
             status: "confirmed",
             payment_status: "pending",
             original_amount: pricePerSession,
@@ -346,10 +338,10 @@ export function BookForPlayerDialog({
                 to: player.email,
                 data: {
                   playerName: player.full_name,
-                  lessonTitle: lesson?.title || t("bookings.lesson"),
+                  lessonTitle: slot.cyclus_name || t("bookings.lesson"),
                   lessonDate: format(new Date(slot.start_time), "EEEE, MMMM d, yyyy"),
                   lessonTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
-                  location: lesson?.location,
+                  location: null,
                   price: finalPricePerPlayer / selectedPlayers.length,
                 },
               },
@@ -436,17 +428,6 @@ export function BookForPlayerDialog({
                 <Repeat className="h-3 w-3" />
                 {slot.cyclus_name}
               </Badge>
-            )}
-            {lesson && (
-              <>
-                <div className="font-medium">{lesson.title}</div>
-                {lesson.location && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span>{lesson.location}</span>
-                  </div>
-                )}
-              </>
             )}
             <div className="flex items-center gap-2 text-sm">
               <Euro className="h-4 w-4 text-muted-foreground" />

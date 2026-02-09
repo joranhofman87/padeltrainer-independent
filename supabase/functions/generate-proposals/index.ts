@@ -396,7 +396,7 @@ Deno.serve(async (req) => {
     // Fetch availability slots within cycle date range
     let slotsQuery = supabase
       .from("availability_slots")
-      .select("*, lessons(id, title, max_participants)")
+      .select("*, max_participants")
       .gte("start_time", cycle.start_date)
       .lte("start_time", cycle.end_date)
       .eq("is_marked_full", false);
@@ -598,7 +598,7 @@ Deno.serve(async (req) => {
 
         // Capacity
         const currentBookings = bookingCounts[slot.id] || 0;
-        const maxParticipants = slot.lessons?.max_participants || 4;
+        const maxParticipants = slot.max_participants || 4;
         const capacityResult = calculateCapacityScore(
           currentBookings,
           maxParticipants,

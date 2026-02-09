@@ -42,11 +42,7 @@ const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 });
 
-interface Lesson {
-  id: string;
-  title: string;
-  trainer_id: string;
-}
+// Lesson interface removed - lessons table no longer exists
 
 interface Trainer {
   id: string;
@@ -57,7 +53,6 @@ interface ClubAddSlotDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainers: Trainer[];
-  lessons: Lesson[];
   defaultTrainerId?: string;
   defaultDate?: Date;
   defaultTime?: string;
@@ -70,7 +65,6 @@ export function ClubAddSlotDialog({
   open,
   onOpenChange,
   trainers,
-  lessons,
   defaultTrainerId,
   defaultDate,
   defaultTime,
@@ -94,11 +88,10 @@ export function ClubAddSlotDialog({
       setSelectedTrainerId(defaultTrainerId || "");
       setSlotDate(defaultDate || new Date());
       setSlotTime(defaultTime || "09:00");
-      setSlotLessonId(null);
     }
   }, [open, defaultTrainerId, defaultDate, defaultTime, trainers]);
 
-  const filteredLessons = lessons.filter(l => l.trainer_id === selectedTrainerId);
+  
 
   const handleAddSingleSlot = async () => {
     if (!selectedTrainerId) {
@@ -239,29 +232,6 @@ export function ClubAddSlotDialog({
 
           {/* Lesson */}
           <div className="space-y-2">
-            <Label>{tTrainer("calendar.linkLesson")}</Label>
-            <Select
-              value={slotLessonId || "none"}
-              onValueChange={(v) => setSlotLessonId(v === "none" ? null : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={tTrainer("calendar.noLesson")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{tTrainer("calendar.noLesson")}</SelectItem>
-                {filteredLessons.map((lesson) => (
-                  <SelectItem key={lesson.id} value={lesson.id}>
-                    {lesson.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedTrainerId && filteredLessons.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t("calendar.noLessonsForTrainer", "No lessons configured for this trainer")}
-              </p>
-            )}
-          </div>
 
           <Button
             onClick={handleAddSingleSlot}
@@ -280,7 +250,6 @@ interface ClubBulkCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainers: Trainer[];
-  lessons: Lesson[];
   defaultTrainerId?: string;
   defaultDate?: Date;
   defaultTime?: string;
@@ -304,7 +273,6 @@ export function ClubBulkCreateSheet({
   open,
   onOpenChange,
   trainers,
-  lessons,
   defaultTrainerId,
   defaultDate,
   defaultTime,
@@ -330,15 +298,12 @@ export function ClubBulkCreateSheet({
 
   const getInitialStartTime = () => defaultTime || "09:00";
 
-  const generateCyclusName = (trainerId: string, startDate: Date, startTime: string, lessonId: string | null) => {
+  const generateCyclusName = (trainerId: string, startDate: Date, startTime: string, _lessonId: string | null) => {
     if (!trainerId) return "";
     const trainer = trainers.find((t) => t.id === trainerId);
-    const lesson = lessons.find((l) => l.id === lessonId);
     const dayName = format(startDate, "EEEE");
     const trainerName = trainer?.name || "Trainer";
-    return lesson 
-      ? `${trainerName} - ${lesson.title} - ${dayName} ${startTime}` 
-      : `${trainerName} - ${dayName} ${startTime}`;
+    return `${trainerName} - ${dayName} ${startTime}`;
   };
 
   useEffect(() => {
@@ -615,26 +580,6 @@ export function ClubBulkCreateSheet({
 
                   {/* Lesson */}
                   <div className="space-y-1">
-                    <Label className="text-xs">{tTrainer("calendar.linkLesson")}</Label>
-                    <Select
-                      value={slot.lessonId || "none"}
-                      onValueChange={(v) => updateBulkSlot(index, { lessonId: v === "none" ? null : v })}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{tTrainer("calendar.noLesson")}</SelectItem>
-                        {lessons
-                          .filter((l) => l.trainer_id === slot.trainerId)
-                          .map((lesson) => (
-                            <SelectItem key={lesson.id} value={lesson.id}>
-                              {lesson.title}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
 
                   {/* Cyclus Name */}
                   <div className="space-y-1">

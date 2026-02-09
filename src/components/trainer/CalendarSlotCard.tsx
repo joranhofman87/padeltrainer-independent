@@ -29,8 +29,6 @@ export interface SlotWithBookings {
   id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
-  lesson_title: string | null;
   max_participants: number;
   price: number | null;
   active_bookings: number;
@@ -152,9 +150,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
           <Lock className="h-3 w-3 opacity-60" />
         )}
       </div>
-      {!compact && slot.lesson_title && (
+      {!compact && slot.cyclus_name && (
         <div className="text-foreground/80 truncate mt-0.5">
-          {slot.lesson_title}
+          {slot.cyclus_name}
         </div>
       )}
       {!compact && (
@@ -196,9 +194,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
             </Badge>
           )}
 
-          {slot.lesson_title && (
+          {slot.cyclus_name && (
             <div>
-              <div className="text-sm font-medium">{slot.lesson_title}</div>
+              <div className="text-sm font-medium">{slot.cyclus_name}</div>
               {slot.price && (
                 <div className="text-sm text-muted-foreground">
                   €{slot.price}
