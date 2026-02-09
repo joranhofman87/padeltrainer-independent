@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
+import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
 
 interface SlotBooking {
   id: string;
@@ -48,24 +49,10 @@ interface SlotBooking {
   } | null;
 }
 
-interface ClubSlot {
-  id: string;
-  trainer_id: string;
-  start_time: string;
-  end_time: string;
-  is_marked_full: boolean;
-  max_participants: number;
-  cyclus_name: string | null;
-  trainer_name: string;
-  trainer_avatar: string | null;
-  active_bookings: number;
-  pending_bookings: number;
-}
-
 interface ClubSlotDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  slot: ClubSlot | null;
+  slot: SlotWithBookings | null;
 }
 
 export function ClubSlotDetailSheet({
@@ -195,11 +182,11 @@ export function ClubSlotDetailSheet({
           <div className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
               <AvatarImage src={slot.trainer_avatar || undefined} />
-              <AvatarFallback>{getInitials(slot.trainer_name)}</AvatarFallback>
+              <AvatarFallback>{getInitials(slot.trainer_name ?? null)}</AvatarFallback>
             </Avatar>
             <div>
               <SheetTitle>{slot.cyclus_name || t("calendar.openSlot", "Open Slot")}</SheetTitle>
-              <SheetDescription>{slot.trainer_name}</SheetDescription>
+              <SheetDescription>{slot.trainer_name || ""}</SheetDescription>
             </div>
           </div>
         </SheetHeader>
@@ -356,14 +343,16 @@ export function ClubSlotDetailSheet({
           </div>
 
           {/* View Trainer Profile Button */}
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => navigate(localizePath(`/trainer/${slot.trainer_id}`))}
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            {t("calendar.viewTrainerProfile", "View Trainer Profile")}
-          </Button>
+          {slot.trainer_id && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => navigate(localizePath(`/trainer/${slot.trainer_id}`))}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              {t("calendar.viewTrainerProfile", "View Trainer Profile")}
+            </Button>
+          )}
         </div>
       </SheetContent>
     </Sheet>
