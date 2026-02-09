@@ -144,7 +144,7 @@ export default function Home() {
   return (
     <MarketingLayout>
       <SEO
-        title={t('home.hero.title')}
+        title={`${t('home.hero.title')} ${t('home.hero.titleHighlight')}`}
         description={t('home.hero.subtitle')}
         url="/"
         structuredData={[websiteStructuredData, organizationStructuredData]}
