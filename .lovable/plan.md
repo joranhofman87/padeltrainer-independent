@@ -1,104 +1,136 @@
 
 
-## Unify Calendar Grid Across Roles
+## SEO and LLM Discoverability Improvements
 
-### Current State
+### Task 1: Fix Sitemap -- Use Trainer Slugs Instead of UUIDs
 
-There are 3 separate calendar implementations:
+**Problem**: The sitemap edge function uses `trainer.user_id` (UUID) for trainer URLs, but the platform uses SEO-friendly slugs (e.g., `/trainer/jan-de-vries`).
 
-- **TrainerCalendar** (681 lines) -- uses the shared `TrainerCalendarGrid` component with `CalendarSlotCard` popovers. Supports day/week/month views. Single trainer, no trainer filter.
-- **AcademyCalendar** (795 lines) -- has its own inline week grid (~150 lines of copy-pasted HTML). Shows trainer name/avatar and location per slot. Has trainer + location filters.
-- **ClubCalendar** (564 lines) -- has its own inline week grid (~150 lines of copy-pasted HTML). Shows trainer name/avatar per slot. Has trainer filter. Uses a separate `ClubSlotDetailSheet` for slot details.
+**Fix**: Update the sitemap query to fetch `slug` alongside `user_id`, and prefer slug in URL generation. Fall back to `user_id` only if slug is null.
 
-The desktop week grid (header + time rows + slot cards), mobile day view, slot color logic, and navigation (prev/next week, today button) are nearly identical across all three.
+**File**: `supabase/functions/sitemap/index.ts`
+- Change trainer query from `select('user_id, updated_at')` to `select('user_id, slug, updated_at')`
+- Update URL generation: use `/trainer/${trainer.slug || trainer.user_id}`
 
-### What's Different Per Role
+---
 
-| Feature | Trainer | Club | Academy |
-|---------|---------|------|---------|
-| Trainer filter | No (single user) | Yes | Yes |
-| Location filter | No | No (single location) | Yes |
-| Slot card shows trainer name | No | Yes | Yes |
-| Slot card shows location | Yes | No | Yes |
-| Slot detail interaction | Popover (CalendarSlotCard) | Sheet (ClubSlotDetailSheet) | None (no detail view) |
-| View modes | Day/Week/Month | Week only | Day/Week/Month |
-| Data fetching | Own trainer's slots | Club trainer slots | Academy trainer slots |
-| Slot spanning (multi-hour) | Yes | No | No |
+### Task 2: Add SEO Component to BlogPost.tsx
 
-### Plan
+**Problem**: Blog posts have zero meta tags -- no title, description, canonical, or structured data.
 
-#### Step 1: Extend `TrainerCalendarGrid` to support multi-trainer mode
+**Fix**: Add `<SEO>` component with article structured data.
 
-Add optional props to the existing `TrainerCalendarGrid`:
+**File**: `src/pages/marketing/BlogPost.tsx`
+- Import `SEO` from `@/components/SEO`
+- Add `<SEO>` after the MarketingLayout opening with:
+  - Title: post title
+  - Description: post excerpt (first 155 chars)
+  - URL: `/blog/${slug}`
+  - Type: `article`
+  - Image: post featured image
+  - Structured data: `Article` schema with author, datePublished, image
 
-```text
-interface CalendarGridProps {
-  // Existing props stay the same
-  slots: SlotWithBookings[];
-  currentDate: Date;
-  view: "day" | "week" | "month";
-  onCellClick?: (date: Date, hour: number) => void;
-  ...
+---
 
-  // NEW: Multi-trainer mode props
-  showTrainerInfo?: boolean;          // Show trainer name/avatar on slot cards
-  showLocationInfo?: boolean;         // Show location on slot cards  
-  renderSlotCard?: (slot) => ReactNode; // Custom slot card renderer (optional)
-  onSlotClick?: (slot) => void;       // For club's sheet-based detail view
-}
-```
+### Task 3: Create Dynamic llms-full.txt Edge Function
 
-This lets club/academy pages pass `showTrainerInfo={true}` and get trainer names on slots, while the trainer page keeps the existing behavior.
+**Problem**: Current `llms.txt` is a static file with hardcoded city examples. LLM crawlers cannot discover the full entity catalog.
 
-#### Step 2: Extend `SlotWithBookings` interface
+**Fix**: Create a new `llms-full.txt` edge function that dynamically generates a comprehensive text file listing all trainers, cities, locations, and academies.
 
-Add optional fields to the existing `SlotWithBookings` type in `CalendarSlotCard.tsx`:
+**New file**: `supabase/functions/llms-full-txt/index.ts`
+- Fetches all public trainers (name, slug, city, specializations, rating)
+- Fetches all active locations (name, city, court counts)
+- Fetches all verified academies (name, slug)
+- Fetches all unique cities with trainer counts
+- Outputs structured plain text with sections for each entity type
+- Cached for 1 hour
 
-```typescript
-export interface SlotWithBookings {
-  // ... existing fields
-  trainer_name?: string;    // NEW
-  trainer_avatar?: string;  // NEW
-}
-```
+**Update**: `public/llms.txt`
+- Add reference: `llms-full.txt: https://padeltrainer.ai/llms-full.txt` pointing to the edge function
+- This follows the llms.txt spec where the base file references the full version
 
-#### Step 3: Update `CalendarSlotCard` to optionally show trainer info
+**Update**: `public/robots.txt`
+- Add reference to llms-full.txt for AI crawlers
 
-When `showTrainerInfo` is true, display the trainer name/avatar inside the slot card. This is a small addition to the existing component.
+---
 
-#### Step 4: Refactor `ClubCalendar.tsx`
+### Task 4: Add BreadcrumbList Structured Data
 
-- Remove the ~200 lines of inline grid HTML (mobile view + desktop grid + legend)
-- Import and use `TrainerCalendarGrid` with `showTrainerInfo={true}`
-- Keep the club-specific: data fetching, trainer filter dropdown, `ClubSlotDetailSheet`, and the Add Slot / Create Cyclus buttons
-- Map `ClubSlot` data to `SlotWithBookings` format
+**Problem**: TrainerProfile, TrainersCity, and LocationDetail pages have visual breadcrumbs but no structured data for them. Only AcademyPublicProfile has BreadcrumbList schema.
 
-**Estimated reduction: ~200 lines removed, ~20 lines added for the mapping**
+**Fix**: Add `BreadcrumbList` JSON-LD to the `structuredData` arrays on:
 
-#### Step 5: Refactor `AcademyCalendar.tsx`
+**File**: `src/pages/TrainerProfile.tsx`
+- Add BreadcrumbList: Home > Trainers > [City if available] > [Trainer Name]
 
-- Remove the ~200 lines of inline grid HTML (mobile view + desktop grid + legend)
-- Import and use `TrainerCalendarGrid` with `showTrainerInfo={true}` and `showLocationInfo={true}`
-- Keep the academy-specific: data fetching, trainer + location filters, slot creation dialogs, stats section
-- Map `AcademySlot` data to `SlotWithBookings` format
+**File**: `src/pages/TrainersCity.tsx`
+- Add BreadcrumbList: Home > Trainers > [City Name]
 
-**Estimated reduction: ~200 lines removed, ~20 lines added**
+**File**: `src/pages/LocationDetail.tsx`
+- Add BreadcrumbList: Home > Locations > [Location Name] (already has visual breadcrumbs via ProfileLayout, just missing the structured data)
 
-#### Step 6: Add slot spanning support for all roles
+---
 
-Currently only the trainer grid supports multi-hour slot rendering (slots that visually span multiple rows). This will now automatically work for club and academy calendars too since they'll use the same grid.
+### Task 5: Render FAQ Content Visibly on City Pages
 
-### What Stays Role-Specific
+**Problem**: TrainersCity has FAQ structured data (FAQPage schema) but the questions/answers are NOT visible on the page. Google can penalize this as deceptive markup.
 
-- **Data fetching logic** -- each role fetches differently (own slots vs. all trainers' slots)
-- **Filter dropdowns** -- trainer filter (club/academy), location filter (academy only)
-- **Page header and action buttons** -- each role has different CTAs
-- **Slot detail interaction** -- club keeps its Sheet, trainer keeps its Popover via CalendarSlotCard
+**Fix**: Render the FAQ section visibly on the page using an accordion.
 
-### Impact
+**File**: `src/pages/TrainersCity.tsx`
+- Add a visible FAQ section below the existing SEO content section using Accordion components
+- Render the same two questions that are already in the structured data:
+  - "How much do padel lessons cost in [City]?"
+  - "How do I find a padel trainer near me in [City]?"
+- Uses the same dynamic answer text that's already in the schema
 
-- ~400 lines of duplicated grid code removed across ClubCalendar + AcademyCalendar
-- Single source of truth for the calendar grid, slot colors, and time layout
-- Bug fixes and improvements (like slot spanning) automatically apply to all roles
-- No visual changes for users
+---
+
+### Task 6: Clean Up index.html Conflicting Meta Tags
+
+**Problem**: `index.html` has hardcoded OG/Twitter meta tags that conflict with the dynamic ones injected by `react-helmet-async`. The hardcoded ones use an old Google Storage image URL while the SEO component uses proper OG images.
+
+**Fix**: Remove all dynamic meta tags from `index.html`, keeping only the essentials that `react-helmet-async` cannot override (charset, viewport, icons, manifest).
+
+**File**: `index.html`
+- Keep: charset, viewport, favicon links, manifest link
+- Remove: title, description, keywords, author, all og:* tags, all twitter:* tags
+- The SEO component already handles all of these dynamically per page
+
+---
+
+### Task 7: Add Cross-Linking Between Related Pages
+
+**Problem**: Pages exist in isolation without linking to related content, reducing internal link equity and crawlability.
+
+**Fixes**:
+
+**File**: `src/pages/TrainersCity.tsx`
+- Already links to location pages in the clubs section
+- Add a "Nearby Cities" section at the bottom that links to other city pages (fetch cities from the same locations data, exclude current city, limit to 6)
+
+**File**: `src/pages/TrainerProfile.tsx`
+- Already links to locations via trainer_locations
+- Add a link to the trainer's city page (e.g., "View all trainers in Amsterdam") below the locations card
+
+**File**: `src/pages/LocationDetail.tsx`
+- Already has "Similar Clubs" section for same-city locations
+- Add a link to the city's trainer page (e.g., "Find more trainers in Amsterdam") in the sidebar
+
+---
+
+### Summary of Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/sitemap/index.ts` | Use slug instead of UUID for trainer URLs |
+| `src/pages/marketing/BlogPost.tsx` | Add SEO component with Article schema |
+| `supabase/functions/llms-full-txt/index.ts` | New: dynamic llms-full.txt generator |
+| `public/llms.txt` | Add llms-full.txt reference |
+| `public/robots.txt` | Add llms-full.txt reference |
+| `src/pages/TrainerProfile.tsx` | Add BreadcrumbList schema + city page link |
+| `src/pages/TrainersCity.tsx` | Add BreadcrumbList schema + visible FAQ + nearby cities |
+| `src/pages/LocationDetail.tsx` | Add BreadcrumbList schema + city trainer page link |
+| `index.html` | Remove conflicting hardcoded meta tags |
 
