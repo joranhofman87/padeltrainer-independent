@@ -23,7 +23,8 @@ export type EmailType =
   | "academy_trainer_invitation"
   | "academy_trainer_invitation_accepted"
   | "partner_inquiry"
-  | "location_request";
+  | "location_request"
+  | "payment_reminder";
 
 export interface EmailData {
   playerName?: string;
@@ -64,6 +65,9 @@ export interface EmailData {
   // Academy invitation fields
   academyName?: string;
   paymentPercentage?: number;
+  // Payment reminder fields
+  totalAmount?: number;
+  unpaidSessions?: string;
 }
 
 /**

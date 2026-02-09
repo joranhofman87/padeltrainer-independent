@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats } from '@/lib/academy';
 import { logger } from '@/lib/logger';
+import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 
 export default function AcademyDashboard() {
   const { t } = useTranslation('academy');
@@ -147,6 +148,11 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Unpaid Bookings */}
+      {activeAcademy && (
+        <UnpaidBookingsCard academyId={activeAcademy.id} />
+      )}
 
       {/* Quick Actions */}
       <h2 className="text-lg font-semibold mb-4">{t('dashboard.overview')}</h2>

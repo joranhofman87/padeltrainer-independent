@@ -633,5 +633,18 @@
     "upgradePrimary": "Upgrade om te publiceren",
     "upgradeSecondary": "Bekijk wat inbegrepen is",
     "upgradeSmall": "Je kunt je profiel in preview-modus houden tot je er klaar voor bent."
+  },
+  "unpaidBookings": {
+    "title": "Openstaande betalingen",
+    "noUnpaid": "Alle betalingen ontvangen!",
+    "totalOutstanding": "Totaal openstaand",
+    "sendReminder": "Herinnering sturen",
+    "sendBulkReminder": "Herinneringen sturen",
+    "markPaid": "Markeer als betaald",
+    "selectAll": "Alles selecteren",
+    "reminderSent": "Herinnering verstuurd",
+    "lastReminder": "Laatste herinnering",
+    "reminderSentSuccess": "Betalingsherinnering succesvol verstuurd",
+    "bulkReminderSentSuccess": "Betalingsherinneringen verstuurd naar {{count}} spelers"
   }
 }
