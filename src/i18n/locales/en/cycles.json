@@ -66,7 +66,15 @@
     "currency": "Currency",
     "pricingHelp": "Set either price per session or a fixed package price",
     "save": "Save Cycle",
-    "saveAndOpen": "Save & Open Enrollment"
+    "saveAndOpen": "Save & Open Enrollment",
+    "allowSingleBooking": "Allow individual lesson booking",
+    "allowSingleBookingHelp": "When off, players must book the entire cycle",
+    "extraCosts": "Extra Costs",
+    "extraCostsHelp": "Add recurring costs like court rental that appear as separate invoice lines",
+    "addCost": "Add cost",
+    "costDescription": "Description",
+    "costPrice": "Price per session",
+    "sessions": "sessions"
   },
   
   "actions": {

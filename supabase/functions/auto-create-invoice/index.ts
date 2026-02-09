@@ -48,6 +48,7 @@ serve(async (req) => {
           end_time,
           location_id,
           price_per_session,
+          cyclus_id,
           cyclus_name,
           locations(name, city)
         )
@@ -134,6 +135,30 @@ serve(async (req) => {
         date: startTime.toISOString().split("T")[0],
       };
     });
+
+    // Check for extra costs from the cycle settings
+    const firstSlot = bookings[0].availability_slots as any;
+    if (firstSlot.cyclus_id) {
+      const { data: cycleData } = await supabase
+        .from("cycles")
+        .select("settings")
+        .eq("id", firstSlot.cyclus_id)
+        .maybeSingle();
+
+      const extraCosts = (cycleData?.settings as any)?.extra_costs;
+      if (extraCosts && Array.isArray(extraCosts)) {
+        for (const ec of extraCosts) {
+          if (ec.description && ec.price > 0) {
+            lineItems.push({
+              description: ec.description,
+              quantity: bookings.length,
+              unit_price: ec.price,
+              date: new Date().toISOString().split("T")[0],
+            });
+          }
+        }
+      }
+    }
 
     // Calculate totals - prices are VAT-inclusive
     const totalInclusive = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);

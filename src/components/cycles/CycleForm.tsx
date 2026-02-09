@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings } from '@/lib/cycles';
+import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost } from '@/lib/cycles';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
@@ -80,6 +80,12 @@ export default function CycleForm({
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
+  const [allowSingleBooking, setAllowSingleBooking] = useState<boolean>(
+    (cycle?.settings as any)?.allow_single_booking ?? false
+  );
+  const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
+    (cycle?.settings as any)?.extra_costs ?? []
+  );
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
 
@@ -163,6 +169,8 @@ export default function CycleForm({
         total_price: cycle?.total_price ?? '',
         currency: cycle?.currency || 'EUR',
       });
+      setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
+      setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
     }
   }, [cycle, open]);
 
@@ -209,7 +217,8 @@ export default function CycleForm({
 
       const durationHours = durationMinutes / 60;
       const pricePerSession = Math.round(hourlyRate * durationHours * 100) / 100;
-      const totalPrice = Math.round(pricePerSession * watchedWeeks * 100) / 100;
+      const extraCostPerSession = extraCosts.reduce((sum, ec) => sum + (ec.price || 0), 0);
+      const totalPrice = Math.round((pricePerSession + extraCostPerSession) * watchedWeeks * 100) / 100;
 
       form.setValue('price_per_session', pricePerSession);
       form.setValue('total_price', totalPrice);
@@ -217,7 +226,7 @@ export default function CycleForm({
       // Invalid time format, skip
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedStartTime, watchedEndTime, watchedWeeks, watchedAssignedTrainer, trainerHourlyRate, ownerType]);
+  }, [watchedStartTime, watchedEndTime, watchedWeeks, watchedAssignedTrainer, trainerHourlyRate, ownerType, extraCosts]);
 
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
@@ -234,6 +243,8 @@ export default function CycleForm({
         applicable_trainer_ids: values.applicable_trainer_ids,
         start_time: values.start_time,
         end_time: values.end_time,
+        allow_single_booking: allowSingleBooking,
+        extra_costs: extraCosts.filter(ec => ec.description && ec.price > 0),
       };
 
       // For cyclus, auto-generate name from day + time
@@ -695,6 +706,69 @@ export default function CycleForm({
                   )}
                 />
               </div>
+
+              {/* Allow single booking toggle */}
+              <div className="flex flex-row items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">{t('form.allowSingleBooking')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.allowSingleBookingHelp')}</p>
+                </div>
+                <Switch
+                  checked={allowSingleBooking}
+                  onCheckedChange={setAllowSingleBooking}
+                />
+              </div>
+
+              {/* Extra recurring costs */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.extraCosts')}</Label>
+                <p className="text-xs text-muted-foreground">{t('form.extraCostsHelp')}</p>
+                {extraCosts.map((cost, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder={t('form.costDescription')}
+                      value={cost.description}
+                      onChange={(e) => {
+                        const updated = [...extraCosts];
+                        updated[index] = { ...updated[index], description: e.target.value };
+                        setExtraCosts(updated);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={cost.price || ''}
+                      onChange={(e) => {
+                        const updated = [...extraCosts];
+                        updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                        setExtraCosts(updated);
+                      }}
+                      className="w-24"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0 }])}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('form.addCost')}
+                </Button>
+              </div>
+
               <FormDescription className="text-xs">
                 {t('form.pricingHelp')}
               </FormDescription>
