@@ -592,7 +592,6 @@ export default function TrainerCalendar() {
         open={addSlotOpen}
         onOpenChange={setAddSlotOpen}
         trainerId={trainerId}
-        lessons={lessons}
         defaultDate={defaultSlotDate}
         defaultTime={defaultSlotTime}
         defaultDuration={settings.slot_duration_minutes}
@@ -605,7 +604,7 @@ export default function TrainerCalendar() {
         open={bulkCreateOpen}
         onOpenChange={setBulkCreateOpen}
         trainerId={trainerId}
-        lessons={lessons}
+        
         defaultDate={defaultSlotDate}
         defaultTime={defaultSlotTime}
         defaultDuration={settings.slot_duration_minutes}

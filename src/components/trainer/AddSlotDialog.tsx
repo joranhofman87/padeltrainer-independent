@@ -47,10 +47,6 @@ const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 });
 
-interface Lesson {
-  id: string;
-  title: string;
-}
 
 interface BulkSlotConfig {
   startDate: Date;
@@ -78,7 +74,6 @@ interface AddSlotDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainerId: string | null;
-  lessons: Lesson[];
   defaultDate?: Date;
   defaultTime?: string;
   defaultDuration: number;
@@ -91,7 +86,6 @@ export function AddSlotDialog({
   open,
   onOpenChange,
   trainerId,
-  lessons,
   defaultDate,
   defaultTime,
   defaultDuration,
@@ -105,7 +99,6 @@ export function AddSlotDialog({
   const [slotDate, setSlotDate] = useState<Date>(defaultDate || new Date());
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
-  const [slotLessonId, setSlotLessonId] = useState<string | null>(null);
   const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
   const [slotLocationId, setSlotLocationId] = useState<string | null>(null);
   const [slotAcademyId, setSlotAcademyId] = useState<string | null>(null);
@@ -145,7 +138,6 @@ export function AddSlotDialog({
         trainer_id: trainerId,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
-        lesson_id: slotLessonId,
         court_type: slotCourtType,
         location_id: slotLocationId,
         academy_profile_id: slotAcademyId,
@@ -247,27 +239,6 @@ export function AddSlotDialog({
             </Select>
           </div>
 
-          {/* Lesson */}
-          <div className="space-y-2">
-            <Label>{t("calendar.linkLesson")}</Label>
-            <Select
-              value={slotLessonId || "none"}
-              onValueChange={(v) => setSlotLessonId(v === "none" ? null : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="No lesson linked" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{t("calendar.noLesson")}</SelectItem>
-                {lessons.map((lesson) => (
-                  <SelectItem key={lesson.id} value={lesson.id}>
-                    {lesson.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Location */}
           <div className="space-y-2">
             <Label>{t("calendar.location", "Location")}</Label>
@@ -348,7 +319,6 @@ interface BulkCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainerId: string | null;
-  lessons?: Lesson[];
   defaultDate?: Date;
   defaultTime?: string;
   defaultDuration: number;
@@ -362,7 +332,6 @@ export function BulkCreateSheet({
   open,
   onOpenChange,
   trainerId,
-  lessons,
   defaultDate,
   defaultTime,
   defaultDuration,

@@ -765,7 +765,6 @@ export default function AcademyCalendar() {
             open={addSlotOpen}
             onOpenChange={setAddSlotOpen}
             trainerId={selectedSlotTrainerId}
-            lessons={slotTrainerLessons.map(l => ({ id: l.id, title: l.title }))}
             defaultDate={defaultSlotDate}
             defaultTime={defaultSlotTime}
             defaultDuration={60}
@@ -778,7 +777,7 @@ export default function AcademyCalendar() {
             open={bulkCreateOpen}
             onOpenChange={setBulkCreateOpen}
             trainerId={selectedSlotTrainerId}
-            lessons={slotTrainerLessons.map(l => ({ id: l.id, title: l.title }))}
+            
             defaultDate={defaultSlotDate}
             defaultTime={defaultSlotTime}
             defaultDuration={60}
