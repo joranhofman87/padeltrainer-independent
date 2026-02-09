@@ -232,22 +232,6 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="max_lessons">Max Lessons (leave empty for unlimited)</Label>
-                <Input
-                  id="max_lessons"
-                  type="number"
-                  min="0"
-                  value={formData.max_lessons ?? ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      max_lessons: e.target.value ? parseInt(e.target.value) : null,
-                    }))
-                  }
-                  placeholder="Unlimited"
-                />
-              </div>
             </TabsContent>
 
             <TabsContent value="mollie" className="space-y-4 mt-4">

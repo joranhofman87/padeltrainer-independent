@@ -46,13 +46,9 @@ interface BookingDetails {
     id: string;
     start_time: string;
     end_time: string;
+    price_per_session: number | null;
+    cyclus_name: string | null;
   };
-  lessons: {
-    id: string;
-    title: string;
-    price: number;
-    location: string | null;
-  } | null;
   player: {
     id: string;
     full_name: string | null;
@@ -127,7 +123,7 @@ export function EditBookingDialog({
       // Handle payment status changes
       if (paymentStatus === "paid" && booking.payment_status !== "paid") {
         updates.paid_at = new Date().toISOString();
-        updates.payment_amount = booking.lessons?.price || 0;
+        updates.payment_amount = booking.availability_slots.price_per_session || 0;
       } else if (paymentStatus !== "paid") {
         updates.paid_at = null;
       }
@@ -225,10 +221,12 @@ export function EditBookingDialog({
                 {format(parseISO(booking.availability_slots.end_time), "HH:mm")}
               </span>
             </div>
-            {booking.lessons && (
+            {booking.availability_slots.cyclus_name && (
               <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">{booking.lessons.title}</span>
-                <Badge variant="secondary">€{booking.lessons.price}</Badge>
+                <span className="font-medium">{booking.availability_slots.cyclus_name}</span>
+                {booking.availability_slots.price_per_session != null && (
+                  <Badge variant="secondary">€{booking.availability_slots.price_per_session}</Badge>
+                )}
               </div>
             )}
           </div>

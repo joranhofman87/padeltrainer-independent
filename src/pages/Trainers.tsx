@@ -309,7 +309,7 @@ export default function Trainers() {
         .select('trainer_id')
         .in('trainer_id', trainerIds)
         .gt('start_time', availabilityNow)
-        .is('lesson_id', null);
+        .eq('is_public', true);
 
       // Build a Set of trainer IDs with availability
       const trainersWithAvailability = new Set(

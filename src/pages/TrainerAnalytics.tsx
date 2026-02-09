@@ -98,9 +98,9 @@ export default function TrainerAnalytics() {
         status,
         payment_amount,
         player_id,
-        lessons(price)
+        availability_slots!inner(price_per_session, trainer_id)
       `)
-      .in('slot_id', slotIds)
+      .eq('availability_slots.trainer_id', trainerId)
       .gte('created_at', sixMonthsAgo.toISOString());
 
     // Fetch reviews
@@ -122,7 +122,7 @@ export default function TrainerAnalytics() {
       );
 
       const earnings = completedBookings.reduce((sum, b) => {
-        return sum + (b.payment_amount || (b.lessons as any)?.price || 0);
+        return sum + (b.payment_amount || (b.availability_slots as any)?.price_per_session || 0);
       }, 0);
 
       const uniqueStudents = new Set(monthBookings.map(b => b.player_id)).size;

@@ -45,12 +45,9 @@ interface EarningsBooking {
   availability_slots: {
     start_time: string;
     end_time: string;
+    price_per_session: number | null;
+    cyclus_name: string | null;
   };
-  lessons: {
-    title: string;
-    price: number;
-    payment_timing: string;
-  } | null;
   player: {
     full_name: string | null;
     email: string | null;
@@ -179,8 +176,7 @@ export default function TrainerEarnings() {
         paid_at,
         created_at,
         player_id,
-        availability_slots!inner(start_time, end_time, trainer_id),
-        lessons(title, price, payment_timing),
+        availability_slots!inner(start_time, end_time, trainer_id, price_per_session, cyclus_name),
         player:profiles!bookings_player_id_fkey(full_name, email)
       `)
       .eq('availability_slots.trainer_id', trainerProfile.id)
@@ -286,13 +282,13 @@ export default function TrainerEarnings() {
   const handleCreateInvoice = (booking: EarningsBooking) => {
     setSelectedBooking({
       id: booking.id,
-      lessonTitle: booking.lessons?.title || 'Training Session',
+      lessonTitle: booking.availability_slots.cyclus_name || 'Training Session',
       playerName: booking.player?.full_name || 'Unknown',
       playerEmail: booking.player?.email || '',
       playerId: (booking as any).player_id || undefined,
       date: format(parseISO(booking.availability_slots.start_time), 'yyyy-MM-dd'),
       time: format(parseISO(booking.availability_slots.start_time), 'HH:mm'),
-      price: booking.lessons?.price || 0,
+      price: booking.availability_slots.price_per_session || 0,
     });
     setInvoiceDialogOpen(true);
   };
@@ -306,7 +302,7 @@ export default function TrainerEarnings() {
 
   const completedBookings = bookings.filter(b => b.status === 'completed');
   
-  const getAmount = (b: EarningsBooking) => b.payment_amount || b.lessons?.price || 0;
+  const getAmount = (b: EarningsBooking) => b.payment_amount || b.availability_slots.price_per_session || 0;
   
   const totalEarnings = completedBookings
     .filter(b => b.payment_status === 'paid')
@@ -323,7 +319,7 @@ export default function TrainerEarnings() {
     .reduce((sum, b) => sum + getAmount(b), 0);
 
   const pendingPayments = bookings.filter(b => 
-    (b.status === 'completed' || (b.status === 'confirmed' && b.lessons?.payment_timing === 'after')) && 
+    (b.status === 'completed' || b.status === 'confirmed') && 
     (b.payment_status === 'pending' || b.payment_status === 'invoiced')
   );
   
@@ -708,7 +704,7 @@ export default function TrainerEarnings() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold">{booking.lessons?.title || 'Training Session'}</p>
+                          <p className="font-semibold">{booking.availability_slots.cyclus_name || 'Training Session'}</p>
                           {booking.payment_status === 'invoiced' && (
                             <Badge variant="secondary">Invoiced</Badge>
                           )}
@@ -774,7 +770,7 @@ export default function TrainerEarnings() {
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold">{booking.lessons?.title || 'Training Session'}</p>
+                            <p className="font-semibold">{booking.availability_slots.cyclus_name || 'Training Session'}</p>
                             <Badge variant="outline" className="border-green-300 text-green-600">Paid</Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">{booking.player?.full_name || 'Player'}</p>

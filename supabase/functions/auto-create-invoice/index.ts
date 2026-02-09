@@ -40,7 +40,6 @@ serve(async (req) => {
         id,
         player_id,
         slot_id,
-        lesson_id,
         payment_amount,
         payment_status,
         availability_slots!inner(
@@ -48,10 +47,10 @@ serve(async (req) => {
           start_time,
           end_time,
           location_id,
-          lesson_id,
+          price_per_session,
+          cyclus_name,
           locations(name, city)
-        ),
-        lessons:lesson_id(id, title, price, duration_minutes)
+        )
       `)
       .in("id", bookingIds);
 
@@ -119,16 +118,14 @@ serve(async (req) => {
     // Build line items from bookings
     const vatRate = trainerProfile.default_vat_rate ?? 21;
     const lineItems = bookings.map((b) => {
-      const lesson = b.lessons as any;
       const bSlot = b.availability_slots as any;
       const startTime = new Date(bSlot.start_time);
       const locationName = bSlot.locations?.name || "";
-      const description = lesson?.title
-        ? `${lesson.title} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
+      const description = bSlot.cyclus_name
+        ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
         : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
 
-      // Price is VAT-inclusive, so unit_price = inclusive price
-      const price = b.payment_amount || lesson?.price || 0;
+      const price = b.payment_amount || bSlot.price_per_session || 0;
 
       return {
         description,

@@ -249,7 +249,6 @@ export function BookForPlayerDialog({
             return {
               slot_id: s.id,
               guest_player_id: player.id,
-              lesson_id: null,
               status: "confirmed",
               payment_status: "pending",
               original_amount: slotPrice,
@@ -311,7 +310,6 @@ export function BookForPlayerDialog({
           return {
             slot_id: slot.id,
             guest_player_id: player.id,
-            lesson_id: null,
             status: "confirmed",
             payment_status: "pending",
             original_amount: pricePerSession,

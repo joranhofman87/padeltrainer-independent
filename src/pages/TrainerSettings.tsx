@@ -35,7 +35,7 @@ export default function TrainerSettings() {
   // Check academy membership for visibility eligibility
   useEffect(() => {
     const checkAcademy = async () => {
-      if (!subscription?.productId && user) {
+      if (!subscription?.isSubscribed && user) {
         // Only check if trainer doesn't have their own paid subscription
         const { data: trainerProfile } = await supabase
           .from('trainer_profiles')

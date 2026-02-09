@@ -38,7 +38,7 @@ interface FeaturedTrainer {
 
 interface UpcomingBooking {
   id: string;
-  lessonTitle: string;
+  sessionTitle: string;
   trainerName: string;
   startTime: Date;
   location: string | null;
@@ -146,9 +146,11 @@ export default function PlayerDashboard() {
           status,
           availability_slots(
             start_time,
-            trainer_id
-          ),
-          lessons(title, location)
+            trainer_id,
+            cyclus_name,
+            location_id,
+            locations(name)
+          )
         `)
         .eq('player_id', profile.id)
         .order('created_at', { ascending: false });
@@ -195,13 +197,12 @@ export default function PlayerDashboard() {
 
         const upcomingFormatted: UpcomingBooking[] = upcomingSlice.map(b => {
           const slot = b.availability_slots as any;
-          const lesson = b.lessons as any;
           return {
             id: b.id,
-            lessonTitle: lesson?.title || 'Training Session',
+            sessionTitle: slot?.cyclus_name || 'Training Session',
             trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
             startTime: new Date(slot.start_time),
-            location: lesson?.location || null,
+            location: slot?.locations?.name || null,
           };
         });
 
@@ -421,7 +422,7 @@ export default function PlayerDashboard() {
               {upcomingBookings.map((booking) => (
                 <div key={booking.id} className="flex items-center gap-4 p-3 bg-background rounded-lg">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{booking.lessonTitle}</p>
+                    <p className="font-medium truncate">{booking.sessionTitle}</p>
                     <p className="text-sm text-muted-foreground">
                       with {booking.trainerName}
                       {booking.location && ` • ${booking.location}`}
