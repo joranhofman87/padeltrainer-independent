@@ -18,6 +18,8 @@ interface TrainerCalendarGridProps {
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
+  showTrainerInfo?: boolean;
+  onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
@@ -34,6 +36,8 @@ export function TrainerCalendarGrid({
   onToggleMarkedFull,
   onNavigatePrevious,
   onNavigateNext,
+  showTrainerInfo,
+  onSlotClick,
 }: TrainerCalendarGridProps) {
   const { t } = useTranslation("trainer");
   const [mobileSelectedDate, setMobileSelectedDate] = useState(currentDate);
@@ -148,12 +152,14 @@ export function TrainerCalendarGrid({
         onToggleMarkedFull={onToggleMarkedFull}
         onNavigatePrevious={onNavigatePrevious}
         onNavigateNext={onNavigateNext}
+        showTrainerInfo={showTrainerInfo}
+        onSlotClick={onSlotClick}
       />
     );
   }
 
   if (view === "month") {
-    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} onEditBooking={onEditBooking} onToggleMarkedFull={onToggleMarkedFull} />;
+    return <MonthView slots={slots} currentDate={currentDate} onBookForPlayer={onBookForPlayer} onDuplicateCyclus={onDuplicateCyclus} onDeleteSlot={onDeleteSlot} onEditBooking={onEditBooking} onToggleMarkedFull={onToggleMarkedFull} showTrainerInfo={showTrainerInfo} onSlotClick={onSlotClick} />;
   }
 
   // Mobile day view
@@ -175,6 +181,8 @@ export function TrainerCalendarGrid({
           onDeleteSlot={onDeleteSlot}
           onEditBooking={onEditBooking}
           onToggleMarkedFull={onToggleMarkedFull}
+          showTrainerInfo={showTrainerInfo}
+          onSlotClick={onSlotClick}
         />
       </div>
 
@@ -245,6 +253,8 @@ export function TrainerCalendarGrid({
                             slot={slot} 
                             durationHours={getSlotDurationHours(slot)}
                             startOffset={getSlotStartOffset(slot)}
+                            showTrainerInfo={showTrainerInfo}
+                            onSlotClick={onSlotClick}
                             onBookForPlayer={onBookForPlayer}
                             onDuplicateCyclus={onDuplicateCyclus}
                             onDeleteSlot={onDeleteSlot}
@@ -291,6 +301,8 @@ interface MobileDayViewProps {
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
+  showTrainerInfo?: boolean;
+  onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
 function MobileDayView({
@@ -304,6 +316,8 @@ function MobileDayView({
   onDeleteSlot,
   onEditBooking,
   onToggleMarkedFull,
+  showTrainerInfo,
+  onSlotClick,
 }: MobileDayViewProps) {
   return (
     <div className="space-y-4">
@@ -391,6 +405,8 @@ function MobileDayView({
                 <div key={slot.id} className="border rounded-lg p-1">
                   <CalendarSlotCard
                     slot={slot}
+                    showTrainerInfo={showTrainerInfo}
+                    onSlotClick={onSlotClick}
                     onBookForPlayer={onBookForPlayer}
                     onDuplicateCyclus={onDuplicateCyclus}
                     onDeleteSlot={onDeleteSlot}
@@ -418,6 +434,8 @@ interface DayViewProps {
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
+  showTrainerInfo?: boolean;
+  onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
 function DayView({ 
@@ -430,7 +448,9 @@ function DayView({
   onEditBooking, 
   onToggleMarkedFull,
   onNavigatePrevious,
-  onNavigateNext
+  onNavigateNext,
+  showTrainerInfo,
+  onSlotClick,
 }: DayViewProps) {
   const { t } = useTranslation("trainer");
 
@@ -559,9 +579,11 @@ interface MonthViewProps {
   onDeleteSlot?: (slot: SlotWithBookings) => void;
   onEditBooking?: (bookingId: string) => void;
   onToggleMarkedFull?: (slotId: string, value: boolean, applyToCyclus?: boolean) => void;
+  showTrainerInfo?: boolean;
+  onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
-function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking, onToggleMarkedFull }: MonthViewProps) {
+function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking, onToggleMarkedFull, showTrainerInfo, onSlotClick }: MonthViewProps) {
   const { t } = useTranslation("trainer");
 
   const monthDays = useMemo(() => {
@@ -626,6 +648,8 @@ function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onD
                   key={slot.id} 
                   slot={slot} 
                   compact 
+                  showTrainerInfo={showTrainerInfo}
+                  onSlotClick={onSlotClick}
                   onBookForPlayer={onBookForPlayer}
                   onDuplicateCyclus={onDuplicateCyclus}
                   onDeleteSlot={onDeleteSlot}

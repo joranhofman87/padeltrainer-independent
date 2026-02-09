@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -39,6 +40,9 @@ export interface SlotWithBookings {
   booked_players: BookedPlayer[];
   is_marked_full: boolean;
   location_name: string | null;
+  trainer_id?: string;
+  trainer_name?: string;
+  trainer_avatar?: string;
 }
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
@@ -71,8 +75,10 @@ interface CalendarSlotCardProps {
   slot: SlotWithBookings;
   compact?: boolean;
   cyclusSessions?: number;
-  durationHours?: number; // For visual spanning in week grid
-  startOffset?: number; // 0 or 0.5 for :30 start times
+  durationHours?: number;
+  startOffset?: number;
+  showTrainerInfo?: boolean;
+  onSlotClick?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
   onEditSlot?: (slot: SlotWithBookings) => void;
@@ -98,7 +104,7 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
   };
 }
 
-export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, startOffset = 0, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
+export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, startOffset = 0, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t } = useTranslation("trainer");
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
@@ -155,6 +161,17 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
           {slot.cyclus_name}
         </div>
       )}
+      {!compact && showTrainerInfo && slot.trainer_name && (
+        <div className="flex items-center gap-1 mt-0.5">
+          <Avatar className="h-3.5 w-3.5">
+            <AvatarImage src={slot.trainer_avatar || undefined} />
+            <AvatarFallback className="text-[7px]">
+              {slot.trainer_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-foreground/70 truncate text-[10px]">{slot.trainer_name}</span>
+        </div>
+      )}
       {!compact && (
         <div className={cn("flex items-center gap-1 mt-1", statusTextColors[status])}>
           <Users className="h-3 w-3" />
@@ -166,7 +183,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
     </div>
   );
 
-  // Past slots can now also open popovers
+  if (onSlotClick) {
+    return <div onClick={(e) => { e.stopPropagation(); onSlotClick(slot); }}>{cardContent}</div>;
+  }
 
   return (
     <Popover>
