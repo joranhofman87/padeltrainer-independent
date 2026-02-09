@@ -1,108 +1,162 @@
 
-## Leftover / Unused Code Analysis
 
-After the lessons table removal, there are **significant remnants** scattered across the codebase. Here is a categorized inventory of everything that needs cleanup.
+## Full Legacy Code Audit and Cleanup Plan
 
----
-
-### Category 1: Supabase Queries Still Joining the `lessons` Table (WILL FAIL)
-
-These queries use `lessons(...)` join syntax against a table that no longer exists, meaning they will produce runtime errors or silently return null.
-
-| File | Line(s) | Issue |
-|------|---------|-------|
-| `src/pages/TrainerBookings.tsx` | ~119 | `lessons(id, title, price, duration_minutes, location, payment_timing)` |
-| `src/pages/TrainerEarnings.tsx` | ~183 | `lessons(title, price, payment_timing)` |
-| `src/pages/TrainerAnalytics.tsx` | ~101 | `lessons(price)` |
-| `src/pages/PlayerBookings.tsx` | ~69 | `lessons(title, price, location)` |
-| `src/pages/PlayerDashboard.tsx` | ~151 | `lessons(title, location)` |
-| `src/pages/TrainerCyclus.tsx` | ~139 | `lessons(title)` |
-| `src/components/trainer/DeleteSlotDialog.tsx` | ~113, ~195 | `lessons(title)` in two queries |
-| `src/components/trainer/EditBookingDialog.tsx` | ~50 | Type definition `lessons: { id, title, price }` and UI rendering |
-| `src/lib/cycles.ts` | ~708 | `lessons(id, title)` in proposed_assignments query |
-| `supabase/functions/generate-proposals/index.ts` | ~399 | `lessons(id, title, max_participants)` |
-| `supabase/functions/sync-calendar-event/index.ts` | ~141-164 | Queries `from('lessons')` and uses `booking.lesson_id` |
-
-### Category 2: `lesson_id` References Still in Code
-
-| File | Line(s) | Issue |
-|------|---------|-------|
-| `src/components/trainer/EditSlotDialog.tsx` | 36-41, 64, 80, 140, 158, 272-276 | `Lesson` interface, `lessonId` state, writes `lesson_id` to DB, renders lesson selector UI |
-| `src/components/trainer/BookForPlayerDialog.tsx` | 49, 60, 260, 322 | `lesson_id` in Slot interface, prop, and booking inserts |
-| `src/components/trainer/CalendarSlotCard.tsx` | 32-33 | `lesson_id` and `lesson_title` in type |
-| `src/components/club/ClubAddSlotDialog.tsx` | 89, 123, 412, 433 | `slotLessonId` state, writes `lesson_id` to inserts |
-| `src/components/club/ClubSlotDetailSheet.tsx` | 56, 58 | `lesson_id` and `lessons` in ClubSlot interface |
-| `src/pages/club/ClubCalendar.tsx` | 41, 43, 250 | `lesson_id` and `lessons` in slot type |
-| `src/pages/academy/AcademyCalendar.tsx` | 48, 51, 252, 395, 607 | `lesson_id`, `lessons` in type, `lessons?.max_participants` in logic |
-| `src/pages/TrainerDashboard.tsx` | 242-243, 814 | `lesson_id: null` in transforms |
-| `src/pages/TrainerCalendar.tsx` | 245-246, 631 | `lesson_id: null` in transforms |
-| `src/pages/OpenSlots.tsx` | 537 | `lesson_id: null` in slot prop |
-
-### Category 3: Dead State Variables and Unused Logic
-
-| File | Issue |
-|------|-------|
-| `src/pages/TrainerDashboard.tsx` | `const [lessons, setLessons] = useState<any[]>([])` -- always set to `[]`, never used |
-| `src/pages/TrainerCalendar.tsx` | Same dead `lessons` state |
-| `src/pages/TrainerProfile.tsx` | Same dead `lessons` state |
-| `src/pages/academy/AcademyCalendar.tsx` | Dead `lessons` state + `slotTrainerLessons` useMemo that filters an empty array |
-| `src/pages/club/ClubCalendar.tsx` | Dead `lessons` state |
-| `src/components/trainer/onboarding/OnboardingStep3Lesson.tsx` | `lessonId` state used as placeholder (set to `trainerId`), not a real lesson reference |
-
-### Category 4: UI Rendering Broken Lesson Data
-
-| File | Issue |
-|------|-------|
-| `src/pages/PlayerBookings.tsx` | Renders `booking.lessons?.title`, `booking.lessons?.price`, `booking.lessons?.location` -- all will be null |
-| `src/pages/TrainerEarnings.tsx` | Shows `booking.lessons?.title`, uses `booking.lessons?.price` for calculations, filters by `lessons?.payment_timing` |
-| `src/components/trainer/EditBookingDialog.tsx` | Renders lesson title and price badge |
-| `src/pages/TrainerBookings.tsx` | Likely renders lesson data in booking cards |
-
-### Category 5: Subscription Code Referencing Lessons
-
-| File | Issue |
-|------|-------|
-| `src/lib/subscription.ts` | `canCreateMoreLessons()` function and `STARTER_TIER.maxLessons` -- no longer relevant since lessons table is gone |
-
-### Category 6: Sidebar / Navigation Leftover
-
-| File | Issue |
-|------|-------|
-| `src/components/trainer/TrainerSidebar.tsx` | Lines 81, 340 still check `isActive("/trainer/lessons")` in the schedule section active state |
-
-### Category 7: Test Data
-
-| File | Issue |
-|------|-------|
-| `e2e/fixtures/test-data.ts` | `clubLessons: '/club/lessons'` route that no longer exists |
+After reviewing the entire codebase against the four core migrations (URL changes, Auth fixes, Lessons removal, Stripe-to-Mollie), here is everything that still needs cleanup.
 
 ---
 
-### Cleanup Plan
+### Migration 1: URL Changes (subdomain to single domain)
+**Status: CLEAN** -- No references to `app.padeltrainer.ai` or subdomain routing logic remain. Comments in `DomainRouter.tsx`, `supabaseClient.ts`, and `domains.ts` correctly describe the new single-domain architecture.
 
-**Phase 1 -- Fix Breaking Queries (Critical)**
-Remove `lessons(...)` joins from all Supabase queries in the 11 files listed in Category 1. Replace with slot-level `price_per_session` and `max_participants` where needed.
+### Migration 2: Auth
+**Status: CLEAN** -- Auth uses `onAuthStateChange` with safety timeouts, magic link handling is separated from OAuth, and the flow works correctly on the single domain.
 
-**Phase 2 -- Remove `lesson_id` from Types, State, and Inserts**
-Strip `lesson_id` from all interfaces, type definitions, insert payloads, and update calls across the ~12 files in Category 2.
+---
 
-**Phase 3 -- Remove Dead State**
-Delete the `const [lessons, setLessons]` pattern and the `slotTrainerLessons` useMemo from the 5 calendar/dashboard pages.
+### Migration 3: Lessons Table Removal -- STILL HAS BREAKING CODE
 
-**Phase 4 -- Fix UI Rendering**
-Update all components that display `booking.lessons?.title` or `booking.lessons?.price` to use slot-level data (`price_per_session`, `cyclus_name`) instead.
+Despite the previous cleanup rounds, **10 files still have active `lessons(...)` joins that WILL fail at runtime**, and **7+ files render data from `booking.lessons?.xxx` that will always be null**.
 
-**Phase 5 -- Cleanup Misc**
-- Remove `canCreateMoreLessons` and `maxLessons` from `subscription.ts`
-- Remove `/trainer/lessons` check from sidebar active state
-- Remove `clubLessons` from e2e test data
-- Update `sync-calendar-event` and `generate-proposals` edge functions
+#### 3A. Supabase Queries Still Joining Deleted `lessons` Table (RUNTIME ERRORS)
 
-**Phase 6 -- Rename `OnboardingStep3Lesson.tsx`**
-Rename to `OnboardingStep3Schedule.tsx` to reflect its actual purpose (setting hourly rate and creating slots).
+| File | Query joins `lessons(...)` |
+|------|---------------------------|
+| `src/pages/TrainerBookings.tsx` line 119 | `lessons(id, title, price, duration_minutes, location, payment_timing)` |
+| `src/pages/TrainerEarnings.tsx` line 183 | `lessons(title, price, payment_timing)` |
+| `src/pages/TrainerAnalytics.tsx` line 101 | `lessons(price)` |
+| `src/pages/PlayerBookings.tsx` line 69 | `lessons(title, price, location)` |
+| `src/pages/PlayerDashboard.tsx` line 151 | `lessons(title, location)` |
+| `src/pages/TrainerCyclus.tsx` line 139 | `lessons(title)` |
+| `src/components/trainer/DeleteSlotDialog.tsx` lines 113, 195 | `lessons(title)` in two queries |
+| `supabase/functions/auto-create-invoice/index.ts` line 54 | `lessons:lesson_id(id, title, price, duration_minutes)` |
 
-### Estimated Scope
-- ~25 files need changes
-- ~12 are critical (breaking queries)
-- ~8 are cosmetic (dead state, stale types)
-- 2 edge functions need updating
+**Fix:** Remove the `lessons(...)` join from each query. Replace with slot-level fields already available (`price_per_session`, `cyclus_name`, `location_id` with `locations(name)`).
+
+#### 3B. TypeScript Interfaces Still Defining `lessons` Property
+
+| File | Interface with `lessons` |
+|------|--------------------------|
+| `src/pages/TrainerBookings.tsx` lines 48-55 | `lessons: { id, title, price, duration_minutes, location, payment_timing }` |
+| `src/pages/TrainerEarnings.tsx` lines 49-53 | `lessons: { title, price, payment_timing }` |
+| `src/pages/TrainerCyclus.tsx` line 65 | `lesson_title: string` |
+| `src/pages/PlayerDashboard.tsx` line 41 | `lessonTitle: string` in `UpcomingBooking` |
+
+**Fix:** Remove `lessons` from interfaces. Add `price_per_session`, `cyclus_name` where needed.
+
+#### 3C. UI Rendering `booking.lessons?.xxx` (Will Show Null/Fallback)
+
+| File | What it renders |
+|------|-----------------|
+| `src/pages/TrainerBookings.tsx` lines 540-590 | lesson title, price, location, payment_timing |
+| `src/pages/TrainerEarnings.tsx` lines 289-777 | lesson title, price for invoice creation and display |
+| `src/pages/PlayerBookings.tsx` lines 227-338 | lesson title, price, location |
+| `src/pages/PlayerDashboard.tsx` line 201 | `lessonTitle` for upcoming bookings |
+| `src/components/trainer/EditBookingDialog.tsx` line 130 | `booking.lessons?.price` for payment amount |
+| `src/components/trainer/CreateInvoiceDialog.tsx` line 26 | `lessonTitle` in BookingData interface |
+
+**Fix:** Replace with `availability_slots.cyclus_name || 'Training Session'` for titles, `availability_slots.price_per_session` for prices, and `availability_slots.locations?.name` for locations.
+
+#### 3D. Dead State Variables (No Functional Impact, Just Clutter)
+
+| File | Dead code |
+|------|-----------|
+| `src/pages/TrainerDashboard.tsx` line 69 | `const [lessons, setLessons] = useState([])` + `setLessons([])` |
+| `src/pages/TrainerCalendar.tsx` line 62 | Same pattern |
+| `src/pages/academy/AcademyCalendar.tsx` line 90 | Same pattern |
+| `src/pages/TrainerDashboard.tsx` lines 242-243 | `lesson_id: null, lesson_title: null` in slot transforms |
+| `src/pages/TrainerCalendar.tsx` lines 245-246 | Same |
+
+**Fix:** Remove dead state and null assignments.
+
+#### 3E. `lesson_id` Still in Insert/Update Payloads
+
+| File | What writes `lesson_id` |
+|------|-------------------------|
+| `src/components/trainer/BookForPlayerDialog.tsx` lines 252, 314 | `lesson_id: null` in booking inserts |
+| `src/pages/OpenSlots.tsx` line 537 | `lesson_id: null` in slot prop |
+| `src/pages/Trainers.tsx` line 312 | `.is('lesson_id', null)` filter on availability_slots |
+| `supabase/functions/generate-proposals/index.ts` line 63 | `lesson_id` in slot interface |
+
+**Fix:** Remove `lesson_id: null` from inserts (column may still exist in DB but shouldn't be actively written). Remove filter on `lesson_id` from Trainers page.
+
+#### 3F. Edge Functions Still Using Lessons
+
+| Function | Issue |
+|----------|-------|
+| `auto-create-invoice/index.ts` lines 43-54 | Selects `lesson_id` and joins `lessons:lesson_id(...)` |
+| `bulk-cleanup-users/index.ts` line 128 | `from("lessons").delete()` |
+| `request-account-deletion/index.ts` line 149 | `from("lessons").delete()` |
+| `delete-user/index.ts` line 164 | `from("lessons").delete()` |
+
+**Fix:** Remove lessons join from auto-create-invoice, use `price_per_session` and `cyclus_name` instead. Remove `from("lessons").delete()` from cleanup functions (table no longer exists).
+
+#### 3G. Email Templates Using `lessonTitle`
+
+| File | Issue |
+|------|-------|
+| `src/lib/email.ts` | `lessonTitle` parameter in `sendBookingConfirmation`, `sendBookingCancellation`, `sendReviewRequest` |
+| `supabase/functions/send-email/index.ts` | `lessonTitle` in template data, email subjects like `Booking Confirmed: ${data.lessonTitle}` |
+
+**Fix:** Rename to `sessionTitle` or keep as-is (these are just parameter names, not DB references). The data passed in will just need to come from `cyclus_name` instead of `lessons.title`.
+
+---
+
+### Migration 4: Stripe to Mollie
+
+#### 4A. Database Tables (via types.ts)
+The auto-generated `types.ts` still references `academy_stripe_accounts`, `club_stripe_accounts`, and `trainer_stripe_accounts` tables. These tables likely still exist in the database but are unused.
+
+**Fix (DB migration):** Drop these three tables:
+- `academy_stripe_accounts`
+- `club_stripe_accounts`  
+- `trainer_stripe_accounts`
+
+This will auto-update `types.ts` on next sync.
+
+#### 4B. Code References
+- `src/lib/subscription.ts` line 7: `productId: string | null` in `SubscriptionInfo` -- always set to `null`
+- `src/lib/subscription.ts` line 41: `getTierFromProductId()` -- deprecated, always returns `'trial'`
+- `src/hooks/useAuth.tsx` line 118: `productId: null` comment about Stripe
+- `src/pages/TrainerSettings.tsx` line 38: `subscription?.productId` check
+
+**Fix:** Remove `productId` from `SubscriptionInfo` interface, remove `getTierFromProductId()`, update `TrainerSettings.tsx` to not check `productId`.
+
+#### 4C. Stale Comments
+Several files have "No longer using Stripe" or "legacy check-trainer-subscription" comments that can be cleaned up for clarity.
+
+---
+
+### Migration 5: Subscription Plan Schema Cleanup
+
+- `src/hooks/usePricingPlans.ts` line 17: `max_lessons: number | null` -- lessons don't exist anymore
+- `src/pages/admin/AdminPricing.tsx` line 136: Shows "Max Lessons" column in admin pricing table
+- `src/components/admin/PlanEditDialog.tsx` line 236: "Max Lessons" input field
+
+**Fix:** Remove `max_lessons` references from the admin UI. Optionally drop the column from `subscription_plans` table via migration.
+
+---
+
+### Summary of Work
+
+| Category | Files | Severity |
+|----------|-------|----------|
+| Breaking queries (lessons joins) | 8 files + 1 edge function | CRITICAL -- will error at runtime |
+| UI rendering null lesson data | 6 files | HIGH -- shows empty/broken UI |
+| Dead state / null assignments | 5 files | LOW -- clutter only |
+| Edge functions referencing lessons | 4 edge functions | MEDIUM -- errors on cleanup/invoice flows |
+| Stripe table remnants | DB migration | LOW -- unused tables |
+| `productId` / `getTierFromProductId` | 4 files | LOW -- dead code |
+| `max_lessons` admin UI | 3 files | LOW -- misleading UI |
+| Email `lessonTitle` naming | 2 files | LOW -- cosmetic |
+
+### Execution Order
+
+1. Fix all breaking `lessons(...)` queries and update interfaces (8 frontend files)
+2. Fix UI rendering to use slot-level data instead of `booking.lessons?.xxx` (6 files)
+3. Fix edge functions: `auto-create-invoice`, `bulk-cleanup-users`, `delete-user`, `request-account-deletion` (4 functions)
+4. Remove dead state, null assignments, and `lesson_id` from inserts (8 files)
+5. Remove Stripe leftovers: `productId`, `getTierFromProductId`, stale comments (4 files)
+6. Remove `max_lessons` from admin UI (3 files)
+7. DB migration: drop `academy_stripe_accounts`, `club_stripe_accounts`, `trainer_stripe_accounts` tables
+
