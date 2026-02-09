@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { format, addWeeks, parseISO } from "date-fns";
+import { format, addWeeks, parseISO, setHours, setMinutes } from "date-fns";
+import { Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Copy, Repeat, Users } from "lucide-react";
 import {
@@ -55,6 +56,7 @@ export function DuplicateCyclusDialog({
   const [cyclusList, setCyclusList] = useState<CyclusInfo[]>([]);
   const [selectedCyclusId, setSelectedCyclusId] = useState<string>("");
   const [newStartDate, setNewStartDate] = useState<Date | undefined>();
+  const [newStartTime, setNewStartTime] = useState<string>("09:00");
   const [numberOfSessions, setNumberOfSessions] = useState<number>(8);
   const [includeExistingPlayers, setIncludeExistingPlayers] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +76,9 @@ export function DuplicateCyclusDialog({
         setNumberOfSessions(cyclus.slot_count);
         // Default new start date to one week after last slot
         setNewStartDate(addWeeks(parseISO(cyclus.last_slot), 1));
+        // Default start time from original first slot
+        const firstSlotTime = parseISO(cyclus.first_slot);
+        setNewStartTime(format(firstSlotTime, "HH:mm"));
       }
     }
   }, [preselectedCyclusId, cyclusList]);
@@ -164,9 +169,19 @@ export function DuplicateCyclusDialog({
         return;
       }
 
-      // Calculate date offset
+      // Calculate date offset (day shift only, ignoring time)
       const firstSlotDate = parseISO(originalSlots[0].start_time);
-      const dateOffsetMs = newStartDate.getTime() - firstSlotDate.getTime();
+      const newStartOnly = new Date(newStartDate);
+      newStartOnly.setHours(0, 0, 0, 0);
+      const firstSlotDateOnly = new Date(firstSlotDate);
+      firstSlotDateOnly.setHours(0, 0, 0, 0);
+      const dateOffsetMs = newStartOnly.getTime() - firstSlotDateOnly.getTime();
+
+      // Calculate time-of-day offset from original first slot
+      const [newH, newM] = newStartTime.split(":").map(Number);
+      const originalFirstMinutes = firstSlotDate.getHours() * 60 + firstSlotDate.getMinutes();
+      const newFirstMinutes = newH * 60 + newM;
+      const timeOfDayOffsetMs = (newFirstMinutes - originalFirstMinutes) * 60000;
 
       // Generate new cyclus ID and name
       const newCyclusId = crypto.randomUUID();
@@ -179,8 +194,8 @@ export function DuplicateCyclusDialog({
         
         return {
           trainer_id: trainerId,
-          start_time: new Date(originalStart.getTime() + dateOffsetMs).toISOString(),
-          end_time: new Date(originalEnd.getTime() + dateOffsetMs).toISOString(),
+          start_time: new Date(originalStart.getTime() + dateOffsetMs + timeOfDayOffsetMs).toISOString(),
+          end_time: new Date(originalEnd.getTime() + dateOffsetMs + timeOfDayOffsetMs).toISOString(),
           cyclus_id: newCyclusId,
           cyclus_name: newCyclusName,
           is_recurring: false,
@@ -242,6 +257,7 @@ export function DuplicateCyclusDialog({
       // Reset form
       setSelectedCyclusId("");
       setNewStartDate(undefined);
+      setNewStartTime("09:00");
       setNumberOfSessions(8);
       setIncludeExistingPlayers(true);
     } catch (error) {
@@ -323,7 +339,22 @@ export function DuplicateCyclusDialog({
             </Popover>
           </div>
 
-          {/* Number of Sessions */}
+          {/* New Start Time */}
+          <div className="space-y-2">
+            <Label>{t("calendar.startTime", "Start Time")}</Label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="time"
+                value={newStartTime}
+                onChange={(e) => setNewStartTime(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("calendar.startTimeHint", "All sessions will shift to this new time")}
+            </p>
+          </div>
           <div className="space-y-2">
             <Label>{t("calendar.numberOfSessions")}</Label>
             <Input
