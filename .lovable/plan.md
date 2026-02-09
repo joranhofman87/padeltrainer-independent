@@ -1,111 +1,104 @@
 
 
-## Fix 5 Remaining Cleanup Items
+## Unify Calendar Grid Across Roles
 
-### 1. Fix the 404: Remove `/app/club/lessons` nav link from ClubSidebar
+### Current State
 
-**File:** `src/components/club/ClubSidebar.tsx`
-- Remove the `/app/club/lessons` sub-menu item (lines 310-319)
-- Remove `/app/club/lessons` from the `scheduleOpen` state initializer (line 76)
-- Remove `/app/club/lessons` from the `isActive` check in the schedule group trigger (line 284)
-- Since "Calendar" becomes the only sub-item under "Schedule", simplify to a direct nav link (remove the collapsible wrapper) or keep it as a single-item group
+There are 3 separate calendar implementations:
 
-### 2. DB Migration: Drop `max_lessons` column
+- **TrainerCalendar** (681 lines) -- uses the shared `TrainerCalendarGrid` component with `CalendarSlotCard` popovers. Supports day/week/month views. Single trainer, no trainer filter.
+- **AcademyCalendar** (795 lines) -- has its own inline week grid (~150 lines of copy-pasted HTML). Shows trainer name/avatar and location per slot. Has trainer + location filters.
+- **ClubCalendar** (564 lines) -- has its own inline week grid (~150 lines of copy-pasted HTML). Shows trainer name/avatar per slot. Has trainer filter. Uses a separate `ClubSlotDetailSheet` for slot details.
 
-Run a migration:
-```sql
-ALTER TABLE subscription_plans DROP COLUMN IF EXISTS max_lessons;
+The desktop week grid (header + time rows + slot cards), mobile day view, slot color logic, and navigation (prev/next week, today button) are nearly identical across all three.
+
+### What's Different Per Role
+
+| Feature | Trainer | Club | Academy |
+|---------|---------|------|---------|
+| Trainer filter | No (single user) | Yes | Yes |
+| Location filter | No | No (single location) | Yes |
+| Slot card shows trainer name | No | Yes | Yes |
+| Slot card shows location | Yes | No | Yes |
+| Slot detail interaction | Popover (CalendarSlotCard) | Sheet (ClubSlotDetailSheet) | None (no detail view) |
+| View modes | Day/Week/Month | Week only | Day/Week/Month |
+| Data fetching | Own trainer's slots | Club trainer slots | Academy trainer slots |
+| Slot spanning (multi-hour) | Yes | No | No |
+
+### Plan
+
+#### Step 1: Extend `TrainerCalendarGrid` to support multi-trainer mode
+
+Add optional props to the existing `TrainerCalendarGrid`:
+
+```text
+interface CalendarGridProps {
+  // Existing props stay the same
+  slots: SlotWithBookings[];
+  currentDate: Date;
+  view: "day" | "week" | "month";
+  onCellClick?: (date: Date, hour: number) => void;
+  ...
+
+  // NEW: Multi-trainer mode props
+  showTrainerInfo?: boolean;          // Show trainer name/avatar on slot cards
+  showLocationInfo?: boolean;         // Show location on slot cards  
+  renderSlotCard?: (slot) => ReactNode; // Custom slot card renderer (optional)
+  onSlotClick?: (slot) => void;       // For club's sheet-based detail view
+}
 ```
 
-### 3. Translation Updates -- Replace "lesson" with "training session" / "trainingssessie"
+This lets club/academy pages pass `showTrainerInfo={true}` and get trainer names on slots, while the trainer page keeps the existing behavior.
 
-Most visible user-facing strings to update across 10 translation files:
+#### Step 2: Extend `SlotWithBookings` interface
 
-**EN marketing.json:**
-- `home.stats.lessons`: "Lessons Booked" -> "Sessions Booked"
+Add optional fields to the existing `SlotWithBookings` type in `CalendarSlotCard.tsx`:
 
-**NL marketing.json:**
-- `home.stats.lessons`: "Geboekte Lessen" -> "Geboekte Sessies"
+```typescript
+export interface SlotWithBookings {
+  // ... existing fields
+  trainer_name?: string;    // NEW
+  trainer_avatar?: string;  // NEW
+}
+```
 
-**EN common.json:**
-- `locations.bookLesson`: "Book Lesson" -> "Book Session"
+#### Step 3: Update `CalendarSlotCard` to optionally show trainer info
 
-**NL common.json:**
-- `locations.bookLesson`: "Boek Les" -> "Boek Sessie"
+When `showTrainerInfo` is true, display the trainer name/avatar inside the slot card. This is a small addition to the existing component.
 
-**EN trainer.json (key changes):**
-- `nav.lessons`: "Lessons" -> "Sessions"
-- `dashboard.subtitle`: "Manage your lessons..." -> "Manage your training sessions..."
-- `dashboard.createLesson`: "Create Lesson" -> "Create Session"
-- `dashboard.stats.upcomingLessons`: "Upcoming Lessons" -> "Upcoming Sessions"
-- `dashboard.setup.steps.lessons.title`: "Create Lessons" -> "Create Schedule"
-- `dashboard.setup.steps.lessons.description`: "Add your first lesson type" -> "Add your first training session"
-- `lessons.title`: "My Lessons" -> "My Sessions"
-- `lessons.createNew`: "Create New Lesson" -> "Create New Session"
-- All `lessons.form.*` labels updated
-- `players.subtitle`/`addPlayerDescription`/`createFirst`/`bookLesson`: "lessons" -> "sessions"
-- `bookings.emptyDescription`: "book your lessons" -> "book your sessions"
-- `calendar.addSlotDescription`: "for lessons" -> "for sessions"
-- `calendar.linkLesson`/`noLesson`: update wording
-- `openSlots.noLesson`: "No lesson linked" -> "No session linked"
-- `availability.noSlotsDescription`: "for lessons" -> "for sessions"
+#### Step 4: Refactor `ClubCalendar.tsx`
 
-**NL trainer.json:**
-- Mirror all above changes with Dutch equivalents ("Lessen" -> "Sessies", "Les" -> "Sessie", etc.)
+- Remove the ~200 lines of inline grid HTML (mobile view + desktop grid + legend)
+- Import and use `TrainerCalendarGrid` with `showTrainerInfo={true}`
+- Keep the club-specific: data fetching, trainer filter dropdown, `ClubSlotDetailSheet`, and the Add Slot / Create Cyclus buttons
+- Map `ClubSlot` data to `SlotWithBookings` format
 
-**EN player.json:**
-- `trainerProfile.lessons`: "Available Lessons" -> "Available Sessions"
-- `trainerProfile.noLessons`: "No lessons available" -> "No sessions available"
-- `trainerProfile.bookLesson`: "Book Lesson" -> "Book Session"
-- `booking.title`: "Book a Lesson" -> "Book a Session"
-- `booking.noSlots`: "for this lesson" -> "for this session"
-- `booking.lesson`/`booking.success.description`: update
-- `bookings.emptyDescription`: "Book your first lesson" -> "Book your first session"
-- `players.bookLesson`: "Book Lesson" -> "Book Session"
+**Estimated reduction: ~200 lines removed, ~20 lines added for the mapping**
 
-**NL player.json:**
-- Mirror with Dutch equivalents
+#### Step 5: Refactor `AcademyCalendar.tsx`
 
-**EN club.json:**
-- `nav.lessons`: "Lessons" -> "Sessions"
-- `lessons.*` section: update all "Lesson" -> "Session"
-- `calendar.noLessonsForTrainer`: update
+- Remove the ~200 lines of inline grid HTML (mobile view + desktop grid + legend)
+- Import and use `TrainerCalendarGrid` with `showTrainerInfo={true}` and `showLocationInfo={true}`
+- Keep the academy-specific: data fetching, trainer + location filters, slot creation dialogs, stats section
+- Map `AcademySlot` data to `SlotWithBookings` format
 
-**NL club.json:**
-- Mirror with Dutch equivalents
+**Estimated reduction: ~200 lines removed, ~20 lines added**
 
-**EN/NL cycles.json:**
-- `application.title`: "Apply for Lessons" -> "Apply for Training"
-- `application.applyButton`: "Apply for Lessons" -> "Apply for Training"
-- `form.lessonTypes`: Keep as "Lesson Types" (this is a training format selector -- private/duo/group -- not a reference to the deleted table)
+#### Step 6: Add slot spanning support for all roles
 
-**EN/NL admin.json:**
-- `maxLessons`: Remove this key
+Currently only the trainer grid supports multi-hour slot rendering (slots that visually span multiple rows). This will now automatically work for club and academy calendars too since they'll use the same grid.
 
-### 4. Rename `usePlatformStats`: `lessons` to `sessions`
+### What Stays Role-Specific
 
-**File:** `src/hooks/usePlatformStats.ts`
-- Rename `lessons` to `sessions` in the `PlatformStats` interface
-- Rename the variable in the query and state setter
-- Update the comment from "lessons delivered" to "sessions completed"
+- **Data fetching logic** -- each role fetches differently (own slots vs. all trainers' slots)
+- **Filter dropdowns** -- trainer filter (club/academy), location filter (academy only)
+- **Page header and action buttons** -- each role has different CTAs
+- **Slot detail interaction** -- club keeps its Sheet, trainer keeps its Popover via CalendarSlotCard
 
-**File:** `src/pages/marketing/Home.tsx`
-- Update `platformStats.lessons` to `platformStats.sessions`
+### Impact
 
-### 5. Logger Migration: Move `console.error/warn` to `logger` in lib files
-
-Replace `console.error`/`console.warn` with `logger.error`/`logger.warn` in these 10 files (excluding `logger.ts` itself which legitimately uses console):
-
-- `src/lib/lessons.ts` (1 call)
-- `src/lib/contentful.ts` (4 calls)
-- `src/lib/tournaments.ts` (5 calls)
-- `src/lib/email.ts` (3 calls)
-- `src/lib/cities.ts` (3 calls)
-- `src/lib/waitingList.ts` (2 calls)
-- `src/lib/ratingSystems.ts` (1 call)
-- `src/lib/academyPayments.ts` (1 call)
-- `src/lib/auth.ts` (4 calls)
-- `src/lib/calendar.ts` (1+ calls)
-
-Each file will need `import { logger } from '@/lib/logger';` added (if not already imported), and each `console.error('msg', error)` replaced with `logger.error('msg', error as Error, { component: 'filename' })` or `logger.warn(...)` as appropriate.
+- ~400 lines of duplicated grid code removed across ClubCalendar + AcademyCalendar
+- Single source of truth for the calendar grid, slot colors, and time layout
+- Bug fixes and improvements (like slot spanning) automatically apply to all roles
+- No visual changes for users
 
