@@ -12,7 +12,6 @@ import { logger } from '@/lib/logger';
 
 interface SetupStatus {
   profileComplete: boolean;
-  hasLessons: boolean;
   hasAvailability: boolean;
   paymentsComplete: boolean;
   hasPlayers: boolean;
@@ -25,7 +24,6 @@ export default function TrainerGetStarted() {
   const { t } = useTranslation('trainer');
   const [setupStatus, setSetupStatus] = useState<SetupStatus>({
     profileComplete: false,
-    hasLessons: false,
     hasAvailability: false,
     paymentsComplete: false,
     hasPlayers: false,
@@ -58,9 +56,6 @@ export default function TrainerGetStarted() {
       const profileComplete = !!(trainerProfile.hourly_rate && profileData?.bio);
       const currentTrainerId = trainerProfile.id;
 
-      // Lessons table removed - use slot count instead
-      const lessonCount = 0; // deprecated
-
       const { count: slotCount } = await supabase
         .from('availability_slots')
         .select('id', { count: 'exact', head: true })
@@ -86,7 +81,6 @@ export default function TrainerGetStarted() {
 
       setSetupStatus({
         profileComplete,
-        hasLessons: (lessonCount || 0) > 0,
         hasAvailability: (slotCount || 0) > 0,
         paymentsComplete,
         hasPlayers: (playerCount || 0) > 0,
@@ -110,7 +104,6 @@ export default function TrainerGetStarted() {
 
   const allComplete =
     setupStatus.profileComplete &&
-    setupStatus.hasLessons &&
     setupStatus.hasAvailability &&
     setupStatus.paymentsComplete &&
     setupStatus.hasPlayers;

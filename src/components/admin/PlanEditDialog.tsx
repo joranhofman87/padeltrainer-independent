@@ -32,7 +32,6 @@ export function PlanEditDialog({ plan, open, onOpenChange }: PlanEditDialogProps
     monthly_price: plan.monthly_price,
     yearly_price: plan.yearly_price,
     platform_fee_flat: plan.platform_fee_flat ?? 1.00,
-    max_lessons: plan.max_lessons,
     mollie_plan_id_monthly: plan.mollie_plan_id_monthly || "",
     mollie_plan_id_yearly: plan.mollie_plan_id_yearly || "",
     mollie_product_id_monthly: plan.mollie_product_id_monthly || "",

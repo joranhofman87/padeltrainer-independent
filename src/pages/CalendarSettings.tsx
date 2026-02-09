@@ -179,7 +179,7 @@ export default function CalendarSettings() {
               Google Calendar
             </CardTitle>
             <CardDescription>
-              Connect your Google Calendar to automatically add confirmed lessons to your calendar.
+              Connect your Google Calendar to automatically add confirmed training sessions to your calendar.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -205,7 +205,7 @@ export default function CalendarSettings() {
                       Auto-sync bookings
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Automatically add confirmed lessons to your calendar
+                      Automatically add confirmed training sessions to your calendar
                     </p>
                   </div>
                   <Switch
@@ -223,7 +223,7 @@ export default function CalendarSettings() {
                     <p className="font-medium mb-1">How it works</p>
                     <ul className="list-disc list-inside space-y-1">
                       <li>When a booking is confirmed, it's added to your calendar</li>
-                      <li>Calendar events include lesson details and participant info</li>
+                      <li>Calendar events include session details and participant info</li>
                       <li>If a booking is cancelled, the event is removed</li>
                     </ul>
                   </div>
@@ -270,7 +270,7 @@ export default function CalendarSettings() {
                   </div>
                   <h3 className="font-medium mb-2">Not Connected</h3>
                   <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-                    Connect your Google Calendar to have confirmed lessons automatically added to your calendar.
+                    Connect your Google Calendar to have confirmed training sessions automatically added to your calendar.
                   </p>
                   <Button onClick={handleConnect} disabled={connecting} size="lg">
                     {connecting ? (
@@ -292,7 +292,7 @@ export default function CalendarSettings() {
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                      See lessons alongside your other events
+                      See training sessions alongside your other events
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />

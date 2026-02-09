@@ -263,7 +263,7 @@ serve(async (req) => {
 
         // Create event
         const event: CalendarEvent = {
-          summary: `Tennis: ${slot.cyclus_name || 'Lesson'}`,
+          summary: `Padel: ${slot.cyclus_name || 'Training Session'}`,
           description: [
             `${roleLabel}: ${otherPersonName || 'TBD'}`,
             booking.notes ? `Notes: ${booking.notes}` : '',
