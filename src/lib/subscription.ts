@@ -4,7 +4,6 @@ export type SubscriptionTier = 'trial' | 'professional' | 'academy';
 export interface SubscriptionInfo {
   isSubscribed: boolean;
   tier: SubscriptionTier;
-  productId: string | null;
   subscriptionEnd: string | null;
   trialEndsAt: string | null;
   isInTrial: boolean;
@@ -33,15 +32,6 @@ export const STARTER_TIER = {
   monthlyPrice: 10,
   yearlyPrice: 96,
 };
-
-/**
- * @deprecated Tier is now determined directly from database subscription_tier field.
- * This function is kept for backward compatibility but should not be used for new code.
- */
-export function getTierFromProductId(productId: string | null): SubscriptionTier {
-  // With Mollie, tier comes directly from database - no product ID mapping needed
-  return 'trial';
-}
 
 // Re-export shared utilities
 export { getTrialDaysRemaining, isDateExpired } from './sharedSubscription';

@@ -125,7 +125,6 @@ Deno.serve(async (req) => {
           await supabaseAdmin.from("trainer_followers").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("trainer_profile_views").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("lessons").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("trainer_profiles").delete().eq("user_id", userId);

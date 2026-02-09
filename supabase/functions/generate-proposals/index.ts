@@ -60,15 +60,10 @@ interface AvailabilitySlot {
   trainer_id: string;
   start_time: string;
   end_time: string;
-  lesson_id: string | null;
   is_marked_full: boolean;
   location_id: string | null;
   cyclus_id: string | null;
-  lessons?: {
-    id: string;
-    title: string;
-    max_participants: number;
-  } | null;
+  max_participants: number | null;
 }
 
 interface RequestBody {

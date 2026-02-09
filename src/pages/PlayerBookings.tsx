@@ -25,12 +25,10 @@ interface BookingWithDetails {
     start_time: string;
     end_time: string;
     trainer_id: string;
+    price_per_session: number | null;
+    cyclus_name: string | null;
+    locations: { name: string } | null;
   };
-  lessons: {
-    title: string;
-    price: number;
-    location: string | null;
-  } | null;
   hasReview?: boolean;
   trainerName: string;
   trainerEmail: string | null;
@@ -64,9 +62,12 @@ export default function PlayerBookings() {
         availability_slots(
           start_time,
           end_time,
-          trainer_id
-        ),
-        lessons(title, price, location)
+          trainer_id,
+          price_per_session,
+          cyclus_name,
+          location_id,
+          locations(name)
+        )
       `)
       .eq('player_id', profile!.id)
       .order('created_at', { ascending: false });
@@ -84,8 +85,7 @@ export default function PlayerBookings() {
     if (data) {
       const rawBookings = data as unknown as Array<{
         id: string; status: string; notes: string | null; created_at: string;
-        availability_slots: { start_time: string; end_time: string; trainer_id: string };
-        lessons: { title: string; price: number; location: string | null } | null;
+        availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
       }>;
 
       // Enrich with trainer info
@@ -224,7 +224,7 @@ export default function PlayerBookings() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-3">
                             <h3 className="text-lg font-semibold">
-                              {booking.lessons?.title || 'Training Session'}
+                              {booking.availability_slots.cyclus_name || 'Training Session'}
                             </h3>
                             {getStatusBadge(booking.status)}
                           </div>
@@ -238,10 +238,10 @@ export default function PlayerBookings() {
                               {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} -
                               {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
                             </div>
-                            {booking.lessons?.location && (
+                            {booking.availability_slots.locations?.name && (
                               <div className="flex items-center gap-1">
                                 <MapPin className="h-4 w-4" />
-                                {booking.lessons.location}
+                                {booking.availability_slots.locations.name}
                               </div>
                             )}
                           </div>
@@ -253,8 +253,8 @@ export default function PlayerBookings() {
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          {booking.lessons && (
-                            <span className="text-xl font-bold">€{booking.lessons.price}</span>
+                          {booking.availability_slots.price_per_session != null && (
+                            <span className="text-xl font-bold">€{booking.availability_slots.price_per_session}</span>
                           )}
                           {booking.status !== 'cancelled' && (
                             <Button
@@ -291,7 +291,7 @@ export default function PlayerBookings() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-3">
                               <h3 className="text-lg font-semibold">
-                                {booking.lessons?.title || 'Training Session'}
+                                {booking.availability_slots.cyclus_name || 'Training Session'}
                               </h3>
                               {getStatusBadge(booking.status)}
                               {booking.hasReview && (
@@ -335,7 +335,7 @@ export default function PlayerBookings() {
                                   trainerName={booking.trainerName}
                                   trainerEmail={booking.trainerEmail || undefined}
                                   playerName={profile!.full_name || undefined}
-                                  lessonTitle={booking.lessons?.title || undefined}
+                                  lessonTitle={booking.availability_slots.cyclus_name || undefined}
                                   onSuccess={() => {
                                     setReviewDialogOpen(null);
                                     fetchBookings();

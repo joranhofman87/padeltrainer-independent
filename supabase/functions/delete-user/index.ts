@@ -161,11 +161,6 @@ Deno.serve(async (req) => {
         .eq("trainer_id", trainerProfile.id);
 
       await supabaseAdmin
-        .from("lessons")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
         .from("guest_players")
         .delete()
         .eq("trainer_id", trainerProfile.id);

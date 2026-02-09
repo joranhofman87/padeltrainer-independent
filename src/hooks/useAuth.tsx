@@ -100,7 +100,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSubscription({
           isSubscribed: false,
           tier: 'trial',
-          productId: null,
           subscriptionEnd: null,
           trialEndsAt: null,
           isInTrial: false,
@@ -115,7 +114,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscription({
         isSubscribed: data.subscribed,
         tier: tier as SubscriptionTier,
-        productId: null, // No longer using Stripe product IDs
         subscriptionEnd: data.endsAt || null,
         trialEndsAt: data.trialEndsAt || null,
         isInTrial: data.status === 'trialing',
@@ -126,7 +124,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscription({
         isSubscribed: false,
         tier: 'trial',
-        productId: null,
         subscriptionEnd: null,
         trialEndsAt: null,
         isInTrial: false,

@@ -44,15 +44,10 @@ interface BookingWithDetails {
     id: string;
     start_time: string;
     end_time: string;
+    price_per_session: number | null;
+    cyclus_name: string | null;
+    locations: { name: string } | null;
   };
-  lessons: {
-    id: string;
-    title: string;
-    price: number;
-    duration_minutes: number;
-    location: string | null;
-    payment_timing: string;
-  } | null;
   player: {
     id: string;
     full_name: string | null;
@@ -115,8 +110,7 @@ export default function TrainerBookings() {
         payment_status,
         payment_amount,
         created_at,
-        availability_slots!inner(id, start_time, end_time, trainer_id),
-        lessons(id, title, price, duration_minutes, location, payment_timing),
+        availability_slots!inner(id, start_time, end_time, trainer_id, price_per_session, cyclus_name, location_id, locations(name)),
         player:profiles!bookings_player_id_fkey(id, full_name, email, avatar_url, skill_rating)
       `)
       .eq('availability_slots.trainer_id', trainerProfile.id)
@@ -537,10 +531,10 @@ function BookingCard({
           <div className="flex-1 md:px-6">
             <div className="flex items-center gap-2 mb-2">
               {getStatusBadge(booking.status)}
-              {getPaymentBadge(booking.payment_status, booking.lessons?.payment_timing || 'upfront', booking.status)}
+              {getPaymentBadge(booking.payment_status, 'upfront', booking.status)}
             </div>
-            {booking.lessons && (
-              <p className="font-medium">{booking.lessons.title}</p>
+            {booking.availability_slots.cyclus_name && (
+              <p className="font-medium">{booking.availability_slots.cyclus_name}</p>
             )}
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
@@ -551,10 +545,10 @@ function BookingCard({
                 <Clock className="h-4 w-4" />
                 {format(parseISO(booking.availability_slots.start_time), 'HH:mm')} - {format(parseISO(booking.availability_slots.end_time), 'HH:mm')}
               </span>
-              {booking.lessons?.location && (
+              {booking.availability_slots.locations?.name && (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
-                  {booking.lessons.location}
+                  {booking.availability_slots.locations.name}
                 </span>
               )}
             </div>
@@ -568,8 +562,8 @@ function BookingCard({
 
           {/* Price & Actions */}
           <div className="flex flex-col items-end gap-2">
-            {booking.lessons && (
-              <p className="text-xl font-bold text-primary">€{booking.lessons.price}</p>
+            {booking.availability_slots.price_per_session != null && (
+              <p className="text-xl font-bold text-primary">€{booking.availability_slots.price_per_session}</p>
             )}
             
             {showActions && (
@@ -587,12 +581,6 @@ function BookingCard({
 
             {showCompleteAction && (
               <div className="flex gap-2">
-                {booking.lessons?.payment_timing === 'after' && (
-                  <Button size="sm" variant="destructive" onClick={() => onMarkCancelled?.(booking.id)}>
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Cancelled
-                  </Button>
-                )}
                 <Button size="sm" variant="outline" onClick={() => onCancel?.(booking.id)}>
                   Cancel
                 </Button>

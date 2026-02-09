@@ -87,7 +87,6 @@ export default function AcademyCalendar() {
   // Filter state
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [lessons, setLessons] = useState<any[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>("all");
   const [selectedLocationId, setSelectedLocationId] = useState<string>("all");
   
@@ -108,11 +107,7 @@ export default function AcademyCalendar() {
     setSlotTypeChoiceOpen(true);
   };
 
-  // Lessons filtered for the selected slot trainer
-  const slotTrainerLessons = useMemo(() => {
-    if (!selectedSlotTrainerId) return lessons;
-    return lessons.filter(l => l.trainer_id === selectedSlotTrainerId);
-  }, [selectedSlotTrainerId, lessons]);
+  // Lessons no longer exist - slotTrainerLessons removed
 
 
   useEffect(() => {
@@ -154,8 +149,7 @@ export default function AcademyCalendar() {
       }));
       setLocations(locationList);
       
-      // Lessons table removed
-      setLessons([]);
+      // Lessons table removed - no cleanup needed
     } catch (error) {
       logger.error("Error loading academy data", error as Error, { component: "AcademyCalendar", academyId: activeAcademy?.id });
     }

@@ -66,7 +66,6 @@ export default function TrainerDashboard() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarSlots, setCalendarSlots] = useState<SlotWithBookings[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(true);
-  const [lessons, setLessons] = useState<any[]>([]);
   const [settings, setSettings] = useState<ScheduleSettings>({
     slot_duration_minutes: 60,
     schedule_weeks_ahead: 4,
@@ -120,8 +119,7 @@ export default function TrainerDashboard() {
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
       });
 
-      // Lessons table removed
-      setLessons([]);
+      // Lessons table removed - no cleanup needed
     } catch (error) {
       logger.error("Error fetching trainer data", error as Error, { component: "TrainerDashboard" });
     }
@@ -239,8 +237,6 @@ export default function TrainerDashboard() {
             id: slot.id,
             start_time: slot.start_time,
             end_time: slot.end_time,
-            lesson_id: null,
-            lesson_title: null,
             max_participants: slot.max_participants || 1,
             price: slot.price_per_session || null,
             active_bookings: counts.confirmed,

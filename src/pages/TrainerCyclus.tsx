@@ -62,7 +62,6 @@ interface CyclusInfo {
     name: string;
     booking_count: number;
   }[];
-  lesson_title: string | null;
 }
 
 export default function TrainerCyclus() {
@@ -116,8 +115,7 @@ export default function TrainerCyclus() {
       setFilteredCyclus(
         cyclusList.filter(
           (c) =>
-            c.cyclus_name.toLowerCase().includes(query) ||
-            (c.lesson_title && c.lesson_title.toLowerCase().includes(query))
+            c.cyclus_name.toLowerCase().includes(query)
         )
       );
     }
@@ -135,8 +133,7 @@ export default function TrainerCyclus() {
           id,
           start_time,
           cyclus_id,
-          cyclus_name,
-          lessons(title)
+          cyclus_name
         `)
         .eq("trainer_id", trainerId)
         .not("cyclus_id", "is", null)
@@ -195,7 +192,6 @@ export default function TrainerCyclus() {
             total_sessions: 1,
             future_sessions: isFuture ? 1 : 0,
             players: [],
-            lesson_title: (slot.lessons as any)?.title || null,
           });
         }
       }
@@ -397,13 +393,8 @@ export default function TrainerCyclus() {
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
                               {format(parseISO(cyclus.first_session), "MMM d")} -{" "}
-                              {format(parseISO(cyclus.last_session), "MMM d, yyyy")}
+                            {format(parseISO(cyclus.last_session), "MMM d, yyyy")}
                             </span>
-                            {cyclus.lesson_title && (
-                              <Badge variant="secondary" className="text-xs">
-                                {cyclus.lesson_title}
-                              </Badge>
-                            )}
                           </CardDescription>
                         </div>
                       </div>

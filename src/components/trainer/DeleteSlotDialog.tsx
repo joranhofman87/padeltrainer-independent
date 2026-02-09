@@ -110,7 +110,6 @@ export function DeleteSlotDialog({
               start_time,
               end_time,
               cyclus_name,
-              lessons(title),
               trainer:trainer_profiles(
                 id,
                 user_id,
@@ -145,7 +144,7 @@ export function DeleteSlotDialog({
                 const slotDetails = slotsWithDetails?.find(s => s.id === booking.slot_id);
                 const trainerProfile = slotDetails?.trainer as any;
                 const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-                const lessonTitle = slotDetails?.cyclus_name || (slotDetails?.lessons as any)?.title || "Training session";
+                const lessonTitle = slotDetails?.cyclus_name || "Training session";
                 const lessonDate = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "MMMM d, yyyy") : "";
                 const lessonTime = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "HH:mm") : "";
 
@@ -192,7 +191,6 @@ export function DeleteSlotDialog({
               start_time,
               end_time,
               cyclus_name,
-              lessons(title),
               trainer:trainer_profiles(
                 id,
                 user_id,
@@ -226,7 +224,7 @@ export function DeleteSlotDialog({
             // Send notifications
             const trainerProfile = slotWithDetails?.trainer as any;
             const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-            const lessonTitle = slotWithDetails?.cyclus_name || (slotWithDetails?.lessons as any)?.title || "Training session";
+            const lessonTitle = slotWithDetails?.cyclus_name || "Training session";
             const lessonDate = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "MMMM d, yyyy") : "";
             const lessonTime = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "HH:mm") : "";
 

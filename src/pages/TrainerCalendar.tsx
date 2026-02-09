@@ -59,7 +59,6 @@ export default function TrainerCalendar() {
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [lessons, setLessons] = useState<any[]>([]);
   const [settings, setSettings] = useState<ScheduleSettings>({
     slot_duration_minutes: 60,
     schedule_weeks_ahead: 4,
@@ -110,8 +109,7 @@ export default function TrainerCalendar() {
         schedule_weeks_ahead: trainerProfile.schedule_weeks_ahead || 4,
       });
 
-      // Lessons table removed - no longer needed
-      setLessons([]);
+      // Lessons table removed - no cleanup needed
     } catch (error) {
       console.error("Error fetching trainer data:", error);
     }
@@ -242,8 +240,6 @@ export default function TrainerCalendar() {
             id: slot.id,
             start_time: slot.start_time,
             end_time: slot.end_time,
-            lesson_id: null,
-            lesson_title: null,
             max_participants: slot.max_participants || 1,
             price: slot.price_per_session || null,
             active_bookings: counts.confirmed,
