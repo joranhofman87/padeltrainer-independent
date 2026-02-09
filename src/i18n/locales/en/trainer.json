@@ -633,5 +633,18 @@
     "upgradePrimary": "Upgrade to publish",
     "upgradeSecondary": "See what's included",
     "upgradeSmall": "You can keep your profile in preview mode until you're ready."
+  },
+  "unpaidBookings": {
+    "title": "Unpaid Bookings",
+    "noUnpaid": "All payments collected!",
+    "totalOutstanding": "Total outstanding",
+    "sendReminder": "Send Reminder",
+    "sendBulkReminder": "Send Reminders",
+    "markPaid": "Mark Paid",
+    "selectAll": "Select all",
+    "reminderSent": "Reminder sent",
+    "lastReminder": "Last reminder",
+    "reminderSentSuccess": "Payment reminder sent successfully",
+    "bulkReminderSentSuccess": "Payment reminders sent to {{count}} players"
   }
 }

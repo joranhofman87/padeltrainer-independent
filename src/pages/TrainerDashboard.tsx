@@ -30,7 +30,7 @@ import { DuplicateCyclusDialog } from '@/components/trainer/DuplicateCyclusDialo
 import { DeleteSlotDialog } from '@/components/trainer/DeleteSlotDialog';
 import { EditBookingDialog } from '@/components/trainer/EditBookingDialog';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
-
+import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 
 interface DashboardStats {
   totalStudents: number;
@@ -181,6 +181,7 @@ export default function TrainerDashboard() {
             id,
             slot_id,
             status,
+            payment_status,
             player_id,
             guest_player_id,
             profiles:player_id (full_name, skill_rating, rating_system),
@@ -222,6 +223,7 @@ export default function TrainerDashboard() {
             isGuest: !!b.guest_player_id,
             skillRating,
             ratingSystem,
+            paymentStatus: b.payment_status,
           });
         }
       });
@@ -626,6 +628,9 @@ export default function TrainerDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Unpaid Bookings */}
+        <UnpaidBookingsCard trainerId={trainerId} />
 
         {/* Calendar Section */}
         <div className="space-y-4">

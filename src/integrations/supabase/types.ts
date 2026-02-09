@@ -718,6 +718,7 @@ export type Database = {
           payment_amount: number | null
           payment_status: string
           player_id: string | null
+          reminder_sent_at: string | null
           slot_id: string
           status: string
           updated_at: string
@@ -737,6 +738,7 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null
+          reminder_sent_at?: string | null
           slot_id: string
           status?: string
           updated_at?: string
@@ -756,6 +758,7 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null
+          reminder_sent_at?: string | null
           slot_id?: string
           status?: string
           updated_at?: string

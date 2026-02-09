@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder";
   to: string;
   data: {
     playerName?: string;
@@ -57,6 +57,9 @@ interface EmailRequest {
     // Password reset admin fields
     resetLink?: string;
     userName?: string;
+    // Payment reminder fields
+    totalAmount?: number;
+    unpaidSessions?: string;
   };
 }
 
@@ -557,6 +560,27 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             <p style="color: #6b7280; font-size: 14px;">
               This link will expire in 24 hours.
             </p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
+    case "payment_reminder":
+      return {
+        subject: `Payment Reminder: Outstanding Training Sessions 💳`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #f59e0b;">Payment Reminder 💳</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>This is a friendly reminder from <strong>${data.trainerName}</strong> that you have outstanding payments for training sessions.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Unpaid Sessions</h3>
+              ${data.unpaidSessions || ''}
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
+              <p style="font-size: 18px; color: #f59e0b;"><strong>Total Outstanding:</strong> €${data.totalAmount?.toFixed(2) || '0.00'}</p>
+            </div>
+            <p>Please arrange payment at your earliest convenience. If you've already paid, please disregard this message.</p>
+            <p>For questions, contact your trainer directly.</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
         `,

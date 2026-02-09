@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +24,7 @@ export interface BookedPlayer {
   isGuest: boolean;
   skillRating?: number | null;
   ratingSystem?: string;
+  paymentStatus?: string;
 }
 
 export interface SlotWithBookings {
@@ -292,6 +293,11 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
                         )}>
                           {player.name}
                         </span>
+                        {player.paymentStatus === "paid" ? (
+                          <Euro className="h-3 w-3 text-green-600 dark:text-green-400" />
+                        ) : (
+                          <Euro className="h-3 w-3 text-orange-500 dark:text-orange-400" />
+                        )}
                         {player.isGuest && (
                           <span className="text-xs text-muted-foreground">
                             ({t("calendar.guest")})
