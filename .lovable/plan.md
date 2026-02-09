@@ -1,63 +1,35 @@
 
+## Decouple Cyclus Creation from Registration Flow
 
-## Clean Slate: Wipe Test Data and Remove Legacy Lessons Code
+### Problem
+When creating a cyclus from the calendar page, it currently opens the `CycleForm` which creates a record in the `cycles` table (designed for registration/intake interest collection). Instead, it should open the `BulkCreateSheet` which creates actual `availability_slots` on the calendar that players can directly book.
 
-### Part 1: Delete All Test Data
+### What Changes
 
-Wipe the following tables (in order to respect foreign keys):
+**1. TrainerDashboard.tsx** - Wire "Create Cyclus" to open the BulkCreateSheet
+- Change `handleChooseCyclus` to set `bulkCreateOpen = true` instead of `showCreateCycleDialog = true`
+- Remove the `CycleForm` import and component instance (lines 868-881)
+- Remove the `showCreateCycleDialog` state variable (no longer needed)
 
-| Table | Current Rows | Action |
-|---|---|---|
-| bookings | 41 | DELETE all |
-| invoices | 2 | DELETE all |
-| reviews | 2 | DELETE all |
-| intake_requests | 0 | Already empty |
-| availability_slots | 39 | DELETE all |
-| cycles | 5 | DELETE all |
-| guest_players | 2 | DELETE all |
-| lessons | 7 | DELETE all |
-| waiting_list_entries | 0 | Already empty |
+**2. TrainerCalendar.tsx** - Same change if it also uses CycleForm
+- Verify and fix the same pattern: cyclus choice should open `BulkCreateSheet`
 
-Order matters due to foreign keys: bookings and invoices first, then slots, cycles, guest_players, and lessons last.
+**3. AddSlotDialog.tsx** - Clean up legacy `lesson_id` reference
+- Remove `lesson_id: slotLessonId` from the single slot insert (line 148) since the `lesson_id` column was dropped
+- Remove the lesson selector UI and `slotLessonId` state
+- Remove the `lessons` prop from `AddSlotDialog` and `BulkCreateSheet` interfaces
 
-### Part 2: Remove the `lessons` Table and Legacy Code
+**4. Keep CycleForm for Registration pages only**
+- `TrainerCycles.tsx` and `AcademyCycles.tsx` continue using `CycleForm` with `formType="registration"` for intake/interest collection
+- No changes needed there
 
-Since pricing now lives on `availability_slots` (via `price_per_session`), the `lessons` table is no longer needed for cyclus creation. We can fully remove it.
+### Result
+- Calendar "Create Cyclus" button opens the `BulkCreateSheet` which generates recurring `availability_slots` with a shared `cyclus_id`
+- These slots appear directly on the calendar and can be made public for direct player booking
+- The `CycleForm` remains available only on the Registration pages for intake management
+- No "Save & Open Registration" button on the calendar flow
 
-**Database migration:**
-- Drop the `lesson_id` foreign key column from `availability_slots`
-- Drop the `lesson_id` column from `bookings`
-- Drop the `lessons` table entirely
-
-**Code cleanup (files to update):**
-
-| File | Change |
-|---|---|
-| `src/lib/lessons.ts` | Remove `Lesson` type, `createLesson`, `getTrainerLessons`, `updateLesson`, `deleteLesson`. Keep `Booking`, `AvailabilitySlot`, booking-related functions |
-| `src/lib/lessons.test.ts` | Remove lesson-related test cases, update slot type to not include `lesson_id` |
-| `src/pages/TrainerLessons.tsx` | Remove this entire page (lesson CRUD for trainers) |
-| `src/pages/club/ClubLessons.tsx` | Remove this entire page (lesson CRUD for clubs) |
-| `src/pages/TrainerCalendar.tsx` | Remove lesson fetching and the `lessons` prop passed to `AddSlotDialog` |
-| `src/pages/academy/AcademyCalendar.tsx` | Remove lesson fetching logic |
-| `src/pages/club/ClubCalendar.tsx` | Remove `lesson_id` and lessons join from slot interface |
-| `src/pages/TrainerDashboard.tsx` | Remove lesson fetching |
-| `src/pages/TrainerGetStarted.tsx` | Remove lesson count check from setup checklist |
-| `src/pages/BookLesson.tsx` | Remove `lesson_id` from slot type and booking inserts |
-| `src/components/trainer/AddSlotDialog.tsx` | Remove any remaining `lesson_id` / `lessonId` references |
-| `src/components/trainer/DuplicateCyclusDialog.tsx` | Remove `lesson_id` from slot duplication |
-| `src/components/trainer/TrainerSidebar.tsx` | Remove lesson count query from setup checklist |
-| `src/components/trainer/TrainerSetupChecklist.tsx` | Remove "create a lesson" step |
-| `src/components/trainer/onboarding/OnboardingStep3Lesson.tsx` | Repurpose or remove this onboarding step |
-| `src/components/DomainRouter.tsx` | Remove routes for TrainerLessons and ClubLessons |
-
-### Part 3: Live Environment
-
-Before publishing, you will need to run the same data cleanup on Live if there is any real data there. Since this is all test data, publishing the schema changes should be safe.
-
-### Summary
-
-- Wipe all test data from 7 tables
-- Drop the `lessons` table and all `lesson_id` columns
-- Remove ~15 files/sections of legacy lesson code
-- The pricing model now lives entirely on `availability_slots` and `trainer_profiles.hourly_rate`
-
+### Technical Details
+- The `BulkCreateSheet` already handles: recurring slot generation, auto-pricing from hourly rate, participant limits, location selection, training level, and the `allow_single_booking` flag
+- Slots are grouped by `cyclus_id` (UUID) and labeled with `cyclus_name` for calendar display
+- Public visibility is controlled via the `is_public` flag on `availability_slots`, managed from the Open Slots page
