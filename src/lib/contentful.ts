@@ -1,4 +1,5 @@
 import { createClient, EntryFieldTypes, Entry, Asset, ContentfulClientApi } from 'contentful';
+import { logger } from '@/lib/logger';
 import { BLOCKS, type Document } from '@contentful/rich-text-types';
 
 // Contentful client configuration
@@ -14,7 +15,7 @@ if (spaceId && accessToken) {
     accessToken: accessToken,
   });
 } else {
-  console.warn('Contentful credentials not configured. Blog features will be disabled.');
+  logger.warn('Contentful credentials not configured. Blog features will be disabled.', { component: 'contentful' });
 }
 
 // Content type skeleton for Contentful SDK v10+
@@ -100,7 +101,7 @@ function getContentfulLocale(locale: string): string {
 // Fetch all blog posts, sorted by published date (newest first)
 export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
   if (!client) {
-    console.warn('Contentful client not initialized');
+    logger.warn('Contentful client not initialized', { component: 'contentful' });
     return [];
   }
   
@@ -113,7 +114,7 @@ export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
     
     return response.items.map(transformEntry);
   } catch (error) {
-    console.error('Error fetching blog posts from Contentful:', error);
+    logger.error('Error fetching blog posts from Contentful', error as Error, { component: 'contentful' });
     return [];
   }
 }
@@ -121,7 +122,7 @@ export async function getBlogPosts(locale: string = 'en'): Promise<BlogPost[]> {
 // Fetch a single blog post by slug
 export async function getBlogPostBySlug(slug: string, locale: string = 'en'): Promise<BlogPost | null> {
   if (!client) {
-    console.warn('Contentful client not initialized');
+    logger.warn('Contentful client not initialized', { component: 'contentful' });
     return null;
   }
   
@@ -139,7 +140,7 @@ export async function getBlogPostBySlug(slug: string, locale: string = 'en'): Pr
     
     return transformEntry(response.items[0]);
   } catch (error) {
-    console.error('Error fetching blog post from Contentful:', error);
+    logger.error('Error fetching blog post from Contentful', error as Error, { component: 'contentful' });
     return null;
   }
 }

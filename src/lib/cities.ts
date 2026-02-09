@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export interface CityWithTrainerCount {
   city: string;
@@ -16,7 +17,7 @@ export async function getCitiesWithTrainers(): Promise<CityWithTrainerCount[]> {
     .eq('is_active', true);
 
   if (locError) {
-    console.error('Error fetching locations:', locError);
+    logger.error('Error fetching locations', locError as Error, { component: 'cities' });
     return [];
   }
 
@@ -26,7 +27,7 @@ export async function getCitiesWithTrainers(): Promise<CityWithTrainerCount[]> {
     .select('location_id');
 
   if (tlError) {
-    console.error('Error fetching trainer locations:', tlError);
+    logger.error('Error fetching trainer locations', tlError as Error, { component: 'cities' });
     return [];
   }
 
@@ -74,7 +75,7 @@ export async function getAllCitySlugs(): Promise<string[]> {
     .eq('is_active', true);
 
   if (error) {
-    console.error('Error fetching cities:', error);
+    logger.error('Error fetching cities', error as Error, { component: 'cities' });
     return [];
   }
 

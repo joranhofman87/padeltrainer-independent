@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export interface CalendarConnection {
   id: string;
@@ -18,7 +19,7 @@ export async function getCalendarConnection(): Promise<CalendarConnection | null
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching calendar connection:', error);
+    logger.error('Error fetching calendar connection', error as Error, { component: 'calendar' });
     return null;
   }
 
@@ -32,13 +33,13 @@ export async function initiateGoogleCalendarAuth(redirectUrl?: string): Promise<
     });
 
     if (error) {
-      console.error('Error initiating Google auth:', error);
+      logger.error('Error initiating Google auth', error as Error, { component: 'calendar' });
       return null;
     }
 
     return data.authUrl;
   } catch (err) {
-    console.error('Failed to initiate Google Calendar auth:', err);
+    logger.error('Failed to initiate Google Calendar auth', err as Error, { component: 'calendar' });
     return null;
   }
 }
@@ -51,13 +52,13 @@ export async function disconnectGoogleCalendar(): Promise<boolean> {
       .eq('provider', 'google');
 
     if (error) {
-      console.error('Error disconnecting calendar:', error);
+      logger.error('Error disconnecting calendar', error as Error, { component: 'calendar' });
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Failed to disconnect Google Calendar:', err);
+    logger.error('Failed to disconnect Google Calendar', err as Error, { component: 'calendar' });
     return false;
   }
 }
@@ -70,13 +71,13 @@ export async function toggleCalendarSync(isActive: boolean): Promise<boolean> {
       .eq('provider', 'google');
 
     if (error) {
-      console.error('Error toggling calendar sync:', error);
+      logger.error('Error toggling calendar sync', error as Error, { component: 'calendar' });
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Failed to toggle calendar sync:', err);
+    logger.error('Failed to toggle calendar sync', err as Error, { component: 'calendar' });
     return false;
   }
 }

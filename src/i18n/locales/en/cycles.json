@@ -88,9 +88,9 @@
   },
   
   "application": {
-    "title": "Apply for Lessons",
+    "title": "Apply for Training",
     "subtitle": "Submit your application for {{cycleName}}",
-    "applyButton": "Apply for Lessons",
+    "applyButton": "Apply for Training",
     "loginRequired": "Please log in to apply",
     "alreadyApplied": "You have already applied",
     "enrollmentClosed": "Enrollment is closed",

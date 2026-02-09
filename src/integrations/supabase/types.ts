@@ -2675,7 +2675,6 @@ export type Database = {
           id: string
           is_active: boolean
           is_highlighted: boolean
-          max_lessons: number | null
           mollie_plan_id_monthly: string | null
           mollie_plan_id_yearly: string | null
           mollie_product_id_monthly: string | null
@@ -2698,7 +2697,6 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_highlighted?: boolean
-          max_lessons?: number | null
           mollie_plan_id_monthly?: string | null
           mollie_plan_id_yearly?: string | null
           mollie_product_id_monthly?: string | null
@@ -2721,7 +2719,6 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_highlighted?: boolean
-          max_lessons?: number | null
           mollie_plan_id_monthly?: string | null
           mollie_plan_id_yearly?: string | null
           mollie_product_id_monthly?: string | null

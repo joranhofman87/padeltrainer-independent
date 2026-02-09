@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 
 interface PlatformStats {
   trainers: number;
-  lessons: number;
+  sessions: number;
   avgRating: number;
   cities: number;
   loading: boolean;
@@ -13,7 +13,7 @@ interface PlatformStats {
 export function usePlatformStats(): PlatformStats {
   const [stats, setStats] = useState<PlatformStats>({
     trainers: 0,
-    lessons: 0,
+    sessions: 0,
     avgRating: 4.9,
     cities: 0,
     loading: true
@@ -27,8 +27,8 @@ export function usePlatformStats(): PlatformStats {
           .from('trainer_profiles')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch completed bookings count (lessons delivered)
-        const { count: lessons } = await supabase
+        // Fetch completed bookings count (sessions completed)
+        const { count: sessions } = await supabase
           .from('bookings')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'confirmed');
@@ -54,7 +54,7 @@ export function usePlatformStats(): PlatformStats {
 
         setStats({
           trainers: trainers || 0,
-          lessons: lessons || 0,
+          sessions: sessions || 0,
           avgRating,
           cities: uniqueCities,
           loading: false

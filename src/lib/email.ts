@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from '@/lib/logger';
 
 export type EmailType = 
   | "booking_confirmation" 
@@ -79,7 +80,7 @@ export const sendEmail = async (
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
-      console.error("No active session for sending email");
+      logger.warn("No active session for sending email", { component: 'email' });
       return { success: false, error: "Authentication required" };
     }
 
@@ -91,13 +92,13 @@ export const sendEmail = async (
     });
 
     if (error) {
-      console.error("Error sending email:", error);
+      logger.error("Error sending email", error as Error, { component: 'email' });
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (err: any) {
-    console.error("Error invoking send-email function:", err);
+    logger.error("Error invoking send-email function", err as Error, { component: 'email' });
     return { success: false, error: err.message };
   }
 };

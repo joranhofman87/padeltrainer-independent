@@ -75,8 +75,7 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
     location.pathname.includes("/app/club/players")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/app/club/calendar") ||
-    location.pathname.includes("/app/club/lessons")
+    location.pathname.includes("/app/club/calendar")
   );
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/club/subscription") ||
@@ -271,57 +270,19 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* Schedule Group */}
-              <Collapsible
-                open={scheduleOpen && !collapsed}
-                onOpenChange={setScheduleOpen}
-                className="group/schedule"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.schedule")}
-                      className={isActive("/app/club/calendar") || isActive("/app/club/lessons")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <Calendar className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.schedule")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/schedule:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/club/calendar"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.calendar")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/club/lessons"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.lessons")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Calendar */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.calendar")}>
+                  <NavLink
+                    to="/app/club/calendar"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.calendar")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Tournaments */}
               <SidebarMenuItem>

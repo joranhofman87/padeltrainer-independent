@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export interface Booking {
   id: string;
@@ -147,7 +148,7 @@ export async function updateBookingStatus(bookingId: string, status: Booking['st
         },
       });
     } catch (e) {
-      console.error('Calendar sync failed (non-blocking):', e);
+      logger.warn('Calendar sync failed (non-blocking)', { error: e, component: 'lessons' });
     }
   }
 
