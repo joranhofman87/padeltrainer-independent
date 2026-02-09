@@ -6,7 +6,7 @@ import { setUserRole } from '@/lib/auth';
 import { OnboardingProgressBar } from '@/components/trainer/onboarding/OnboardingProgressBar';
 import { OnboardingStep1Goal, Step1Data } from '@/components/trainer/onboarding/OnboardingStep1Goal';
 import { OnboardingStep2Profile } from '@/components/trainer/onboarding/OnboardingStep2Profile';
-import { OnboardingStep3Lesson } from '@/components/trainer/onboarding/OnboardingStep3Lesson';
+import { OnboardingStep3Schedule } from '@/components/trainer/onboarding/OnboardingStep3Schedule';
 import { OnboardingStep4Done } from '@/components/trainer/onboarding/OnboardingStep4Done';
 import { trackOnboardingEvent } from '@/lib/onboardingTracking';
 import { Logo } from '@/components/Logo';
@@ -168,7 +168,7 @@ export default function TrainerOnboarding() {
           />
         )}
         {currentStep === 3 && (
-          <OnboardingStep3Lesson
+          <OnboardingStep3Schedule
             onNext={handleStep3Next}
             onBack={() => setCurrentStep(2)}
           />

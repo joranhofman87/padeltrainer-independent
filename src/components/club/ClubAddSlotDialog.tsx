@@ -80,7 +80,6 @@ export function ClubAddSlotDialog({
   const [slotDate, setSlotDate] = useState<Date>(defaultDate || new Date());
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
-  const [slotLessonId, setSlotLessonId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -113,7 +112,6 @@ export function ClubAddSlotDialog({
         trainer_id: selectedTrainerId,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
-        lesson_id: slotLessonId,
         location_id: clubLocationId || null,
       });
 
@@ -230,9 +228,6 @@ export function ClubAddSlotDialog({
             </Select>
           </div>
 
-          {/* Lesson */}
-          <div className="space-y-2">
-
           <Button
             onClick={handleAddSingleSlot}
             disabled={isSaving || !selectedTrainerId}
@@ -265,7 +260,6 @@ interface BulkSlotConfig {
   startTime: string;
   durationMinutes: number;
   recurrenceWeeks: number;
-  lessonId: string | null;
   cyclusName: string;
 }
 
@@ -318,8 +312,7 @@ export function ClubBulkCreateSheet({
           startTime: newStartTime,
           durationMinutes: defaultDuration,
           recurrenceWeeks: defaultWeeks,
-          lessonId: null,
-          cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+        cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
         },
       ]);
     }
@@ -337,7 +330,6 @@ export function ClubBulkCreateSheet({
         startTime: newStartTime,
         durationMinutes: defaultDuration,
         recurrenceWeeks: defaultWeeks,
-        lessonId: null,
         cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
       },
     ]);
@@ -348,12 +340,12 @@ export function ClubBulkCreateSheet({
       prev.map((slot, i) => {
         if (i !== index) return slot;
         const updated = { ...slot, ...updates };
-        if (updates.trainerId || updates.startDate || updates.startTime || updates.lessonId !== undefined) {
+        if (updates.trainerId || updates.startDate || updates.startTime) {
           updated.cyclusName = generateCyclusName(
             updates.trainerId || slot.trainerId,
             updates.startDate || slot.startDate,
             updates.startTime || slot.startTime,
-            updates.lessonId !== undefined ? updates.lessonId : slot.lessonId
+            null
           );
         }
         return updated;
@@ -374,7 +366,6 @@ export function ClubBulkCreateSheet({
         trainer_id: string;
         start_time: string;
         end_time: string;
-        lesson_id: string | null;
         cyclus_id: string | null;
         cyclus_name: string | null;
         location_id: string | null;
@@ -395,7 +386,6 @@ export function ClubBulkCreateSheet({
             trainer_id: config.trainerId,
             start_time: currentSlotStart.toISOString(),
             end_time: currentSlotEnd.toISOString(),
-            lesson_id: config.lessonId,
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             location_id: clubLocationId || null,
@@ -476,7 +466,7 @@ export function ClubBulkCreateSheet({
                     <Label className="text-xs">{t("calendar.selectTrainer", "Trainer")}</Label>
                     <Select
                       value={slot.trainerId}
-                      onValueChange={(v) => updateBulkSlot(index, { trainerId: v, lessonId: null })}
+                      onValueChange={(v) => updateBulkSlot(index, { trainerId: v })}
                     >
                       <SelectTrigger className="h-8">
                         <SelectValue placeholder={t("calendar.selectTrainerPlaceholder", "Select trainer")} />
@@ -577,9 +567,6 @@ export function ClubBulkCreateSheet({
                       </div>
                     </div>
                   </div>
-
-                  {/* Lesson */}
-                  <div className="space-y-1">
 
                   {/* Cyclus Name */}
                   <div className="space-y-1">
