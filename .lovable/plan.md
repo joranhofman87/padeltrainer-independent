@@ -1,20 +1,35 @@
 
 
-## Move "Get Started" to Bottom of Sidebar
+## Fix Post-Signup Redirect to Preserve User Intent
 
-### What changes
-The "Get Started" (Rocket icon) navigation item in the **Trainer sidebar** will be moved from its current position at the very top of the menu (above "My Profile") to the very bottom (below the "Business" collapsible group).
+### Problem
+When an unauthenticated user clicks "Sign up & apply" on a trainer/academy/club page, they are correctly sent to the player signup page with a `?redirect=` parameter. The signup and onboarding pages already store this in `localStorage` as `redirectAfterOnboarding` and use it after onboarding completes. However, the redirect URLs are broken in several components because they are missing the required `/app/` prefix, causing the user to land on the dashboard instead of being returned to the page they came from.
 
-This ensures that all other navigation items (Profile, Dashboard, Players, Schedule, Registrations, Clubs, Business) remain in fixed positions regardless of whether the Get Started item is visible or not.
+### Root Cause
+Three components construct the signup URL without using the `getAppUrl()` helper, so the navigation itself fails to reach `/app/signup/player`. Additionally, `BookLesson.tsx` omits the `/app/` prefix on the redirect target value.
 
-### Scope
-Only the **Trainer sidebar** is affected -- the Academy and Player sidebars do not have a "Get Started" item.
+### Changes
 
-### Technical details
+**File: `src/components/trainer/TrainerOpenCycles.tsx`**
+- Import `getAppUrl` from `@/lib/domains`
+- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
 
-**File: `src/components/trainer/TrainerSidebar.tsx`**
+**File: `src/components/academy/AcademyOpenCycles.tsx`**
+- Import `getAppUrl` from `@/lib/domains`
+- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
 
-- Remove the "Get Started" `SidebarMenuItem` block from lines 225-244 (currently the first item in the menu)
-- Re-insert the same block after the Business `Collapsible` group (after line 499), just before the closing `</SidebarMenu>` tag
-- No logic changes -- just moving the JSX block down
+**File: `src/components/club/LocationOpenCycles.tsx`**
+- Import `getAppUrl` from `@/lib/domains`
+- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
+
+**File: `src/pages/BookLesson.tsx`**
+- Fix the redirect value to include `/app/` prefix: change `redirect=/book/${trainerId}` to `redirect=/app/book/${trainerId}`
+
+### What already works (no changes needed)
+- `PlayerSignup.tsx` reads `?redirect=` and stores it as `redirectAfterOnboarding` in localStorage
+- `Onboarding.tsx` reads `redirectAfterOnboarding` after completing setup and navigates there
+- `TrainerProfile.tsx` and `WaitingListCard.tsx` already use `getAppUrl()` correctly
+
+### Result
+After signing up and completing onboarding, the player is returned to the exact trainer/academy/club page where they were trying to take action (book a cycle, join a waiting list, etc.) instead of landing on the generic dashboard.
 
