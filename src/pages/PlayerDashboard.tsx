@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, TrendingUp, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
+import { Search, Calendar, Star, User, LogOut, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
@@ -296,33 +296,6 @@ export default function PlayerDashboard() {
           Find your next training session and improve your padel skills
         </p>
       </div>
-
-        {/* Rating Card */}
-        <Card className="mb-8 bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm mb-1">Your Skill Rating</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-4xl font-bold">
-                    {profile?.skill_rating || '—'}
-                  </span>
-                  {profile?.skill_rating && (
-                    <span className="text-xs bg-white/20 px-2 py-1 rounded">
-                      {((profile as any)?.rating_system || 'knltb').toUpperCase()}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <TrendingUp className="h-12 w-12 text-blue-200" />
-            </div>
-            {!profile?.skill_rating && (
-              <p className="text-blue-100 text-sm mt-3">
-                Add your rating or ask a trainer to set your level
-              </p>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Rating History Chart */}
         {profile?.id && (
