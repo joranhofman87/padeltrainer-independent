@@ -1,35 +1,32 @@
 
 
-## Fix Post-Signup Redirect to Preserve User Intent
+## Fix Cycle Display on Trainer Profile Page
 
-### Problem
-When an unauthenticated user clicks "Sign up & apply" on a trainer/academy/club page, they are correctly sent to the player signup page with a `?redirect=` parameter. The signup and onboarding pages already store this in `localStorage` as `redirectAfterOnboarding` and use it after onboarding completes. However, the redirect URLs are broken in several components because they are missing the required `/app/` prefix, causing the user to land on the dashboard instead of being returned to the page they came from.
+### Problem 1: Only one cycle shows as a summary card
+In `TrainerOpenSlots.tsx` line 144, the grouping condition is:
+```
+if (slot.cyclus_id && !slot.allow_single_booking)
+```
+This means cycles with `allow_single_booking = true` are broken apart into individual slot rows instead of showing as a cycle summary card. Both cycles should always appear as summary cards.
 
-### Root Cause
-Three components construct the signup URL without using the `getAppUrl()` helper, so the navigation itself fails to reach `/app/signup/player`. Additionally, `BookLesson.tsx` omits the `/app/` prefix on the redirect target value.
+### Problem 2: Individual slots from bookable cycles don't show
+When a cycle has `allow_single_booking = true`, users should see both the cycle summary card AND the individual session rows below it (so they can book single sessions). Currently those slots get dumped into individualSlots but because the condition sends ALL slots of that cycle type to individual, it works -- except the cycle card itself is missing. With the fix, we need to ensure both appear.
 
 ### Changes
 
-**File: `src/components/trainer/TrainerOpenCycles.tsx`**
-- Import `getAppUrl` from `@/lib/domains`
-- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
+**File: `src/components/trainer/TrainerOpenSlots.tsx`**
 
-**File: `src/components/academy/AcademyOpenCycles.tsx`**
-- Import `getAppUrl` from `@/lib/domains`
-- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
+1. Change the grouping logic (lines 143-151) so ALL slots with a `cyclus_id` are grouped into cycle summary cards, regardless of `allow_single_booking`
+2. Additionally, if a cycle has `allow_single_booking = true`, also add its slots to the individual slots list so they appear as bookable day-grouped rows below the cycle cards
+3. This mirrors how `BookLesson.tsx` already handles it -- showing cycle bundles at the top and individual bookable sessions below
 
-**File: `src/components/club/LocationOpenCycles.tsx`**
-- Import `getAppUrl` from `@/lib/domains`
-- Change `navigate(\`/signup/player?redirect=...\`)` to `navigate(getAppUrl(\`/signup/player?redirect=...\`))`
-
-**File: `src/pages/BookLesson.tsx`**
-- Fix the redirect value to include `/app/` prefix: change `redirect=/book/${trainerId}` to `redirect=/app/book/${trainerId}`
-
-### What already works (no changes needed)
-- `PlayerSignup.tsx` reads `?redirect=` and stores it as `redirectAfterOnboarding` in localStorage
-- `Onboarding.tsx` reads `redirectAfterOnboarding` after completing setup and navigates there
-- `TrainerProfile.tsx` and `WaitingListCard.tsx` already use `getAppUrl()` correctly
+The updated logic:
+- All slots with `cyclus_id` go into `cycleSlotMap` (for cycle summary cards)
+- Slots without `cyclus_id` go into `individualSlots`
+- Slots with `cyclus_id` AND `allow_single_booking = true` ALSO go into `individualSlots` (so single sessions are bookable)
 
 ### Result
-After signing up and completing onboarding, the player is returned to the exact trainer/academy/club page where they were trying to take action (book a cycle, join a waiting list, etc.) instead of landing on the generic dashboard.
+- Both cycles appear as separate summary cards at the top of "Available Slots"
+- Cycles that allow single booking also show their individual sessions below, grouped by date
+- The total slot count badge reflects both cycle cards and individual slots
 
