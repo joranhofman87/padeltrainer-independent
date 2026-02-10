@@ -53,6 +53,7 @@ export default function TrainersCity() {
   const { city } = useParams<{ city: string }>();
   const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [academies, setAcademies] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -94,6 +95,29 @@ export default function TrainersCity() {
     setLocations(cityLocations);
     setTrainerCounts(allTrainerCounts);
     setClaimedLocationIds(allClaimedIds);
+
+    // Fetch academies linked to locations in this city
+    if (cityLocations.length > 0) {
+      const locationIds = cityLocations.map(l => l.id);
+      const { data: academyLinks } = await supabase
+        .from('academy_locations')
+        .select('academy_profile_id')
+        .in('location_id', locationIds)
+        .eq('is_active', true);
+      
+      if (academyLinks && academyLinks.length > 0) {
+        const academyIds = [...new Set(academyLinks.map(al => al.academy_profile_id))];
+        const { data: academyProfiles } = await supabase
+          .from('academy_profiles_public')
+          .select('id, name, slug')
+          .in('id', academyIds);
+        setAcademies(academyProfiles || []);
+      } else {
+        setAcademies([]);
+      }
+    } else {
+      setAcademies([]);
+    }
 
     // Fetch all public trainers, then filter by subscription/academy
     const now = new Date().toISOString();
@@ -230,8 +254,28 @@ export default function TrainersCity() {
         : `Padel lesson prices in ${displayCity} vary based on trainer experience and qualifications. Contact trainers directly for current rates.`
     },
     {
+      question: `What padel clubs are in ${displayCity}?`,
+      answer: locations.length > 0
+        ? `There are ${locations.length} padel club${locations.length !== 1 ? 's' : ''} in ${displayCity}, including ${locations.slice(0, 4).map(l => l.name).join(', ')}${locations.length > 4 ? ` and ${locations.length - 4} more` : ''}. Each club offers courts where you can take lessons with local trainers.`
+        : `We're still adding padel clubs in ${displayCity} to our directory. Check back soon or explore nearby cities for available clubs.`
+    },
+    {
+      question: `Are there any padel academies in ${displayCity}?`,
+      answer: academies.length > 0
+        ? `Yes! ${displayCity} has ${academies.length} padel ${academies.length === 1 ? 'academy' : 'academies'}: ${academies.map(a => a.name).join(', ')}. Academies offer structured training programs, group lessons, and coaching cycles for all levels.`
+        : `There are currently no registered padel academies in ${displayCity}. However, individual trainers in ${displayCity} offer professional coaching and structured lessons.`
+    },
+    {
       question: `How do I find a padel trainer near me in ${displayCity}?`,
       answer: `Browse our directory of ${trainers.length} certified padel trainers in ${displayCity}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.`
+    },
+    {
+      question: `What level do I need to be to take padel lessons in ${displayCity}?`,
+      answer: `Padel lessons in ${displayCity} are available for all levels — from complete beginners to advanced competitive players. Most trainers offer customized sessions based on your current skill level and goals.`
+    },
+    {
+      question: `How do I book a padel lesson in ${displayCity}?`,
+      answer: `Simply browse the trainers listed above, view their profiles with ratings and availability, and book a lesson directly through PadelTrainer.ai. You can filter by price, experience, and specialization to find the perfect match.`
     }
   ];
 
@@ -470,36 +514,59 @@ export default function TrainersCity() {
         )}
 
         {/* SEO Content Section */}
-        <section className="mt-16 prose prose-gray dark:prose-invert max-w-none">
-          <h2>About Padel Training in {displayCity}</h2>
-          <p>
-            Whether you're a beginner looking to learn the basics or an experienced player wanting to refine your technique,
-            finding the right padel trainer in {displayCity} is essential for your development. Our certified trainers offer
-            personalized coaching tailored to your skill level and goals.
-          </p>
-          <h3>What to Expect from Padel Lessons</h3>
-          <ul>
-            <li>Technical training covering serves, volleys, and defensive play</li>
-            <li>Tactical strategies for singles and doubles matches</li>
-            <li>Physical conditioning specific to padel</li>
-            <li>Match play analysis and improvement tips</li>
-          </ul>
-          {locations.length > 0 && (
-            <>
-              <h3>Popular Padel Clubs in {displayCity}</h3>
+        <section className="mt-12">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl">About Padel Training in {displayCity}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-muted-foreground">
               <p>
-                {displayCity} is home to {locations.length} padel {locations.length === 1 ? 'club' : 'clubs'} where you can take lessons and practice.
-                {locations.slice(0, 3).map((l, i) => (
-                  <span key={l.id}>
-                    {i > 0 && ', '}
-                    {i === Math.min(locations.length - 1, 2) && i > 0 && 'and '}
-                    <LocalizedLink to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</LocalizedLink>
-                  </span>
-                ))}
-                {locations.length > 3 && ` and ${locations.length - 3} more`}.
+                Whether you're a beginner looking to learn the basics or an experienced player wanting to refine your technique,
+                finding the right padel trainer in {displayCity} is essential for your development. Our certified trainers offer
+                personalized coaching tailored to your skill level and goals.
               </p>
-            </>
-          )}
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">What to Expect from Padel Lessons</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Technical training covering serves, volleys, and defensive play</li>
+                  <li>Tactical strategies for singles and doubles matches</li>
+                  <li>Physical conditioning specific to padel</li>
+                  <li>Match play analysis and improvement tips</li>
+                </ul>
+              </div>
+              {locations.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Popular Padel Clubs in {displayCity}</h3>
+                  <p>
+                    {displayCity} is home to {locations.length} padel {locations.length === 1 ? 'club' : 'clubs'} where you can take lessons and practice:{' '}
+                    {locations.slice(0, 3).map((l, i) => (
+                      <span key={l.id}>
+                        {i > 0 && ', '}
+                        {i === Math.min(locations.length - 1, 2) && i > 0 && 'and '}
+                        <LocalizedLink to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</LocalizedLink>
+                      </span>
+                    ))}
+                    {locations.length > 3 && ` and ${locations.length - 3} more`}.
+                  </p>
+                </div>
+              )}
+              {academies.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Padel Academies in {displayCity}</h3>
+                  <p>
+                    {academies.map((a, i) => (
+                      <span key={a.id}>
+                        {i > 0 && ', '}
+                        {i === academies.length - 1 && i > 0 && 'and '}
+                        <LocalizedLink to={`/academies/${a.slug}`} className="text-primary hover:underline">{a.name}</LocalizedLink>
+                      </span>
+                    ))}
+                    {' '}offer structured training programs in {displayCity}.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </section>
 
         {/* FAQ Section */}
