@@ -327,7 +327,6 @@
     "trainerPayments": "Trainer Betalingsroutering",
     "trainerPaymentsDescription": "Hoe betalingen worden verdeeld onder je trainers",
     "trainerPaymentsInfo1": "Wanneer je academy gekoppeld is aan een betaalaccount, worden alle lesbookingen van je trainers via je academy account verwerkt.",
-    "trainerPaymentsInfo2": "Je kunt betalingsverdelingen per trainer beheren in de Trainers sectie. Trainers zien op hun inkomstenpagina dat betalingen door je academy worden afgehandeld.",
     "connectMollieAccount": "Koppel Mollie"
   },
   "waitingList": {

@@ -327,7 +327,6 @@ export default function AcademyEarnings() {
         <CardContent>
           <div className="text-sm text-muted-foreground space-y-2">
             <p>{t('earnings.trainerPaymentsInfo1')}</p>
-            <p>{t('earnings.trainerPaymentsInfo2')}</p>
           </div>
         </CardContent>
       </Card>
