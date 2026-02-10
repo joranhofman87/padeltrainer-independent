@@ -192,6 +192,7 @@
     "addManualDescription": "Registreer een speler die zich telefonisch, per e-mail of persoonlijk heeft aangemeld",
     "addManualSuccess": "Registratie succesvol toegevoegd",
     "addManualSuccessNewAccount": "Registratie toegevoegd. Er is een spelersaccount aangemaakt.",
+    "profileCreationNote": "Als deze speler nog geen account heeft, wordt er automatisch een aangemaakt. Ze ontvangen een e-mail ter bevestiging van hun inschrijving.",
     "filters": {
       "all": "Alle",
       "new": "Nieuw",

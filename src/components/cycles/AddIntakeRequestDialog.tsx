@@ -23,6 +23,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Info } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -231,6 +233,7 @@ export default function AddIntakeRequestDialog({
             phone: data.phone,
             ratingSystem: data.rating_system,
             rating: data.rating,
+            cycleName: cycles.find(c => c.id === data.cycle_id)?.name || '',
           },
         }
       );
@@ -291,6 +294,13 @@ export default function AddIntakeRequestDialog({
             {t('intakeRequests.addManualDescription')}
           </DialogDescription>
         </DialogHeader>
+
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            {t('intakeRequests.profileCreationNote')}
+          </AlertDescription>
+        </Alert>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">

@@ -192,6 +192,7 @@
     "addManualDescription": "Register a player who signed up via phone, email, or in-person",
     "addManualSuccess": "Registration added successfully",
     "addManualSuccessNewAccount": "Registration added. A player account has been created.",
+    "profileCreationNote": "If this player doesn't have an account yet, one will be created automatically. They'll receive an email confirming their registration.",
     "filters": {
       "all": "All",
       "new": "New",
