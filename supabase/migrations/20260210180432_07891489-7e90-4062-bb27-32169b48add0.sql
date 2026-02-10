@@ -1,0 +1,1 @@
+ALTER TABLE public.bookings ADD COLUMN paid_externally boolean DEFAULT false;

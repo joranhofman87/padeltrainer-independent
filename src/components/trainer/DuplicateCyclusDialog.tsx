@@ -59,6 +59,7 @@ export function DuplicateCyclusDialog({
   const [newStartTime, setNewStartTime] = useState<string>("09:00");
   const [numberOfSessions, setNumberOfSessions] = useState<number>(8);
   const [includeExistingPlayers, setIncludeExistingPlayers] = useState(true);
+  const [markAsPaid, setMarkAsPaid] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
 
@@ -232,7 +233,8 @@ export function DuplicateCyclusDialog({
               guest_player_id: booking.guest_player_id,
               notes: booking.notes,
               status: "confirmed",
-              payment_status: "pending",
+              payment_status: markAsPaid ? "paid" : "pending",
+              ...(markAsPaid ? { paid_at: new Date().toISOString(), paid_externally: true } : {}),
             });
           });
         });
@@ -260,6 +262,7 @@ export function DuplicateCyclusDialog({
       setNewStartTime("09:00");
       setNumberOfSessions(8);
       setIncludeExistingPlayers(true);
+      setMarkAsPaid(false);
     } catch (error) {
       console.error("Error duplicating cyclus:", error);
       toast.error("Failed to duplicate cycle");
@@ -368,26 +371,49 @@ export function DuplicateCyclusDialog({
 
           {/* Include Existing Players */}
           {selectedCyclus && selectedCyclus.booking_count > 0 && (
-            <div className="flex items-start space-x-3 p-3 rounded-lg bg-muted/50">
-              <Checkbox
-                id="includeExistingPlayers"
-                checked={includeExistingPlayers}
-                onCheckedChange={(checked) => setIncludeExistingPlayers(checked === true)}
-              />
-              <div className="space-y-1">
-                <Label
-                  htmlFor="includeExistingPlayers"
-                  className="flex items-center gap-2 cursor-pointer"
-                >
-                  <Users className="h-4 w-4" />
-                  {t("calendar.includeExistingPlayers")}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("calendar.includePlayersDescription", {
-                    count: selectedCyclus.booking_count,
-                  })}
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-start space-x-3 p-3 rounded-lg bg-muted/50">
+                <Checkbox
+                  id="includeExistingPlayers"
+                  checked={includeExistingPlayers}
+                  onCheckedChange={(checked) => setIncludeExistingPlayers(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="includeExistingPlayers"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4" />
+                    {t("calendar.includeExistingPlayers")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("calendar.includePlayersDescription", {
+                      count: selectedCyclus.booking_count,
+                    })}
+                  </p>
+                </div>
               </div>
+
+              {includeExistingPlayers && (
+                <div className="flex items-start space-x-3 p-3 rounded-lg bg-muted/50">
+                  <Checkbox
+                    id="markAsPaid"
+                    checked={markAsPaid}
+                    onCheckedChange={(checked) => setMarkAsPaid(checked === true)}
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="markAsPaid"
+                      className="text-sm cursor-pointer"
+                    >
+                      {t("calendar.markAsPaid")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("calendar.markAsPaidHint")}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

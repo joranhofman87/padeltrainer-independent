@@ -718,6 +718,7 @@ export type Database = {
           notes: string | null
           original_amount: number | null
           paid_at: string | null
+          paid_externally: boolean | null
           payment_amount: number | null
           payment_status: string
           player_id: string | null
@@ -738,6 +739,7 @@ export type Database = {
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
+          paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null
@@ -758,6 +760,7 @@ export type Database = {
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
+          paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null

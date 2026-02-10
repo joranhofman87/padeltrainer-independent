@@ -41,6 +41,7 @@ interface EarningsBooking {
   payment_status: string;
   payment_amount: number | null;
   paid_at: string | null;
+  paid_externally: boolean | null;
   created_at: string;
   availability_slots: {
     start_time: string;
@@ -177,6 +178,7 @@ export default function TrainerEarnings() {
         payment_status,
         payment_amount,
         paid_at,
+        paid_externally,
         created_at,
         player_id,
         availability_slots!inner(start_time, end_time, trainer_id, price_per_session, cyclus_name),
@@ -774,7 +776,9 @@ export default function TrainerEarnings() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-semibold">{booking.availability_slots.cyclus_name || 'Training Session'}</p>
-                            <Badge variant="outline" className="border-green-300 text-green-600">Paid</Badge>
+                            <Badge variant="outline" className="border-green-300 text-green-600">
+                              {(booking as any).paid_externally ? t('bookings.paidExternally', 'Paid (external)') : 'Paid'}
+                            </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">{booking.player?.full_name || 'Player'}</p>
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">

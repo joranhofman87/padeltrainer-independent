@@ -68,6 +68,7 @@ interface BulkSlotConfig {
   minParticipants: number | null;
   maxParticipants: number | null;
   priceManuallyEdited: boolean;
+  markAsPaid: boolean;
 }
 
 interface AddSlotDialogProps {
@@ -457,6 +458,7 @@ export function BulkCreateSheet({
       minParticipants: null,
       maxParticipants: null,
       priceManuallyEdited: false,
+      markAsPaid: false,
     };
   };
 
@@ -512,6 +514,7 @@ export function BulkCreateSheet({
           minParticipants: lastSlot.minParticipants,
           maxParticipants: lastSlot.maxParticipants,
           priceManuallyEdited: lastSlot.priceManuallyEdited,
+          markAsPaid: false,
         },
       ]);
     } else {
@@ -698,7 +701,8 @@ export function BulkCreateSheet({
                     slot_id: slot.id,
                     guest_player_id: playerId,
                     status: "confirmed",
-                    payment_status: "pending",
+                    payment_status: config.markAsPaid ? "paid" : "pending",
+                    ...(config.markAsPaid ? { paid_at: new Date().toISOString(), paid_externally: true } : {}),
                   });
                 }
               }
@@ -1209,6 +1213,28 @@ export function BulkCreateSheet({
                       </div>
                     )}
                   </div>
+
+                  {/* Mark as Paid Checkbox */}
+                  {slot.addPlayers && slot.selectedPlayers.some(Boolean) && (
+                    <div className="flex items-start space-x-2 pt-2">
+                      <Checkbox
+                        id={`mark-paid-${index}`}
+                        checked={slot.markAsPaid}
+                        onCheckedChange={(checked) =>
+                          updateBulkSlot(index, { markAsPaid: !!checked })
+                        }
+                      />
+                      <div>
+                        <Label htmlFor={`mark-paid-${index}`} className="text-sm cursor-pointer flex items-center gap-2">
+                          <Euro className="h-4 w-4" />
+                          {t("calendar.markAsPaid")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {t("calendar.markAsPaidHint")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Mark as Private Checkbox */}
                   <div className="flex items-center space-x-2 pt-2">
