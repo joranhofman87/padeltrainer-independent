@@ -662,5 +662,13 @@
     "lastReminder": "Last reminder",
     "reminderSentSuccess": "Payment reminder sent successfully",
     "bulkReminderSentSuccess": "Payment reminders sent to {{count}} players"
+  },
+  "waitingList": {
+    "settingsTitle": "Waiting List",
+    "settingsSubtitle": "Let players join a waiting list when no spots are available",
+    "enableTitle": "Enable Waiting List",
+    "enableDescription": "When enabled, players can sign up for your waiting list on your public profile. You'll be notified when someone joins.",
+    "enabled": "Waiting list is now active on your profile",
+    "disabled": "Waiting list has been turned off"
   }
 }
