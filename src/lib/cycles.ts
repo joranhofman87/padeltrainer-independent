@@ -66,6 +66,7 @@ export interface CycleSettings {
   rating_spread_system?: string;
   allow_single_booking?: boolean;
   extra_costs?: ExtraCost[];
+  mark_as_paid?: boolean;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
