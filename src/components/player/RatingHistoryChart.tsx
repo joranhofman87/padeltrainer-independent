@@ -218,11 +218,16 @@ export function RatingHistoryChart({
           </LineChart>
         </ChartContainer>
 
-        {lowerIsBetter && (
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            {t('ratingHistory.knltbNote', `In ${systemConfig?.name || 'this system'}, a lower rating means better performance`)}
+        <div className="flex flex-col items-center gap-1 mt-2">
+          {lowerIsBetter && (
+            <p className="text-xs text-muted-foreground">
+              {t('ratingHistory.knltbNote', `In ${systemConfig?.name || 'this system'}, a lower rating means better performance`)}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {t('ratingHistory.updateSchedule', 'Ratings are updated every 15th of the month')}
           </p>
-        )}
+        </div>
       </CardContent>
     </Card>
   );
