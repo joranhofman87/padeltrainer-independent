@@ -54,6 +54,7 @@ import TrainerPlayers from '@/pages/TrainerPlayers';
 import TrainerCyclus from '@/pages/TrainerCyclus';
 import TrainerCycles from '@/pages/TrainerCycles';
 import TrainerIntakeRequests from '@/pages/TrainerIntakeRequests';
+import TrainerWaitingList from '@/pages/TrainerWaitingList';
 import OpenSlots from '@/pages/OpenSlots';
 
 import TrainerLayout from '@/components/trainer/TrainerLayout';
@@ -102,6 +103,7 @@ import AcademyIntakeRequests from '@/pages/academy/AcademyIntakeRequests';
 import AcademySubscription from '@/pages/academy/AcademySubscription';
 import AcademyTrainerInvitation from '@/pages/academy/AcademyTrainerInvitation';
 import AcademyEarnings from '@/pages/academy/AcademyEarnings';
+import AcademyWaitingList from '@/pages/academy/AcademyWaitingList';
 import NotFound from '@/pages/NotFound';
 
 /**
@@ -158,6 +160,7 @@ export function DomainRouter() {
         <Route path="cyclus" element={<TrainerCyclus />} />
         <Route path="cycles" element={<TrainerCycles />} />
         <Route path="intake-requests" element={<TrainerIntakeRequests />} />
+        <Route path="waiting-list" element={<TrainerWaitingList />} />
         <Route path="open-slots" element={<OpenSlots />} />
         
         <Route path="profile" element={<EditProfile />} />
@@ -214,6 +217,7 @@ export function DomainRouter() {
         <Route path="cycles" element={<AcademyCycles />} />
         <Route path="calendar" element={<AcademyCalendar />} />
         <Route path="intake-requests" element={<AcademyIntakeRequests />} />
+        <Route path="waiting-list" element={<AcademyWaitingList />} />
         <Route path="settings" element={<AcademySettings />} />
         <Route path="settings/notifications" element={<NotificationSettings />} />
         <Route path="subscription" element={<AcademySubscription />} />

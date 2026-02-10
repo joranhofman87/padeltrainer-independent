@@ -74,7 +74,8 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.includes("/app/academy/cycles") ||
-    location.pathname.includes("/app/academy/intake-requests")
+    location.pathname.includes("/app/academy/intake-requests") ||
+    location.pathname.includes("/app/academy/waiting-list")
   );
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
@@ -313,7 +314,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.registrations", "Registrations")}
-                      className={isActive("/app/academy/cycles") || isActive("/app/academy/intake-requests")
+                      className={isActive("/app/academy/cycles") || isActive("/app/academy/intake-requests") || isActive("/app/academy/waiting-list")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -347,6 +348,17 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.intakeRequests", "Intake Requests")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/waiting-list"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.waitingList", "Waiting List")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

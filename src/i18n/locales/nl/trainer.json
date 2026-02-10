@@ -20,7 +20,9 @@
     "viewPublicProfile": "Bekijk Publiek Profiel",
     "myClubs": "Mijn Clubs",
     "lessons": "Sessies",
-    "getStarted": "Aan de slag"
+    "getStarted": "Aan de slag",
+    "waitingList": "Wachtlijst",
+    "registrations": "Inschrijvingen"
   },
   "profile": {
     "shareProfile": "Profiel Delen",

@@ -253,7 +253,8 @@
     "team": "Team",
     "schedule": "Schedule",
     "business": "Business",
-    "academy": "Academy"
+    "academy": "Academy",
+    "waitingList": "Waiting List"
   },
   "common": {
     "cancel": "Cancel",

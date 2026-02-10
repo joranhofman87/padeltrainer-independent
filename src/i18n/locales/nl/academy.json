@@ -246,7 +246,8 @@
     "team": "Team",
     "schedule": "Schema",
     "business": "Zakelijk",
-    "academy": "Academy"
+    "academy": "Academy",
+    "waitingList": "Wachtlijst"
   },
   "common": {
     "cancel": "Annuleren",

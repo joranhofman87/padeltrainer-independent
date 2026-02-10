@@ -763,8 +763,8 @@ export default function TrainerProfile() {
             {/* Open Registrations */}
             {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
 
-            {/* Waiting List */}
-            {trainer && (
+            {/* Waiting List - only when enabled */}
+            {trainer && (trainer as any).waiting_list_enabled && (
               <WaitingListCard
                 ownerType="trainer"
                 ownerId={trainer.id}
