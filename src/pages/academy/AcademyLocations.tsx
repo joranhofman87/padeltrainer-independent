@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
+import { useAuth } from '@/hooks/useAuth';
 import { MapPin, Plus, ExternalLink, Eye, EyeOff, Trash2, CalendarDays, FileText, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -30,6 +31,7 @@ import {
 import { AddAcademyLocationDialog } from '@/components/academy/AddAcademyLocationDialog';
 import { EditAcademyLocationDialog } from '@/components/academy/EditAcademyLocationDialog';
 import { RequestLocationDialog } from '@/components/academy/RequestLocationDialog';
+import { getUserClubProfiles } from '@/lib/club';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -37,9 +39,11 @@ export default function AcademyLocations() {
   const { t } = useTranslation('academy');
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
+  const { user } = useAuth();
   const { activeAcademy } = useAcademyContext();
   const [locations, setLocations] = useState<AcademyLocationWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clubLocationMap, setClubLocationMap] = useState<Map<string, string>>(new Map());
 
   const fetchLocations = async () => {
     if (!activeAcademy) return;
@@ -57,6 +61,24 @@ export default function AcademyLocations() {
   useEffect(() => {
     fetchLocations();
   }, [activeAcademy]);
+
+  // Fetch user's club profiles to determine which locations they manage as a club
+  useEffect(() => {
+    const fetchClubProfiles = async () => {
+      if (!user?.id) return;
+      try {
+        const clubs = await getUserClubProfiles(user.id);
+        const map = new Map<string, string>();
+        for (const club of clubs) {
+          map.set(club.location_id, club.id);
+        }
+        setClubLocationMap(map);
+      } catch (error) {
+        console.error('Error fetching club profiles:', error);
+      }
+    };
+    fetchClubProfiles();
+  }, [user?.id]);
 
   const handleVisibilityToggle = async (
     locationId: string,
@@ -146,6 +168,7 @@ export default function AcademyLocations() {
               <LocationCard
                 key={academyLocation.id}
                 academyLocation={academyLocation}
+                managedClubId={clubLocationMap.get(academyLocation.location_id) || null}
                 onVisibilityToggle={handleVisibilityToggle}
                 onRemove={handleRemoveLocation}
                 onUpdate={fetchLocations}
@@ -166,6 +189,7 @@ export default function AcademyLocations() {
                   <LocationCard
                     key={academyLocation.id}
                     academyLocation={academyLocation}
+                    managedClubId={clubLocationMap.get(academyLocation.location_id) || null}
                     onVisibilityToggle={handleVisibilityToggle}
                     onRemove={handleRemoveLocation}
                     onUpdate={fetchLocations}
@@ -184,6 +208,7 @@ export default function AcademyLocations() {
 
 interface LocationCardProps {
   academyLocation: AcademyLocationWithDetails;
+  managedClubId: string | null;
   onVisibilityToggle: (id: string, field: 'show_on_academy_page' | 'show_on_club_page', value: boolean) => void;
   onRemove: (id: string) => void;
   onUpdate: () => void;
@@ -193,6 +218,7 @@ interface LocationCardProps {
 
 function LocationCard({
   academyLocation,
+  managedClubId,
   onVisibilityToggle,
   onRemove,
   onUpdate,
@@ -302,6 +328,16 @@ function LocationCard({
             <ExternalLink className="h-4 w-4 mr-2" />
             {t('locations.viewClub')}
           </Button>
+          {managedClubId && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => navigate(localizePath('/app/club'))}
+            >
+              <Building2 className="h-4 w-4 mr-2" />
+              {t('locations.manageClub')}
+            </Button>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm">
