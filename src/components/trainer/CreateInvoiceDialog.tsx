@@ -40,6 +40,7 @@ interface TrainerBusinessInfo {
   iban: string | null;
   bic: string | null;
   payment_terms_days: number;
+  invoice_prefix?: string | null;
 }
 
 interface CreateInvoiceDialogProps {
@@ -118,6 +119,7 @@ export function CreateInvoiceDialog({
   };
 
   const generateInvoiceNumber = async (): Promise<string> => {
+    const prefix = trainerBusinessInfo.invoice_prefix || 'INV';
     const year = new Date().getFullYear();
     
     // Get the last invoice number for this trainer this year
@@ -125,7 +127,7 @@ export function CreateInvoiceDialog({
       .from('invoices')
       .select('invoice_number')
       .eq('trainer_id', trainerId)
-      .like('invoice_number', `INV-${year}-%`)
+      .like('invoice_number', `${prefix}-${year}-%`)
       .order('invoice_number', { ascending: false })
       .limit(1)
       .single();
@@ -136,7 +138,7 @@ export function CreateInvoiceDialog({
       sequence = lastSequence + 1;
     }
     
-    return `INV-${year}-${sequence.toString().padStart(4, '0')}`;
+    return `${prefix}-${year}-${sequence.toString().padStart(4, '0')}`;
   };
 
   const handleSubmit = async (saveAsDraft: boolean = false) => {

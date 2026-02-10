@@ -78,6 +78,9 @@ interface TrainerBusinessInfo {
   use_manual_invoicing: boolean;
   default_vat_rate: number | null;
   invoice_forward_emails: string[] | null;
+  invoice_logo_url: string | null;
+  invoice_prefix: string | null;
+  invoice_next_number: number | null;
 }
 
 export default function TrainerEarnings() {
@@ -145,7 +148,7 @@ export default function TrainerEarnings() {
   const fetchTrainerInfo = async () => {
     const { data, error } = await supabase
       .from('trainer_profiles')
-      .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing, default_vat_rate, invoice_forward_emails')
+      .select('id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, use_manual_invoicing, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number')
       .eq('user_id', user!.id)
       .single();
 
@@ -822,6 +825,7 @@ export default function TrainerEarnings() {
             iban: trainerInfo.iban,
             bic: trainerInfo.bic,
             payment_terms_days: trainerInfo.payment_terms_days,
+            invoice_prefix: trainerInfo.invoice_prefix,
           }}
           defaultVatRate={trainerInfo.default_vat_rate ?? 21}
           onInvoiceCreated={() => {

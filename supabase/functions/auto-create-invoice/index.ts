@@ -70,7 +70,7 @@ serve(async (req) => {
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails")
+      .select("id, user_id, business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
       .eq("id", trainerId)
       .single();
 
@@ -118,31 +118,51 @@ serve(async (req) => {
 
     // Build line items from bookings
     const vatRate = trainerProfile.default_vat_rate ?? 21;
-    const lineItems = bookings.map((b) => {
-      const bSlot = b.availability_slots as any;
-      const startTime = new Date(bSlot.start_time);
-      const locationName = bSlot.locations?.name || "";
-      const description = bSlot.cyclus_name
-        ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
-        : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
 
-      const price = b.payment_amount || bSlot.price_per_session || 0;
+    // Check if all bookings belong to the same cyclus — bundle them
+    const firstSlot = bookings[0].availability_slots as any;
+    const sharedCyclusId = firstSlot.cyclus_id;
+    const allSameCyclus = sharedCyclusId && bookings.every((b) => (b.availability_slots as any).cyclus_id === sharedCyclusId);
 
-      return {
-        description,
-        quantity: 1,
-        unit_price: price,
-        date: startTime.toISOString().split("T")[0],
-      };
-    });
+    let lineItems: { description: string; quantity: number; unit_price: number; date?: string }[];
+
+    if (allSameCyclus) {
+      // Bundle cyclus bookings into a single line item
+      const cyclusName = firstSlot.cyclus_name || "Training cyclus";
+      const pricePerSession = bookings[0].payment_amount || firstSlot.price_per_session || 0;
+
+      lineItems = [{
+        description: cyclusName,
+        quantity: bookings.length,
+        unit_price: pricePerSession,
+      }];
+    } else {
+      // Individual line items per booking (original behavior)
+      lineItems = bookings.map((b) => {
+        const bSlot = b.availability_slots as any;
+        const startTime = new Date(bSlot.start_time);
+        const locationName = bSlot.locations?.name || "";
+        const description = bSlot.cyclus_name
+          ? `${bSlot.cyclus_name} - ${startTime.toLocaleDateString("nl-NL")} ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}${locationName ? ` (${locationName})` : ""}`
+          : `Training sessie - ${startTime.toLocaleDateString("nl-NL")}`;
+
+        const price = b.payment_amount || bSlot.price_per_session || 0;
+
+        return {
+          description,
+          quantity: 1,
+          unit_price: price,
+          date: startTime.toISOString().split("T")[0],
+        };
+      });
+    }
 
     // Check for extra costs from the cycle settings
-    const firstSlot = bookings[0].availability_slots as any;
-    if (firstSlot.cyclus_id) {
+    if (sharedCyclusId) {
       const { data: cycleData } = await supabase
         .from("cycles")
         .select("settings")
-        .eq("id", firstSlot.cyclus_id)
+        .eq("id", sharedCyclusId)
         .maybeSingle();
 
       const extraCosts = (cycleData?.settings as any)?.extra_costs;
@@ -151,9 +171,8 @@ serve(async (req) => {
           if (ec.description && ec.price > 0) {
             lineItems.push({
               description: ec.description,
-              quantity: bookings.length,
+              quantity: 1,
               unit_price: ec.price,
-              date: new Date().toISOString().split("T")[0],
             });
           }
         }
@@ -165,23 +184,32 @@ serve(async (req) => {
     const subtotal = totalInclusive / (1 + vatRate / 100);
     const vatAmount = totalInclusive - subtotal;
 
-    // Generate invoice number
+    // Generate invoice number using trainer's custom prefix
+    const prefix = trainerProfile.invoice_prefix || "INV";
     const year = new Date().getFullYear();
     const { data: lastInvoice } = await supabase
       .from("invoices")
       .select("invoice_number")
       .eq("trainer_id", trainerId)
-      .like("invoice_number", `INV-${year}-%`)
+      .like("invoice_number", `${prefix}-${year}-%`)
       .order("invoice_number", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    let sequence = 1;
+    let sequence = trainerProfile.invoice_next_number || 1;
     if (lastInvoice?.invoice_number) {
       const lastSeq = parseInt(lastInvoice.invoice_number.split("-")[2] || "0");
-      sequence = lastSeq + 1;
+      if (lastSeq >= sequence) {
+        sequence = lastSeq + 1;
+      }
     }
-    const invoiceNumber = `INV-${year}-${sequence.toString().padStart(4, "0")}`;
+    const invoiceNumber = `${prefix}-${year}-${sequence.toString().padStart(4, "0")}`;
+
+    // Update next number for trainer
+    await supabase
+      .from("trainer_profiles")
+      .update({ invoice_next_number: sequence + 1 })
+      .eq("id", trainerId);
 
     // Calculate due date
     const paymentTermsDays = trainerProfile.payment_terms_days || 14;
