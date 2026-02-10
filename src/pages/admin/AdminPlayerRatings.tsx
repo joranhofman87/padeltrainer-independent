@@ -96,7 +96,7 @@ export default function AdminPlayerRatings() {
             rating,
             rating_system: "knltb",
             scraped_at: scrapedAt,
-            source: "admin",
+            source: "manual",
           });
         if (error) throw error;
       }
