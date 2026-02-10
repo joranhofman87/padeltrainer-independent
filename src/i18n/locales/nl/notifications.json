@@ -1,0 +1,95 @@
+{
+  "notifications": {
+    "title": "Notificatie-instellingen",
+    "heading": "E-mailnotificaties",
+    "subtitle": "Kies hoe en wanneer je e-mailmeldingen ontvangt van PadelTrainer.ai.",
+    "saved": "Notificatievoorkeuren opgeslagen!",
+    "saveError": "Fout bij opslaan voorkeuren",
+    "securityNote": "Essentiële account- en beveiligingsmeldingen kunnen niet worden uitgeschakeld.",
+    "frequency": {
+      "instant": "Direct",
+      "daily": "Dagelijks",
+      "weekly": "Wekelijks",
+      "off": "Uit"
+    },
+    "categories": {
+      "bookings": "Boekingen",
+      "bookingsDesc": "Meldingen over je trainingssessies",
+      "bookingsDescTrainer": "Meldingen wanneer spelers boeken of annuleren",
+      "availability": "Beschikbaarheid",
+      "availabilityDesc": "Updates over open plekken van trainers die je volgt",
+      "schedule": "Planning",
+      "scheduleDesc": "Overzicht van je aankomende trainingssessies",
+      "scheduleDescTrainer": "Overzicht van je aankomende coachsessies",
+      "payments": "Betalingen",
+      "paymentsDesc": "Betalingsbevestigingen en bonnen",
+      "paymentsDescTrainer": "Meldingen wanneer je een betaling ontvangt",
+      "waitlist": "Wachtlijst",
+      "waitlistDesc": "Updates wanneer er plekken vrijkomen",
+      "players": "Spelers",
+      "playersDesc": "Meldingen over nieuwe volgers en spelers",
+      "registrations": "Registraties",
+      "registrationsDesc": "Meldingen over cyclus- en sessieregistraties",
+      "reviews": "Reviews",
+      "reviewsDesc": "Meldingen wanneer spelers reviews achterlaten"
+    },
+    "types": {
+      "booking_confirmation": {
+        "label": "Boekingsbevestigingen",
+        "description": "Ontvang een melding wanneer een sessie is geboekt"
+      },
+      "booking_reminder": {
+        "label": "Sessieherinneringen",
+        "description": "Ontvang een herinnering voor je sessie"
+      },
+      "open_slots_digest": {
+        "label": "Open plekken van gevolgde trainers",
+        "description": "Updates wanneer trainers die je volgt nieuwe plekken toevoegen"
+      },
+      "upcoming_sessions_digest": {
+        "label": "Overzicht aankomende sessies",
+        "description": "Samenvatting van je aankomende trainingssessies"
+      },
+      "payment_receipt": {
+        "label": "Betalingsbewijzen",
+        "description": "Bevestiging na succesvolle betaling"
+      },
+      "waitlist_update": {
+        "label": "Wachtlijst updates",
+        "description": "Ontvang een melding wanneer er een plek vrijkomt"
+      },
+      "new_booking": {
+        "label": "Nieuwe boekingen",
+        "description": "Ontvang een melding wanneer een speler boekt"
+      },
+      "booking_cancelled": {
+        "label": "Geannuleerde boekingen",
+        "description": "Ontvang een melding wanneer een speler annuleert"
+      },
+      "new_follower": {
+        "label": "Nieuwe volgers",
+        "description": "Ontvang een melding wanneer iemand je volgt"
+      },
+      "new_player": {
+        "label": "Nieuwe spelers",
+        "description": "Ontvang een melding wanneer een nieuwe speler zich aanmeldt"
+      },
+      "new_registration": {
+        "label": "Nieuwe registraties",
+        "description": "Ontvang een melding voor nieuwe cyclusregistraties"
+      },
+      "new_review": {
+        "label": "Nieuwe reviews",
+        "description": "Ontvang een melding wanneer een speler een review achterlaat"
+      },
+      "upcoming_schedule_digest": {
+        "label": "Overzicht aankomende planning",
+        "description": "Samenvatting van je aankomende coachsessies"
+      },
+      "payment_received": {
+        "label": "Ontvangen betalingen",
+        "description": "Ontvang een melding wanneer je een betaling ontvangt"
+      }
+    }
+  }
+}

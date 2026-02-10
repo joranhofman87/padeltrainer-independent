@@ -150,6 +150,7 @@ export function DomainRouter() {
         <Route index element={<TrainerDashboard />} />
         <Route path="settings" element={<TrainerSettings />} />
         <Route path="settings/bookings" element={<TrainerBookingSettings />} />
+        <Route path="settings/notifications" element={<NotificationSettings />} />
         <Route path="terms" element={<TrainerTerms />} />
         <Route path="calendar" element={<TrainerCalendar />} />
         <Route path="players" element={<TrainerPlayers />} />
@@ -212,6 +213,7 @@ export function DomainRouter() {
         <Route path="calendar" element={<AcademyCalendar />} />
         <Route path="intake-requests" element={<AcademyIntakeRequests />} />
         <Route path="settings" element={<AcademySettings />} />
+        <Route path="settings/notifications" element={<NotificationSettings />} />
         <Route path="subscription" element={<AcademySubscription />} />
         <Route path="earnings" element={<AcademyEarnings />} />
       </Route>

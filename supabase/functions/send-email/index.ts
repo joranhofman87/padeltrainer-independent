@@ -12,6 +12,8 @@ const corsHeaders = {
 interface EmailRequest {
   type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder";
   to: string;
+  userId?: string;
+  to: string;
   data: {
     playerName?: string;
     playerEmail?: string;
@@ -844,7 +846,108 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { subject, html } = getEmailContent(type, data);
+    // Map email type to notification preference column
+    const TYPE_TO_PREF_COLUMN: Record<string, string> = {
+      booking_confirmation: "booking_confirmation",
+      manual_booking_confirmation: "booking_confirmation",
+      booking_reminder: "booking_reminder",
+      booking_cancelled: "booking_cancelled",
+      review_received: "new_review",
+      payment_confirmed_player: "payment_receipt",
+      payment_confirmed_trainer: "payment_received",
+      new_booking_trainer: "new_booking",
+      booking_request: "new_booking",
+      new_availability: "open_slots_digest",
+      slot_reopened: "open_slots_digest",
+      payment_reminder: "payment_receipt",
+    };
+
+    // System emails that should never be filtered
+    const SYSTEM_EMAIL_TYPES = [
+      "password_reset_admin", "club_claim_approved", "club_claim_rejected",
+      "club_trainer_invitation", "club_trainer_invitation_accepted",
+      "partner_inquiry", "location_request",
+      "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
+    ];
+
+    const prefColumn = TYPE_TO_PREF_COLUMN[type];
+    const isSystemEmail = SYSTEM_EMAIL_TYPES.includes(type);
+
+    // Check notification preferences if applicable
+    if (prefColumn && !isSystemEmail) {
+      const recipientId = (data as any).userId || null;
+      let recipientUserId = recipientId;
+
+      // Try to look up user by email if no userId provided
+      if (!recipientUserId) {
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("user_id")
+          .eq("email", to)
+          .maybeSingle();
+        recipientUserId = profile?.user_id;
+      }
+
+      if (recipientUserId) {
+        const { data: prefs } = await supabaseAdmin
+          .from("notification_preferences")
+          .select(prefColumn)
+          .eq("user_id", recipientUserId)
+          .maybeSingle();
+
+        const frequency = prefs?.[prefColumn] || "instant";
+
+        if (frequency === "off") {
+          console.log(`Notification ${type} suppressed for user ${recipientUserId} (preference: off)`);
+          return new Response(JSON.stringify({ skipped: true, reason: "notification_disabled" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        if (frequency === "daily" || frequency === "weekly") {
+          // Queue for digest instead of sending immediately
+          const { error: queueErr } = await supabaseAdmin
+            .from("notification_queue")
+            .insert({
+              user_id: recipientUserId,
+              notification_type: prefColumn,
+              payload: { type, to, data, subject: getEmailContent(type, data).subject },
+              scheduled_for: frequency,
+            });
+
+          if (queueErr) {
+            console.error("Error queuing notification:", queueErr);
+            // Fall through to send immediately on queue error
+          } else {
+            console.log(`Notification ${type} queued for ${frequency} digest for user ${recipientUserId}`);
+            return new Response(JSON.stringify({ queued: true, frequency }), {
+              status: 200,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
+          }
+        }
+      }
+    }
+
+    const { subject, html: emailHtml } = getEmailContent(type, data);
+
+    // Add manage notifications footer (except for system emails)
+    let finalHtml = emailHtml;
+    if (!isSystemEmail) {
+      const notifPath = type.startsWith("new_booking") || type === "booking_request" || type === "review_received" || type === "payment_confirmed_trainer"
+        ? "/app/trainer/settings/notifications"
+        : "/app/player/settings/notifications";
+
+      finalHtml += `
+        <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 12px; text-align: center;">
+            You're receiving this email from PadelTrainer.ai.<br/>
+            <a href="https://padeltrainer.ai${notifPath}" style="color: #6b7280; text-decoration: underline;">Manage email notifications</a>
+          </p>
+        </div>
+      `;
+    }
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -856,7 +959,7 @@ const handler = async (req: Request): Promise<Response> => {
         from: "PadelTrainer.ai <noreply@padeltrainer.ai>",
         to: [to],
         subject,
-        html,
+        html: finalHtml,
       }),
     });
 
