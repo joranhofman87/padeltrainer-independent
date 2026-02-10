@@ -56,12 +56,13 @@ export default function TrainerLayout() {
   }
 
   // Calculate subscription status
+  const subscriptionLoaded = subscription !== null;
   const hasActiveSubscription = subscription?.isSubscribed || subscription?.isInTrial || false;
   const isTrialing = subscription?.isInTrial || false;
   const trialDaysRemaining = subscription?.trialEndsAt 
     ? getTrialDaysRemaining(subscription.trialEndsAt) 
     : 0;
-  const isSubscriptionExpired = !subscription?.isSubscribed && !subscription?.isInTrial;
+  const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
   const isOnSubscriptionPage = location.pathname === '/subscription' || location.pathname === '/trainer/subscription';
 
   // Feature translations for subscription overlay
