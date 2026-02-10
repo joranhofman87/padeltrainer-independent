@@ -320,7 +320,7 @@ export default function AcademyDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('dashboard.recentPlayers', 'Recent Players')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/trainers')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/players')}>
                 {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
@@ -452,7 +452,7 @@ export default function AcademyDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('dashboard.upcomingSpots', 'Upcoming Open Spots')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/calendar')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/open-slots')}>
                 {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>

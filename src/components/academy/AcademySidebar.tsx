@@ -67,10 +67,12 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
 
   // Track which groups are open
   const [teamOpen, setTeamOpen] = useState(
-    location.pathname.includes("/app/academy/trainers")
+    location.pathname.includes("/app/academy/trainers") ||
+    location.pathname.includes("/app/academy/players")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
-    location.pathname.includes("/app/academy/calendar")
+    location.pathname.includes("/app/academy/calendar") ||
+    location.pathname.includes("/app/academy/open-slots")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.includes("/app/academy/cycles") ||
@@ -232,7 +234,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.team")}
-                      className={isActive("/app/academy/trainers")
+                      className={isActive("/app/academy/trainers") || isActive("/app/academy/players")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -258,6 +260,17 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/players"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.players")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
@@ -273,7 +286,7 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/app/academy/calendar")
+                      className={isActive("/app/academy/calendar") || isActive("/app/academy/open-slots")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -296,6 +309,17 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.calendar")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/open-slots"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.openSlots", "Open Slots")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

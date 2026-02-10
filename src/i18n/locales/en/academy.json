@@ -254,7 +254,8 @@
     "schedule": "Schedule",
     "business": "Business",
     "academy": "Academy",
-    "waitingList": "Waiting List"
+    "waitingList": "Waiting List",
+    "openSlots": "Open Slots"
   },
   "common": {
     "cancel": "Cancel",

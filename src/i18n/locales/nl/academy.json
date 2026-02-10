@@ -247,7 +247,8 @@
     "schedule": "Schema",
     "business": "Zakelijk",
     "academy": "Academy",
-    "waitingList": "Wachtlijst"
+    "waitingList": "Wachtlijst",
+    "openSlots": "Open Plekken"
   },
   "common": {
     "cancel": "Annuleren",
