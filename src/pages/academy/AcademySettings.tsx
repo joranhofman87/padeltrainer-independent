@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import { 
@@ -9,7 +9,9 @@ import {
   ExternalLink, 
   Wallet,
   Loader2,
-  FileText
+  FileText,
+  UserPlus,
+  Trash2
 } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -20,8 +22,9 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
-import { getAcademyManagers } from '@/lib/academy';
+import { getAcademyManagers, addAcademyManager, removeAcademyManager, getAcademyTrainersForManagerPicker } from '@/lib/academy';
 import { 
   connectAcademyMollie, 
   checkAcademyConnectStatus,
@@ -31,13 +34,19 @@ import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function AcademySettings() {
   const { t } = useTranslation('academy');
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
+  const { user } = useAuth();
   const [managers, setManagers] = useState<any[]>([]);
+  const [availableTrainers, setAvailableTrainers] = useState<{ userId: string; fullName: string; email: string; avatarUrl: string | null }[]>([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState<string>('');
+  const [addingManager, setAddingManager] = useState(false);
+  const [removingManagerId, setRemovingManagerId] = useState<string | null>(null);
   
   // Mollie Connect state
   const [connectStatus, setConnectStatus] = useState<AcademyConnectStatus | null>(null);
@@ -59,12 +68,33 @@ export default function AcademySettings() {
     },
   });
 
+  // Determine if current user is an owner
+  const isOwner = useMemo(() => {
+    if (!user || !managers.length) return false;
+    return managers.some(m => m.user_id === user.id && m.role === 'owner');
+  }, [managers, user]);
+
+  // Filter trainers who are not already managers
+  const filteredTrainers = useMemo(() => {
+    const managerUserIds = new Set(managers.map(m => m.user_id));
+    return availableTrainers.filter(t => !managerUserIds.has(t.userId));
+  }, [availableTrainers, managers]);
+
+  const fetchManagersAndTrainers = async () => {
+    if (!activeAcademy) return;
+    const [managersData, trainersData] = await Promise.all([
+      getAcademyManagers(activeAcademy.id),
+      getAcademyTrainersForManagerPicker(activeAcademy.id),
+    ]);
+    setManagers(managersData);
+    setAvailableTrainers(trainersData);
+  };
+
   useEffect(() => {
     async function fetchData() {
       if (!activeAcademy) return;
       
-      const data = await getAcademyManagers(activeAcademy.id);
-      setManagers(data);
+      await fetchManagersAndTrainers();
       
       // Check Mollie connect status
       setCheckingStatus(true);
@@ -123,7 +153,6 @@ export default function AcademySettings() {
         title: t("settings.mollieConnectSuccess", "Payment Account Connected"),
         description: t("settings.mollieConnectSuccessDescription", "Your payment account has been connected successfully."),
       });
-      // Refresh status
       checkAcademyConnectStatus(activeAcademy.id).then(setConnectStatus).catch((e) => logger.error("Error refreshing connect status", e as Error, { component: "AcademySettings" }));
     } else if (searchParams.get("mollie_refresh") === "true") {
       toast({
@@ -171,6 +200,37 @@ export default function AcademySettings() {
       });
     } finally {
       setCheckingStatus(false);
+    }
+  };
+
+  const handleAddManager = async () => {
+    if (!activeAcademy || !selectedTrainerId) return;
+    setAddingManager(true);
+    try {
+      const result = await addAcademyManager(activeAcademy.id, selectedTrainerId);
+      if (!result.success) throw new Error(result.error);
+      toast({ title: t('managers.added', 'Manager added successfully') });
+      setSelectedTrainerId('');
+      await fetchManagersAndTrainers();
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setAddingManager(false);
+    }
+  };
+
+  const handleRemoveManager = async (managerId: string) => {
+    if (!confirm(t('managers.confirmRemove', 'Are you sure you want to remove this manager?'))) return;
+    setRemovingManagerId(managerId);
+    try {
+      const result = await removeAcademyManager(managerId);
+      if (!result.success) throw new Error(result.error);
+      toast({ title: t('managers.removed', 'Manager removed') });
+      await fetchManagersAndTrainers();
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setRemovingManagerId(null);
     }
   };
 
@@ -364,9 +424,25 @@ export default function AcademySettings() {
                       <p className="text-sm text-muted-foreground">{manager.profile?.email}</p>
                     </div>
                   </div>
-                  <Badge variant={manager.role === 'owner' ? 'default' : 'secondary'}>
-                    {manager.role === 'owner' ? t('managers.owner') : t('managers.manager')}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={manager.role === 'owner' ? 'default' : 'secondary'}>
+                      {manager.role === 'owner' ? t('managers.owner') : t('managers.manager')}
+                    </Badge>
+                    {isOwner && manager.role !== 'owner' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveManager(manager.id)}
+                        disabled={removingManagerId === manager.id}
+                      >
+                        {removingManagerId === manager.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
               
@@ -374,6 +450,48 @@ export default function AcademySettings() {
                 <p className="text-center text-muted-foreground py-4">
                   {t('managers.noManagers', 'No managers found')}
                 </p>
+              )}
+
+              {/* Add Manager */}
+              {isOwner && (
+                <div className="pt-2 border-t">
+                  {filteredTrainers.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder={t('managers.selectTrainer', 'Select a trainer...')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredTrainers.map((trainer) => (
+                            <SelectItem key={trainer.userId} value={trainer.userId}>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={trainer.avatarUrl || undefined} />
+                                  <AvatarFallback className="text-xs">
+                                    {trainer.fullName?.charAt(0) || 'T'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{trainer.fullName || trainer.email}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button onClick={handleAddManager} disabled={!selectedTrainerId || addingManager}>
+                        {addingManager ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="h-4 w-4" />
+                        )}
+                        {t('managers.addManager', 'Add Manager')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {t('managers.noTrainersAvailable', 'No trainers available to add')}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </CardContent>

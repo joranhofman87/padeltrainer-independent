@@ -204,7 +204,14 @@
     "description": "People who can manage this academy.",
     "owner": "Owner",
     "manager": "Manager",
-    "noManagers": "No managers found"
+    "noManagers": "No managers found",
+    "addManager": "Add Manager",
+    "selectTrainer": "Select a trainer...",
+    "added": "Manager added successfully",
+    "removed": "Manager removed",
+    "remove": "Remove",
+    "confirmRemove": "Are you sure you want to remove this manager?",
+    "noTrainersAvailable": "No trainers available to add"
   },
   "settings": {
     "dangerZone": "Danger Zone",

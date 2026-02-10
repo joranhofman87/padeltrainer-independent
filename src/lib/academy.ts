@@ -1077,3 +1077,75 @@ export async function getPublicAcademies(): Promise<Partial<AcademyProfile>[]> {
 
   return data || [];
 }
+
+// ===================== Manager Management Functions =====================
+
+// Add a trainer as academy manager
+export async function addAcademyManager(
+  academyProfileId: string,
+  userId: string,
+  role: 'manager' = 'manager'
+): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('academy_managers')
+    .insert({
+      academy_profile_id: academyProfileId,
+      user_id: userId,
+      role,
+    });
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+// Remove a non-owner academy manager
+export async function removeAcademyManager(managerId: string): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('academy_managers')
+    .delete()
+    .eq('id', managerId)
+    .neq('role', 'owner');
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+// Get active academy trainers with profile info for manager picker
+export async function getAcademyTrainersForManagerPicker(
+  academyProfileId: string
+): Promise<{ userId: string; fullName: string; email: string; avatarUrl: string | null }[]> {
+  const { data, error } = await supabase
+    .from('academy_trainers')
+    .select(`
+      trainer_profile:trainer_profiles(
+        id, user_id
+      )
+    `)
+    .eq('academy_profile_id', academyProfileId)
+    .eq('status', 'active');
+
+  if (error) {
+    logger.error('Error fetching academy trainers for manager picker', undefined, { error });
+    return [];
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Get user_ids from trainer profiles
+  const userIds = data
+    .map((d: any) => d.trainer_profile?.user_id)
+    .filter(Boolean) as string[];
+
+  if (userIds.length === 0) return [];
+
+  // Batch fetch profiles
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, email, avatar_url')
+    .in('user_id', userIds);
+
+  return (profiles || []).map((p) => ({
+    userId: p.user_id,
+    fullName: p.full_name || '',
+    email: p.email || '',
+    avatarUrl: p.avatar_url,
+  }));
+}
