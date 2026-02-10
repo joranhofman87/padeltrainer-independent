@@ -1,40 +1,41 @@
 
 
-## Add "Mark as Paid" Option to Training Cycle Form
+## Fix Post-Signup Redirect to Original Page
 
-### What this does
+### Problem
 
-When creating or editing a training cycle (cyclus), trainers and academy managers will see a new "Mark as paid" toggle. When enabled, this flag is saved on the cycle so that any bookings created for this cycle (via the calendar slot creation flow or duplication) are automatically marked as paid externally.
+When a player signs up via a CTA on a trainer/club/academy profile, they should be redirected back to that page after completing signup + onboarding. Currently they end up on the dashboard instead.
+
+**Root cause**: The redirect URL is stored in `localStorage` as `redirectAfterOnboarding`, and it's only consumed in `Onboarding.tsx` when the onboarding form is submitted. However, when the user verifies their email and lands on `/app/auth`, the Auth page may detect that the user already has a role and redirect them straight to the dashboard -- never reaching the onboarding page where the redirect would be consumed.
+
+### Solution
+
+Add a check for `redirectAfterOnboarding` in `Auth.tsx` so that even if a user already has a role, the stored redirect URL is honored.
 
 ### Changes
 
-#### 1. `src/lib/cycles.ts` - Add `mark_as_paid` to CycleSettings type
+**`src/pages/Auth.tsx`**
 
-Add `mark_as_paid?: boolean` to the `CycleSettings` interface so it's stored in the cycle's settings JSON.
+In the redirect logic (around line 84-104), when a user with an existing role is being redirected to their dashboard:
 
-#### 2. `src/components/cycles/CycleForm.tsx` - Add the toggle UI + persist it
+1. Before falling through to the default dashboard redirect, check `localStorage.getItem('redirectAfterOnboarding')`
+2. If it exists, navigate there instead and clear it from localStorage
+3. This covers the case where the user completed onboarding but Auth still handles the final navigation
 
-- Add a `markAsPaid` state variable (similar to `allowSingleBooking`), initialized from `cycle?.settings?.mark_as_paid`
-- Reset it when the form opens (in the existing `useEffect`)
-- Include `mark_as_paid: markAsPaid` in the `settings` object in `onSubmit`
-- Add a toggle UI (checkbox with Euro icon) in the pricing section, after the "Allow single booking" toggle, only for `cyclus` type (not `registration`). Use the same visual pattern as `AddSlotDialog` and `DuplicateCyclusDialog`:
+**`src/pages/Onboarding.tsx`** (no change needed -- already handles it correctly)
+
+### How it works after the fix
 
 ```text
-[checkbox] [Euro icon] Mark as paid
-            Payment was handled outside the platform (e.g. cash, bank transfer)
+User clicks CTA on trainer profile
+  -> /app/signup/player?redirect=/en/trainer/john
+  -> localStorage: redirectAfterOnboarding = "/en/trainer/john"
+  -> User signs up, verifies email
+  -> Lands on /app/auth
+  -> Auth sees user has role -> checks redirectAfterOnboarding
+  -> Navigates to /en/trainer/john instead of /app/player
 ```
-
-#### 3. `src/components/trainer/AddSlotDialog.tsx` - Read cycle's mark_as_paid setting
-
-When creating a cyclus via `AddSlotDialog`, if the cycle has `mark_as_paid` in settings, pre-fill the `markAsPaid` field on the slot config so bookings inherit the paid status automatically. (This is already handled per-slot; the cycle setting just provides a default.)
-
-#### 4. Translation files (already have the keys)
-
-The existing keys `calendar.markAsPaid` and `calendar.markAsPaidHint` in both `en/trainer.json` and `nl/trainer.json` will be reused.
 
 ### Files to modify
 
-- `src/lib/cycles.ts` (add 1 field to CycleSettings interface)
-- `src/components/cycles/CycleForm.tsx` (add state, toggle UI, persist in settings)
-- `src/components/trainer/AddSlotDialog.tsx` (read cycle's mark_as_paid as default for slot bookings)
-
+- `src/pages/Auth.tsx` (add redirectAfterOnboarding check in the existing-role redirect block)
