@@ -33,11 +33,14 @@ interface UpcomingBooking {
 
 interface FollowedTrainerSlot {
   id: string;
+  type: 'slot' | 'cycle';
   cyclusName: string | null;
   trainerName: string;
   trainerSlug: string | null;
   startTime: Date;
   location: string | null;
+  sessionCount?: number;
+  cyclusId?: string | null;
 }
 
 interface PlayerClub {
@@ -143,13 +146,13 @@ export default function PlayerDashboard() {
       const now = new Date().toISOString();
       const { data: slots } = await supabase
         .from('availability_slots')
-        .select('id, cyclus_name, trainer_id, start_time, location_id, locations(name)')
+        .select('id, cyclus_name, cyclus_id, allow_single_booking, trainer_id, start_time, location_id, locations(name)')
         .in('trainer_id', trainerIds)
         .eq('is_public', true)
         .eq('is_marked_full', false)
         .gte('start_time', now)
         .order('start_time', { ascending: true })
-        .limit(10);
+        .limit(50);
 
       if (!slots || slots.length === 0) {
         setFollowedTrainerSlots([]);
@@ -159,20 +162,58 @@ export default function PlayerDashboard() {
 
       const trainerSlugMap = new Map(trainers.map(t => [t.id, t]));
 
-      const enrichedSlots: FollowedTrainerSlot[] = slots.map(slot => {
+      // Group slots by cyclus_id for bundling
+      const cycleGroups = new Map<string, typeof slots>();
+      const individualSlots: typeof slots = [];
+
+      for (const slot of slots) {
+        if (slot.cyclus_id && !slot.allow_single_booking) {
+          const group = cycleGroups.get(slot.cyclus_id) || [];
+          group.push(slot);
+          cycleGroups.set(slot.cyclus_id, group);
+        } else {
+          individualSlots.push(slot);
+        }
+      }
+
+      const enrichedSlots: FollowedTrainerSlot[] = [];
+
+      // Add bundled cycle entries
+      for (const [cyclusId, groupSlots] of cycleGroups) {
+        const first = groupSlots[0];
+        const trainer = trainerSlugMap.get(first.trainer_id);
+        const p = trainer ? profileMap.get(trainer.user_id) : null;
+        enrichedSlots.push({
+          id: first.id,
+          type: 'cycle',
+          cyclusName: first.cyclus_name,
+          trainerName: p?.full_name || 'Trainer',
+          trainerSlug: trainer?.slug || null,
+          startTime: new Date(first.start_time),
+          location: (first.locations as any)?.name || null,
+          sessionCount: groupSlots.length,
+          cyclusId: cyclusId,
+        });
+      }
+
+      // Add individual slots
+      for (const slot of individualSlots) {
         const trainer = trainerSlugMap.get(slot.trainer_id);
         const p = trainer ? profileMap.get(trainer.user_id) : null;
-        return {
+        enrichedSlots.push({
           id: slot.id,
+          type: 'slot',
           cyclusName: slot.cyclus_name,
           trainerName: p?.full_name || 'Trainer',
           trainerSlug: trainer?.slug || null,
           startTime: new Date(slot.start_time),
           location: (slot.locations as any)?.name || null,
-        };
-      });
+        });
+      }
 
-      setFollowedTrainerSlots(enrichedSlots);
+      // Sort by start time and cap at 10
+      enrichedSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+      setFollowedTrainerSlots(enrichedSlots.slice(0, 10));
     } catch (error) {
       console.error('Error fetching followed trainer slots:', error);
     } finally {
@@ -538,13 +579,18 @@ export default function PlayerDashboard() {
                     >
                       <TableCell>
                         <div>
-                          <p className="font-medium truncate">{slot.cyclusName || 'Open Session'}</p>
+                          <p className="font-medium truncate">
+                            {slot.cyclusName || 'Open Session'}
+                            {slot.type === 'cycle' && slot.sessionCount && (
+                              <span className="text-xs text-muted-foreground ml-1">· {slot.sessionCount} sessions</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">{slot.trainerName}{slot.location ? ` • ${slot.location}` : ''}</p>
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <div>
-                          <p className="text-sm">{format(slot.startTime, 'EEE, MMM d')}</p>
+                          <p className="text-sm">{slot.type === 'cycle' ? `Starting ${format(slot.startTime, 'MMM d')}` : format(slot.startTime, 'EEE, MMM d')}</p>
                           <p className="text-xs text-muted-foreground">{format(slot.startTime, 'HH:mm')}</p>
                         </div>
                       </TableCell>
