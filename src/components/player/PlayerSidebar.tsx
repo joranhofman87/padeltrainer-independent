@@ -176,6 +176,20 @@ export function PlayerSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* My Profile */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.profile", "My Profile")}>
+                  <NavLink
+                    to="/app/player/profile"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <User className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.profile", "My Profile")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               {/* Following */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.following")}>
