@@ -119,7 +119,7 @@ export default function AcademyDashboard() {
         }
         setRecentBookings(groupedBookings);
 
-        // Recent Players - get unique players from bookings on academy trainer slots  
+        // Recent Players: combine guest_players + registered players from bookings
         const { data: guestPlayers } = await supabase
           .from('guest_players')
           .select('id, full_name, email, has_trained, created_at')
@@ -127,7 +127,41 @@ export default function AcademyDashboard() {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        setRecentPlayers(guestPlayers || []);
+        // Registered players who booked with academy trainers
+        const { data: registeredBookings } = await supabase
+          .from('bookings')
+          .select(`
+            id, created_at, player_id,
+            profiles:player_id (id, full_name),
+            availability_slots!inner (trainer_id)
+          `)
+          .in('availability_slots.trainer_id', trainerIds)
+          .not('player_id', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        // Deduplicate registered players and merge
+        const seenPlayerIds = new Set<string>();
+        const registeredPlayers: any[] = [];
+        for (const b of registeredBookings || []) {
+          const profile = b.profiles as any;
+          if (profile?.id && !seenPlayerIds.has(profile.id)) {
+            seenPlayerIds.add(profile.id);
+            registeredPlayers.push({
+              id: profile.id,
+              full_name: profile.full_name || '—',
+              has_trained: true,
+              created_at: b.created_at,
+              _isRegistered: true,
+            });
+          }
+        }
+
+        const allPlayers = [...(guestPlayers || []), ...registeredPlayers]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 10);
+
+        setRecentPlayers(allPlayers);
 
         // Upcoming Open Spots from academy trainers
         const { data: slots } = await supabase
