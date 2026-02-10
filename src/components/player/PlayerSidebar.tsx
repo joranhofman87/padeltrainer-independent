@@ -86,7 +86,7 @@ export function PlayerSidebar() {
       <SidebarHeader className="border-b">
         {!collapsed && (
           <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" />
+            <Logo className="h-6" variant="dark" />
           </div>
         )}
         <div

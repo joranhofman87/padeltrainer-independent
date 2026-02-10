@@ -116,7 +116,7 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
       <SidebarHeader className="border-b">
         {!collapsed && (
           <div className="px-3 pt-3 pb-1">
-            <Logo className="h-6" />
+            <Logo className="h-6" variant="dark" />
           </div>
         )}
         <div className={cn(
@@ -370,10 +370,14 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
           {/* View Public Profile */}
           {club?.location?.slug && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={handleViewPublicProfile}
-              className={cn("w-full", collapsed && "w-auto px-2")}
+              className={cn(
+                "w-full",
+                collapsed && "w-auto px-2",
+                "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
             >
               <ExternalLink className="h-4 w-4" />
               {!collapsed && <span className="ml-2">{t("dashboard.viewPublicProfile")}</span>}
