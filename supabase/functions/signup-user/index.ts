@@ -70,6 +70,30 @@ const getEmailTemplate = (userName: string, actionLink: string) => {
   };
 };
 
+const checkRateLimit = async (supabaseAdmin: any, ip: string): Promise<boolean> => {
+  const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const identifier = `signup:${ip}`;
+  const maxRequests = 5;
+
+  // Count recent signups from this IP
+  const { count } = await supabaseAdmin
+    .from('rate_limits')
+    .select('*', { count: 'exact', head: true })
+    .eq('identifier', identifier)
+    .gte('created_at', windowStart);
+
+  if ((count ?? 0) >= maxRequests) {
+    return false; // Rate limited
+  }
+
+  // Record this attempt
+  await supabaseAdmin
+    .from('rate_limits')
+    .insert({ identifier, endpoint: 'signup-user' });
+
+  return true; // Allowed
+};
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -84,12 +108,6 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Supabase credentials not configured");
     }
 
-    const { email, password, fullName, phone, redirectTo }: SignupRequest = await req.json();
-
-    if (!email || !password || !fullName) {
-      throw new Error("Missing required fields: email, password, fullName");
-    }
-
     // Create Supabase admin client
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: {
@@ -97,6 +115,28 @@ const handler = async (req: Request): Promise<Response> => {
         persistSession: false,
       },
     });
+
+    // Rate limiting by IP
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+               req.headers.get("cf-connecting-ip") || 
+               "unknown";
+    
+    const allowed = await checkRateLimit(supabaseAdmin, ip);
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: "Too many signup attempts. Please try again later." }),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    const { email, password, fullName, phone, redirectTo }: SignupRequest = await req.json();
+
+    if (!email || !password || !fullName) {
+      throw new Error("Missing required fields: email, password, fullName");
+    }
 
     // Check if user already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();

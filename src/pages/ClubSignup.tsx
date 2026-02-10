@@ -12,6 +12,7 @@ import { Building2, ArrowLeft, Check } from 'lucide-react';
 import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
+import { useHoneypot } from '@/hooks/useHoneypot';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -30,6 +31,7 @@ export default function ClubSignup() {
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
+  const { honeypotRef, isSuspicious } = useHoneypot();
 
   useEffect(() => {
     if (!loading && user) {
@@ -66,6 +68,7 @@ export default function ClubSignup() {
     e.preventDefault();
     
     if (!validateForm()) return;
+    if (isSuspicious()) return;
     
     setIsLoading(true);
 
@@ -205,6 +208,10 @@ export default function ClubSignup() {
           </div>
 
           <form onSubmit={handleSignUp} className="space-y-4">
+            {/* Honeypot field - hidden from humans */}
+            <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" ref={honeypotRef} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="signup-name">{t('form.fullName')}</Label>
               <Input

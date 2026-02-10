@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { trackEvent } from '@/lib/tracking';
+import { useHoneypot } from '@/hooks/useHoneypot';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -32,6 +33,7 @@ export default function TrainerSignup() {
   const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
   const { t } = useTranslation('auth');
+  const { honeypotRef, isSuspicious } = useHoneypot();
 
   useEffect(() => {
     if (!loading && user && role) {
@@ -62,6 +64,7 @@ export default function TrainerSignup() {
     e.preventDefault();
     
     if (!validateForm()) return;
+    if (isSuspicious()) return;
     
     trackEvent('signup_started', { role: 'trainer', method: 'email' });
     setIsLoading(true);
@@ -201,6 +204,10 @@ export default function TrainerSignup() {
           </div>
 
           <form onSubmit={handleSignUp} className="space-y-4">
+            {/* Honeypot field - hidden from humans */}
+            <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" ref={honeypotRef} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="signup-name">{t('form.fullName')}</Label>
               <Input
