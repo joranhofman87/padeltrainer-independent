@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
-import { Check, X, HelpCircle, Building2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Check, Building2 } from 'lucide-react';
+
 import { useTranslation } from 'react-i18next';
 import { useTrainerPlans, useClubPlan } from '@/hooks/usePricingPlans';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,19 +47,10 @@ export default function Pricing() {
 
   const faqKeys = ['platformFee', 'changePlans', 'contract', 'payouts', 'clubTrial'];
 
-  // Map tier to feature keys for translations
-  const getFeatureList = (tier: string) => {
-    const features = [
-      { key: 'lessons', included: true },
-      { key: 'profile', included: true },
-      { key: 'bookings', included: true },
-      { key: 'notifications', included: true },
-      { key: 'calendar', included: tier !== 'starter' },
-      { key: 'analytics', included: tier !== 'starter' },
-      { key: 'support', included: tier !== 'starter' },
-      { key: 'multiTrainer', included: tier === 'academy' },
-    ];
-    return features;
+  // Get feature list with title + description from translations
+  const getFeatureList = (tier: string): { title: string; description: string }[] => {
+    const featureList = t(`pricing.trainers.plans.${tier}.featureList`, { returnObjects: true }) as unknown;
+    return Array.isArray(featureList) ? featureList : [];
   };
 
   // Structured data for pricing page
@@ -226,7 +217,7 @@ export default function Pricing() {
                       )}
                       <CardHeader className="text-center">
                         <CardTitle className="text-xl">{plan.name}</CardTitle>
-                        <CardDescription>{plan.description}</CardDescription>
+                        <CardDescription>{t(`pricing.trainers.plans.${plan.tier}.description`)}</CardDescription>
                         <div className="pt-4">
                           <span className="text-4xl font-bold">
                             {plan.monthly_price === 0 && billingCycle === 'monthly' 
@@ -242,30 +233,16 @@ export default function Pricing() {
                             </p>
                           )}
                         </div>
-                        <div className="pt-2 flex items-center justify-center gap-1">
-                          <Badge variant="outline">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} {t('pricing.trainers.platformFee')}</Badge>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t('pricing.trainers.feeTooltip')}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
                       </CardHeader>
                       <CardContent>
-                        <ul className="space-y-3 mb-8">
-                          {getFeatureList(plan.tier).map((feature) => (
-                            <li key={feature.key} className="flex items-center gap-2">
-                              {feature.included ? (
-                                <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                              ) : (
-                                <X className="h-5 w-5 text-muted-foreground/50 flex-shrink-0" />
-                              )}
-                              <span className={feature.included ? '' : 'text-muted-foreground/50'}>
-                                {t(`pricing.trainers.plans.${plan.tier}.features.${feature.key}`)}
-                              </span>
+                        <ul className="space-y-4 mb-8">
+                          {getFeatureList(plan.tier).map((feature, fi) => (
+                            <li key={fi} className="flex items-start gap-3">
+                              <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-semibold text-sm block">{feature.title}</span>
+                                <span className="text-xs text-muted-foreground">{feature.description}</span>
+                              </div>
                             </li>
                           ))}
                         </ul>

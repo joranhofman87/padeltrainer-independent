@@ -154,18 +154,17 @@
         "starter": {
           "name": "Starter",
           "price": "€10",
-          "description": "Perfect om te beginnen",
+          "description": "Alles wat je nodig hebt om je administratie te stroomlijnen.",
           "cta": "Start Gratis",
-          "features": {
-            "lessons": "Tot 3 actieve lessen",
-            "profile": "Basis profielpagina",
-            "bookings": "Ontvang online boekingen",
-            "notifications": "E-mailnotificaties",
-            "calendar": "Agenda synchronisatie",
-            "analytics": "Analytics dashboard",
-            "support": "Prioriteitsondersteuning",
-            "multiTrainer": "Multi-trainer ondersteuning"
-          }
+          "featureList": [
+            { "title": "Trainersprofiel", "description": "Presenteer jezelf aan spelers" },
+            { "title": "Toevoegen aan marktplaats", "description": "Word gevonden & ontvang nieuwe boekingen" },
+            { "title": "Onbeperkt spelers", "description": "Geen limiet op het aantal spelers" },
+            { "title": "Onbeperkt trainingen", "description": "Geen limiet op het aantal sessies" },
+            { "title": "Wachtlijst", "description": "Laat spelers zich inschrijven op je wachtlijst" },
+            { "title": "Open inschrijving", "description": "Open een inschrijving & laat ons systeem alles voor je plannen" },
+            { "title": "€1,00 per boekingskosten", "description": "Laat spelers direct betalen bij het boeken, geen geld meer achterna hoeven te jagen" }
+          ]
         },
         "professional": {
           "name": "Professional",
@@ -174,36 +173,27 @@
           "yearlyPrice": "€374/jaar (bespaar 20%)",
           "description": "Voor serieuze trainers",
           "cta": "Kies Professional",
-          "features": {
-            "lessons": "Onbeperkt actieve lessen",
-            "profile": "Uitgebreide profielpagina",
-            "bookings": "Ontvang online boekingen",
-            "notifications": "E-mailnotificaties",
-            "calendar": "Google Agenda synchronisatie",
-            "analytics": "Analytics dashboard",
-            "support": "Prioriteitsondersteuning",
-            "multiTrainer": "Multi-trainer ondersteuning"
-          }
+          "featureList": [
+            { "title": "Alles van Starter", "description": "Alle functies die je nodig hebt om je administratie te stroomlijnen" },
+            { "title": "Handmatige facturatie", "description": "Stuur zelf facturen, wij kunnen ze automatisch voor je genereren" },
+            { "title": "€0,75 per boekingskosten", "description": "Verlaagde kosten voor het incasseren bij spelers wanneer ze een sessie bij je boeken" }
+          ]
         },
         "academy": {
           "name": "Academy",
           "price": "€99",
           "period": "/maand",
           "yearlyPrice": "€950/jaar (bespaar 20%)",
-          "description": "Voor clubs & academies",
+          "description": "Voor trainingsacademies",
           "cta": "Neem Contact Op",
-          "features": {
-            "lessons": "Onbeperkt actieve lessen",
-            "profile": "Premium profielpagina",
-            "bookings": "Ontvang online boekingen",
-            "notifications": "E-mailnotificaties",
-            "calendar": "Google Agenda synchronisatie",
-            "analytics": "Geavanceerde analytics",
-            "support": "Dedicated support",
-            "multiTrainer": "Multi-trainer ondersteuning"
-          }
+          "featureList": [
+            { "title": "Voeg tot 15 trainers toe", "description": "Beheer & voeg je team toe om de boekingen te stroomlijnen" },
+            { "title": "Voeg spelers toe aan de marktplaats", "description": "Voeg je branding toe aan hun profiel & vergroot boekingen voor je team" },
+            { "title": "Voeg je academie toe aan de marktplaats", "description": "Word uitgelicht in de marktplaats om meer boekingen te ontvangen" },
+            { "title": "€0,50 per boekingskosten", "description": "Stroomlijn je boekhouding. Laat klanten vooraf betalen en synchroniseer facturen met je boekhoudsoftware. Laagste kosten per boeking" }
+          ]
+        }
       }
-    }
   },
   "clubs": {
     "badge": "Voor Clubs",

@@ -154,18 +154,17 @@
         "starter": {
           "name": "Starter",
           "price": "€10",
-          "description": "Perfect for getting started",
+          "description": "Everything you need to streamline your admin.",
           "cta": "Start Free",
-          "features": {
-            "lessons": "Up to 3 active lessons",
-            "profile": "Basic profile page",
-            "bookings": "Accept online bookings",
-            "notifications": "Email notifications",
-            "calendar": "Calendar sync",
-            "analytics": "Analytics dashboard",
-            "support": "Priority support",
-            "multiTrainer": "Multi-trainer support"
-          }
+          "featureList": [
+            { "title": "Trainer profile", "description": "Showcase yourself to players" },
+            { "title": "Add to marketplace", "description": "Be found & receive new bookings" },
+            { "title": "Unlimited players", "description": "No limitation on the number of players" },
+            { "title": "Unlimited trainings", "description": "No limitations on the number of sessions" },
+            { "title": "Waiting list", "description": "Allow players to sign up to your waiting list" },
+            { "title": "Open registration", "description": "Open up a registration & have our system plan things for you" },
+            { "title": "€1.00 per booking fee", "description": "Charge players right when they book a session, no need to chase money anymore" }
+          ]
         },
         "professional": {
           "name": "Professional",
@@ -174,36 +173,27 @@
           "yearlyPrice": "€374/year (save 20%)",
           "description": "For serious trainers",
           "cta": "Get Professional",
-          "features": {
-            "lessons": "Unlimited active lessons",
-            "profile": "Enhanced profile page",
-            "bookings": "Accept online bookings",
-            "notifications": "Email notifications",
-            "calendar": "Google Calendar sync",
-            "analytics": "Analytics dashboard",
-            "support": "Priority support",
-            "multiTrainer": "Multi-trainer support"
-          }
+          "featureList": [
+            { "title": "Everything from Starter", "description": "All the features you need to streamline your admin processes" },
+            { "title": "Manual invoicing", "description": "Send invoices yourself, we can auto generate these for you" },
+            { "title": "€0.75 per booking fee", "description": "Reduced fee for charging players when they book a session with you" }
+          ]
         },
         "academy": {
           "name": "Academy",
           "price": "€99",
           "period": "/month",
           "yearlyPrice": "€950/year (save 20%)",
-          "description": "For clubs & academies",
+          "description": "For training academies",
           "cta": "Contact Sales",
-          "features": {
-            "lessons": "Unlimited active lessons",
-            "profile": "Premium profile page",
-            "bookings": "Accept online bookings",
-            "notifications": "Email notifications",
-            "calendar": "Google Calendar sync",
-            "analytics": "Advanced analytics",
-            "support": "Dedicated support",
-            "multiTrainer": "Multi-trainer support"
-          }
+          "featureList": [
+            { "title": "Add up to 15 trainers", "description": "Manage & add your team to streamline the bookings" },
+            { "title": "Add players to the marketplace", "description": "Add your branding to their profile & increase bookings for your team" },
+            { "title": "Add academy to the marketplace", "description": "Be marked as featured in the marketplace to receive more bookings" },
+            { "title": "€0.50 per booking fee", "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking" }
+          ]
+        }
       }
-    }
   },
   "clubs": {
     "badge": "For Clubs",
