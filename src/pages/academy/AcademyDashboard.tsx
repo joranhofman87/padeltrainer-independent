@@ -27,7 +27,7 @@ export default function AcademyDashboard() {
   const { t: tTrainer } = useTranslation('trainer');
   const navigate = useNavigate();
   const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
-  const [stats, setStats] = useState({ trainers: 0, locations: 0, viewsLast7Days: 0, viewsLast30Days: 0 });
+  const [stats, setStats] = useState({ trainers: 0, locations: 0, viewsLast30Days: 0 });
 
   // Activity data
   const [recentPlayers, setRecentPlayers] = useState<any[]>([]);
@@ -49,7 +49,6 @@ export default function AcademyDashboard() {
         setStats({
           trainers: trainersData.length,
           locations: locationsData.length,
-          viewsLast7Days: viewStats.last7Days,
           viewsLast30Days: viewStats.last30Days,
         });
       } catch (error) {
@@ -298,11 +297,11 @@ export default function AcademyDashboard() {
               <Eye className="h-3 w-3" />
               {t('stats.profileViews')}
             </CardDescription>
-            <CardTitle className="text-3xl">{stats.viewsLast7Days}</CardTitle>
+            <CardTitle className="text-3xl">{stats.viewsLast30Days}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {t('stats.last7Days')} · {stats.viewsLast30Days} {t('stats.last30Days').toLowerCase()}
+              {t('stats.last30Days')}
             </p>
           </CardContent>
         </Card>
