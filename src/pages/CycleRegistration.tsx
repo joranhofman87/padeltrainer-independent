@@ -153,7 +153,7 @@ export default function CycleRegistration() {
 
   const handleLoginRedirect = () => {
     const currentPath = window.location.pathname;
-    navigate(`/auth?redirect=${encodeURIComponent(currentPath)}`);
+    navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
   };
 
   const handleSuccess = () => {

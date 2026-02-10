@@ -132,6 +132,15 @@ export default function TrainerOnboarding() {
 
     await refreshAuth();
     trackOnboardingEvent('onboarding_completed');
+
+    // Redirect to original intent if stored, otherwise go to get-started
+    const redirectUrl = localStorage.getItem('redirectAfterOnboarding');
+    if (redirectUrl) {
+      localStorage.removeItem('redirectAfterOnboarding');
+      navigate(redirectUrl);
+    } else {
+      navigate('/app/trainer/get-started');
+    }
   };
 
   if (loading || initializing) {

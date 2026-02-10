@@ -74,9 +74,8 @@ export default function CycleApplicationModal({
   }, [open, user, profile, cycle.id]);
 
   const handleLoginRedirect = () => {
-    // Store the current URL to redirect back after login
-    sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-    navigate('/app/signup/player');
+    const currentPath = window.location.pathname;
+    navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
   };
 
   const isDeadlinePassed = cycle.enrollment_deadline 
