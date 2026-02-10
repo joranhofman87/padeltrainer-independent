@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Plus, Trash2, Euro } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -82,6 +82,9 @@ export default function CycleForm({
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [allowSingleBooking, setAllowSingleBooking] = useState<boolean>(
     (cycle?.settings as any)?.allow_single_booking ?? false
+  );
+  const [markAsPaid, setMarkAsPaid] = useState<boolean>(
+    (cycle?.settings as any)?.mark_as_paid ?? false
   );
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
@@ -170,6 +173,7 @@ export default function CycleForm({
         currency: cycle?.currency || 'EUR',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
+      setMarkAsPaid((cycle?.settings as any)?.mark_as_paid ?? false);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
     }
   }, [cycle, open]);
@@ -244,6 +248,7 @@ export default function CycleForm({
         start_time: values.start_time,
         end_time: values.end_time,
         allow_single_booking: allowSingleBooking,
+        mark_as_paid: markAsPaid,
         extra_costs: extraCosts.filter(ec => ec.description && ec.price > 0),
       };
 
@@ -731,6 +736,27 @@ export default function CycleForm({
                   onCheckedChange={setAllowSingleBooking}
                 />
               </div>
+
+              {/* Mark as paid toggle - only for cyclus */}
+              {!isRegistration && (
+                <div className="flex items-start gap-3 rounded-lg border p-3">
+                  <Checkbox
+                    id="mark-as-paid"
+                    checked={markAsPaid}
+                    onCheckedChange={(checked) => setMarkAsPaid(!!checked)}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="mark-as-paid" className="text-sm cursor-pointer flex items-center gap-2">
+                      <Euro className="h-4 w-4" />
+                      {t('trainer:calendar.markAsPaid')}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t('trainer:calendar.markAsPaidHint')}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Extra recurring costs */}
               <div className="space-y-2">
