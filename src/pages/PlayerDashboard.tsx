@@ -6,14 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { signOut } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, Star, User, LogOut, MapPin, ChevronRight, Clock, Users, Bell, Settings, CalendarSync } from 'lucide-react';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface FollowedTrainer {
   id: string;
@@ -23,50 +22,35 @@ interface FollowedTrainer {
   avatar_url: string | null;
 }
 
-interface FeaturedTrainer {
-  id: string;
-  slug: string | null;
-  hourly_rate: number | null;
-  experience_years: number | null;
-  specializations: string[] | null;
-  is_verified: boolean;
-  profile: {
-    full_name: string | null;
-    avatar_url: string | null;
-    location: string | null;
-  } | null;
-}
-
 interface UpcomingBooking {
   id: string;
   sessionTitle: string;
   trainerName: string;
   startTime: Date;
   location: string | null;
+  status: string;
 }
 
-interface PlayerStats {
-  totalBookings: number;
-  completedLessons: number;
-  upcomingCount: number;
+interface FollowedTrainerSlot {
+  id: string;
+  cyclusName: string | null;
+  trainerName: string;
+  trainerSlug: string | null;
+  startTime: Date;
+  location: string | null;
 }
 
 export default function PlayerDashboard() {
-  const { user, profile, loading } = useAuth();
+  const { profile, loading } = useAuth();
   const navigate = useNavigate();
-  
   const { toast } = useToast();
-  const [featuredTrainers, setFeaturedTrainers] = useState<FeaturedTrainer[]>([]);
-  const [loadingTrainers, setLoadingTrainers] = useState(true);
+
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
-  const [playerStats, setPlayerStats] = useState<PlayerStats>({ totalBookings: 0, completedLessons: 0, upcomingCount: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
   const [followedTrainers, setFollowedTrainers] = useState<FollowedTrainer[]>([]);
   const [followingLoading, setFollowingLoading] = useState(true);
-
-  useEffect(() => {
-    fetchFeaturedTrainers();
-  }, []);
+  const [followedTrainerSlots, setFollowedTrainerSlots] = useState<FollowedTrainerSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
 
   useEffect(() => {
     if (profile?.id) {
@@ -83,11 +67,12 @@ export default function PlayerDashboard() {
         .from('trainer_followers')
         .select('id, trainer_id')
         .eq('player_id', profile.id)
-        .limit(5);
+        .limit(10);
 
       if (!follows || follows.length === 0) {
         setFollowedTrainers([]);
         setFollowingLoading(false);
+        setSlotsLoading(false);
         return;
       }
 
@@ -100,6 +85,7 @@ export default function PlayerDashboard() {
       if (!trainers) {
         setFollowedTrainers([]);
         setFollowingLoading(false);
+        setSlotsLoading(false);
         return;
       }
 
@@ -125,10 +111,61 @@ export default function PlayerDashboard() {
       });
 
       setFollowedTrainers(enriched);
+      setFollowingLoading(false);
+
+      // Fetch open slots from followed trainers
+      fetchFollowedTrainerSlots(trainerIds, trainers, profileMap);
     } catch (error) {
       console.error('Error fetching followed trainers:', error);
-    } finally {
       setFollowingLoading(false);
+      setSlotsLoading(false);
+    }
+  };
+
+  const fetchFollowedTrainerSlots = async (
+    trainerIds: string[],
+    trainers: { id: string; user_id: string; slug: string | null }[],
+    profileMap: Map<string, { user_id: string; full_name: string | null; avatar_url: string | null }>
+  ) => {
+    setSlotsLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const { data: slots } = await supabase
+        .from('availability_slots')
+        .select('id, cyclus_name, trainer_id, start_time, location_id, locations(name)')
+        .in('trainer_id', trainerIds)
+        .eq('is_public', true)
+        .eq('is_marked_full', false)
+        .gte('start_time', now)
+        .order('start_time', { ascending: true })
+        .limit(10);
+
+      if (!slots || slots.length === 0) {
+        setFollowedTrainerSlots([]);
+        setSlotsLoading(false);
+        return;
+      }
+
+      const trainerSlugMap = new Map(trainers.map(t => [t.id, t]));
+
+      const enrichedSlots: FollowedTrainerSlot[] = slots.map(slot => {
+        const trainer = trainerSlugMap.get(slot.trainer_id);
+        const p = trainer ? profileMap.get(trainer.user_id) : null;
+        return {
+          id: slot.id,
+          cyclusName: slot.cyclus_name,
+          trainerName: p?.full_name || 'Trainer',
+          trainerSlug: trainer?.slug || null,
+          startTime: new Date(slot.start_time),
+          location: (slot.locations as any)?.name || null,
+        };
+      });
+
+      setFollowedTrainerSlots(enrichedSlots);
+    } catch (error) {
+      console.error('Error fetching followed trainer slots:', error);
+    } finally {
+      setSlotsLoading(false);
     }
   };
 
@@ -139,7 +176,6 @@ export default function PlayerDashboard() {
     try {
       const now = new Date();
 
-      // Fetch all bookings for this player
       const { data: bookings } = await supabase
         .from('bookings')
         .select(`
@@ -162,21 +198,10 @@ export default function PlayerDashboard() {
           const slot = b.availability_slots as any;
           return slot?.start_time && isAfter(new Date(slot.start_time), now);
         });
-        const completed = active.filter(b => {
-          const slot = b.availability_slots as any;
-          return slot?.start_time && !isAfter(new Date(slot.start_time), now);
-        });
 
-        setPlayerStats({
-          totalBookings: bookings.length,
-          completedLessons: completed.length,
-          upcomingCount: upcoming.length,
-        });
-
-        // Enrich upcoming bookings with trainer names
-        const upcomingSlice = upcoming.slice(0, 3);
+        const upcomingSlice = upcoming.slice(0, 10);
         const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
-        
+
         let trainerNameMap = new Map<string, string>();
         if (trainerIds.length > 0) {
           const { data: trainers } = await supabase
@@ -189,9 +214,9 @@ export default function PlayerDashboard() {
               .from('profiles_public')
               .select('user_id, full_name')
               .in('user_id', userIds);
-            const profileMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+            const pMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
             trainers.forEach(t => {
-              trainerNameMap.set(t.id, profileMap.get(t.user_id) || 'Trainer');
+              trainerNameMap.set(t.id, pMap.get(t.user_id) || 'Trainer');
             });
           }
         }
@@ -204,6 +229,7 @@ export default function PlayerDashboard() {
             trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
             startTime: new Date(slot.start_time),
             location: slot?.locations?.name || null,
+            status: b.status,
           };
         });
 
@@ -216,62 +242,6 @@ export default function PlayerDashboard() {
     }
   };
 
-  const fetchFeaturedTrainers = async () => {
-    const { data: trainerProfiles } = await supabase
-      .from('trainer_profiles')
-      .select('id, user_id, slug, hourly_rate, experience_years, specializations, is_verified')
-      .eq('is_verified', true)
-      .limit(4);
-
-    if (trainerProfiles && trainerProfiles.length > 0) {
-      const userIds = trainerProfiles.map(t => t.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles_public')
-        .select('user_id, full_name, avatar_url, location')
-        .in('user_id', userIds);
-
-      const combined: FeaturedTrainer[] = trainerProfiles.map(trainer => ({
-        ...trainer,
-        profile: profiles?.find(p => p.user_id === trainer.user_id) || null
-      }));
-
-      setFeaturedTrainers(combined);
-    } else {
-      // If no verified trainers, get any trainers
-      const { data: anyTrainers } = await supabase
-        .from('trainer_profiles')
-        .select('id, user_id, slug, hourly_rate, experience_years, specializations, is_verified')
-        .limit(4);
-
-      if (anyTrainers && anyTrainers.length > 0) {
-        const userIds = anyTrainers.map(t => t.user_id);
-        const { data: profiles } = await supabase
-          .from('profiles_public')
-          .select('user_id, full_name, avatar_url, location')
-          .in('user_id', userIds);
-
-        const combined: FeaturedTrainer[] = anyTrainers.map(trainer => ({
-          ...trainer,
-          profile: profiles?.find(p => p.user_id === trainer.user_id) || null
-        }));
-
-        setFeaturedTrainers(combined);
-      }
-    }
-    setLoadingTrainers(false);
-  };
-
-  const handleSignOut = async () => {
-    const { error } = await signOut();
-    if (error) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -280,15 +250,23 @@ export default function PlayerDashboard() {
     );
   }
 
-  const getTrainerInitials = (name: string | null) => {
-    if (!name) return 'T';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return <Badge variant="default">Confirmed</Badge>;
+      case 'pending':
+        return <Badge variant="secondary">Pending Payment</Badge>;
+      case 'pending_approval':
+        return <Badge variant="outline">Awaiting Approval</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
   };
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-8 space-y-8">
       {/* Welcome Section */}
-      <div className="mb-8">
+      <div>
         <h1 className="text-3xl font-bold mb-2">
           Welcome back, {profile?.full_name?.split(' ')[0] || 'Player'}! 👋
         </h1>
@@ -297,323 +275,247 @@ export default function PlayerDashboard() {
         </p>
       </div>
 
-        {/* Rating History Chart */}
-        {profile?.id && (
-          <div className="mb-8">
-            <RatingHistoryChart
-              profileId={profile.id}
-              currentRating={profile.skill_rating ?? null}
-              ratingSystem={(profile as any)?.rating_system || 'knltb'}
-            />
-          </div>
-        )}
+      {/* Rating History Chart */}
+      {profile?.id && (
+        <RatingHistoryChart
+          profileId={profile.id}
+          currentRating={profile.skill_rating ?? null}
+          ratingSystem={(profile as any)?.rating_system || 'knltb'}
+        />
+      )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900">
-                  <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {statsLoading ? '...' : playerStats.upcomingCount}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Upcoming</p>
-                </div>
+      {/* Quick Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card
+          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+          onClick={() => navigate(getMarketingPath('trainers'))}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Search className="h-5 w-5 text-primary" />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-green-100 dark:bg-green-900">
-                  <Star className="h-4 w-4 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {statsLoading ? '...' : playerStats.completedLessons}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Completed</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900">
-                  <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {statsLoading ? '...' : playerStats.totalBookings}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Total Bookings</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => navigate('/app/player/following')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-purple-100 dark:bg-purple-900">
-                  <Bell className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {followingLoading ? '...' : followedTrainers.length}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Following</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Upcoming Bookings */}
-        {upcomingBookings.length > 0 && (
-          <Card className="mb-8 border-primary/30 bg-primary/5">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Next Up
-                </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/app/player/bookings')} className="gap-1">
-                  All Bookings <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {upcomingBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center gap-4 p-3 bg-background rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{booking.sessionTitle}</p>
-                    <p className="text-sm text-muted-foreground">
-                      with {booking.trainerName}
-                      {booking.location && ` • ${booking.location}`}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-medium">{format(booking.startTime, 'EEE, MMM d')}</p>
-                    <p className="text-sm text-muted-foreground">{format(booking.startTime, 'HH:mm')}</p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Following Section */}
-        {followedTrainers.length > 0 && (
-          <Card className="mb-8">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  Following
-                </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/app/player/following')} className="gap-1">
-                  Manage <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3">
-                {followedTrainers.map((trainer) => (
-                  <div
-                    key={trainer.id}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => navigate(getMarketingPath(`trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={trainer.avatar_url || undefined} />
-                      <AvatarFallback>{trainer.full_name?.[0] || 'T'}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm font-medium">{trainer.full_name || 'Trainer'}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Waiting List Entries */}
-        <div className="mb-8">
-          <MyWaitingListEntries />
-        </div>
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate(getMarketingPath('trainers'))}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Search className="h-5 w-5 text-primary" />
-                </div>
-                <CardTitle className="text-lg">Find Trainers</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Browse all available trainers and find the perfect match for your skill level
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/app/player/bookings')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <Calendar className="h-5 w-5 text-green-600" />
-                </div>
-                <CardTitle className="text-lg">My Bookings</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                View your upcoming lessons and manage your training schedule
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/app/player/profile')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-orange-500/10">
-                  <User className="h-5 w-5 text-orange-600" />
-                </div>
-                <CardTitle className="text-lg">My Profile</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Update your profile, add your KNLTB rating, and manage preferences
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-            onClick={() => navigate('/app/player/settings/calendar')}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <CalendarSync className="h-5 w-5 text-blue-600" />
-                </div>
-                <CardTitle className="text-lg">Calendar Sync</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Connect Google Calendar to sync your training sessions
-              </CardDescription>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Featured Trainers */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Star className="h-5 w-5 text-yellow-500" />
-                  Featured Trainers
-                </CardTitle>
-                <CardDescription>
-                  Top-rated trainers in your area
-                </CardDescription>
+                <p className="font-semibold">Find Trainers</p>
+                <p className="text-sm text-muted-foreground">Browse available trainers</p>
               </div>
-              <Button variant="ghost" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
-                View All <ChevronRight className="h-4 w-4" />
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <Card
+          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+          onClick={() => navigate('/app/player/bookings')}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <Calendar className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="font-semibold">My Bookings</p>
+                <p className="text-sm text-muted-foreground">View your schedule</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <Card
+          className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+          onClick={() => navigate('/app/player/profile')}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <User className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="font-semibold">My Profile</p>
+                <p className="text-sm text-muted-foreground">Update your details</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Activity Tables Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Upcoming Bookings */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Upcoming Bookings
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/app/player/bookings')} className="gap-1">
+                View all <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {loadingTrainers ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            {statsLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
-            ) : featuredTrainers.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No trainers available yet</p>
-                <p className="text-sm">Check back soon for new trainers!</p>
-              </div>
+            ) : upcomingBookings.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No upcoming bookings</p>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {featuredTrainers.map((trainer) => (
-                  <Card 
-                    key={trainer.id}
-                    className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50"
-                    onClick={() => navigate(getMarketingPath(`trainer/${trainer.slug || trainer.id}`))}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                          <AvatarFallback>
-                            {getTrainerInitials(trainer.profile?.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold truncate">
-                            {trainer.profile?.full_name || 'Trainer'}
-                          </p>
-                          {trainer.profile?.location && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                              <MapPin className="h-3 w-3 shrink-0" />
-                              {trainer.profile.location}
-                            </p>
-                          )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Session</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {upcomingBookings.map((booking) => (
+                    <TableRow key={booking.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium truncate">{booking.sessionTitle}</p>
+                          <p className="text-xs text-muted-foreground">{booking.trainerName}</p>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        {trainer.hourly_rate && (
-                          <span className="text-sm font-semibold text-primary">
-                            €{trainer.hourly_rate}/hr
-                          </span>
-                        )}
-                        {trainer.is_verified && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Star className="h-3 w-3 mr-1" />
-                            Verified
-                          </Badge>
-                        )}
-                      </div>
-                      {trainer.specializations && trainer.specializations.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {trainer.specializations.slice(0, 2).map((spec, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
-                              {spec}
-                            </Badge>
-                          ))}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div>
+                          <p className="text-sm">{format(booking.startTime, 'EEE, MMM d')}</p>
+                          <p className="text-xs text-muted-foreground">{format(booking.startTime, 'HH:mm')}</p>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>
-      </main>
+
+        {/* Followed Trainers */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Followed Trainers
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
+                All trainers <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {followingLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              </div>
+            ) : followedTrainers.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Not following any trainers yet</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Trainer</TableHead>
+                    <TableHead className="text-right">Profile</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {followedTrainers.map((trainer) => (
+                    <TableRow key={trainer.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={trainer.avatar_url || undefined} />
+                            <AvatarFallback>{trainer.full_name?.[0] || 'T'}</AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium text-sm">{trainer.full_name || 'Trainer'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(getMarketingPath(`trainer/${trainer.trainer_slug || trainer.trainer_id}`))}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Open Slots from Followed Trainers */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                Open Slots
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
+                Browse <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <CardDescription>Available sessions from trainers you follow</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {slotsLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              </div>
+            ) : followedTrainerSlots.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No open slots from followed trainers</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Session</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {followedTrainerSlots.map((slot) => (
+                    <TableRow
+                      key={slot.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(getMarketingPath(`trainer/${slot.trainerSlug || ''}`))}
+                    >
+                      <TableCell>
+                        <div>
+                          <p className="font-medium truncate">{slot.cyclusName || 'Open Session'}</p>
+                          <p className="text-xs text-muted-foreground">{slot.trainerName}{slot.location ? ` • ${slot.location}` : ''}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div>
+                          <p className="text-sm">{format(slot.startTime, 'EEE, MMM d')}</p>
+                          <p className="text-xs text-muted-foreground">{format(slot.startTime, 'HH:mm')}</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Waiting List */}
+        <Card>
+          <CardContent className="p-0">
+            <MyWaitingListEntries />
+          </CardContent>
+        </Card>
+      </div>
+    </main>
   );
 }
