@@ -1,35 +1,64 @@
 
 
-## Improve City Page Layout and Add Dynamic FAQs
+## Add Waiting List Toggle for Trainers and Academies
 
-### Layout Fixes
+### Overview
+Add a `waiting_list_enabled` boolean column to both `trainer_profiles` and `academy_profiles` tables (defaulting to `false`). Create a new "Waiting List" page under the Registration sidebar group for both roles, where they can toggle this feature on/off. The public profile pages will only show the WaitingListCard when the feature is enabled.
 
-The SEO content section currently uses `prose` classes which render as raw unstyled text (as visible in the screenshot). We'll wrap the SEO content in a proper Card component to match the rest of the page's visual style, making it look cleaner and more consistent.
+### Database Changes
 
-### Additional Dynamic FAQs
+Add a new column to each table:
+- `trainer_profiles.waiting_list_enabled` (boolean, default `false`, not null)
+- `academy_profiles.waiting_list_enabled` (boolean, default `false`, not null)
 
-Add these new FAQ questions that dynamically reference city data:
+### New Pages
 
-1. **"What padel clubs are in {city}?"** -- Lists the clubs by name with links, or says "check back soon" if none
-2. **"Are there padel academies in {city}?"** -- Fetches academies linked to locations in this city via the `academy_locations` table and lists them
-3. **"What level of player can take padel lessons in {city}?"** -- Generic but useful SEO content about all levels being welcome
-4. **"How do I book a padel lesson in {city}?"** -- Explains the booking flow through the platform
+**`src/pages/TrainerWaitingList.tsx`** -- A settings-style page (similar to `TrainerBookingSettings.tsx`) with:
+- Back button navigating to `/trainer/cycles`
+- A Card with a Switch toggle to enable/disable the waiting list
+- When enabled, show the `WaitingListTable` component below so trainers can manage entries
+- Description text explaining what the waiting list does
 
-All FAQs will also be included in the FAQPage JSON-LD structured data for SEO.
+**`src/pages/academy/AcademyWaitingList.tsx`** -- Same pattern for academies, navigating back to `/app/academy/cycles`.
 
-### Data Changes
+### Sidebar Updates
 
-To support the academy FAQ, we'll fetch academies linked to the city's locations using the existing `academy_locations` table (joined with `academy_profiles_public`). This query runs alongside the existing data fetches in `fetchData()`.
+**`src/components/trainer/TrainerSidebar.tsx`**:
+- Add "Waiting List" as a third sub-item under the Registration collapsible group (after Registrations and Intake Requests)
+- Update `registrationOpen` state to also check for `/trainer/waiting-list`
+
+**`src/components/academy/AcademySidebar.tsx`**:
+- Add "Waiting List" as a third sub-item under the Registration collapsible group
+- Update `registrationOpen` state to also check for `/app/academy/waiting-list`
+
+### Routing Updates
+
+**`src/components/DomainRouter.tsx`**:
+- Add route `waiting-list` under trainer routes pointing to `TrainerWaitingList`
+- Add route `waiting-list` under academy routes pointing to `AcademyWaitingList`
+
+### Public Profile Conditional Display
+
+**`src/pages/TrainerProfile.tsx`**:
+- Fetch `waiting_list_enabled` from `trainer_profiles` alongside existing trainer data
+- Only render `WaitingListCard` when `waiting_list_enabled` is `true`
+
+**`src/pages/AcademyPublicProfile.tsx`**:
+- Fetch `waiting_list_enabled` from `academy_profiles` alongside existing academy data
+- Only render `WaitingListCard` when `waiting_list_enabled` is `true`
+
+### Translation Keys
+
+Add to both EN and NL trainer/academy translation files:
+- `nav.waitingList` -- sidebar label
+- `waitingList.settingsTitle` -- page title
+- `waitingList.settingsSubtitle` -- page subtitle
+- `waitingList.enableTitle` -- toggle card title
+- `waitingList.enableDescription` -- explanation of the feature
+- `waitingList.enabled` / `waitingList.disabled` -- toast messages
 
 ### Technical Details
 
-**File: `src/pages/TrainersCity.tsx`**
-
-1. **Add academy fetch** in `fetchData()`: Query `academy_locations` joined with `academy_profiles_public` for the city's location IDs. Store in new state `academies`.
-
-2. **Expand `faqQuestions` array** with 3-4 new dynamic entries using the `locations`, `academies`, and `trainers` data.
-
-3. **Fix SEO content layout**: Replace the raw `prose` section with a styled Card component so the "About Padel Training" section matches the page design.
-
-4. **Update `faqStructuredData`** -- already dynamically built from `faqQuestions`, so adding more entries automatically updates the schema.
-
+- The toggle pages follow the exact same pattern as `TrainerBookingSettings.tsx`: fetch setting on mount, update via `supabase.from(...).update(...)` on toggle, show toast feedback
+- The `WaitingListTable` component already exists and accepts `ownerType` and `ownerId` props, so it can be embedded directly on the new pages when the feature is enabled
+- No RLS changes needed since trainers/academies already have update access to their own profile rows
