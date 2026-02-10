@@ -301,6 +301,12 @@
       "maxRatingSpreadHelp": "Maximaal toegestaan niveauverschil tussen spelers in dezelfde groep",
       "ratingSystem": "Ratingsysteem",
       "spreadPlaceholder": "bijv. 0.5 voor KNLTB"
+    },
+    "guard": {
+      "title": "Belangrijk",
+      "description": "Om voorstellen te genereren, moet je eerst slots of trainingscycli in je agenda aanmaken. Zodra de slots zijn aangemaakt, kunnen we spelers matchen op basis van hun beschikbaarheid en voorkeuren.",
+      "goToCalendar": "Ga naar Agenda",
+      "continue": "Doorgaan"
     }
   },
 

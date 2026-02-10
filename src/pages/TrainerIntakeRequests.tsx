@@ -20,6 +20,7 @@ import {
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
+import { GenerateProposalsGuard } from '@/components/cycles/GenerateProposalsGuard';
 import { logger } from '@/lib/logger';
 
 export default function TrainerIntakeRequests() {
@@ -36,6 +37,7 @@ export default function TrainerIntakeRequests() {
   const [selectedCycleId, setSelectedCycleId] = useState<string>(searchParams.get('cycle') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
+  const [showGuardDialog, setShowGuardDialog] = useState(false);
   const [showWeightsDialog, setShowWeightsDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -185,7 +187,7 @@ export default function TrainerIntakeRequests() {
                 </Button>
               )}
               <Button 
-                onClick={() => setShowWeightsDialog(true)}
+                onClick={() => setShowGuardDialog(true)}
                 disabled={selectedCycleId === 'all' || newCount === 0}
               >
                 <Sparkles className="mr-2 h-4 w-4" />
@@ -230,6 +232,17 @@ export default function TrainerIntakeRequests() {
         open={!!selectedRequest}
         onOpenChange={(open) => !open && setSelectedRequest(null)}
         onStatusChange={fetchData}
+      />
+
+      {/* Guard Dialog */}
+      <GenerateProposalsGuard
+        open={showGuardDialog}
+        onOpenChange={setShowGuardDialog}
+        calendarPath="/app/trainer/calendar"
+        onContinue={() => {
+          setShowGuardDialog(false);
+          setShowWeightsDialog(true);
+        }}
       />
 
       {/* Scoring Weights Dialog */}

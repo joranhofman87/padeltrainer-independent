@@ -301,6 +301,12 @@
       "maxRatingSpreadHelp": "Maximum rating difference allowed between players in the same group",
       "ratingSystem": "Rating System",
       "spreadPlaceholder": "e.g., 0.5 for KNLTB"
+    },
+    "guard": {
+      "title": "Important",
+      "description": "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences.",
+      "goToCalendar": "Go to Calendar",
+      "continue": "Continue"
     }
   },
 
