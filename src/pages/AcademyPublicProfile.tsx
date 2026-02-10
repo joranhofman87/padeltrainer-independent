@@ -452,14 +452,16 @@ export default function AcademyPublicProfile() {
             academyId={academy.id!}
             academyName={academy.name || 'Academy'}
           />
-          {/* Waiting List Card - shows below cycles section */}
-          <div className="mt-6">
-            <WaitingListCard
-              ownerType="academy"
-              ownerId={academy.id!}
-              ownerName={academy.name || 'Academy'}
-            />
-          </div>
+          {/* Waiting List Card - only when enabled */}
+          {(academy as any).waiting_list_enabled && (
+            <div className="mt-6">
+              <WaitingListCard
+                ownerType="academy"
+                ownerId={academy.id!}
+                ownerName={academy.name || 'Academy'}
+              />
+            </div>
+          )}
         </ProfileFullWidthSection>
 
         {/* Full Width - Reviews Section */}

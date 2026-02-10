@@ -334,6 +334,7 @@ export type Database = {
           subscription_tier: string | null
           trial_ends_at: string | null
           updated_at: string
+          waiting_list_enabled: boolean
           website_url: string | null
         }
         Insert: {
@@ -364,6 +365,7 @@ export type Database = {
           subscription_tier?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          waiting_list_enabled?: boolean
           website_url?: string | null
         }
         Update: {
@@ -394,6 +396,7 @@ export type Database = {
           subscription_tier?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          waiting_list_enabled?: boolean
           website_url?: string | null
         }
         Relationships: []
@@ -3096,6 +3099,7 @@ export type Database = {
           use_manual_invoicing: boolean | null
           user_id: string
           video_url: string | null
+          waiting_list_enabled: boolean
           website_url: string | null
         }
         Insert: {
@@ -3149,6 +3153,7 @@ export type Database = {
           use_manual_invoicing?: boolean | null
           user_id: string
           video_url?: string | null
+          waiting_list_enabled?: boolean
           website_url?: string | null
         }
         Update: {
@@ -3202,6 +3207,7 @@ export type Database = {
           use_manual_invoicing?: boolean | null
           user_id?: string
           video_url?: string | null
+          waiting_list_enabled?: boolean
           website_url?: string | null
         }
         Relationships: []

@@ -20,7 +20,9 @@
     "viewPublicProfile": "View Public Profile",
     "myClubs": "My Clubs",
     "lessons": "Sessions",
-    "getStarted": "Get Started"
+    "getStarted": "Get Started",
+    "waitingList": "Waiting List",
+    "registrations": "Registrations"
   },
   "profile": {
     "shareProfile": "Share Profile",

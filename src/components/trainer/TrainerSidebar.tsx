@@ -80,7 +80,8 @@ export function TrainerSidebar() {
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.startsWith("/trainer/cycles") ||
-    location.pathname.startsWith("/trainer/intake-requests")
+    location.pathname.startsWith("/trainer/intake-requests") ||
+    location.pathname.startsWith("/trainer/waiting-list")
   );
   const [clubsOpen, setClubsOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(
@@ -329,7 +330,7 @@ export function TrainerSidebar() {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.registration")}
-                      className={isActive("/trainer/cycles") || isActive("/trainer/intake-requests")
+                      className={isActive("/trainer/cycles") || isActive("/trainer/intake-requests") || isActive("/trainer/waiting-list")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -363,6 +364,17 @@ export function TrainerSidebar() {
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.intakeRequests")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/waiting-list"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.waitingList", "Waiting List")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
