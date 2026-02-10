@@ -4,11 +4,14 @@ import logoLight from '@/assets/logo-light.svg';
 
 interface LogoProps {
   className?: string;
+  variant?: 'auto' | 'dark';
 }
 
-export function Logo({ className = 'h-7' }: LogoProps) {
+export function Logo({ className = 'h-7', variant = 'auto' }: LogoProps) {
   const { resolvedTheme } = useTheme();
-  const src = resolvedTheme === 'dark' ? logoLight : logoDark;
+  const src = variant === 'dark'
+    ? logoLight
+    : resolvedTheme === 'dark' ? logoLight : logoDark;
 
   return (
     <img
