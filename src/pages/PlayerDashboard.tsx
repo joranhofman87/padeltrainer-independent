@@ -25,6 +25,7 @@ interface FollowedTrainer {
 
 interface FeaturedTrainer {
   id: string;
+  slug: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   specializations: string[] | null;
@@ -218,7 +219,7 @@ export default function PlayerDashboard() {
   const fetchFeaturedTrainers = async () => {
     const { data: trainerProfiles } = await supabase
       .from('trainer_profiles')
-      .select('id, user_id, hourly_rate, experience_years, specializations, is_verified')
+      .select('id, user_id, slug, hourly_rate, experience_years, specializations, is_verified')
       .eq('is_verified', true)
       .limit(4);
 
@@ -239,7 +240,7 @@ export default function PlayerDashboard() {
       // If no verified trainers, get any trainers
       const { data: anyTrainers } = await supabase
         .from('trainer_profiles')
-        .select('id, user_id, hourly_rate, experience_years, specializations, is_verified')
+        .select('id, user_id, slug, hourly_rate, experience_years, specializations, is_verified')
         .limit(4);
 
       if (anyTrainers && anyTrainers.length > 0) {
@@ -589,7 +590,7 @@ export default function PlayerDashboard() {
                   <Card 
                     key={trainer.id}
                     className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50"
-                    onClick={() => navigate(`/book/${trainer.id}`)}
+                    onClick={() => navigate(getMarketingPath(`trainer/${trainer.slug || trainer.id}`))}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3 mb-3">
