@@ -1,28 +1,27 @@
 
-## Fix Cyclus Booking Grouping on Trainer Dashboard
+
+## Remove Trainer Payment Distribution Text from Academy Earnings Page
 
 ### Problem
 
-The "Recent Bookings" table shows individual sessions instead of grouped cyclus rows (e.g., "Cyclus Monday 09:00 (1 session)" repeated 4 times instead of one row showing "(4 sessions)"). The grouping logic exists but fails because `player_id` and `guest_player_id` are not included in the select query -- they are only used as join keys for the `profiles` and `guest_players` relations, so PostgREST does not return them as standalone fields.
+On the Academy Earnings page (`/earnings`), there is an unwanted Dutch text: "Je kunt vervolgens inkomsten verdelen onder je trainers op basis van de afgesproken verdeling." This needs to be removed.
 
 ### Changes
 
-**`src/pages/TrainerDashboard.tsx`**
+**`src/pages/academy/AcademyEarnings.tsx`**
 
-- Add `player_id, guest_player_id` to the bookings select query (line 114) so the grouping key `cyclusName::playerId` resolves correctly
-- Also increase the query limit from 10 to 50 to ensure all sessions of a cyclus are fetched before grouping, then slice the grouped result to 10
+- Remove the second paragraph (`trainerPaymentsInfo2`) from the Trainer Payment Info card at the bottom of the page (around line 228)
 
-### Before
-```
-id, status, payment_status, created_at,
-```
+**`src/i18n/locales/nl/academy.json`**
 
-### After
-```
-id, status, payment_status, created_at, player_id, guest_player_id,
-```
+- Remove the `earnings.trainerPaymentsInfo2` key
 
-Query limit: `.limit(10)` changes to `.limit(50)`, and after grouping: `groupedBookings.slice(0, 10)` is set on the state.
+**`src/i18n/locales/en/academy.json`**
+
+- Remove the `earnings.trainerPaymentsInfo2` key for consistency
 
 ### Files to modify
-- `src/pages/TrainerDashboard.tsx` (2 small edits)
+- `src/pages/academy/AcademyEarnings.tsx` (remove one `<p>` element)
+- `src/i18n/locales/nl/academy.json` (remove 1 key)
+- `src/i18n/locales/en/academy.json` (remove 1 key)
+
