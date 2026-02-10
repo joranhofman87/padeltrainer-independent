@@ -1,77 +1,74 @@
 
 
-## Add Academy Manager from Trainers
+## Revamp Pricing Page with Value-Focused Copy (SPICED Framework)
 
 ### What's changing
 
-Academy owners will be able to add trainers (who are already part of the academy) as managers/admins directly from the Settings page. A dropdown will show available trainers, and a button will add them as a manager to the `academy_managers` table.
+The pricing page (both marketing `/pricing` and in-app `/subscription`) will be updated to showcase the **value** of each feature rather than just listing feature names. Each feature will have a bold title and a descriptive subtitle explaining the benefit, similar to the reference screenshot.
 
-### Changes
+### New Feature Copy
 
-**1. Add helper functions to `src/lib/academy.ts`**
+**Starter** -- "Everything you need to streamline your admin."
+1. **Trainer profile** -- Showcase yourself to players
+2. **Add to marketplace** -- Be found and receive new bookings
+3. **Unlimited players** -- No limitation on the number of players
+4. **Unlimited trainings** -- No limitations on the number of sessions
+5. **Waiting list** -- Allow players to sign up to your waiting list
+6. **Open registration** -- Open up a registration and have our system plan things for you
+7. **EUR 1.00 per booking fee** -- Charge players right when they book a session, no need to chase money anymore
 
-- `addAcademyManager(academyProfileId, userId, role)` -- inserts into `academy_managers`
-- `removeAcademyManager(managerId)` -- deletes from `academy_managers` (only non-owners)
-- `getAcademyTrainersWithProfiles(academyProfileId)` -- fetches active trainers with their `user_id` and profile info (name, email, avatar) for the dropdown
+**Professional** -- "For serious trainers"
+1. **Everything from Starter** -- All the features you need to streamline your admin processes
+2. **Manual invoicing** -- Send invoices yourself, we can auto generate these for you
+3. **EUR 0.75 per booking fee** -- Reduced fee for charging players when they book a session with you
 
-**2. Update `src/pages/academy/AcademySettings.tsx`**
+**Academy** -- "For training academies"
+1. **Add up to 15 trainers** -- Manage and add your team to streamline the bookings
+2. **Add players to the marketplace** -- Add your branding to their profile and increase bookings for your team
+3. **Add academy to the marketplace** -- Be marked as featured in the marketplace to receive more bookings
+4. **EUR 0.50 per booking fee** -- Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking
 
-- Add state for the trainer list and selected trainer
-- Fetch active academy trainers on mount (alongside managers)
-- Filter out trainers who are already managers
-- Show a Select dropdown + "Add" button below the managers list
-- Only show the add controls for users who are owners
-- Add a remove button (X or trash icon) on non-owner manager rows, with confirmation
-- After adding/removing, refresh the managers list
+### UI Changes
 
-**3. Update translation files**
+**Marketing Pricing Page (`src/pages/marketing/Pricing.tsx`)**
+- Replace the current feature list (checkmark + single line) with a two-line format: **bold feature name** + smaller description text beneath it
+- Remove the old `getFeatureList()` function with its included/excluded X marks
+- Each feature item renders as: green checkmark, bold title, and a muted description below
+- Keep the billing toggle, pricing cards layout, badges, and CTA buttons as-is
+- The platform fee badge in the card header can be removed since the fee is now part of the feature list with its value description
 
-- `src/i18n/locales/en/academy.json` -- add keys: `managers.addManager`, `managers.selectTrainer`, `managers.added`, `managers.removed`, `managers.remove`, `managers.confirmRemove`, `managers.noTrainersAvailable`
-- `src/i18n/locales/nl/academy.json` -- add Dutch equivalents
+**In-App Subscription Page (`src/pages/TrainerSubscription.tsx`)**
+- Update the feature rendering to match the same two-line format (title + description)
+- Features will come from translation keys rather than the database `features` array, to support the value descriptions
 
-### Technical Details
+### Translation Structure
 
-**Add manager function:**
-```typescript
-export async function addAcademyManager(
-  academyProfileId: string,
-  userId: string,
-  role: 'manager' = 'manager'
-): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from('academy_managers')
-    .insert({
-      academy_profile_id: academyProfileId,
-      user_id: userId,
-      role,
-    });
-  if (error) return { success: false, error: error.message };
-  return { success: true };
+Replace the current per-feature string keys with structured objects containing `title` and `description`:
+
+```json
+"starter": {
+  "description": "Everything you need to streamline your admin.",
+  "features": {
+    "profile": { "title": "Trainer profile", "description": "Showcase yourself to players" },
+    "marketplace": { "title": "Add to marketplace", "description": "Be found & receive new bookings" },
+    ...
+  }
 }
 ```
 
-**Trainer dropdown query** (reuses `academy_trainers` joined with `trainer_profiles` and `profiles` to get `user_id`, `full_name`, `avatar_url`):
-```typescript
-const { data } = await supabase
-  .from('academy_trainers')
-  .select(`
-    trainer_profile:trainer_profiles(
-      id, user_id,
-      profile:profiles!trainer_profiles_user_id_fkey(user_id, full_name, email, avatar_url)
-    )
-  `)
-  .eq('academy_profile_id', academyProfileId)
-  .eq('status', 'active');
-```
-
-**UI in Settings page:**
-- Below the existing managers list, show a row with a Select component (trainer name + avatar) and an "Add" Button
-- On each non-owner manager row, show a remove button (only visible to owners)
-- The current user's own `academy_managers` role determines if they see owner-only controls
-
 ### Files to modify
-- `src/lib/academy.ts` -- add `addAcademyManager`, `removeAcademyManager`, `getAcademyTrainersForManagerPicker`
-- `src/pages/academy/AcademySettings.tsx` -- add trainer dropdown, add/remove manager UI
-- `src/i18n/locales/en/academy.json` -- add manager translation keys
-- `src/i18n/locales/nl/academy.json` -- add Dutch manager translation keys
+
+- `src/pages/marketing/Pricing.tsx` -- rewrite trainer plan feature rendering with title+description format
+- `src/pages/TrainerSubscription.tsx` -- update feature rendering to match
+- `src/i18n/locales/en/marketing.json` -- replace feature strings with title/description objects, update plan descriptions
+- `src/i18n/locales/nl/marketing.json` -- Dutch translations for the same structure
+
+### What stays the same
+
+- Player pricing section (free tier)
+- Club pricing section
+- FAQ section
+- Billing toggle and pricing amounts
+- Database-driven prices (monthly/yearly from `subscription_plans` table)
+- Card layout, badges ("Most Popular", "Best Value"), and CTA buttons
 
