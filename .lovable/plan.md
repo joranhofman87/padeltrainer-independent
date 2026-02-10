@@ -1,78 +1,93 @@
 
 
-## Bundle Cyclus Bookings and Spots on Dashboard
+## Bundle Cyclus on Invoices, Add Logo Upload, and Custom Invoice Numbering
 
-### What changes
+### 1. Bundle cyclus bookings on invoices
 
-**Recent Bookings** tables (trainer + academy): Currently show individual booking rows. Will be enhanced to include the cyclus name and payment status, and group cyclus bookings into a single summary row per player-per-cyclus.
+**Current behavior:** When a cyclus booking creates an invoice, every session gets its own line item (e.g., "Summer Training - 10/02/2026 09:00", "Summer Training - 17/02/2026 09:00", etc.).
 
-**Upcoming Open Spots** tables (trainer + academy): Currently show individual slot rows. Will group slots belonging to the same cyclus into a single summary row showing the cyclus name, number of sessions, and date range.
+**New behavior:** Cyclus bookings are collapsed into a single line item showing:
+- Description: cyclus name/description
+- Quantity: number of sessions (weeks)
+- Unit price: price per session
+- Total: quantity x unit price
 
-### Updated columns
+Extra costs from `cycle.settings.extra_costs` remain as separate line items below.
 
-**Recent Bookings table:**
-| Player | Cyclus | Date | Payment |
-|--------|--------|------|---------|
-| John | Summer Training | 05 Feb | paid |
-| Jane | — | 03 Feb | pending |
+Standalone (non-cyclus) bookings remain unchanged as individual line items.
 
-- Player name (from profiles or guest_players)
-- Cyclus name (from availability_slots.cyclus_name, or "—" for standalone)
-- Date (created_at)
-- Payment status badge (paid/pending/unpaid)
+**Files changed:**
+- `supabase/functions/auto-create-invoice/index.ts` -- rewrite line item building logic: detect if all bookings share the same `cyclus_id`, if so create one bundled line item instead of N individual ones
+- `supabase/functions/generate-invoice/index.ts` -- remove the per-item date display for bundled cyclus items (date column not shown when quantity > 1 and it's a cyclus)
+- `src/components/trainer/CreateInvoiceDialog.tsx` -- no change needed (manual invoices already allow custom line items)
 
-**Upcoming Open Spots table:**
-| Name | Sessions | Next session |
-|------|----------|-------------|
-| Summer Training | 8 sessions | Mon 10 Feb 09:00 |
-| — | 1 session | Wed 12 Feb 14:00 |
+---
 
-- Cyclus name (or "Single session" for standalone slots)
-- Number of upcoming sessions
-- Next session date/time
+### 2. Logo upload on invoice settings
+
+**Database migration:**
+- Add `invoice_logo_url text` column to `trainer_profiles`
+- Academy invoices will use `academy_profiles.logo_url` (already exists)
+
+**Storage:** Use the existing `avatars` bucket (public) for invoice logos, stored under a subfolder like `invoice-logos/{user_id}.png`.
+
+**UI changes:**
+- `src/components/trainer/InvoiceSettingsCard.tsx` -- add a logo upload section at the top of the card with image preview, upload button, and remove button
+
+**PDF changes:**
+- `supabase/functions/generate-invoice/index.ts` -- fetch `invoice_logo_url` from `trainer_profiles`, render it in the top-left of the invoice HTML header (replacing or alongside the "FACTUUR" title). For academy trainers, fall back to `academy_profiles.logo_url`.
+
+---
+
+### 3. Custom invoice numbering
+
+**Database migration:**
+- Add `invoice_prefix text DEFAULT 'INV'` to `trainer_profiles`
+- Add `invoice_next_number integer DEFAULT 1` to `trainer_profiles`
+
+This lets trainers set their own prefix (e.g., "FACT", "PT", their initials) and starting number. The format stays `{prefix}-{year}-{sequence}` (e.g., "PT-2026-0001").
+
+**UI changes:**
+- `src/components/trainer/InvoiceSettingsCard.tsx` -- add a "Factuurnummering" section with:
+  - Prefix input (e.g., "INV", "FACT", "PT")
+  - Next number input (auto-incremented, but editable)
+  - Live preview showing what the next invoice number will look like
+
+**Backend changes:**
+- `supabase/functions/auto-create-invoice/index.ts` -- use `trainer_profiles.invoice_prefix` and query based on that prefix pattern instead of hardcoded `INV`
+- `src/components/trainer/CreateInvoiceDialog.tsx` -- same: use the trainer's custom prefix when generating invoice numbers
+
+---
 
 ### Technical details
 
-**File: `src/pages/TrainerDashboard.tsx`**
-
-1. **Bookings query** (line 76-86): Add `cyclus_name` to the `availability_slots` select:
-   ```
-   availability_slots!inner (trainer_id, start_time, cyclus_name)
-   ```
-
-2. **Bookings rendering** (lines 337-378): Update table columns to 4: Player, Cyclus, Date, Payment. Show `availability_slots.cyclus_name` and `payment_status` badge.
-
-3. **Upcoming Slots query** (lines 99-107): Also fetch `cyclus_id` in the select.
-
-4. **Upcoming Slots rendering** (lines 420-460): After fetching, group slots by `cyclus_id`. Standalone slots (no cyclus_id) remain individual rows. Cyclus slots are collapsed into one row per cyclus showing: name, session count, and next session datetime.
-
-**File: `src/pages/academy/AcademyDashboard.tsx`**
-
-Same changes applied:
-1. **Bookings query** (line 88-98): Add `cyclus_name` to availability_slots select.
-2. **Bookings rendering** (lines 287-328): 4 columns: Player, Cyclus, Date, Payment.
-3. **Upcoming Slots query** (lines 113-120): Add `cyclus_id` to select.
-4. **Upcoming Slots rendering** (lines 370-410): Group by cyclus_id, show summary rows for cycles.
-
-**Grouping logic for upcoming slots** (applied in both files after fetching):
-```
-// Group by cyclus_id
-const grouped = [];
-const cyclusMap = new Map();
-for (const slot of slots) {
-  if (slot.cyclus_id) {
-    if (!cyclusMap.has(slot.cyclus_id)) {
-      cyclusMap.set(slot.cyclus_id, { ...slot, sessionCount: 1 });
-      grouped.push(cyclusMap.get(slot.cyclus_id));
-    } else {
-      cyclusMap.get(slot.cyclus_id).sessionCount++;
-    }
-  } else {
-    grouped.push({ ...slot, sessionCount: 1 });
-  }
-}
+**Migration SQL:**
+```sql
+ALTER TABLE trainer_profiles ADD COLUMN invoice_logo_url text;
+ALTER TABLE trainer_profiles ADD COLUMN invoice_prefix text DEFAULT 'INV';
+ALTER TABLE trainer_profiles ADD COLUMN invoice_next_number integer DEFAULT 1;
 ```
 
-### No i18n changes needed
-Existing keys cover all new labels (payment status values are already used elsewhere).
+**Storage policy:** Invoice logos are uploaded to the public `avatars` bucket under `invoice-logos/` path -- reuses existing upload policies that check `auth.uid()`.
+
+**auto-create-invoice line item bundling logic:**
+```text
+if all bookings share the same cyclus_id:
+  -> 1 line item: { description: cyclus_name, quantity: bookings.length, unit_price: price_per_session }
+  -> plus any extra_costs as separate line items
+else:
+  -> individual line items per booking (current behavior)
+```
+
+**generate-invoice HTML changes:**
+- Logo rendered as `<img>` in the header div, max-height 60px, alongside "FACTUUR" title
+- Bundled cyclus items: show quantity as session count, no per-row date
+
+**Files affected (summary):**
+1. `supabase/functions/auto-create-invoice/index.ts` -- bundled line items + custom prefix
+2. `supabase/functions/generate-invoice/index.ts` -- logo in PDF + bundled display
+3. `src/components/trainer/InvoiceSettingsCard.tsx` -- logo upload + prefix/numbering UI
+4. `src/components/trainer/CreateInvoiceDialog.tsx` -- use custom prefix for manual invoices
+5. Database migration (3 new columns on `trainer_profiles`)
+6. i18n files (EN/NL trainer) for new labels
 
