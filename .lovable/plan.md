@@ -1,64 +1,34 @@
 
-
-## Add Waiting List Toggle for Trainers and Academies
+## Add "Create Slots First" Reminder Dialog Before Generating Proposals
 
 ### Overview
-Add a `waiting_list_enabled` boolean column to both `trainer_profiles` and `academy_profiles` tables (defaulting to `false`). Create a new "Waiting List" page under the Registration sidebar group for both roles, where they can toggle this feature on/off. The public profile pages will only show the WaitingListCard when the feature is enabled.
+When a trainer or academy clicks "Generate Proposals", show an informational AlertDialog reminding them that slots/cycles must exist in the calendar first for matching to work. The dialog has two CTAs: "Go to Calendar" (navigates to the calendar page) and "Continue" (proceeds to open the existing ScoringWeightsDialog).
 
-### Database Changes
+### Changes
 
-Add a new column to each table:
-- `trainer_profiles.waiting_list_enabled` (boolean, default `false`, not null)
-- `academy_profiles.waiting_list_enabled` (boolean, default `false`, not null)
+**New Component: `src/components/cycles/GenerateProposalsGuard.tsx`**
+- An AlertDialog with an info/warning message explaining that slots must be created in the calendar first
+- Props: `open`, `onOpenChange`, `onContinue`, `calendarPath`
+- "Go to Calendar" button (outline) navigates to the provided calendar path
+- "Continue" button (primary) closes this dialog and triggers `onContinue` (which opens the ScoringWeightsDialog)
+- Uses existing AlertDialog UI components
 
-### New Pages
+**`src/pages/TrainerIntakeRequests.tsx`**
+- Add state `showGuardDialog` (boolean)
+- Change the "Generate Proposals" button `onClick` from `setShowWeightsDialog(true)` to `setShowGuardDialog(true)`
+- Render `GenerateProposalsGuard` with `calendarPath="/app/trainer/calendar"` and `onContinue` that closes guard and opens weights dialog
 
-**`src/pages/TrainerWaitingList.tsx`** -- A settings-style page (similar to `TrainerBookingSettings.tsx`) with:
-- Back button navigating to `/trainer/cycles`
-- A Card with a Switch toggle to enable/disable the waiting list
-- When enabled, show the `WaitingListTable` component below so trainers can manage entries
-- Description text explaining what the waiting list does
+**`src/pages/academy/AcademyIntakeRequests.tsx`**
+- Same pattern with `calendarPath="/app/academy/calendar"`
 
-**`src/pages/academy/AcademyWaitingList.tsx`** -- Same pattern for academies, navigating back to `/app/academy/cycles`.
-
-### Sidebar Updates
-
-**`src/components/trainer/TrainerSidebar.tsx`**:
-- Add "Waiting List" as a third sub-item under the Registration collapsible group (after Registrations and Intake Requests)
-- Update `registrationOpen` state to also check for `/trainer/waiting-list`
-
-**`src/components/academy/AcademySidebar.tsx`**:
-- Add "Waiting List" as a third sub-item under the Registration collapsible group
-- Update `registrationOpen` state to also check for `/app/academy/waiting-list`
-
-### Routing Updates
-
-**`src/components/DomainRouter.tsx`**:
-- Add route `waiting-list` under trainer routes pointing to `TrainerWaitingList`
-- Add route `waiting-list` under academy routes pointing to `AcademyWaitingList`
-
-### Public Profile Conditional Display
-
-**`src/pages/TrainerProfile.tsx`**:
-- Fetch `waiting_list_enabled` from `trainer_profiles` alongside existing trainer data
-- Only render `WaitingListCard` when `waiting_list_enabled` is `true`
-
-**`src/pages/AcademyPublicProfile.tsx`**:
-- Fetch `waiting_list_enabled` from `academy_profiles` alongside existing academy data
-- Only render `WaitingListCard` when `waiting_list_enabled` is `true`
-
-### Translation Keys
-
-Add to both EN and NL trainer/academy translation files:
-- `nav.waitingList` -- sidebar label
-- `waitingList.settingsTitle` -- page title
-- `waitingList.settingsSubtitle` -- page subtitle
-- `waitingList.enableTitle` -- toggle card title
-- `waitingList.enableDescription` -- explanation of the feature
-- `waitingList.enabled` / `waitingList.disabled` -- toast messages
+**Translation keys** (EN and NL, in `cycles` namespace):
+- `proposals.guard.title` -- e.g. "Important"
+- `proposals.guard.description` -- e.g. "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences."
+- `proposals.guard.goToCalendar` -- "Go to Calendar"
+- `proposals.guard.continue` -- "Continue"
 
 ### Technical Details
-
-- The toggle pages follow the exact same pattern as `TrainerBookingSettings.tsx`: fetch setting on mount, update via `supabase.from(...).update(...)` on toggle, show toast feedback
-- The `WaitingListTable` component already exists and accepts `ownerType` and `ownerId` props, so it can be embedded directly on the new pages when the feature is enabled
-- No RLS changes needed since trainers/academies already have update access to their own profile rows
+- The guard dialog is a simple AlertDialog (not a full Dialog) since it's a short confirmation message
+- The "Go to Calendar" button uses `useNavigate()` to route to the appropriate calendar page
+- The "Continue" button chains into the existing `setShowWeightsDialog(true)` flow, so no changes to the scoring/generation logic are needed
+- Both Trainer and Academy intake request pages get the same treatment with only the calendar path differing
