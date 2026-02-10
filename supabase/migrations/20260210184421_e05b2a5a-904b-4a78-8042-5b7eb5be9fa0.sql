@@ -1,0 +1,1 @@
+ALTER TABLE availability_slots ADD COLUMN extra_costs jsonb DEFAULT '[]';

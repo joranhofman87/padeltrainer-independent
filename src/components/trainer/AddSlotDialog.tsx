@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
+import { type ExtraCost } from "@/lib/cycles";
+import type { Json } from "@/integrations/supabase/types";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -69,6 +71,8 @@ interface BulkSlotConfig {
   maxParticipants: number | null;
   priceManuallyEdited: boolean;
   markAsPaid: boolean;
+  extraCosts: ExtraCost[];
+  hasExtraCosts: boolean;
 }
 
 interface AddSlotDialogProps {
@@ -399,11 +403,12 @@ export function BulkCreateSheet({
     return trainerHourlyRates.get(tId) ?? null;
   };
 
-  const autoCalcPricing = (tId: string | null, durationMinutes: number, recurrenceWeeks: number) => {
+  const autoCalcPricing = (tId: string | null, durationMinutes: number, recurrenceWeeks: number, extraCosts: ExtraCost[] = []) => {
     const rate = getHourlyRate(tId);
     if (!rate) return { pricePerSession: null, totalPrice: null };
     const pricePerSession = calculateSlotPrice(rate, durationMinutes);
-    const totalPrice = pricePerSession * recurrenceWeeks;
+    const extraCostsPerSession = extraCosts.reduce((sum, c) => sum + (c.price || 0), 0);
+    const totalPrice = (pricePerSession + extraCostsPerSession) * recurrenceWeeks;
     return { pricePerSession: Math.round(pricePerSession * 100) / 100, totalPrice: Math.round(totalPrice * 100) / 100 };
   };
 
@@ -459,6 +464,8 @@ export function BulkCreateSheet({
       maxParticipants: null,
       priceManuallyEdited: false,
       markAsPaid: false,
+      extraCosts: [],
+      hasExtraCosts: false,
     };
   };
 
@@ -490,7 +497,7 @@ export function BulkCreateSheet({
       const newCyclusName = generateCyclusName(lastSlot.startDate, newStartTime);
       const pricing = lastSlot.priceManuallyEdited 
         ? { pricePerSession: lastSlot.pricePerSession, totalPrice: lastSlot.totalPrice }
-        : autoCalcPricing(lastSlot.trainerId, lastSlot.durationMinutes, lastSlot.recurrenceWeeks);
+        : autoCalcPricing(lastSlot.trainerId, lastSlot.durationMinutes, lastSlot.recurrenceWeeks, lastSlot.extraCosts);
       
       setBulkSlots([
         ...bulkSlots,
@@ -515,12 +522,14 @@ export function BulkCreateSheet({
           maxParticipants: lastSlot.maxParticipants,
           priceManuallyEdited: lastSlot.priceManuallyEdited,
           markAsPaid: false,
+          extraCosts: lastSlot.extraCosts,
+          hasExtraCosts: lastSlot.hasExtraCosts,
         },
       ]);
     } else {
       const newStartDate = getInitialStartDate();
-      const newStartTime = getInitialStartTime();
-      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
+      const newStartTime2 = getInitialStartTime();
+      setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime2, defaultDuration, defaultWeeks, trainerId)]);
     }
   };
 
@@ -539,9 +548,9 @@ export function BulkCreateSheet({
             updated.cyclusName = autoName;
           }
         }
-        // Auto-recalc pricing if trainer/duration/weeks changed and not manually edited
-        if (!updated.priceManuallyEdited && (updates.trainerId !== undefined || updates.durationMinutes !== undefined || updates.recurrenceWeeks !== undefined)) {
-          const pricing = autoCalcPricing(updated.trainerId, updated.durationMinutes, updated.recurrenceWeeks);
+        // Auto-recalc pricing if trainer/duration/weeks/extraCosts changed and not manually edited
+        if (!updated.priceManuallyEdited && (updates.trainerId !== undefined || updates.durationMinutes !== undefined || updates.recurrenceWeeks !== undefined || updates.extraCosts !== undefined)) {
+          const pricing = autoCalcPricing(updated.trainerId, updated.durationMinutes, updated.recurrenceWeeks, updated.extraCosts);
           updated.pricePerSession = pricing.pricePerSession;
           updated.totalPrice = pricing.totalPrice;
         }
@@ -592,6 +601,7 @@ export function BulkCreateSheet({
         allow_single_booking: boolean;
         min_participants: number | null;
         max_participants: number | null;
+        extra_costs: Json;
       }[] = [];
 
       // Get existing slots to avoid duplicates per trainer
@@ -656,6 +666,9 @@ export function BulkCreateSheet({
             allow_single_booking: config.allowSingleBooking,
             min_participants: config.minParticipants,
             max_participants: config.maxParticipants,
+            extra_costs: (config.hasExtraCosts && config.extraCosts.length > 0 
+              ? config.extraCosts.filter(c => c.description || c.price > 0) 
+              : []) as unknown as Json,
           });
 
           // Add to existing times to prevent duplicates within same batch
@@ -983,7 +996,91 @@ export function BulkCreateSheet({
                           placeholder="0.00"
                           className="h-8"
                         />
+                  </div>
+
+                  {/* Extra Costs */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`extra-costs-${index}`}
+                        checked={slot.hasExtraCosts}
+                        onCheckedChange={(checked) => {
+                          const hasExtra = !!checked;
+                          updateBulkSlot(index, { 
+                            hasExtraCosts: hasExtra,
+                            extraCosts: hasExtra ? (slot.extraCosts.length > 0 ? slot.extraCosts : [{ description: '', price: 0 }]) : []
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`extra-costs-${index}`} className="text-sm cursor-pointer">
+                        {t("calendar.addExtraCosts", "Add extra costs")}
+                      </Label>
+                    </div>
+
+                    {slot.hasExtraCosts && (
+                      <div className="space-y-2 pl-6 border-l-2 border-primary/20">
+                        {slot.extraCosts.map((cost, costIndex) => (
+                          <div key={costIndex} className="flex items-center gap-2">
+                            <Input
+                              value={cost.description}
+                              onChange={(e) => {
+                                const newCosts = [...slot.extraCosts];
+                                newCosts[costIndex] = { ...newCosts[costIndex], description: e.target.value };
+                                updateBulkSlot(index, { extraCosts: newCosts });
+                              }}
+                              placeholder={t("calendar.costDescription", "e.g. Court rental")}
+                              className="h-8 flex-1"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">€</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                value={cost.price || ""}
+                                onChange={(e) => {
+                                  const newCosts = [...slot.extraCosts];
+                                  newCosts[costIndex] = { ...newCosts[costIndex], price: parseFloat(e.target.value) || 0 };
+                                  updateBulkSlot(index, { extraCosts: newCosts });
+                                }}
+                                placeholder="0.00"
+                                className="h-8 w-20"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                              onClick={() => {
+                                const newCosts = slot.extraCosts.filter((_, i) => i !== costIndex);
+                                updateBulkSlot(index, { extraCosts: newCosts.length > 0 ? newCosts : [], hasExtraCosts: newCosts.length > 0 });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0 }] });
+                          }}
+                          className="gap-1"
+                        >
+                          <Plus className="h-3 w-3" />
+                          {t("calendar.addCostLine", "Add cost")}
+                        </Button>
+                        {slot.extraCosts.length > 0 && slot.extraCosts.some(c => c.price > 0) && (
+                          <p className="text-xs text-muted-foreground">
+                            {t("calendar.extraCostsPerSession", "Extra costs per session")}: {formatPrice(slot.extraCosts.reduce((sum, c) => sum + (c.price || 0), 0))}
+                          </p>
+                        )}
                       </div>
+                    )}
+                  </div>
                     </div>
                   </div>
 
