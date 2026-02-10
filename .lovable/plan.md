@@ -1,41 +1,30 @@
 
 
-## Fix Post-Signup Redirect to Original Page
+## Fix "Beheer Club" Button to Switch to Correct Club
 
 ### Problem
 
-When a player signs up via a CTA on a trainer/club/academy profile, they should be redirected back to that page after completing signup + onboarding. Currently they end up on the dashboard instead.
-
-**Root cause**: The redirect URL is stored in `localStorage` as `redirectAfterOnboarding`, and it's only consumed in `Onboarding.tsx` when the onboarding form is submitted. However, when the user verifies their email and lands on `/app/auth`, the Auth page may detect that the user already has a role and redirect them straight to the dashboard -- never reaching the onboarding page where the redirect would be consumed.
+The "Beheer Club" button on the Academy Locations page navigates to `/app/club` but doesn't set the active club, so the ClubLayout picks whatever club was last active (or the first one). It should switch to the specific club that corresponds to that location.
 
 ### Solution
 
-Add a check for `redirectAfterOnboarding` in `Auth.tsx` so that even if a user already has a role, the stored redirect URL is honored.
+Before navigating to `/app/club`, store the `managedClubId` in `localStorage` under the `activeClubId` key. This is the same mechanism `ClubLayout` uses to determine which club to display.
 
 ### Changes
 
-**`src/pages/Auth.tsx`**
+**`src/pages/academy/AcademyLocations.tsx`** (line 335)
 
-In the redirect logic (around line 84-104), when a user with an existing role is being redirected to their dashboard:
+Update the "Beheer Club" button's `onClick` handler:
 
-1. Before falling through to the default dashboard redirect, check `localStorage.getItem('redirectAfterOnboarding')`
-2. If it exists, navigate there instead and clear it from localStorage
-3. This covers the case where the user completed onboarding but Auth still handles the final navigation
-
-**`src/pages/Onboarding.tsx`** (no change needed -- already handles it correctly)
-
-### How it works after the fix
-
-```text
-User clicks CTA on trainer profile
-  -> /app/signup/player?redirect=/en/trainer/john
-  -> localStorage: redirectAfterOnboarding = "/en/trainer/john"
-  -> User signs up, verifies email
-  -> Lands on /app/auth
-  -> Auth sees user has role -> checks redirectAfterOnboarding
-  -> Navigates to /en/trainer/john instead of /app/player
+```typescript
+onClick={() => {
+  localStorage.setItem('activeClubId', managedClubId);
+  navigate('/app/club');
+}}
 ```
+
+This ensures `ClubLayout` picks up the correct club on mount, matching exactly what the ProfileSwitcher does when selecting a club.
 
 ### Files to modify
 
-- `src/pages/Auth.tsx` (add redirectAfterOnboarding check in the existing-role redirect block)
+- `src/pages/academy/AcademyLocations.tsx` (1 line change in the onClick handler)
