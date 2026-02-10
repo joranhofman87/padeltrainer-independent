@@ -141,10 +141,14 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
       const cycleSlotMap = new Map<string, SlotData[]>();
 
       for (const slot of availableSlots) {
-        if (slot.cyclus_id && !slot.allow_single_booking) {
+        if (slot.cyclus_id) {
           const existing = cycleSlotMap.get(slot.cyclus_id) || [];
           existing.push(slot);
           cycleSlotMap.set(slot.cyclus_id, existing);
+          // Also show as individual bookable rows if single booking is allowed
+          if (slot.allow_single_booking) {
+            individualSlots.push(slot);
+          }
         } else {
           individualSlots.push(slot);
         }
