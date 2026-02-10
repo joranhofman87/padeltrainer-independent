@@ -19,6 +19,9 @@ interface SignupRequest {
   redirectTo?: string;
 }
 
+const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/assets/logo-dark.svg" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+const BRAND_ORANGE = "#f45d25";
+
 const getEmailTemplate = (userName: string, actionLink: string) => {
   const baseStyle = `
     font-family: Arial, sans-serif;
@@ -28,7 +31,7 @@ const getEmailTemplate = (userName: string, actionLink: string) => {
   `;
   
   const buttonStyle = `
-    background: #16a34a;
+    background: ${BRAND_ORANGE};
     color: white;
     padding: 14px 28px;
     text-decoration: none;
@@ -41,9 +44,7 @@ const getEmailTemplate = (userName: string, actionLink: string) => {
     subject: "Welcome to PadelTrainer! 🎾",
     html: `
       <div style="${baseStyle}">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #16a34a; margin: 0;">PadelTrainer<span style="color: #333;">.ai</span></h1>
-        </div>
+        ${EMAIL_LOGO}
         
         <h2 style="color: #333;">Welcome to PadelTrainer!</h2>
         

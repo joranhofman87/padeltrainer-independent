@@ -19,6 +19,9 @@ interface QueueItem {
   created_at: string;
 }
 
+const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/assets/logo-dark.svg" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+const BRAND_ORANGE = "#f45d25";
+
 function buildDigestHtml(
   items: QueueItem[],
   userName: string,
@@ -95,14 +98,15 @@ function buildDigestHtml(
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h1 style="color: #16a34a;">Your ${frequency === "weekly" ? "Weekly" : "Daily"} Summary 📊</h1>
+      ${EMAIL_LOGO}
+      <h1 style="color: ${BRAND_ORANGE};">Your ${frequency === "weekly" ? "Weekly" : "Daily"} Summary 📊</h1>
       <p>Hi ${userName},</p>
       <p>Here's what happened ${frequency === "weekly" ? "this week" : "today"}:</p>
       <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
         ${sections.join("")}
       </div>
       <p style="margin-top: 24px;">
-        <a href="https://padeltrainer.ai${dashboardPath}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Dashboard</a>
+        <a href="https://padeltrainer.ai${dashboardPath}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Dashboard</a>
       </p>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #6b7280; font-size: 14px;">

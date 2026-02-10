@@ -17,6 +17,9 @@ interface AuthEmailRequest {
   redirectTo?: string;
 }
 
+const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/assets/logo-dark.svg" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+const BRAND_ORANGE = "#f45d25";
+
 const getEmailTemplate = (type: string, data: { userName?: string; actionLink: string }) => {
   const baseStyle = `
     font-family: Arial, sans-serif;
@@ -26,7 +29,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
   `;
   
   const buttonStyle = `
-    background: #16a34a;
+    background: ${BRAND_ORANGE};
     color: white;
     padding: 14px 28px;
     text-decoration: none;
@@ -40,9 +43,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
       subject: "Confirm your email - PadelTrainer",
       html: `
         <div style="${baseStyle}">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #16a34a; margin: 0;">PadelTrainer<span style="color: #333;">.ai</span></h1>
-          </div>
+          ${EMAIL_LOGO}
           
           <h2 style="color: #333;">Confirm your email address</h2>
           
@@ -60,7 +61,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
           
           <p style="color: #666; font-size: 14px;">
             Or copy and paste this link into your browser:<br>
-            <a href="${data.actionLink}" style="color: #16a34a; word-break: break-all;">${data.actionLink}</a>
+            <a href="${data.actionLink}" style="color: ${BRAND_ORANGE}; word-break: break-all;">${data.actionLink}</a>
           </p>
           
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
@@ -78,9 +79,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
       subject: "Reset your password - PadelTrainer",
       html: `
         <div style="${baseStyle}">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #16a34a; margin: 0;">PadelTrainer<span style="color: #333;">.ai</span></h1>
-          </div>
+          ${EMAIL_LOGO}
           
           <h2 style="color: #333;">Reset your password</h2>
           
@@ -98,7 +97,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
           
           <p style="color: #666; font-size: 14px;">
             Or copy and paste this link into your browser:<br>
-            <a href="${data.actionLink}" style="color: #16a34a; word-break: break-all;">${data.actionLink}</a>
+            <a href="${data.actionLink}" style="color: ${BRAND_ORANGE}; word-break: break-all;">${data.actionLink}</a>
           </p>
           
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
