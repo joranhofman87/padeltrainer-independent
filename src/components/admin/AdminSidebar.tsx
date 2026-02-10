@@ -38,6 +38,7 @@ import {
   Scale,
   LogOut,
   ShieldCheck,
+  Star,
   Tags,
   FileCheck,
   PanelLeftClose,
@@ -53,6 +54,7 @@ import { Logo } from "@/components/Logo";
 const mainNavItems = [
   { title: "Dashboard", url: "/app/admin", icon: LayoutDashboard, end: true },
   { title: "Users", url: "/app/admin/users", icon: Users },
+  { title: "Player Ratings", url: "/app/admin/player-ratings", icon: Star },
   { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
   { title: "Academies", url: "/app/admin/academies", icon: School },
 ];
