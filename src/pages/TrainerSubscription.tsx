@@ -27,8 +27,10 @@ import { useTrainerPlans, SubscriptionPlan } from '@/hooks/usePricingPlans';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { logger } from '@/lib/logger';
 import { trackEvent } from '@/lib/tracking';
+import { useTranslation } from 'react-i18next';
 
 export default function TrainerSubscription() {
+  const { t } = useTranslation('marketing');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading, subscription, refreshSubscription, session } = useAuth();
@@ -329,17 +331,16 @@ export default function TrainerSubscription() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Separator />
-                <ul className="space-y-3">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-start gap-2">
+                <ul className="space-y-4">
+                  {(t(`pricing.trainers.plans.${plan.tier}.featureList`, { returnObjects: true, ns: 'marketing' }) as { title: string; description: string }[])?.map?.((feature, index) => (
+                    <li key={index} className="flex items-start gap-3">
                       <Check className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                      <span className="text-sm">{feature}</span>
+                      <div>
+                        <span className="font-semibold text-sm block">{feature.title}</span>
+                        <span className="text-xs text-muted-foreground">{feature.description}</span>
+                      </div>
                     </li>
                   ))}
-                  <li className="flex items-start gap-2">
-                    <Check className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-sm">€{plan.platform_fee_flat?.toFixed(2) ?? '1.00'} per booking fee</span>
-                  </li>
                 </ul>
               </CardContent>
               <CardFooter>
