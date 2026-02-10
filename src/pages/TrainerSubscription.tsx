@@ -72,6 +72,15 @@ export default function TrainerSubscription() {
     }
   }, [user, role, loading, navigate]);
 
+  const currentPlan = subscription?.tier || 'starter';
+
+  // Track page view with current plan context
+  useEffect(() => {
+    if (!loading && !loadingPlans) {
+      trackEvent('subscription_page_viewed', { current_plan: currentPlan });
+    }
+  }, [currentPlan, loading, loadingPlans]);
+
   if (loading || loadingPlans) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
@@ -94,13 +103,6 @@ export default function TrainerSubscription() {
       </div>
     );
   }
-
-  const currentPlan = subscription?.tier || 'starter';
-
-  // Track page view with current plan context
-  useEffect(() => {
-    trackEvent('subscription_page_viewed', { current_plan: currentPlan });
-  }, [currentPlan]);
 
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
