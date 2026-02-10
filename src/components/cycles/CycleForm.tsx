@@ -447,8 +447,8 @@ export default function CycleForm({
               )}
             />
 
-            {/* Location Picker - for academies/clubs with locations */}
-            {locations.length > 0 && (
+            {/* Location Picker - for academies/clubs with locations, or trainers */}
+            {locations.length > 0 ? (
               <FormField
                 control={form.control}
                 name="location_id"
@@ -470,12 +470,25 @@ export default function CycleForm({
                       </SelectContent>
                     </Select>
                     <FormDescription className="text-xs">
-                      {t('form.locationHelp')}
+                      {ownerType === 'trainer'
+                        ? t('form.locationHelpTrainer', 'You can add more locations in your profile settings.')
+                        : t('form.locationHelp')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            ) : (
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-muted-foreground">
+                  {t('form.noLocations', 'No locations connected to your profile yet.')}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {ownerType === 'trainer'
+                    ? t('form.addLocationsHintTrainer', 'Add locations in your profile to show where lessons take place.')
+                    : t('form.addLocationsHint', 'Add locations in your settings to associate them with registrations.')}
+                </p>
+              </div>
             )}
 
             {/* Assigned Trainer - single select for academy */}

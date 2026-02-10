@@ -11,6 +11,12 @@ import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import CycleForm from '@/components/cycles/CycleForm';
 
+interface LocationData {
+  id: string;
+  name: string;
+  city: string;
+}
+
 export default function TrainerCycles() {
   const { t } = useTranslation('cycles');
   const { user, role, loading } = useAuth();
@@ -23,6 +29,7 @@ export default function TrainerCycles() {
   const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
+  const [locations, setLocations] = useState<LocationData[]>([]);
 
   // Auth is now handled by TrainerLayout
 
@@ -39,6 +46,24 @@ export default function TrainerCycles() {
       if (data) {
         setTrainerId(data.id);
         setTrainerHourlyRate(data.hourly_rate || undefined);
+
+        // Fetch trainer locations
+        const { data: trainerLocs } = await supabase
+          .from('trainer_locations')
+          .select('location_id, locations:location_id (id, name, city)')
+          .eq('trainer_id', data.id);
+
+        if (trainerLocs) {
+          setLocations(
+            trainerLocs
+              .filter((tl: any) => tl.locations)
+              .map((tl: any) => ({
+                id: tl.locations.id,
+                name: tl.locations.name,
+                city: tl.locations.city || '',
+              }))
+          );
+        }
       }
     };
 
@@ -151,6 +176,7 @@ export default function TrainerCycles() {
           ownerId={trainerId}
           trainerHourlyRate={trainerHourlyRate}
           formType="registration"
+          locations={locations}
           onSuccess={handleCycleCreated}
         />
       )}
