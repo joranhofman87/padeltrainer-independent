@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
+import { getAppUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,7 +103,7 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
 
   const handleSignupRedirect = () => {
     const currentPath = window.location.pathname;
-    navigate(`/signup/player?redirect=${encodeURIComponent(currentPath)}`);
+    navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(currentPath)}`));
   };
 
   const handleSuccess = (cycleId: string) => {

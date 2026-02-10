@@ -97,7 +97,7 @@ export default function BookLesson() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate(`/app/signup/player?redirect=/book/${trainerId}`);
+        navigate(`/app/signup/player?redirect=/app/book/${trainerId}`);
       } else if (role !== 'player') {
         navigate('/app/trainer');
       }
