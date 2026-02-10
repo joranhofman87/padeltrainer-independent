@@ -488,11 +488,38 @@ export default function LocationDetail() {
               <CardHeader>
                 <CardTitle>{t('common:locations.aboutClub')}</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 {displayDescription ? (
                   <p className="text-muted-foreground whitespace-pre-wrap">{displayDescription}</p>
                 ) : (
                   <p className="text-muted-foreground italic">{t('common:locations.noDescription')}</p>
+                )}
+
+                {!isClaimed && (
+                  <div className="border-t pt-4">
+                    <div className="flex items-start gap-3">
+                      <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          {t('club:claim.aboutSectionNote', 'This club hasn\'t been claimed yet. Are you the owner or manager?')}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!user) {
+                              navigate(localizePath('/auth'));
+                              return;
+                            }
+                            setShowClaimDialog(true);
+                          }}
+                        >
+                          <Building2 className="h-4 w-4 mr-1" />
+                          {t('club:claim.button')}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

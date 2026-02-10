@@ -646,7 +646,7 @@ export default function PlayerDashboard() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(getMarketingPath(`location/${club.locationSlug}`))}
+                          onClick={() => navigate(getMarketingPath(`locations/${club.locationSlug}`))}
                         >
                           <ArrowRight className="h-4 w-4" />
                         </Button>
