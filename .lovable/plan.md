@@ -1,30 +1,24 @@
 
 
-## Fix: Use Trainer Slugs Instead of UUIDs in Player Dashboard
+## Remove "Your Skill Rating" Banner from Player Dashboard
 
-### Problem
-The "Featured Trainers" section on the Player Dashboard links to `/book/{UUID}` instead of using the trainer's name-based slug. This is inconsistent with the rest of the platform.
-
-### Root Cause
-In `src/pages/PlayerDashboard.tsx`:
-1. The `fetchFeaturedTrainers` query does NOT fetch the `slug` field from `trainer_profiles`
-2. The card click handler uses `navigate('/book/${trainer.id}')` -- a raw UUID path -- instead of the marketing trainer profile path with slug
+### What
+Remove the blue gradient "Your Skill Rating" card (lines 300-325) from `src/pages/PlayerDashboard.tsx`. The Rating History Chart below it already displays the current rating and progress, making the banner redundant.
 
 ### Changes
 
 **File: `src/pages/PlayerDashboard.tsx`**
 
-1. Add `slug` to the `FeaturedTrainer` interface
-2. Add `slug` to both `trainer_profiles` SELECT queries in `fetchFeaturedTrainers` (verified and fallback)
-3. Change the Featured Trainer card `onClick` from:
-   ```
-   navigate(`/book/${trainer.id}`)
-   ```
-   to:
-   ```
-   navigate(getMarketingPath(`trainer/${trainer.slug || trainer.id}`))
-   ```
-   This links to the trainer's public profile (where they can then book), consistent with the rest of the site.
+Remove the entire Rating Card block (lines 300-325):
+```
+{/* Rating Card */}
+<Card className="mb-8 bg-gradient-to-r from-blue-500 to-blue-600 ...">
+  ...
+</Card>
+```
 
-### No other files need changes
-The other pages (`Trainers.tsx`, `TrainersCity.tsx`, `HomeFeaturedSections.tsx`, `LocationDetail.tsx`, `AcademyPublicProfile.tsx`) already correctly use the `slug || id` fallback pattern.
+The `RatingHistoryChart` component (lines 327-336) remains and continues to show the player's current rating and progress over time.
+
+### Cleanup
+- The `TrendingUp` icon import can be removed if it's no longer used elsewhere in the file.
+
