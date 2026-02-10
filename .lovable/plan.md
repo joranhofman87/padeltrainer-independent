@@ -1,31 +1,35 @@
 
 
-## Separate Trainers & Players in Academy Sidebar
+## Add "Manage Club" Button on Academy Locations Page
 
 ### What's changing
 
-The "Team" collapsible group in the academy sidebar currently groups Trainers and Players together. These will be split into two standalone top-level menu items, removing the collapsible wrapper.
+On the Academy Locations page, for locations where the current user is also a club manager, a new "Manage Club" button will appear alongside the existing "View Club" and "Edit" buttons. This gives academy owners a direct way to switch to their club dashboard without needing the profile switcher dropdown.
+
+### How it works
+
+1. When the page loads, fetch the user's club profiles (via `getUserClubProfiles`) to determine which locations they also manage as a club
+2. Build a map of `location_id -> club_profile` for quick lookup
+3. For each location card, if the user manages that location as a club, show a "Manage Club" button that navigates to `/app/club` (triggering the club context switch)
 
 ### Changes
 
-**`src/components/academy/AcademySidebar.tsx`**
+**`src/pages/academy/AcademyLocations.tsx`**
+- Import `getUserClubProfiles` from `@/lib/club` and `useAuth` hook
+- Fetch user's club profiles on mount, build a `Map<locationId, clubProfile>`
+- Pass `managedClubId` (or null) to each `LocationCard`
+- In `LocationCard`, render a "Manage Club" button (with `Building2` icon) when the location has a linked club profile, navigating to `/app/club`
 
-- Remove the `teamOpen` state and the `Collapsible` wrapper around Trainers and Players (lines 68-72, 228-277)
-- Replace with two standalone `SidebarMenuItem` entries (same pattern as Dashboard, Profile, and Locations):
-  - **Trainers** -- icon: `GraduationCap`, path: `/app/academy/trainers`
-  - **Players** -- icon: `Users`, path: `/app/academy/players`
-- Place them between Profile and the Schedule group, maintaining the current visual order
-- Remove the unused `Users` import conflict (it's used for the Team group icon) and use `GraduationCap` for Trainers and `Users` for Players
+**`src/i18n/locales/en/academy.json`**
+- Add `"manageClub": "Manage Club"` under `locations`
 
-### Result
+**`src/i18n/locales/nl/academy.json`**
+- Add `"manageClub": "Beheer Club"` under `locations`
 
-The sidebar order becomes:
-1. Dashboard
-2. Profile
-3. Trainers (standalone)
-4. Players (standalone)
-5. Schedule (collapsible)
-6. Registration (collapsible)
-7. Locations
-8. Business (collapsible)
+### UI Result
 
+The action buttons row for a claimed location will look like:
+
+`[Edit] [View Club] [Manage Club] [Delete]`
+
+The "Manage Club" button only appears for locations where the logged-in user is also a club manager. It uses a distinct style (e.g., default variant or outline with primary color) to differentiate it from "View Club" (which opens the public page).
