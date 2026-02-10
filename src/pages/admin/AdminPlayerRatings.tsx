@@ -101,8 +101,8 @@ export default function AdminPlayerRatings() {
         if (error) throw error;
       }
 
-      // If this is the latest month, also update the profile's current rating
-      const latestMonth = months[months.length - 1];
+      // If this is the latest month (first in reversed array), also update the profile's current rating
+      const latestMonth = months[0];
       if (latestMonth && isSameMonth(month, latestMonth)) {
         const { error } = await supabase
           .from("profiles")
