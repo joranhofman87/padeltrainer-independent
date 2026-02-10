@@ -66,10 +66,6 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
   const { toast } = useToast();
 
   // Track which groups are open
-  const [teamOpen, setTeamOpen] = useState(
-    location.pathname.includes("/app/academy/trainers") ||
-    location.pathname.includes("/app/academy/players")
-  );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.includes("/app/academy/calendar") ||
     location.pathname.includes("/app/academy/open-slots")
@@ -224,57 +220,33 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Team Group */}
-              <Collapsible
-                open={teamOpen && !collapsed}
-                onOpenChange={setTeamOpen}
-                className="group/team"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.team")}
-                      className={isActive("/app/academy/trainers") || isActive("/app/academy/players")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <Users className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.team")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/team:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/trainers"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.trainers")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/app/academy/players"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.players")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Trainers */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.trainers")}>
+                  <NavLink
+                    to="/app/academy/trainers"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.trainers")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Players */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.players")}>
+                  <NavLink
+                    to="/app/academy/players"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Users className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.players")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Schedule Group */}
               <Collapsible
