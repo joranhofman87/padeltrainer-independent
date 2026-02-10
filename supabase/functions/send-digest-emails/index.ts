@@ -208,7 +208,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       try {
         await resend.emails.send({
-          from: "PadelTrainer.ai <noreply@padeltrainer.ai>",
+          from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
           to: [profile.email],
           subject,
           html,

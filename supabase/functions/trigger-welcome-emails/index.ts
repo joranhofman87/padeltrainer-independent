@@ -155,7 +155,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       try {
         const emailResult = await resend.emails.send({
-          from: "PadelTrainer.ai <noreply@padeltrainer.ai>",
+          from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
           to: [queueItem.email],
           subject,
           html: body,

@@ -109,7 +109,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const emailPromises = emails.map((email: string) =>
       resend.emails.send({
-        from: "PadelTrainer <noreply@padeltrainer.ai>",
+        from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [email],
         subject: `Factuur ${invoice.invoice_number} - ${invoice.player_name} - ${formatCurrency(invoice.total)}`,
         html: `
