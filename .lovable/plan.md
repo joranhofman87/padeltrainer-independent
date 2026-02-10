@@ -1,57 +1,42 @@
 
-## Redesign Player Dashboard to Match Trainer/Academy Pattern
 
-### Overview
-Restructure the Player Dashboard to follow the same layout pattern as the Trainer and Academy dashboards: quick-action cards at the top, followed by activity tables in a 2-column grid.
+## Add "My Clubs" Card to Player Dashboard
 
-### Layout Structure
+### What
+Replace the current Waiting List card (4th position in the activity grid) with a "My Clubs" table, and move the Waiting List into a 5th card. The "My Clubs" table shows clubs the player follows (from the `club_followers` table), with each row linking to the club's location page.
+
+### Layout Change
+
+The activity grid goes from 2x2 to 2x3:
 
 ```text
-+--------------------------------------------------+
-| Welcome back, Player!                            |
-+--------------------------------------------------+
-| Rating History Chart                             |
-+--------------------------------------------------+
-| [Find Trainers] | [My Bookings] | [My Profile]  |   <-- 3 quick-action cards (top)
-+--------------------------------------------------+
-| Upcoming Bookings (table)  | Followed Trainers   |   <-- 2x2 activity tables
-|   - session, trainer, date |   (table w/ avatar)  |
-|   [View all -> bookings]   |   [View all ->       |
-|                            |    trainers page]    |
-+----------------------------+---------------------+
-| Open Slots from Followed   | Waiting List        |
-|   Trainers (table)         |   Entries            |
-|   [View all -> trainers]   |                      |
-+----------------------------+---------------------+
+| Upcoming Bookings        | Followed Trainers       |
+| Open Slots               | My Clubs (NEW)          |
+| Waiting List             |                         |
 ```
 
-### What gets removed
-- The 4 stats cards (Upcoming count, Completed, Total Bookings, Following)
-- The "Next Up" styled card with booking previews
-- The "Following" avatar chips section
-- The "Quick Actions" grid (Find Trainers, My Bookings, My Profile, Calendar Sync) -- moved to top as simpler cards
-- The "Featured Trainers" section with trainer cards
-
-### What gets added/changed
-1. **Top: 3 Quick-Action Cards** (matching Academy stats card style) -- Find Trainers, My Bookings, My Profile -- each clickable with arrow icon
-2. **Upcoming Bookings Table** -- reuse existing data, show as proper Table with columns: Session, Trainer, Date, Status. Increase limit to 10. Link "View all" to `/app/player/bookings`
-3. **Followed Trainers Table** -- show trainer name (with avatar), link to profile. "View all" links to marketing trainers page
-4. **Open Slots from Followed Trainers** -- new query: fetch upcoming public availability_slots from followed trainer IDs. Show session name, trainer, date/time. "View all" links to trainers page
-5. **Waiting List Entries** -- keep existing `MyWaitingListEntries` component in the grid
-
-### Technical Details
+### Changes
 
 **File: `src/pages/PlayerDashboard.tsx`**
 
-- Remove `FeaturedTrainer` interface and `fetchFeaturedTrainers` function
-- Remove unused state: `featuredTrainers`, `loadingTrainers`
-- Add new state: `followedTrainerSlots` for open slots from followed trainers
-- Add new fetch function `fetchFollowedTrainerSlots` that queries `availability_slots` where `trainer_id` is in the followed trainer IDs, `is_marked_full = false`, `start_time >= now`, `is_public = true`, limited to 10
-- Enrich slots with trainer names using the existing two-step profile lookup pattern
-- Update `fetchFollowedTrainers` to remove the limit of 5 (show up to 10 in table)
-- Update `fetchPlayerData` to increase upcoming bookings slice to 10 and add `status` to `UpcomingBooking` interface
-- Replace entire render section with new layout:
-  - 3 top cards in a `grid-cols-1 md:grid-cols-3` grid
-  - 4 activity sections in a `grid-cols-1 md:grid-cols-2` grid using `Table` components
-- Add imports for `Table, TableBody, TableCell, TableHead, TableHeader, TableRow` and `ArrowRight`
-- Remove unused imports: `Star`, `MapPin`, `Bell`, `Settings`, `CalendarSync`, `LanguageSwitcher`, `LogOut`, `signOut`
+1. **New interface** `PlayerClub` with fields: `id`, `clubProfileId`, `locationName`, `locationSlug`, `logoUrl`.
+
+2. **New state**: `playerClubs` and `clubsLoading`.
+
+3. **New fetch function** `fetchPlayerClubs`:
+   - Query `club_followers` where `player_id = profile.id`
+   - Join to `club_profiles(id, location_id, logo_url)` via `club_profile_id`
+   - Join to `locations(name, slug)` via `club_profiles.location_id`
+   - Map results into `PlayerClub[]`
+
+4. **Call** `fetchPlayerClubs()` in the existing `useEffect` alongside the other fetches.
+
+5. **New "My Clubs" Card** in the activity grid (4th position, before Waiting List):
+   - Header with `Building2` icon and title "My Clubs"
+   - "All clubs" button linking to the marketing locations page
+   - Table rows showing club logo (Avatar), location name, and arrow link to `/locations/{slug}`
+   - Empty state: "Not a member of any club yet"
+
+6. **Add imports**: `Building2` from lucide-react.
+
+7. **Move Waiting List** to 5th position in the grid (no changes to the component itself).
