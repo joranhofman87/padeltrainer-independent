@@ -19,6 +19,7 @@ import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 interface BookingWithDetails {
   id: string;
   status: string;
+  payment_status: string | null;
   notes: string | null;
   created_at: string;
   availability_slots: {
@@ -57,6 +58,7 @@ export default function PlayerBookings() {
       .select(`
         id,
         status,
+        payment_status,
         notes,
         created_at,
         availability_slots(
@@ -84,7 +86,7 @@ export default function PlayerBookings() {
 
     if (data) {
       const rawBookings = data as unknown as Array<{
-        id: string; status: string; notes: string | null; created_at: string;
+        id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
         availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
       }>;
 
@@ -167,6 +169,25 @@ export default function PlayerBookings() {
     }
   };
 
+  const getPaymentBadge = (paymentStatus: string | null, bookingStatus: string) => {
+    if (!paymentStatus) return null;
+    switch (paymentStatus) {
+      case 'paid':
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent">Paid</Badge>;
+      case 'waived':
+        return <Badge variant="outline">Waived</Badge>;
+      case 'refunded':
+        return <Badge variant="outline">Refunded</Badge>;
+      case 'pending':
+        if (['confirmed', 'pending', 'pending_approval'].includes(bookingStatus)) {
+          return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 border-transparent">Unpaid</Badge>;
+        }
+        return null;
+      default:
+        return null;
+    }
+  };
+
   const upcomingBookings = bookings.filter(
     (b) => b.status !== 'cancelled' && !isPast(parseISO(b.availability_slots.start_time))
   );
@@ -227,6 +248,7 @@ export default function PlayerBookings() {
                               {booking.availability_slots.cyclus_name || 'Training Session'}
                             </h3>
                             {getStatusBadge(booking.status)}
+                            {getPaymentBadge(booking.payment_status, booking.status)}
                           </div>
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
@@ -294,6 +316,7 @@ export default function PlayerBookings() {
                                 {booking.availability_slots.cyclus_name || 'Training Session'}
                               </h3>
                               {getStatusBadge(booking.status)}
+                              {getPaymentBadge(booking.payment_status, booking.status)}
                               {booking.hasReview && (
                                 <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
                                   <Star className="h-3 w-3 mr-1 fill-yellow-500" />
