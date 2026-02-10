@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2 } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { getTrialDaysRemaining, canBeVisible } from '@/lib/subscription';
-import { isTrainerInPaidAcademy } from '@/lib/academy';
+import { isTrainerInPaidAcademy, getTrainerAcademy } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 
 export default function TrainerSettings() {
@@ -22,6 +22,7 @@ export default function TrainerSettings() {
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
   const [inPaidAcademy, setInPaidAcademy] = useState(false);
+  const [hasAcademy, setHasAcademy] = useState(false);
   const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
   const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
 
@@ -39,9 +40,13 @@ export default function TrainerSettings() {
     setPlayerModeEnabled(roles.includes('player'));
   }, [roles]);
 
-  // Check academy membership for visibility eligibility
+  // Check academy membership
   useEffect(() => {
     const checkAcademy = async () => {
+      if (user) {
+        const academy = await getTrainerAcademy(user.id);
+        setHasAcademy(!!academy);
+      }
       if (!subscription?.isSubscribed && user) {
         // Only check if trainer doesn't have their own paid subscription
         const { data: trainerProfile } = await supabase
@@ -164,14 +169,14 @@ export default function TrainerSettings() {
   const visibilityStatus = getVisibilityStatus();
 
   const settingsItems = [
-    {
+    ...(!hasAcademy ? [{
       title: t('settings.subscription'),
       description: t('settings.subscriptionDescription'),
       icon: Crown,
       route: '/trainer/subscription',
       iconBg: 'bg-purple-500/10',
       iconColor: 'text-purple-600',
-    },
+    }] : []),
     {
       title: t('settings.profile'),
       description: t('settings.profileDescription'),
@@ -278,6 +283,18 @@ export default function TrainerSettings() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Academy Info */}
+        {hasAcademy && (
+          <div className="max-w-4xl mb-8">
+            <Alert>
+              <Building2 className="h-4 w-4" />
+              <AlertDescription>
+                {t('settings.managedByAcademy', 'Your subscription and payments are managed by your academy.')}
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
 
         {/* Player Mode Section */}
         <div className="max-w-4xl mb-8">

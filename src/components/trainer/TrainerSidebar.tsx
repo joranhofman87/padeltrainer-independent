@@ -460,17 +460,19 @@ export function TrainerSidebar() {
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/trainer/subscription"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.subscription")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
+                      {!hasAcademy && (
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton asChild>
+                            <NavLink
+                              to="/trainer/subscription"
+                              className="flex items-center gap-2"
+                              activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                            >
+                              {t("nav.subscription")}
+                            </NavLink>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      )}
                       {!hasAcademy && (
                         <SidebarMenuSubItem>
                           <SidebarMenuSubButton asChild>
