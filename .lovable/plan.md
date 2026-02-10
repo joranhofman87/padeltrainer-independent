@@ -1,26 +1,40 @@
 
 
-## Widen Extra Costs Inputs in CycleForm
+## Add "Mark as Paid" Option to Training Cycle Form
 
-### Problem
+### What this does
 
-The extra cost description and price inputs are too small compared to the "Price per session" and "Total cyclus price" fields above them. The description field uses `flex-1` and the price field is only `w-24` (6rem), making them look cramped.
-
-### Solution
-
-Change the extra costs row layout to use a `grid grid-cols-2 gap-3` layout (same as the pricing fields above), giving both the description and price inputs equal, full-width columns. The delete button stays at the end.
+When creating or editing a training cycle (cyclus), trainers and academy managers will see a new "Mark as paid" toggle. When enabled, this flag is saved on the cycle so that any bookings created for this cycle (via the calendar slot creation flow or duplication) are automatically marked as paid externally.
 
 ### Changes
 
-**`src/components/cycles/CycleForm.tsx`** (line 740)
+#### 1. `src/lib/cycles.ts` - Add `mark_as_paid` to CycleSettings type
 
-- Change the row container from `flex items-center gap-2` to `grid grid-cols-[1fr_1fr_auto] items-center gap-3`
-- Remove `className="flex-1"` from the description input (grid handles sizing)
-- Remove `className="w-24"` from the price input
-- Add a euro prefix label to the price input to match the screenshot context
+Add `mark_as_paid?: boolean` to the `CycleSettings` interface so it's stored in the cycle's settings JSON.
 
-This gives both inputs roughly equal width, matching the two pricing fields above, with the trash icon in a small auto-sized column.
+#### 2. `src/components/cycles/CycleForm.tsx` - Add the toggle UI + persist it
+
+- Add a `markAsPaid` state variable (similar to `allowSingleBooking`), initialized from `cycle?.settings?.mark_as_paid`
+- Reset it when the form opens (in the existing `useEffect`)
+- Include `mark_as_paid: markAsPaid` in the `settings` object in `onSubmit`
+- Add a toggle UI (checkbox with Euro icon) in the pricing section, after the "Allow single booking" toggle, only for `cyclus` type (not `registration`). Use the same visual pattern as `AddSlotDialog` and `DuplicateCyclusDialog`:
+
+```text
+[checkbox] [Euro icon] Mark as paid
+            Payment was handled outside the platform (e.g. cash, bank transfer)
+```
+
+#### 3. `src/components/trainer/AddSlotDialog.tsx` - Read cycle's mark_as_paid setting
+
+When creating a cyclus via `AddSlotDialog`, if the cycle has `mark_as_paid` in settings, pre-fill the `markAsPaid` field on the slot config so bookings inherit the paid status automatically. (This is already handled per-slot; the cycle setting just provides a default.)
+
+#### 4. Translation files (already have the keys)
+
+The existing keys `calendar.markAsPaid` and `calendar.markAsPaidHint` in both `en/trainer.json` and `nl/trainer.json` will be reused.
 
 ### Files to modify
-- `src/components/cycles/CycleForm.tsx` (lines 740-772, update grid layout and input classes)
+
+- `src/lib/cycles.ts` (add 1 field to CycleSettings interface)
+- `src/components/cycles/CycleForm.tsx` (add state, toggle UI, persist in settings)
+- `src/components/trainer/AddSlotDialog.tsx` (read cycle's mark_as_paid as default for slot bookings)
 
