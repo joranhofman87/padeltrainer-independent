@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation";
   to: string;
   userId?: string;
   to: string;
@@ -613,6 +613,31 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         `,
       };
 
+    case "intake_registration_confirmation":
+      return {
+        subject: `Registration Confirmed${data.cycleName ? `: ${data.cycleName}` : ''} 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">You've Been Registered! 🎾</h1>
+            <p>Hi ${data.playerName},</p>
+            <p>You have been registered for a training program${data.cycleName ? `: <strong>${data.cycleName}</strong>` : ''}.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              ${data.cycleName ? `<h3 style="margin-top: 0;">${data.cycleName}</h3>` : ''}
+              <p>Your registration has been submitted and you'll be contacted with further details about your training schedule.</p>
+            </div>
+            ${(data as any).isNewUser ? `
+              <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${BRAND_ORANGE};">
+                <p style="margin: 0 0 8px 0; font-weight: bold;">An account has been created for you</p>
+                <p style="margin: 0;">You can log in at <a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE};">padeltrainer.ai</a> using your email address. Use "Forgot password" to set your own password.</p>
+              </div>
+            ` : ''}
+            <p>If you have any questions, please contact your trainer or academy directly.</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+
     default:
       return {
         subject: "PadelTrainer.ai Notification",
@@ -893,6 +918,7 @@ const handler = async (req: Request): Promise<Response> => {
       "club_trainer_invitation", "club_trainer_invitation_accepted",
       "partner_inquiry", "location_request",
       "booking_approved_payment", "booking_approved_invoice", "booking_rejected",
+      "intake_registration_confirmation",
     ];
 
     const prefColumn = TYPE_TO_PREF_COLUMN[type];

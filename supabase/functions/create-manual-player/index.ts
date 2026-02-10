@@ -51,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const { email, fullName, phone, ratingSystem, rating } = await req.json();
+    const { email, fullName, phone, ratingSystem, rating, cycleName } = await req.json();
 
     if (!email || !fullName) {
       return new Response(
@@ -139,6 +139,24 @@ serve(async (req) => {
       }
 
       profileId = newProfile.id;
+    }
+
+    // Send confirmation email to the player
+    try {
+      await supabaseAdmin.functions.invoke('send-email', {
+        body: {
+          type: 'intake_registration_confirmation',
+          to: email,
+          data: {
+            playerName: fullName,
+            cycleName: cycleName || '',
+            isNewUser,
+          },
+        },
+      });
+    } catch (emailError) {
+      console.error("Failed to send confirmation email:", emailError);
+      // Don't fail the whole request if email fails
     }
 
     return new Response(
