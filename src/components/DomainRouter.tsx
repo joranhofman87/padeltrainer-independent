@@ -104,6 +104,8 @@ import AcademySubscription from '@/pages/academy/AcademySubscription';
 import AcademyTrainerInvitation from '@/pages/academy/AcademyTrainerInvitation';
 import AcademyEarnings from '@/pages/academy/AcademyEarnings';
 import AcademyWaitingList from '@/pages/academy/AcademyWaitingList';
+import AcademyPlayers from '@/pages/academy/AcademyPlayers';
+import AcademyOpenSlots from '@/pages/academy/AcademyOpenSlots';
 import NotFound from '@/pages/NotFound';
 
 /**
@@ -213,6 +215,8 @@ export function DomainRouter() {
         <Route index element={<AcademyDashboard />} />
         <Route path="profile" element={<AcademyProfile />} />
         <Route path="trainers" element={<AcademyTrainers />} />
+        <Route path="players" element={<AcademyPlayers />} />
+        <Route path="open-slots" element={<AcademyOpenSlots />} />
         <Route path="locations" element={<AcademyLocations />} />
         <Route path="cycles" element={<AcademyCycles />} />
         <Route path="calendar" element={<AcademyCalendar />} />
