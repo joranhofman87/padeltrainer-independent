@@ -602,6 +602,7 @@ export type Database = {
           cyclus_id: string | null
           cyclus_name: string | null
           end_time: string
+          extra_costs: Json | null
           id: string
           is_marked_full: boolean
           is_public: boolean
@@ -624,6 +625,7 @@ export type Database = {
           cyclus_id?: string | null
           cyclus_name?: string | null
           end_time: string
+          extra_costs?: Json | null
           id?: string
           is_marked_full?: boolean
           is_public?: boolean
@@ -646,6 +648,7 @@ export type Database = {
           cyclus_id?: string | null
           cyclus_name?: string | null
           end_time?: string
+          extra_costs?: Json | null
           id?: string
           is_marked_full?: boolean
           is_public?: boolean
