@@ -1,42 +1,37 @@
 
-
-## Add "My Clubs" Card to Player Dashboard
+## Bundle Cycle Slots in Open Slots Card
 
 ### What
-Replace the current Waiting List card (4th position in the activity grid) with a "My Clubs" table, and move the Waiting List into a 5th card. The "My Clubs" table shows clubs the player follows (from the `club_followers` table), with each row linking to the club's location page.
+Currently, the Open Slots card on the Player Dashboard shows every individual slot separately -- so a 10-week cycle shows as 10 rows. Instead, slots sharing the same `cyclus_id` should be grouped into a single summary row (e.g., "Beginners Course - 8 sessions starting Mon, Mar 3"). Standalone slots (no `cyclus_id`) remain as individual rows.
 
-### Layout Change
+### How it works
 
-The activity grid goes from 2x2 to 2x3:
+1. **Fetch additional fields**: Add `cyclus_id` and `allow_single_booking` to the query on `availability_slots`.
 
-```text
-| Upcoming Bookings        | Followed Trainers       |
-| Open Slots               | My Clubs (NEW)          |
-| Waiting List             |                         |
-```
+2. **Group by `cyclus_id`**: After fetching, group slots that share the same `cyclus_id`. Standalone slots (null `cyclus_id`) stay individual.
+
+3. **Build display items**: For each cycle group, create a single summary row showing:
+   - Cycle name
+   - Number of sessions (e.g., "8 sessions")
+   - First session date ("Starting Mon, Mar 3")
+   - Trainer name and location
+   
+   For standalone slots, keep the current per-slot display.
+
+4. **Update the interface**: Replace `FollowedTrainerSlot` with a union-style interface that supports both types:
+   - `type: 'slot'` -- individual slot (current behavior)
+   - `type: 'cycle'` -- bundled cycle with `sessionCount` and `startTime` of first session
+
+5. **Navigation**: Clicking a cycle row navigates to the trainer profile (same as now), where the full cycle details are visible.
 
 ### Changes
 
 **File: `src/pages/PlayerDashboard.tsx`**
 
-1. **New interface** `PlayerClub` with fields: `id`, `clubProfileId`, `locationName`, `locationSlug`, `logoUrl`.
-
-2. **New state**: `playerClubs` and `clubsLoading`.
-
-3. **New fetch function** `fetchPlayerClubs`:
-   - Query `club_followers` where `player_id = profile.id`
-   - Join to `club_profiles(id, location_id, logo_url)` via `club_profile_id`
-   - Join to `locations(name, slug)` via `club_profiles.location_id`
-   - Map results into `PlayerClub[]`
-
-4. **Call** `fetchPlayerClubs()` in the existing `useEffect` alongside the other fetches.
-
-5. **New "My Clubs" Card** in the activity grid (4th position, before Waiting List):
-   - Header with `Building2` icon and title "My Clubs"
-   - "All clubs" button linking to the marketing locations page
-   - Table rows showing club logo (Avatar), location name, and arrow link to `/locations/{slug}`
-   - Empty state: "Not a member of any club yet"
-
-6. **Add imports**: `Building2` from lucide-react.
-
-7. **Move Waiting List** to 5th position in the grid (no changes to the component itself).
+- Update `FollowedTrainerSlot` interface: add `type` ('slot' | 'cycle'), `sessionCount`, and `cyclusId` fields.
+- Update the `select` query to include `cyclus_id, allow_single_booking`.
+- After enrichment, group slots by `cyclus_id`:
+  - If `cyclus_id` is null or `allow_single_booking` is true: keep as individual `type: 'slot'` entries.
+  - Otherwise: collapse into one `type: 'cycle'` entry per `cyclus_id`, using the earliest `start_time` and total count.
+- Increase the raw query limit (to ~50) since grouping reduces the final count, then cap displayed items at 10.
+- Update the table rendering: cycle rows show "Cycle name - N sessions" with "Starting [date]" instead of a single date/time.
