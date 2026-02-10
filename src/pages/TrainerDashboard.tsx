@@ -79,7 +79,7 @@ export default function TrainerDashboard() {
           id, status, payment_status, created_at,
           profiles:player_id (full_name),
           guest_players:guest_player_id (full_name),
-          availability_slots!inner (trainer_id, start_time)
+          availability_slots!inner (trainer_id, start_time, cyclus_name)
         `)
         .eq('availability_slots.trainer_id', trainerId)
         .order('created_at', { ascending: false })
@@ -99,17 +99,34 @@ export default function TrainerDashboard() {
       // Upcoming Open Spots (next 10 available slots)
       const { data: slots } = await supabase
         .from('availability_slots')
-        .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, locations:location_id (name)')
+        .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, cyclus_id, locations:location_id (name)')
         .eq('trainer_id', trainerId)
         .eq('is_marked_full', false)
         .gte('start_time', now)
         .order('start_time', { ascending: true })
-        .limit(10);
+        .limit(50);
+
+      // Group upcoming slots by cyclus_id
+      const rawSlots = slots || [];
+      const grouped: any[] = [];
+      const cyclusMap = new Map<string, any>();
+      for (const slot of rawSlots) {
+        if (slot.cyclus_id) {
+          if (!cyclusMap.has(slot.cyclus_id)) {
+            cyclusMap.set(slot.cyclus_id, { ...slot, sessionCount: 1 });
+            grouped.push(cyclusMap.get(slot.cyclus_id));
+          } else {
+            cyclusMap.get(slot.cyclus_id)!.sessionCount++;
+          }
+        } else {
+          grouped.push({ ...slot, sessionCount: 1 });
+        }
+      }
 
       setRecentPlayers(players || []);
       setRecentBookings(bookings || []);
       setRecentRegistrations(registrations || []);
-      setUpcomingSlots(slots || []);
+      setUpcomingSlots(grouped);
     } catch (error) {
       logger.error('Error fetching activity data', error as Error, { component: 'TrainerDashboard' });
     }
@@ -352,20 +369,23 @@ export default function TrainerDashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">{t('bookings.player')}</TableHead>
+                    <TableHead className="text-xs">{t('cycles.cyclus', 'Cyclus')}</TableHead>
                     <TableHead className="text-xs">{t('players.addedOn')}</TableHead>
-                    <TableHead className="text-xs">{t('players.status')}</TableHead>
+                    <TableHead className="text-xs">{t('bookings.payment', 'Payment')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {recentBookings.map(booking => {
                     const playerName = (booking.profiles as any)?.full_name || (booking.guest_players as any)?.full_name || '—';
+                    const cyclusName = (booking.availability_slots as any)?.cyclus_name || '—';
                     return (
                       <TableRow key={booking.id}>
                         <TableCell className="text-sm py-2">{playerName}</TableCell>
+                        <TableCell className="text-sm py-2 text-muted-foreground">{cyclusName}</TableCell>
                         <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
                         <TableCell className="py-2">
-                          <Badge variant={booking.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
-                            {booking.status}
+                          <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
+                            {booking.payment_status}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -434,25 +454,24 @@ export default function TrainerDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">{t('calendar.title')}</TableHead>
-                    <TableHead className="text-xs">{t('lessons.form.location')}</TableHead>
-                    <TableHead className="text-xs">{t('lessons.form.maxParticipants')}</TableHead>
+                    <TableHead className="text-xs">{t('cycles.name', 'Name')}</TableHead>
+                    <TableHead className="text-xs">{t('dashboard.sessions', 'Sessions')}</TableHead>
+                    <TableHead className="text-xs">{t('dashboard.nextSession', 'Next session')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upcomingSlots.map(slot => {
-                    const location = slot.locations as { name: string } | null;
-                    return (
-                      <TableRow key={slot.id}>
-                        <TableCell className="text-sm py-2">
-                          <div>{format(new Date(slot.start_time), 'EEE dd MMM')}</div>
-                          <div className="text-xs text-muted-foreground">{format(new Date(slot.start_time), 'HH:mm')} - {format(new Date(slot.end_time), 'HH:mm')}</div>
-                        </TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{location?.name || '—'}</TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{slot.max_participants || '—'}</TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {upcomingSlots.map((slot, idx) => (
+                    <TableRow key={slot.cyclus_id || slot.id}>
+                      <TableCell className="text-sm py-2">{slot.cyclus_name || '—'}</TableCell>
+                      <TableCell className="text-sm py-2 text-muted-foreground">
+                        {slot.sessionCount} {slot.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')}
+                      </TableCell>
+                      <TableCell className="text-sm py-2 text-muted-foreground">
+                        <div>{format(new Date(slot.start_time), 'EEE dd MMM')}</div>
+                        <div className="text-xs">{format(new Date(slot.start_time), 'HH:mm')}</div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             )}
