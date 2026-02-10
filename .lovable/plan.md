@@ -1,21 +1,30 @@
 
 
-## Replace Email Logo with Official PNG
+## Fix: Use Trainer Slugs Instead of UUIDs in Player Dashboard
 
-### What
-Replace the AI-generated `public/logo-dark.png` with the uploaded official logo (image 2: `user-uploads://2.png`), which shows the full "PadelTrainer.ai" text clearly on a white background.
+### Problem
+The "Featured Trainers" section on the Player Dashboard links to `/book/{UUID}` instead of using the trainer's name-based slug. This is inconsistent with the rest of the platform.
 
-### Why image 2
-- Image 1 has transparent background -- the dark "PadelTrainer." text is invisible on white email backgrounds
-- Image 2 has white background with the full logo visible -- perfect for emails since they have white backgrounds
+### Root Cause
+In `src/pages/PlayerDashboard.tsx`:
+1. The `fetchFeaturedTrainers` query does NOT fetch the `slug` field from `trainer_profiles`
+2. The card click handler uses `navigate('/book/${trainer.id}')` -- a raw UUID path -- instead of the marketing trainer profile path with slug
 
-### Steps
-1. Copy `user-uploads://2.png` to `public/logo-dark.png` (overwriting the AI-generated version)
-2. No edge function changes needed -- they already reference `https://padeltrainer.ai/logo-dark.png`
-3. Deploy and send a test email to verify it renders correctly on iPhone/Gmail
+### Changes
 
-### Files changed
-| File | Change |
-|------|--------|
-| `public/logo-dark.png` | Replace with uploaded official logo |
+**File: `src/pages/PlayerDashboard.tsx`**
 
+1. Add `slug` to the `FeaturedTrainer` interface
+2. Add `slug` to both `trainer_profiles` SELECT queries in `fetchFeaturedTrainers` (verified and fallback)
+3. Change the Featured Trainer card `onClick` from:
+   ```
+   navigate(`/book/${trainer.id}`)
+   ```
+   to:
+   ```
+   navigate(getMarketingPath(`trainer/${trainer.slug || trainer.id}`))
+   ```
+   This links to the trainer's public profile (where they can then book), consistent with the rest of the site.
+
+### No other files need changes
+The other pages (`Trainers.tsx`, `TrainersCity.tsx`, `HomeFeaturedSections.tsx`, `LocationDetail.tsx`, `AcademyPublicProfile.tsx`) already correctly use the `slug || id` fallback pattern.
