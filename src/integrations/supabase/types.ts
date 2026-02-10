@@ -3848,6 +3848,7 @@ export type Database = {
           use_manual_invoicing: boolean | null
           user_id: string | null
           video_url: string | null
+          waiting_list_enabled: boolean | null
           website_url: string | null
         }
         Insert: {
@@ -3880,6 +3881,7 @@ export type Database = {
           use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
+          waiting_list_enabled?: boolean | null
           website_url?: string | null
         }
         Update: {
@@ -3912,6 +3914,7 @@ export type Database = {
           use_manual_invoicing?: boolean | null
           user_id?: string | null
           video_url?: string | null
+          waiting_list_enabled?: boolean | null
           website_url?: string | null
         }
         Relationships: []
