@@ -111,14 +111,14 @@ export default function TrainerDashboard() {
       const { data: bookings } = await supabase
         .from('bookings')
         .select(`
-          id, status, payment_status, created_at,
+          id, status, payment_status, created_at, player_id, guest_player_id,
           profiles:player_id (full_name),
           guest_players:guest_player_id (full_name),
           availability_slots!inner (trainer_id, start_time, cyclus_name)
         `)
         .eq('availability_slots.trainer_id', trainerId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(50);
 
       // Registrations (intake_requests via cycles owned by trainer)
       const { data: registrations } = await supabase
@@ -181,7 +181,7 @@ export default function TrainerDashboard() {
         }
       }
 
-      setRecentBookings(groupedBookings);
+      setRecentBookings(groupedBookings.slice(0, 10));
       setRecentRegistrations(registrations || []);
       setUpcomingSlots(grouped);
     } catch (error) {
