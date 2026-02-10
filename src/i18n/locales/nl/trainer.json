@@ -47,6 +47,12 @@
   "dashboard": {
     "welcome": "Welkom terug, Coach {{name}}! 💪",
     "subtitle": "Beheer je trainingssessies, bekijk boekingen en laat je padeltraining-bedrijf groeien",
+    "recentPlayers": "Recente Spelers",
+    "recentBookings": "Recente Boekingen",
+    "registrations": "Inschrijvingen",
+    "upcomingSpots": "Aankomende Open Plekken",
+    "viewAll": "Bekijk alles",
+    "noRegistrations": "Nog geen inschrijvingen",
     "createLesson": "Sessie Aanmaken",
     "trialBanner": {
       "daysLeft": "Nog {{days}} dagen in je gratis proefperiode",

@@ -47,6 +47,12 @@
   "dashboard": {
     "welcome": "Welcome back, Coach {{name}}! 💪",
     "subtitle": "Manage your training sessions, view bookings, and grow your padel training business",
+    "recentPlayers": "Recent Players",
+    "recentBookings": "Recent Bookings",
+    "registrations": "Registrations",
+    "upcomingSpots": "Upcoming Open Spots",
+    "viewAll": "View all",
+    "noRegistrations": "No registrations yet",
     "createLesson": "Create Session",
     "trialBanner": {
       "daysLeft": "{{days}} days left in your free trial",

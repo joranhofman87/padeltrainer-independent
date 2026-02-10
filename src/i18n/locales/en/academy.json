@@ -10,6 +10,12 @@
     "noAcademies": "You haven't created any academies yet.",
     "createAcademy": "Create an Academy",
     "viewPublicProfile": "View Public Profile",
+    "recentPlayers": "Recent Players",
+    "recentBookings": "Recent Bookings",
+    "registrations": "Registrations",
+    "upcomingSpots": "Upcoming Open Spots",
+    "viewAll": "View all",
+    "noData": "No data yet",
     "public": "Public"
   },
   "stats": {
