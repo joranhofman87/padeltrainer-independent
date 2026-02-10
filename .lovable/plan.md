@@ -1,51 +1,63 @@
 
 
-## Add "Mark as Paid" Option to Slot and Cyclus Creation
+## Fix Light Mode Issues in Sidebar
 
-### Overview
-Allow trainers and academies to mark bookings as already paid when creating slots or training cycles with players. This is for cases where payment was handled outside the platform (cash, bank transfer, etc.). These bookings will be visually distinguished from Mollie-processed payments throughout the dashboard.
+### Problem
+The sidebar has a dark background in **both** light and dark modes (by design -- navy sidebar). However, two elements don't account for this:
 
-### Database Changes
+1. **Logo**: The `Logo` component picks `logo-dark.svg` in light mode (designed for light backgrounds), but the sidebar background is always dark. Result: dark logo on dark background = invisible.
 
-Add a `paid_externally` boolean column (default `false`) to the `bookings` table. This allows the system to differentiate between payments processed through the platform (Mollie) and payments handled outside.
+2. **"View Public Profile" button**: Uses `variant="outline"`, which inherits light-mode colors (`bg-background` = white, light border). On the dark sidebar, this creates a jarring white button that doesn't match.
 
-```sql
-ALTER TABLE public.bookings ADD COLUMN paid_externally boolean DEFAULT false;
-```
+### Solution
 
-### UI Changes
+**1. Logo -- always use the light variant in sidebars**
 
-**1. BulkCreateSheet (Training Cycle creation) -- `src/components/trainer/AddSlotDialog.tsx`**
+Update the `Logo` component to accept an optional `forceDark` prop (or similar like `variant`). When used inside sidebars, pass this prop so it always renders `logo-light.svg` (the one designed for dark backgrounds), since the sidebar is always dark.
 
-- Add `markAsPaid` boolean to the `BulkSlotConfig` interface (default `false`)
-- Add a checkbox at the bottom of each slot config (near the existing "Mark as private" checkbox): "Mark bookings as paid (payment handled externally)"
-- Only show this checkbox when `addPlayers` is enabled and at least one player is selected
-- When generating bookings, set `payment_status: "paid"`, `paid_at: now()`, and `paid_externally: true` instead of `payment_status: "pending"`
+Affected files:
+- `src/components/Logo.tsx` -- add `variant?: 'auto' | 'light' | 'dark'` prop
+- `src/components/trainer/TrainerSidebar.tsx` -- pass `variant="dark"` to Logo
+- `src/components/player/PlayerSidebar.tsx` -- pass `variant="dark"` to Logo
+- `src/components/academy/AcademySidebar.tsx` -- pass `variant="dark"` to Logo (if it uses Logo)
+- `src/components/club/ClubSidebar.tsx` -- pass `variant="dark"` to Logo (if it uses Logo)
+- `src/components/admin/AdminSidebar.tsx` -- pass `variant="dark"` to Logo (if it uses Logo)
 
-**2. DuplicateCyclusDialog -- `src/components/trainer/DuplicateCyclusDialog.tsx`**
+**2. "View Public Profile" button -- use sidebar-compatible styling**
 
-- Add a `markAsPaid` checkbox when `includeExistingPlayers` is enabled
-- When creating duplicated bookings with this flag, set `payment_status: "paid"`, `paid_at: now()`, `paid_externally: true`
+Change the button from `variant="outline"` to `variant="ghost"` and add sidebar-friendly text color classes so it blends with the dark sidebar in both themes.
 
-**3. Dashboard Display Differentiation**
-
-Update payment status badges in the following locations to show "Paid (external)" instead of just "Paid" when `paid_externally` is true:
-- `src/pages/TrainerEarnings.tsx` -- earnings history and pending payments lists
-- `src/pages/academy/AcademyDashboard.tsx` -- recent bookings table
-- `src/components/trainer/UnpaidBookingsCard.tsx` -- exclude externally-paid bookings from unpaid list
-- `src/components/trainer/EditBookingDialog.tsx` -- show indicator when viewing externally-paid booking
-
-### Translation Keys (EN and NL, `trainer` namespace)
-
-- `calendar.markAsPaid` -- "Mark as paid"
-- `calendar.markAsPaidHint` -- "Payment was handled outside the platform (e.g. cash, bank transfer)"
-- `bookings.paidExternally` -- "Paid (external)"
+Affected files:
+- `src/components/trainer/TrainerSidebar.tsx` -- update button variant and add `text-sidebar-foreground` class
 
 ### Technical Details
 
-- The `BulkSlotConfig` interface gets a new `markAsPaid: boolean` field (default `false`)
-- The checkbox only appears conditionally when players are being added to the slot/cyclus
-- When `markAsPaid` is true, the booking insert uses `payment_status: "paid"`, `paid_at: new Date().toISOString()`, `paid_externally: true`
-- The `paid_externally` flag is purely informational -- it does not change any payment processing logic
-- Existing payment status select in EditBookingDialog continues to work as before; when manually marking as paid there, `paid_externally` remains false (since it is a platform action)
+**Logo component change:**
+```tsx
+interface LogoProps {
+  className?: string;
+  variant?: 'auto' | 'dark';  // 'dark' = always show light logo (for dark backgrounds)
+}
+
+export function Logo({ className = 'h-7', variant = 'auto' }: LogoProps) {
+  const { resolvedTheme } = useTheme();
+  const src = variant === 'dark'
+    ? logoLight
+    : resolvedTheme === 'dark' ? logoLight : logoDark;
+  // ...
+}
+```
+
+**Button change:**
+```tsx
+<Button
+  variant="ghost"
+  size={collapsed ? "icon" : "sm"}
+  className={cn(
+    collapsed ? "h-8 w-8" : "w-full justify-start",
+    "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+  )}
+  onClick={handleViewPublicProfile}
+>
+```
 
