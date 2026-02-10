@@ -1,37 +1,21 @@
 
 
-## Fix: Replace SVG Logo with PNG in All Emails
+## Replace Email Logo with Official PNG
 
-### Problem
-The logo in emails uses an SVG file (`logo-dark.svg`), which Gmail, Outlook, and most email clients do not render. This causes a broken image icon on iPhone/Gmail.
+### What
+Replace the AI-generated `public/logo-dark.png` with the uploaded official logo (image 2: `user-uploads://2.png`), which shows the full "PadelTrainer.ai" text clearly on a white background.
 
-### Solution
-1. **Create a PNG version** of the logo and place it at `public/logo-dark.png`
-2. **Update the `EMAIL_LOGO` constant** in all 5 edge functions to reference the PNG instead of the SVG
+### Why image 2
+- Image 1 has transparent background -- the dark "PadelTrainer." text is invisible on white email backgrounds
+- Image 2 has white background with the full logo visible -- perfect for emails since they have white backgrounds
 
-### How the PNG will be created
-We'll convert the existing `src/assets/logo-dark.svg` to a high-quality PNG (440px wide for 2x retina clarity at the 220px display width). This will be placed at `public/logo-dark.png` so it's served at `https://padeltrainer.ai/logo-dark.png`.
+### Steps
+1. Copy `user-uploads://2.png` to `public/logo-dark.png` (overwriting the AI-generated version)
+2. No edge function changes needed -- they already reference `https://padeltrainer.ai/logo-dark.png`
+3. Deploy and send a test email to verify it renders correctly on iPhone/Gmail
 
-### Files to update
-
-All 5 files contain the same `EMAIL_LOGO` constant pointing to the SVG. Each will be updated:
-
+### Files changed
 | File | Change |
 |------|--------|
-| `supabase/functions/send-email/index.ts` | Update `EMAIL_LOGO` SVG URL to PNG |
-| `supabase/functions/send-auth-email/index.ts` | Same |
-| `supabase/functions/signup-user/index.ts` | Same |
-| `supabase/functions/send-digest-emails/index.ts` | Same |
-| `supabase/functions/forward-invoice/index.ts` | Same |
+| `public/logo-dark.png` | Replace with uploaded official logo |
 
-The change in each file is a single line -- replacing:
-```
-logo-dark.svg
-```
-with:
-```
-logo-dark.png
-```
-
-### After deployment
-All 5 functions will be redeployed and a test email sent to verify the logo renders correctly in Gmail on iPhone.
