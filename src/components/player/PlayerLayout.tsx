@@ -7,20 +7,20 @@ import { PlayerSidebar } from '@/components/player/PlayerSidebar';
 
 export default function PlayerLayout() {
   const navigate = useNavigate();
-  const { user, role, loading } = useAuth();
+  const { user, roles, loading } = useAuth();
 
-  // Auth guard
+  // Auth guard - allow player, trainer (with player role), and admin
   useEffect(() => {
     if (!loading) {
       if (!user) {
         navigate('/app/auth');
-      } else if (!role) {
+      } else if (roles.length === 0) {
         navigate('/app/auth');
-      } else if (role !== 'player' && role !== 'admin') {
-        navigate('/app/trainer');
+      } else if (!roles.includes('player') && !roles.includes('trainer') && !roles.includes('admin')) {
+        navigate('/app/auth');
       }
     }
-  }, [user, role, loading, navigate]);
+  }, [user, roles, loading, navigate]);
 
   if (loading) {
     return (
