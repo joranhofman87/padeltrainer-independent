@@ -197,7 +197,14 @@
     "description": "Mensen die deze academy kunnen beheren.",
     "owner": "Eigenaar",
     "manager": "Beheerder",
-    "noManagers": "Geen beheerders gevonden"
+    "noManagers": "Geen beheerders gevonden",
+    "addManager": "Beheerder Toevoegen",
+    "selectTrainer": "Selecteer een trainer...",
+    "added": "Beheerder succesvol toegevoegd",
+    "removed": "Beheerder verwijderd",
+    "remove": "Verwijderen",
+    "confirmRemove": "Weet je zeker dat je deze beheerder wilt verwijderen?",
+    "noTrainersAvailable": "Geen trainers beschikbaar om toe te voegen"
   },
   "settings": {
     "dangerZone": "Gevaarlijke Zone",
