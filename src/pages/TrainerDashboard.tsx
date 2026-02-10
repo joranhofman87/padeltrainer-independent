@@ -124,7 +124,29 @@ export default function TrainerDashboard() {
       }
 
       setRecentPlayers(players || []);
-      setRecentBookings(bookings || []);
+
+      // Group bookings by cyclus + player to show cyclus bookings as one row
+      const rawBookings = bookings || [];
+      const groupedBookings: any[] = [];
+      const cyclusPlayerMap = new Map<string, any>();
+      for (const b of rawBookings) {
+        const slot = b.availability_slots as any;
+        const cyclusName = slot?.cyclus_name;
+        const playerId = (b as any).player_id || (b as any).guest_player_id || '';
+        if (cyclusName && playerId) {
+          const key = `${cyclusName}::${playerId}`;
+          if (!cyclusPlayerMap.has(key)) {
+            cyclusPlayerMap.set(key, { ...b, sessionCount: 1 });
+            groupedBookings.push(cyclusPlayerMap.get(key));
+          } else {
+            cyclusPlayerMap.get(key)!.sessionCount++;
+          }
+        } else {
+          groupedBookings.push({ ...b, sessionCount: 1 });
+        }
+      }
+
+      setRecentBookings(groupedBookings);
       setRecentRegistrations(registrations || []);
       setUpcomingSlots(grouped);
     } catch (error) {
@@ -377,11 +399,15 @@ export default function TrainerDashboard() {
                 <TableBody>
                   {recentBookings.map(booking => {
                     const playerName = (booking.profiles as any)?.full_name || (booking.guest_players as any)?.full_name || '—';
-                    const cyclusName = (booking.availability_slots as any)?.cyclus_name || '—';
+                    const cyclusName = (booking.availability_slots as any)?.cyclus_name;
                     return (
                       <TableRow key={booking.id}>
                         <TableCell className="text-sm py-2">{playerName}</TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{cyclusName}</TableCell>
+                        <TableCell className="text-sm py-2 text-muted-foreground">
+                          {cyclusName ? (
+                            <span>{cyclusName} <span className="text-xs">({booking.sessionCount} {booking.sessionCount === 1 ? t('dashboard.session', 'session') : t('dashboard.sessions', 'sessions')})</span></span>
+                          ) : '—'}
+                        </TableCell>
                         <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
                         <TableCell className="py-2">
                           <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
