@@ -1,0 +1,95 @@
+{
+  "notifications": {
+    "title": "Notification Settings",
+    "heading": "Email Notifications",
+    "subtitle": "Choose how and when you receive email notifications from PadelTrainer.ai.",
+    "saved": "Notification preferences saved!",
+    "saveError": "Error saving preferences",
+    "securityNote": "Essential account and security notifications cannot be disabled.",
+    "frequency": {
+      "instant": "Instant",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "off": "Off"
+    },
+    "categories": {
+      "bookings": "Bookings",
+      "bookingsDesc": "Notifications about your training sessions",
+      "bookingsDescTrainer": "Notifications when players book or cancel",
+      "availability": "Availability",
+      "availabilityDesc": "Updates about open slots from trainers you follow",
+      "schedule": "Schedule",
+      "scheduleDesc": "Overview of your upcoming training sessions",
+      "scheduleDescTrainer": "Overview of your upcoming coaching schedule",
+      "payments": "Payments",
+      "paymentsDesc": "Payment confirmations and receipts",
+      "paymentsDescTrainer": "Notifications when you receive payments",
+      "waitlist": "Waitlist",
+      "waitlistDesc": "Updates when spots become available",
+      "players": "Players",
+      "playersDesc": "Notifications about new followers and players",
+      "registrations": "Registrations",
+      "registrationsDesc": "Cycle and session registration notifications",
+      "reviews": "Reviews",
+      "reviewsDesc": "Notifications when players leave reviews"
+    },
+    "types": {
+      "booking_confirmation": {
+        "label": "Booking Confirmations",
+        "description": "Get notified when a session is booked"
+      },
+      "booking_reminder": {
+        "label": "Session Reminders",
+        "description": "Receive a reminder before your session"
+      },
+      "open_slots_digest": {
+        "label": "Open Slots from Followed Trainers",
+        "description": "Updates when trainers you follow add new slots"
+      },
+      "upcoming_sessions_digest": {
+        "label": "Upcoming Sessions Overview",
+        "description": "Summary of your upcoming training sessions"
+      },
+      "payment_receipt": {
+        "label": "Payment Receipts",
+        "description": "Confirmation after successful payment"
+      },
+      "waitlist_update": {
+        "label": "Waitlist Updates",
+        "description": "Get notified when a spot opens up"
+      },
+      "new_booking": {
+        "label": "New Bookings",
+        "description": "Get notified when a player books a session"
+      },
+      "booking_cancelled": {
+        "label": "Cancelled Bookings",
+        "description": "Get notified when a player cancels"
+      },
+      "new_follower": {
+        "label": "New Followers",
+        "description": "Get notified when someone follows you"
+      },
+      "new_player": {
+        "label": "New Players",
+        "description": "Get notified when a new player joins"
+      },
+      "new_registration": {
+        "label": "New Registrations",
+        "description": "Get notified for new cycle registrations"
+      },
+      "new_review": {
+        "label": "New Reviews",
+        "description": "Get notified when a player leaves a review"
+      },
+      "upcoming_schedule_digest": {
+        "label": "Upcoming Schedule Overview",
+        "description": "Summary of your upcoming coaching sessions"
+      },
+      "payment_received": {
+        "label": "Payments Received",
+        "description": "Get notified when you receive a payment"
+      }
+    }
+  }
+}

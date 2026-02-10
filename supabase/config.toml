@@ -129,3 +129,6 @@ verify_jwt = false
 
 [functions.render-page]
 verify_jwt = false
+
+[functions.send-digest-emails]
+verify_jwt = false

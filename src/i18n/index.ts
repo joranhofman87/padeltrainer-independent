@@ -12,6 +12,7 @@ import enCycles from './locales/en/cycles.json';
 import enAdmin from './locales/en/admin.json';
 import enAcademy from './locales/en/academy.json';
 import enWaitingList from './locales/en/waitingList.json';
+import enNotifications from './locales/en/notifications.json';
 
 import nlCommon from './locales/nl/common.json';
 import nlMarketing from './locales/nl/marketing.json';
@@ -23,10 +24,11 @@ import nlCycles from './locales/nl/cycles.json';
 import nlAdmin from './locales/nl/admin.json';
 import nlAcademy from './locales/nl/academy.json';
 import nlWaitingList from './locales/nl/waitingList.json';
+import nlNotifications from './locales/nl/notifications.json';
 
 const resources = {
   en: {
-    common: enCommon,
+    common: { ...enCommon, ...enNotifications },
     marketing: enMarketing,
     auth: enAuth,
     player: enPlayer,
@@ -38,7 +40,7 @@ const resources = {
     waitingList: enWaitingList,
   },
   nl: {
-    common: nlCommon,
+    common: { ...nlCommon, ...nlNotifications },
     marketing: nlMarketing,
     auth: nlAuth,
     player: nlPlayer,
@@ -56,11 +58,10 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'nl', // Default to Dutch for Netherlands-focused service
+    fallbackLng: 'nl',
     defaultNS: 'common',
     ns: ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList'],
     detection: {
-      // For marketing pages, URL takes precedence; for app pages, localStorage
       order: ['path', 'localStorage', 'navigator'],
       lookupFromPathIndex: 0,
       caches: ['localStorage'],

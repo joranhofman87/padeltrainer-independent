@@ -1947,33 +1947,93 @@ export type Database = {
       }
       notification_preferences: {
         Row: {
+          booking_cancelled: string
+          booking_confirmation: string
+          booking_reminder: string
           created_at: string
-          email_booking_confirmation: boolean
-          email_booking_reminder: boolean
-          email_new_availability: boolean
-          email_review_received: boolean
           id: string
+          new_booking: string
+          new_follower: string
+          new_player: string
+          new_registration: string
+          new_review: string
+          open_slots_digest: string
+          payment_receipt: string
+          payment_received: string
+          upcoming_schedule_digest: string
+          upcoming_sessions_digest: string
           updated_at: string
+          user_id: string
+          waitlist_update: string
+        }
+        Insert: {
+          booking_cancelled?: string
+          booking_confirmation?: string
+          booking_reminder?: string
+          created_at?: string
+          id?: string
+          new_booking?: string
+          new_follower?: string
+          new_player?: string
+          new_registration?: string
+          new_review?: string
+          open_slots_digest?: string
+          payment_receipt?: string
+          payment_received?: string
+          upcoming_schedule_digest?: string
+          upcoming_sessions_digest?: string
+          updated_at?: string
+          user_id: string
+          waitlist_update?: string
+        }
+        Update: {
+          booking_cancelled?: string
+          booking_confirmation?: string
+          booking_reminder?: string
+          created_at?: string
+          id?: string
+          new_booking?: string
+          new_follower?: string
+          new_player?: string
+          new_registration?: string
+          new_review?: string
+          open_slots_digest?: string
+          payment_receipt?: string
+          payment_received?: string
+          upcoming_schedule_digest?: string
+          upcoming_sessions_digest?: string
+          updated_at?: string
+          user_id?: string
+          waitlist_update?: string
+        }
+        Relationships: []
+      }
+      notification_queue: {
+        Row: {
+          created_at: string
+          id: string
+          notification_type: string
+          payload: Json
+          processed_at: string | null
+          scheduled_for: string
           user_id: string
         }
         Insert: {
           created_at?: string
-          email_booking_confirmation?: boolean
-          email_booking_reminder?: boolean
-          email_new_availability?: boolean
-          email_review_received?: boolean
           id?: string
-          updated_at?: string
+          notification_type: string
+          payload?: Json
+          processed_at?: string | null
+          scheduled_for: string
           user_id: string
         }
         Update: {
           created_at?: string
-          email_booking_confirmation?: boolean
-          email_booking_reminder?: boolean
-          email_new_availability?: boolean
-          email_review_received?: boolean
           id?: string
-          updated_at?: string
+          notification_type?: string
+          payload?: Json
+          processed_at?: string | null
+          scheduled_for?: string
           user_id?: string
         }
         Relationships: []
