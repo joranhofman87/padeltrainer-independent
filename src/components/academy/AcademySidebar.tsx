@@ -72,6 +72,10 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.includes("/app/academy/calendar")
   );
+  const [registrationOpen, setRegistrationOpen] = useState(
+    location.pathname.includes("/app/academy/cycles") ||
+    location.pathname.includes("/app/academy/intake-requests")
+  );
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
     location.pathname.includes("/app/academy/subscription") ||
@@ -299,33 +303,57 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* Registrations - standalone nav item */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
-                  <NavLink
-                    to="/app/academy/cycles"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Intake Requests */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.intakeRequests", "Intake Requests")}>
-                  <NavLink
-                    to="/app/academy/intake-requests"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <FileText className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.intakeRequests", "Intake Requests")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {/* Registration Group */}
+              <Collapsible
+                open={registrationOpen && !collapsed}
+                onOpenChange={setRegistrationOpen}
+                className="group/registration"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      tooltip={t("nav.registrations", "Registrations")}
+                      className={isActive("/app/academy/cycles") || isActive("/app/academy/intake-requests")
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : ""}
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                      {!collapsed && (
+                        <>
+                          <span className="flex-1">{t("nav.registrations", "Registrations")}</span>
+                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/registration:rotate-90" />
+                        </>
+                      )}
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/cycles"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.registrations", "Registrations")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/intake-requests"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.intakeRequests", "Intake Requests")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
 
               {/* Locations */}
               <SidebarMenuItem>

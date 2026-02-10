@@ -72,15 +72,15 @@ export function TrainerSidebar() {
 
   // Track which groups are open
   const [playersOpen, setPlayersOpen] = useState(
-    location.pathname.startsWith("/trainer/players") ||
-    location.pathname.startsWith("/trainer/intake-requests")
+    location.pathname.startsWith("/trainer/players")
   );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/trainer/calendar") ||
     location.pathname.startsWith("/trainer/open-slots")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
-    location.pathname.startsWith("/trainer/cycles")
+    location.pathname.startsWith("/trainer/cycles") ||
+    location.pathname.startsWith("/trainer/intake-requests")
   );
   const [clubsOpen, setClubsOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(
@@ -253,57 +253,19 @@ export function TrainerSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Players Group */}
-              <Collapsible
-                open={playersOpen && !collapsed}
-                onOpenChange={setPlayersOpen}
-                className="group/players"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.players")}
-                      className={isActive("/trainer/players") || isActive("/trainer/intake-requests")
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : ""}
-                    >
-                      <Users className="h-4 w-4" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.players")}</span>
-                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/players:rotate-90" />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/trainer/players"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.myPlayers")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild>
-                          <NavLink
-                            to="/trainer/intake-requests"
-                            className="flex items-center gap-2"
-                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                          >
-                            {t("nav.intakeRequests")}
-                          </NavLink>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Players - standalone */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.players")}>
+                  <NavLink
+                    to="/trainer/players"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <Users className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.players")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Schedule Group */}
               <Collapsible
@@ -357,19 +319,57 @@ export function TrainerSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* Registrations - standalone nav item */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={t("nav.registration")}>
-                  <NavLink
-                    to="/trainer/cycles"
-                    className="flex items-center gap-2"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                    {!collapsed && <span>{t("nav.registration")}</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {/* Registration Group */}
+              <Collapsible
+                open={registrationOpen && !collapsed}
+                onOpenChange={setRegistrationOpen}
+                className="group/registration"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      tooltip={t("nav.registration")}
+                      className={isActive("/trainer/cycles") || isActive("/trainer/intake-requests")
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : ""}
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                      {!collapsed && (
+                        <>
+                          <span className="flex-1">{t("nav.registration")}</span>
+                          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/registration:rotate-90" />
+                        </>
+                      )}
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/cycles"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.registrations", "Registrations")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/intake-requests"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.intakeRequests")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
 
               {/* My Clubs Group - Only show if trainer has clubs */}
               {trainerClubs.length > 0 && (
