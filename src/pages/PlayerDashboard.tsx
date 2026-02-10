@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight } from 'lucide-react';
+import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
@@ -40,6 +40,14 @@ interface FollowedTrainerSlot {
   location: string | null;
 }
 
+interface PlayerClub {
+  id: string;
+  clubProfileId: string;
+  locationName: string;
+  locationSlug: string;
+  logoUrl: string | null;
+}
+
 export default function PlayerDashboard() {
   const { profile, loading } = useAuth();
   const navigate = useNavigate();
@@ -51,11 +59,14 @@ export default function PlayerDashboard() {
   const [followingLoading, setFollowingLoading] = useState(true);
   const [followedTrainerSlots, setFollowedTrainerSlots] = useState<FollowedTrainerSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
+  const [playerClubs, setPlayerClubs] = useState<PlayerClub[]>([]);
+  const [clubsLoading, setClubsLoading] = useState(true);
 
   useEffect(() => {
     if (profile?.id) {
       fetchPlayerData();
       fetchFollowedTrainers();
+      fetchPlayerClubs();
     }
   }, [profile?.id]);
 
@@ -166,6 +177,42 @@ export default function PlayerDashboard() {
       console.error('Error fetching followed trainer slots:', error);
     } finally {
       setSlotsLoading(false);
+    }
+  };
+
+  const fetchPlayerClubs = async () => {
+    if (!profile?.id) return;
+    setClubsLoading(true);
+    try {
+      const { data: follows } = await supabase
+        .from('club_followers')
+        .select('id, club_profile_id, club_profiles(id, location_id, logo_url, locations(name, slug))')
+        .eq('player_id', profile.id)
+        .limit(10);
+
+      if (!follows || follows.length === 0) {
+        setPlayerClubs([]);
+        setClubsLoading(false);
+        return;
+      }
+
+      const clubs: PlayerClub[] = follows.map(f => {
+        const cp = f.club_profiles as any;
+        const loc = cp?.locations;
+        return {
+          id: f.id,
+          clubProfileId: f.club_profile_id,
+          locationName: loc?.name || 'Club',
+          locationSlug: loc?.slug || '',
+          logoUrl: cp?.logo_url || null,
+        };
+      });
+
+      setPlayerClubs(clubs);
+    } catch (error) {
+      console.error('Error fetching player clubs:', error);
+    } finally {
+      setClubsLoading(false);
     }
   };
 
@@ -500,6 +547,63 @@ export default function PlayerDashboard() {
                           <p className="text-sm">{format(slot.startTime, 'EEE, MMM d')}</p>
                           <p className="text-xs text-muted-foreground">{format(slot.startTime, 'HH:mm')}</p>
                         </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* My Clubs */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                My Clubs
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('locations'))} className="gap-1">
+                All clubs <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {clubsLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              </div>
+            ) : playerClubs.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Not a member of any club yet</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Club</TableHead>
+                    <TableHead className="text-right">Profile</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {playerClubs.map((club) => (
+                    <TableRow key={club.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={club.logoUrl || undefined} />
+                            <AvatarFallback>{club.locationName?.[0] || 'C'}</AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium text-sm">{club.locationName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(getMarketingPath(`location/${club.locationSlug}`))}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
