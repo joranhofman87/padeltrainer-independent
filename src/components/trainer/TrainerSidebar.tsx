@@ -222,27 +222,6 @@ export function TrainerSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Get Started - only when setup incomplete, shown first */}
-              {showGetStarted && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip={t("nav.getStarted")}>
-                    <NavLink
-                      to="/trainer/get-started"
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                    >
-                      <Rocket className="h-4 w-4 text-orange-500" />
-                      {!collapsed && (
-                        <span className="flex items-center gap-2">
-                          {t("nav.getStarted")}
-                          <span className="h-2 w-2 rounded-full bg-orange-500" />
-                        </span>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
               {/* My Profile */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.myProfile")}>
@@ -497,6 +476,27 @@ export function TrainerSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+
+              {/* Get Started - shown at bottom when setup incomplete */}
+              {showGetStarted && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip={t("nav.getStarted")}>
+                    <NavLink
+                      to="/trainer/get-started"
+                      className="flex items-center gap-2"
+                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
+                      <Rocket className="h-4 w-4 text-orange-500" />
+                      {!collapsed && (
+                        <span className="flex items-center gap-2">
+                          {t("nav.getStarted")}
+                          <span className="h-2 w-2 rounded-full bg-orange-500" />
+                        </span>
+                      )}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
