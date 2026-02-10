@@ -28,6 +28,7 @@ interface InvoiceData {
   vat_amount: number;
   total: number;
   notes: string | null;
+  logo_url: string | null;
   trainer: {
     business_name: string;
     business_address: string;
@@ -101,7 +102,8 @@ function generateInvoiceHTML(invoice: InvoiceData): string {
 <body>
   <div class="invoice-container">
     <div class="header">
-      <div>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        ${invoice.logo_url ? `<img src="${invoice.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; object-fit: contain;" />` : ''}
         <h1 class="invoice-title">FACTUUR</h1>
       </div>
       <div class="invoice-meta">
@@ -241,7 +243,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Fetch trainer business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from('trainer_profiles')
-      .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id')
+      .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, user_id, invoice_logo_url')
       .eq('id', invoice.trainer_id)
       .single();
 
@@ -291,6 +293,7 @@ const handler = async (req: Request): Promise<Response> => {
       vat_amount: invoice.vat_amount,
       total: invoice.total,
       notes: invoice.notes,
+      logo_url: trainerProfile.invoice_logo_url || null,
       trainer: {
         business_name: trainerProfile.business_name || '',
         business_address: trainerProfile.business_address || '',

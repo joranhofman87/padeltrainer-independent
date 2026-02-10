@@ -623,7 +623,15 @@
     "saveSettings": "Instellingen opslaan",
     "saveError": "Kon instellingen niet opslaan",
     "saved": "Opgeslagen",
-    "savedDescription": "Je factuur instellingen zijn bijgewerkt"
+    "savedDescription": "Je factuur instellingen zijn bijgewerkt",
+    "logo": "Factuurlogo",
+    "logoDescription": "Dit logo wordt getoond op je facturen.",
+    "noLogo": "Geen logo",
+    "uploadLogo": "Upload logo",
+    "numbering": "Factuurnummering",
+    "prefix": "Prefix",
+    "nextNumber": "Volgend nummer",
+    "previewNumber": "Voorbeeld"
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",

@@ -623,7 +623,15 @@
     "saveSettings": "Save settings",
     "saveError": "Could not save settings",
     "saved": "Saved",
-    "savedDescription": "Your invoice settings have been updated"
+    "savedDescription": "Your invoice settings have been updated",
+    "logo": "Invoice logo",
+    "logoDescription": "This logo is displayed on your invoices.",
+    "noLogo": "No logo",
+    "uploadLogo": "Upload logo",
+    "numbering": "Invoice numbering",
+    "prefix": "Prefix",
+    "nextNumber": "Next number",
+    "previewNumber": "Preview"
   },
   "profileVisibility": {
     "title": "Marketplace visibility",

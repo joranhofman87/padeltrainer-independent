@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus } from 'lucide-react';
+import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface InvoiceSettingsCardProps {
   userId: string;
@@ -23,6 +24,9 @@ interface InvoiceSettingsCardProps {
     payment_terms_days: number;
     default_vat_rate: number | null;
     invoice_forward_emails: string[] | null;
+    invoice_logo_url: string | null;
+    invoice_prefix: string | null;
+    invoice_next_number: number | null;
   };
   onSave?: () => void;
 }
@@ -42,7 +46,12 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
     payment_terms_days: 14,
     default_vat_rate: 21,
     custom_vat_rate: '',
+    invoice_prefix: 'INV',
+    invoice_next_number: 1,
   });
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
 
@@ -60,12 +69,41 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         payment_terms_days: initialData.payment_terms_days || 14,
         default_vat_rate: isCustom ? -1 : vatRate,
         custom_vat_rate: isCustom ? vatRate.toString() : '',
+        invoice_prefix: initialData.invoice_prefix || 'INV',
+        invoice_next_number: initialData.invoice_next_number || 1,
       });
+      setLogoUrl(initialData.invoice_logo_url || null);
       setForwardEmails(initialData.invoice_forward_emails || []);
     }
   }, [initialData]);
 
   const isComplete = formData.business_name && formData.business_address && formData.kvk_number && formData.iban;
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `invoice-logos/${userId}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      setLogoUrl(urlData.publicUrl + '?t=' + Date.now());
+    } catch (err: any) {
+      toast({ title: 'Upload mislukt', description: err.message, variant: 'destructive' });
+    }
+    setUploadingLogo(false);
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      await supabase.storage.from('avatars').remove([`invoice-logos/${userId}`]);
+    } catch {}
+    setLogoUrl(null);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -86,6 +124,9 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         payment_terms_days: formData.payment_terms_days,
         default_vat_rate: resolvedVatRate,
         invoice_forward_emails: forwardEmails.length > 0 ? forwardEmails : null,
+        invoice_logo_url: logoUrl || null,
+        invoice_prefix: formData.invoice_prefix || 'INV',
+        invoice_next_number: formData.invoice_next_number || 1,
       })
       .eq('user_id', userId);
 
@@ -128,6 +169,39 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Logo Upload */}
+        <div className="space-y-3 pb-4 border-b">
+          <Label>{t('invoices.logo', 'Factuurlogo')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('invoices.logoDescription', 'Dit logo wordt getoond op je facturen.')}
+          </p>
+          <div className="flex items-center gap-4">
+            {logoUrl ? (
+              <div className="relative group">
+                <img src={logoUrl} alt="Invoice logo" className="h-14 max-w-[200px] object-contain rounded border p-1 bg-background" />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={handleRemoveLogo}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <div className="h-14 w-32 rounded border border-dashed flex items-center justify-center text-muted-foreground text-xs">
+                {t('invoices.noLogo', 'Geen logo')}
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingLogo}>
+              {uploadingLogo ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+              {t('invoices.uploadLogo', 'Upload logo')}
+            </Button>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="business_name">
@@ -264,6 +338,40 @@ export function InvoiceSettingsCard({ userId, initialData, onSave }: InvoiceSett
             <p className="text-xs text-muted-foreground">
               {t('invoices.domesticNote')}
             </p>
+          </div>
+        </div>
+
+        {/* Invoice Numbering */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <Hash className="h-4 w-4 text-muted-foreground" />
+            <Label>{t('invoices.numbering', 'Factuurnummering')}</Label>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="invoice_prefix">{t('invoices.prefix', 'Prefix')}</Label>
+              <Input
+                id="invoice_prefix"
+                value={formData.invoice_prefix}
+                onChange={(e) => setFormData({ ...formData, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) })}
+                placeholder="INV"
+                maxLength={10}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice_next_number">{t('invoices.nextNumber', 'Volgend nummer')}</Label>
+              <Input
+                id="invoice_next_number"
+                type="number"
+                min="1"
+                value={formData.invoice_next_number}
+                onChange={(e) => setFormData({ ...formData, invoice_next_number: parseInt(e.target.value) || 1 })}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Eye className="h-3.5 w-3.5" />
+            {t('invoices.previewNumber', 'Voorbeeld')}: <span className="font-mono font-medium text-foreground">{formData.invoice_prefix}-{new Date().getFullYear()}-{(formData.invoice_next_number || 1).toString().padStart(4, '0')}</span>
           </div>
         </div>
 

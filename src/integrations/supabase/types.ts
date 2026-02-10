@@ -3002,6 +3002,9 @@ export type Database = {
           iban: string | null
           id: string
           invoice_forward_emails: string[] | null
+          invoice_logo_url: string | null
+          invoice_next_number: number | null
+          invoice_prefix: string | null
           is_public: boolean | null
           is_verified: boolean | null
           knltb_rating: number | null
@@ -3052,6 +3055,9 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_forward_emails?: string[] | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
@@ -3102,6 +3108,9 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_forward_emails?: string[] | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
           is_public?: boolean | null
           is_verified?: boolean | null
           knltb_rating?: number | null
