@@ -107,12 +107,16 @@ const handler = async (req: Request): Promise<Response> => {
 
     const resend = new Resend(resendApiKey);
 
+    const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/assets/logo-dark.svg" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+
     const emailPromises = emails.map((email: string) =>
       resend.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [email],
         subject: `Factuur ${invoice.invoice_number} - ${invoice.player_name} - ${formatCurrency(invoice.total)}`,
         html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          ${EMAIL_LOGO}
           <h2>Factuur ${invoice.invoice_number}</h2>
           <table style="border-collapse:collapse;font-family:Arial,sans-serif;">
             <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Klant:</td><td>${invoice.player_name}</td></tr>
@@ -120,8 +124,9 @@ const handler = async (req: Request): Promise<Response> => {
             <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Bedrag:</td><td><strong>${formatCurrency(invoice.total)}</strong> (incl. ${invoice.vat_rate}% BTW)</td></tr>
             <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Status:</td><td>${invoice.status === "paid" ? "✅ Betaald" : invoice.status}</td></tr>
           </table>
-          ${pdfLink ? `<p style="margin-top:20px;"><a href="${pdfLink}" style="background:#16a34a;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">Download Factuur</a></p>` : ""}
+          ${pdfLink ? `<p style="margin-top:20px;"><a href="${pdfLink}" style="background:#f45d25;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">Download Factuur</a></p>` : ""}
           <p style="margin-top:24px;font-size:12px;color:#9ca3af;">Verzonden via PadelTrainer.ai namens ${trainerProfile.business_name || "je trainer"}</p>
+          </div>
         `,
       })
     );

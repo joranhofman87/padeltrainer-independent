@@ -65,6 +65,9 @@ interface EmailRequest {
   };
 }
 
+const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/assets/logo-dark.svg" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
+const BRAND_ORANGE = "#f45d25";
+
 const getEmailContent = (type: string, data: EmailRequest["data"]) => {
   switch (type) {
     case "booking_confirmation":
@@ -72,7 +75,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Booking Confirmed: ${data.lessonTitle}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Booking Confirmed! 🎾</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Booking Confirmed! 🎾</h1>
             <p>Hi ${data.playerName},</p>
             <p>Your training session has been successfully booked!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -94,7 +98,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Reminder: Training Session Tomorrow - ${data.lessonTitle}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">Session Reminder 🎾</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Session Reminder 🎾</h1>
             <p>Hi ${data.playerName},</p>
             <p>This is a reminder that you have a training session scheduled for tomorrow!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -115,6 +120,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Booking Cancelled: ${data.lessonTitle}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
             <h1 style="color: #dc2626;">Booking Cancelled</h1>
             <p>Hi ${data.playerName},</p>
             <p>Your booking has been cancelled.</p>
@@ -135,6 +141,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Review Received! ⭐`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
             <h1 style="color: #f59e0b;">New Review! ⭐</h1>
             <p>Hi ${data.trainerName},</p>
             <p>You've received a new ${data.rating}-star review from ${data.playerName}!</p>
@@ -153,7 +160,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Payment Confirmed: ${data.lessonTitle} ✅`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Payment Successful! 💳</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Payment Successful! 💳</h1>
             <p>Hi ${data.playerName},</p>
             <p>Your payment has been confirmed and your training session is booked!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -162,7 +170,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Date:</strong> ${data.lessonDate}</p>
               <p><strong>Time:</strong> ${data.lessonTime}</p>
               <p><strong>Location:</strong> ${data.location || "TBD"}</p>
-              <p style="font-size: 18px; color: #16a34a;"><strong>Amount Paid:</strong> €${data.price}</p>
+              <p style="font-size: 18px; color: ${BRAND_ORANGE};"><strong>Amount Paid:</strong> €${data.price}</p>
             </div>
             <p>Get ready for your session! 🎾</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
@@ -175,7 +183,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Paid Booking: ${data.lessonTitle} 💰`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">You've Got a New Booking! 🎉</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">You've Got a New Booking! 🎉</h1>
             <p>Hi ${data.trainerName},</p>
             <p>Great news! <strong>${data.playerName}</strong> has just paid for a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -187,7 +196,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;" />
               <p><strong>Session Price:</strong> €${data.price}</p>
               <p><strong>Platform Fee:</strong> -€${data.platformFee?.toFixed(2) || '1.00'}</p>
-              <p style="font-size: 18px; color: #16a34a;"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price - (data.platformFee || 1.00)).toFixed(2) : '0.00')}</p>
+              <p style="font-size: 18px; color: ${BRAND_ORANGE};"><strong>Your Earnings:</strong> €${data.netAmount?.toFixed(2) || (data.price ? (data.price - (data.platformFee || 1.00)).toFixed(2) : '0.00')}</p>
             </div>
             <p>The payment will be transferred to your connected bank account automatically.</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
@@ -200,7 +209,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Booking Request: ${data.lessonTitle}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">New Booking Request! 📅</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New Booking Request! 📅</h1>
             <p>Hi ${data.trainerName},</p>
             <p><strong>${data.playerName}</strong> wants to book a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -223,16 +233,17 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Training Slots Available from ${data.trainerName}! 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">New Availability Alert! 📅</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New Availability Alert! 📅</h1>
             <p>Hi ${data.playerName},</p>
             <p>Great news! <strong>${data.trainerName}</strong> has just added new training slots.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <p style="font-size: 24px; font-weight: bold; color: #16a34a; margin: 0;">${data.slotCount} New Slots</p>
+              <p style="font-size: 24px; font-weight: bold; color: ${BRAND_ORANGE}; margin: 0;">${data.slotCount} New Slots</p>
               <p style="color: #6b7280; margin-top: 8px;">Available: ${data.dateRange}</p>
             </div>
             <p>Don't miss out – book your spot before they fill up!</p>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.ai/nl/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
+              <a href="https://padeltrainer.ai/nl/trainers" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
@@ -248,7 +259,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Slot Available: ${data.trainerName} has an opening! 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Slot Just Opened! 📅</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Slot Just Opened! 📅</h1>
             <p>Hi ${data.playerName},</p>
             <p>A training slot with <strong>${data.trainerName}</strong> just became available!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -257,7 +269,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>Book now before someone else does!</p>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.ai/nl/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
+              <a href="https://padeltrainer.ai/nl/trainers" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Book Now</a>
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
@@ -273,7 +285,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Session Booked: ${data.lessonTitle} 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">You're Booked! 🎾</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">You're Booked! 🎾</h1>
             <p>Hi ${data.playerName},</p>
             <p>Your trainer has booked a training session for you!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -297,7 +310,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Booking Request from ${data.playerName} 📬`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">New Booking Request! 📬</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New Booking Request! 📬</h1>
             <p>Hi ${data.trainerName},</p>
             <p><strong>${data.playerName}</strong> has requested to book a training session with you.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -311,7 +325,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>Please review this request in your dashboard and approve or decline it.</p>
             <p style="margin-top: 24px;">
-              <a href="${data.bookingUrl || 'https://padeltrainer.ai/app/trainer/bookings'}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
+              <a href="${data.bookingUrl || 'https://padeltrainer.ai/app/trainer/bookings'}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -323,7 +337,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Booking Approved! Complete Your Payment 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Booking Approved! 🎉</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Booking Approved! 🎉</h1>
             <p>Hi ${data.playerName},</p>
             <p>Great news! <strong>${data.trainerName}</strong> has approved your booking request.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -331,13 +346,13 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <p><strong>Date:</strong> ${data.lessonDate}</p>
               <p><strong>Time:</strong> ${data.lessonTime}</p>
               ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
-              <p style="font-size: 18px; color: #16a34a;"><strong>Price:</strong> €${data.price}</p>
+              <p style="font-size: 18px; color: ${BRAND_ORANGE};"><strong>Price:</strong> €${data.price}</p>
             </div>
             <p style="background: #fef3c7; padding: 12px; border-radius: 6px; color: #92400e;">
               <strong>Action Required:</strong> Complete your payment to confirm the booking.
             </p>
             <p style="margin-top: 24px;">
-              <a href="${data.paymentLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Pay Now</a>
+              <a href="${data.paymentLink}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Pay Now</a>
             </p>
             <p style="color: #6b7280; font-size: 14px;">This payment link expires in 24 hours.</p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
@@ -350,7 +365,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Booking Confirmed: ${data.lessonTitle} 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Booking Confirmed! 🎉</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Booking Confirmed! 🎉</h1>
             <p>Hi ${data.playerName},</p>
             <p>Great news! <strong>${data.trainerName}</strong> has approved and confirmed your booking.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -374,6 +390,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Booking Request Declined`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
             <h1 style="color: #dc2626;">Booking Request Declined</h1>
             <p>Hi ${data.playerName},</p>
             <p>Unfortunately, <strong>${data.trainerName}</strong> was unable to accept your booking request.</p>
@@ -385,7 +402,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>Don't worry – you can browse other available slots or trainers.</p>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.ai/nl/trainers" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Find Another Lesson</a>
+              <a href="https://padeltrainer.ai/nl/trainers" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Find Another Lesson</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -397,7 +414,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Club Claim Approved: ${data.clubName} ✅`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Club Claim Approved! 🎉</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Club Claim Approved! 🎉</h1>
             <p>Hi ${data.ownerName || "Club Manager"},</p>
             <p>Great news! Your claim to manage <strong>${data.clubName}</strong> has been verified and approved.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -412,7 +430,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               </ul>
             </div>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.ai/app/club" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Club Dashboard</a>
+              <a href="https://padeltrainer.ai/app/club" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Club Dashboard</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -424,6 +442,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Club Claim Update: ${data.clubName}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
             <h1 style="color: #dc2626;">Club Claim Not Approved</h1>
             <p>Hi ${data.ownerName || "there"},</p>
             <p>Unfortunately, we were unable to verify your claim to manage <strong>${data.clubName}</strong>.</p>
@@ -437,7 +456,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>If you believe this was an error, please contact us with additional verification documents or information.</p>
             <p style="margin-top: 24px;">
-              <a href="mailto:support@padeltrainer.ai" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Contact Support</a>
+              <a href="mailto:support@padeltrainer.ai" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Contact Support</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -449,7 +468,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `${data.clubName} invites you to join as a trainer 🎾`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">You're Invited! 🎾</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">You're Invited! 🎾</h1>
             <p>Hi${data.trainerName ? ` ${data.trainerName}` : ""},</p>
             <p><strong>${data.clubName}</strong> would like you to join as an official club trainer!</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -465,7 +485,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
               <li>Able to manage bookings through the club's calendar</li>
             </ul>
             <p style="margin-top: 24px;">
-              <a href="${data.inviteLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-right: 12px;">View Invitation</a>
+              <a href="${data.inviteLink}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-right: 12px;">View Invitation</a>
             </p>
             <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
               If you're not interested, you can decline this invitation through the link above.
@@ -480,7 +500,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `${data.trainerName} accepted your invitation! 🎉`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #16a34a;">Trainer Joined Your Club! 🎉</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Trainer Joined Your Club! 🎉</h1>
             <p>Hi ${data.ownerName || "Club Manager"},</p>
             <p>Great news! <strong>${data.trainerName}</strong> has accepted your invitation to join <strong>${data.clubName}</strong> as a club trainer.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -489,7 +510,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
             </div>
             <p>You can now see their availability in your club calendar and they'll appear in your trainers list.</p>
             <p style="margin-top: 24px;">
-              <a href="https://padeltrainer.ai/app/club/trainers" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Club Trainers</a>
+              <a href="https://padeltrainer.ai/app/club/trainers" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Club Trainers</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -501,7 +522,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Partner Inquiry from ${data.name}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">New Partner Inquiry 🤝</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New Partner Inquiry 🤝</h1>
             <p>A new partnership inquiry has been submitted via the website.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">Contact Details</h3>
@@ -524,7 +546,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `New Club Request: ${data.clubName} (${data.city})`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">New Club Request 📍</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New Club Request 📍</h1>
             <p>A trainer has requested a new club to be added to the platform.</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin-top: 0;">Club Details</h3>
@@ -550,11 +573,12 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Password Reset Request - PadelTrainer.ai`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb;">Password Reset 🔐</h1>
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">Password Reset 🔐</h1>
             <p>Hi ${data.userName},</p>
             <p>An administrator has requested a password reset for your account.</p>
             <p style="margin-top: 24px;">
-              <a href="${data.resetLink}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+              <a href="${data.resetLink}" style="background: ${BRAND_ORANGE}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
             </p>
             <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
               If you did not expect this email, you can safely ignore it. Your password will remain unchanged.
@@ -572,6 +596,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         subject: `Payment Reminder: Outstanding Training Sessions 💳`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
             <h1 style="color: #f59e0b;">Payment Reminder 💳</h1>
             <p>Hi ${data.playerName},</p>
             <p>This is a friendly reminder from <strong>${data.trainerName}</strong> that you have outstanding payments for training sessions.</p>
