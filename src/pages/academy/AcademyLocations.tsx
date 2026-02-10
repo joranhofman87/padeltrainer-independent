@@ -332,7 +332,10 @@ function LocationCard({
             <Button
               variant="default"
               size="sm"
-              onClick={() => navigate(localizePath('/app/club'))}
+              onClick={() => {
+                localStorage.setItem('activeClubId', managedClubId);
+                navigate('/app/club');
+              }}
             >
               <Building2 className="h-4 w-4 mr-2" />
               {t('locations.manageClub')}
