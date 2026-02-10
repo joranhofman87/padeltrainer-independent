@@ -1,30 +1,18 @@
 
 
-## Fix "Beheer Club" Button to Switch to Correct Club
+## Fix Extra Costs Input Widths in Cycle Form
 
 ### Problem
 
-The "Beheer Club" button on the Academy Locations page navigates to `/app/club` but doesn't set the active club, so the ClubLayout picks whatever club was last active (or the first one). It should switch to the specific club that corresponds to that location.
+The extra costs row uses `grid-cols-[1fr_1fr_auto]`, giving the description and price fields equal width. The price field only needs a small width (for amounts like "12.50"), while the description should take the remaining space.
 
-### Solution
+### Change
 
-Before navigating to `/app/club`, store the `managedClubId` in `localStorage` under the `activeClubId` key. This is the same mechanism `ClubLayout` uses to determine which club to display.
+**`src/components/cycles/CycleForm.tsx`** (line 766)
 
-### Changes
-
-**`src/pages/academy/AcademyLocations.tsx`** (line 335)
-
-Update the "Beheer Club" button's `onClick` handler:
-
-```typescript
-onClick={() => {
-  localStorage.setItem('activeClubId', managedClubId);
-  navigate('/app/club');
-}}
-```
-
-This ensures `ClubLayout` picks up the correct club on mount, matching exactly what the ProfileSwitcher does when selecting a club.
+Change the grid template from `grid-cols-[1fr_1fr_auto]` to `grid-cols-[1fr_auto_auto]` and add a fixed width (`w-24`) to the price input container. This makes the description field take all available space while the price stays compact.
 
 ### Files to modify
 
-- `src/pages/academy/AcademyLocations.tsx` (1 line change in the onClick handler)
+- `src/components/cycles/CycleForm.tsx` (1 line: grid class + price container width)
+
