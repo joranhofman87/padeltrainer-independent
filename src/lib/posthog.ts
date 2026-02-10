@@ -8,8 +8,8 @@ let isInitialized = false;
 export function initializePostHog() {
   if (isInitialized) return;
 
-  const isProduction = !window.location.hostname.includes('lovable.app')
-    && !window.location.hostname.includes('localhost');
+  const isProduction = window.location.hostname === 'padeltrainer.ai'
+    || window.location.hostname.endsWith('.padeltrainer.ai');
   if (!isProduction) return;
 
   posthog.init(POSTHOG_KEY, {
