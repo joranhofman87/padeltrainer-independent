@@ -662,5 +662,13 @@
     "lastReminder": "Laatste herinnering",
     "reminderSentSuccess": "Betalingsherinnering succesvol verstuurd",
     "bulkReminderSentSuccess": "Betalingsherinneringen verstuurd naar {{count}} spelers"
+  },
+  "waitingList": {
+    "settingsTitle": "Wachtlijst",
+    "settingsSubtitle": "Laat spelers zich op een wachtlijst zetten als er geen plekken zijn",
+    "enableTitle": "Wachtlijst Inschakelen",
+    "enableDescription": "Wanneer ingeschakeld kunnen spelers zich op je wachtlijst zetten via je publieke profiel. Je wordt op de hoogte gebracht wanneer iemand zich aanmeldt.",
+    "enabled": "Wachtlijst is nu actief op je profiel",
+    "disabled": "Wachtlijst is uitgeschakeld"
   }
 }

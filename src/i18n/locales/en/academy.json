@@ -323,5 +323,13 @@
     "trainerPaymentsInfo1": "When your academy is connected to a payment account, all lesson bookings from your trainers will be processed through your academy account.",
     "trainerPaymentsInfo2": "You can manage payment splits for each trainer in the Trainers section. Trainers will see on their earnings page that payments are handled by your academy.",
     "connectMollieAccount": "Connect Mollie"
+  },
+  "waitingList": {
+    "settingsTitle": "Waiting List",
+    "settingsSubtitle": "Let players join a waiting list when no spots are available",
+    "enableTitle": "Enable Waiting List",
+    "enableDescription": "When enabled, players can sign up for your waiting list on your public profile. You'll be notified when someone joins.",
+    "enabled": "Waiting list is now active on your profile",
+    "disabled": "Waiting list has been turned off"
   }
 }

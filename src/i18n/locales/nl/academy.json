@@ -316,5 +316,13 @@
     "trainerPaymentsInfo1": "Wanneer je academy gekoppeld is aan een betaalaccount, worden alle lesbookingen van je trainers via je academy account verwerkt.",
     "trainerPaymentsInfo2": "Je kunt betalingsverdelingen per trainer beheren in de Trainers sectie. Trainers zien op hun inkomstenpagina dat betalingen door je academy worden afgehandeld.",
     "connectMollieAccount": "Koppel Mollie"
+  },
+  "waitingList": {
+    "settingsTitle": "Wachtlijst",
+    "settingsSubtitle": "Laat spelers zich op een wachtlijst zetten als er geen plekken zijn",
+    "enableTitle": "Wachtlijst Inschakelen",
+    "enableDescription": "Wanneer ingeschakeld kunnen spelers zich op je wachtlijst zetten via je publieke profiel. Je wordt op de hoogte gebracht wanneer iemand zich aanmeldt.",
+    "enabled": "Wachtlijst is nu actief op je profiel",
+    "disabled": "Wachtlijst is uitgeschakeld"
   }
 }
