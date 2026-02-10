@@ -88,9 +88,15 @@ export default function Auth() {
         // Existing user with role - clear any stale pendingRole and redirect
         localStorage.removeItem('pendingRole');
         
+        // Check for post-onboarding redirect (e.g. player signed up from a trainer profile CTA)
+        const onboardingRedirect = localStorage.getItem('redirectAfterOnboarding');
+        
         if (redirectUrl) {
           sessionStorage.removeItem('redirectAfterLogin');
           navigate(redirectUrl);
+        } else if (onboardingRedirect) {
+          localStorage.removeItem('redirectAfterOnboarding');
+          navigate(onboardingRedirect);
         } else {
         if (role === 'admin') {
             navigate('/app/admin');
