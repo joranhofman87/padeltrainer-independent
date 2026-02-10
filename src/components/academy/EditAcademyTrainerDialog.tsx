@@ -63,6 +63,7 @@ interface TrainerProfileData {
 interface ProfileData {
   full_name: string;
   phone: string;
+  email: string;
   bio: string;
   avatar_url: string | null;
   skill_rating: number | null;
@@ -90,6 +91,7 @@ export function EditAcademyTrainerDialog({
   const [profileData, setProfileData] = useState<ProfileData>({
     full_name: '',
     phone: '',
+    email: '',
     bio: '',
     avatar_url: null,
     skill_rating: null,
@@ -136,7 +138,7 @@ export function EditAcademyTrainerDialog({
       // Fetch profile data
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, phone, bio, avatar_url, skill_rating, rating_system, rating_member_id')
+        .select('full_name, phone, email, bio, avatar_url, skill_rating, rating_system, rating_member_id')
         .eq('user_id', userId)
         .single();
 
@@ -144,6 +146,7 @@ export function EditAcademyTrainerDialog({
         setProfileData({
           full_name: profile.full_name || trainerName || '',
           phone: profile.phone || '',
+          email: profile.email || '',
           bio: profile.bio || '',
           avatar_url: profile.avatar_url,
           skill_rating: profile.skill_rating,
@@ -468,6 +471,16 @@ export function EditAcademyTrainerDialog({
                     value={profileData.phone}
                     onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                     placeholder="+31 6 12345678"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={profileData.email}
+                    disabled
+                    className="bg-muted"
                   />
                 </div>
               </div>
