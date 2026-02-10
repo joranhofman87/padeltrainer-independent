@@ -142,25 +142,45 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update email in auth if provided (admin only)
-    if (email && isAdmin) {
-      const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
-        target_user_id,
-        { email }
-      );
-
-      if (updateAuthError) {
-        console.error("Error updating auth email:", updateAuthError);
-        return new Response(
-          JSON.stringify({ error: updateAuthError.message }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    // Update email in auth if provided
+    // Admins can change any user's email directly; regular users changing their own email
+    // triggers Supabase's built-in email change verification flow
+    if (email) {
+      if (isAdmin) {
+        // Admin: directly update via admin API (no verification needed)
+        const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
+          target_user_id,
+          { email }
         );
+
+        if (updateAuthError) {
+          console.error("Error updating auth email:", updateAuthError);
+          return new Response(
+            JSON.stringify({ error: updateAuthError.message }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else if (isSelf) {
+        // Self: use admin API with email_confirm=false to trigger verification email
+        const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
+          target_user_id,
+          { email, email_confirm: false }
+        );
+
+        if (updateAuthError) {
+          console.error("Error updating auth email:", updateAuthError);
+          return new Response(
+            JSON.stringify({ error: updateAuthError.message }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
+      // Managers cannot change email
     }
 
     // Update profile - support all profile fields
     const updates: Record<string, string | number | null> = {};
-    if (email !== undefined && isAdmin) updates.email = email;
+    if (email !== undefined && (isAdmin || isSelf)) updates.email = email;
     if (full_name !== undefined) updates.full_name = full_name;
     if (phone !== undefined) updates.phone = phone;
     if (bio !== undefined) updates.bio = bio;
