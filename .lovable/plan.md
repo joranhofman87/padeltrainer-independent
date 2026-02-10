@@ -1,29 +1,57 @@
 
-
-## Fix Cut-Off Avatar Photos
+## Preserve Player Intent Across Signup and Onboarding
 
 ### Problem
-The base `AvatarImage` component uses `object-contain`, which shrinks photos to fit inside the circular frame without cropping. This causes portrait or non-square photos to appear small or oddly framed -- as seen on the "Trainer Test" profile.
+When a player clicks a CTA (e.g., "Sign up & apply" for a cycle, "Join waiting list", "Book a lesson") and goes through signup + onboarding, they end up on the generic dashboard instead of being returned to their intended action. Two gaps cause this:
 
-The standard behavior for avatar circles is `object-cover`, which fills the circle and crops any overflow.
+1. **CycleApplicationModal** and **CycleRegistration** don't pass the `?redirect=` param to the signup page -- they use `sessionStorage` or route to `/auth` instead of `/app/signup/player?redirect=...`
+2. **TrainerOnboarding** (`handleComplete`) never checks `localStorage.getItem('redirectAfterOnboarding')` -- so even when the redirect IS stored, trainer onboarding ignores it
 
-### Solution
-Change the default class in `src/components/ui/avatar.tsx` from `object-contain` to `object-cover` on the `AvatarImage` component (line 22).
+### What's changing
 
-This is a one-line change that fixes all avatars across the app (sidebars, profile cards, admin tables, edit dialogs, etc.). A few places like `AdminTrainers.tsx` already pass `className="object-cover"` as an override -- those will simply be redundant now, no harm done.
+**Fix redirect preservation at CTA points:**
+- `CycleApplicationModal.tsx`: Change `handleLoginRedirect` to navigate to `/app/signup/player?redirect=...` (consistent with all other CTAs)
+- `CycleRegistration.tsx`: Change `handleLoginRedirect` to navigate to `/app/signup/player?redirect=...` instead of `/auth?redirect=...`
+
+**Fix redirect consumption after onboarding:**
+- `TrainerOnboarding.tsx`: In `handleComplete`, after marking onboarding as done, check for `redirectAfterOnboarding` in localStorage and navigate there instead of always going to `/app/trainer/get-started`
 
 ### Technical Details
 
-**File:** `src/components/ui/avatar.tsx`, line 22
+**File: `src/components/cycles/CycleApplicationModal.tsx`** (line ~76-79)
 
-Change:
-```
-className={cn("aspect-square h-full w-full object-contain", className)}
-```
-To:
-```
-className={cn("aspect-square h-full w-full object-cover", className)}
+Replace sessionStorage approach with redirect param:
+```typescript
+const handleLoginRedirect = () => {
+  const currentPath = window.location.pathname;
+  navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
+};
 ```
 
-No other files need changes.
+**File: `src/pages/CycleRegistration.tsx`** (line ~154-157)
 
+Route to player signup instead of auth:
+```typescript
+const handleLoginRedirect = () => {
+  const currentPath = window.location.pathname;
+  navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
+};
+```
+
+**File: `src/pages/TrainerOnboarding.tsx`** (in `handleComplete`, after line ~130)
+
+Add redirect check before navigating to get-started:
+```typescript
+const redirectUrl = localStorage.getItem('redirectAfterOnboarding');
+if (redirectUrl) {
+  localStorage.removeItem('redirectAfterOnboarding');
+  navigate(redirectUrl);
+} else {
+  navigate('/app/trainer/get-started');
+}
+```
+
+### Files to modify
+- `src/components/cycles/CycleApplicationModal.tsx`
+- `src/pages/CycleRegistration.tsx`
+- `src/pages/TrainerOnboarding.tsx`
