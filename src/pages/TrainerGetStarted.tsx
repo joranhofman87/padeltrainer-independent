@@ -15,6 +15,7 @@ interface SetupStatus {
   hasAvailability: boolean;
   paymentsComplete: boolean;
   hasPlayers: boolean;
+  isPublished: boolean;
   academyPaymentInfo?: AcademyPaymentInfo;
 }
 
@@ -27,6 +28,7 @@ export default function TrainerGetStarted() {
     hasAvailability: false,
     paymentsComplete: false,
     hasPlayers: false,
+    isPublished: false,
   });
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +40,7 @@ export default function TrainerGetStarted() {
     try {
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('id, hourly_rate, use_manual_invoicing')
+        .select('id, hourly_rate, use_manual_invoicing, is_public')
         .eq('user_id', user!.id)
         .maybeSingle();
 
@@ -84,6 +86,7 @@ export default function TrainerGetStarted() {
         hasAvailability: (slotCount || 0) > 0,
         paymentsComplete,
         hasPlayers: (playerCount || 0) > 0,
+        isPublished: !!trainerProfile.is_public,
         academyPaymentInfo,
       });
     } catch (error) {
@@ -106,7 +109,8 @@ export default function TrainerGetStarted() {
     setupStatus.profileComplete &&
     setupStatus.hasAvailability &&
     setupStatus.paymentsComplete &&
-    setupStatus.hasPlayers;
+    setupStatus.hasPlayers &&
+    setupStatus.isPublished;
 
   if (loading) {
     return (
