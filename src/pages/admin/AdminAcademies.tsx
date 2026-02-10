@@ -123,7 +123,8 @@ export default function AdminAcademies() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort<AcademyWithComputedFields>(
     filteredAcademies,
-    "name"
+    "created_at",
+    "desc"
   );
 
   const getStatusBadgeVariant = (status: string) => {

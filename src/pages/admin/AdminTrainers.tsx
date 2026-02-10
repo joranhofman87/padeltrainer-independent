@@ -129,7 +129,8 @@ export default function AdminTrainers() {
 
   const { sortedData, sortConfig, handleSort } = useTableSort<TrainerWithComputedFields>(
     filteredTrainers,
-    "_name"
+    "created_at",
+    "desc"
   );
 
   const getStatusBadgeVariant = (status: string) => {
