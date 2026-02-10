@@ -1,29 +1,26 @@
 
 
-## Simplify Academy Dashboard Profile Views Card
+## Widen Extra Costs Inputs in CycleForm
 
 ### Problem
 
-The Profile Views card currently shows both 7-day and 30-day counts. It should only show 30-day views as the main number, matching the trainer dashboard style.
+The extra cost description and price inputs are too small compared to the "Price per session" and "Total cyclus price" fields above them. The description field uses `flex-1` and the price field is only `w-24` (6rem), making them look cramped.
+
+### Solution
+
+Change the extra costs row layout to use a `grid grid-cols-2 gap-3` layout (same as the pricing fields above), giving both the description and price inputs equal, full-width columns. The delete button stays at the end.
 
 ### Changes
 
-**`src/pages/academy/AcademyDashboard.tsx`**
+**`src/components/cycles/CycleForm.tsx`** (line 740)
 
-1. Update the stats state to remove `viewsLast7Days` and keep only `viewsLast30Days`
-2. Change the card to display `viewsLast30Days` as the main number
-3. Replace the subtitle text with a simple "Last 30 days" label (matching trainer dashboard)
+- Change the row container from `flex items-center gap-2` to `grid grid-cols-[1fr_1fr_auto] items-center gap-3`
+- Remove `className="flex-1"` from the description input (grid handles sizing)
+- Remove `className="w-24"` from the price input
+- Add a euro prefix label to the price input to match the screenshot context
 
-**`src/lib/academy.ts`** (if needed)
-- May simplify `getAcademyViewStats` to only return 30-day count, but will keep backward compatible
-
-### Result
-
-The card will show:
-- "Profile Views" label with eye icon
-- The 30-day count as the large number
-- "Last 30 days" as subtitle text
+This gives both inputs roughly equal width, matching the two pricing fields above, with the trash icon in a small auto-sized column.
 
 ### Files to modify
-- `src/pages/academy/AcademyDashboard.tsx` (update card display and stats state)
+- `src/components/cycles/CycleForm.tsx` (lines 740-772, update grid layout and input classes)
 
