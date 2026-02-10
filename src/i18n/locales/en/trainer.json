@@ -418,6 +418,7 @@
     "trialExpiredMessage": "Your trial has ended. Subscribe to be visible to players.",
     "subscribe": "Subscribe",
     "dangerZone": "Danger Zone",
+    "managedByAcademy": "Your subscription and payments are managed by your academy.",
     "playerMode": "Player mode",
     "playerModeDescription": "Access the player dashboard to book lessons with other trainers",
     "playerModeEnabled": "Player mode enabled — you can now access the player dashboard",
