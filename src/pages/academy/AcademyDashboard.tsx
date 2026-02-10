@@ -88,7 +88,7 @@ export default function AcademyDashboard() {
         const { data: bookings } = await supabase
           .from('bookings')
           .select(`
-            id, status, payment_status, created_at,
+            id, status, payment_status, paid_externally, created_at,
             profiles:player_id (full_name),
             guest_players:guest_player_id (full_name),
             availability_slots!inner (trainer_id, start_time, cyclus_name)
@@ -393,7 +393,9 @@ export default function AcademyDashboard() {
                         <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
                         <TableCell className="py-2">
                           <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
-                            {booking.payment_status}
+                            {booking.payment_status === 'paid' && (booking as any).paid_externally
+                              ? tTrainer('bookings.paidExternally', 'Paid (external)')
+                              : booking.payment_status}
                           </Badge>
                         </TableCell>
                       </TableRow>

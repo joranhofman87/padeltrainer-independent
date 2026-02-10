@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
-import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2, Info } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -42,6 +42,7 @@ interface BookingDetails {
   notes: string | null;
   payment_status: string;
   payment_amount: number | null;
+  paid_externally: boolean | null;
   availability_slots: {
     id: string;
     start_time: string;
@@ -284,6 +285,12 @@ export function EditBookingDialog({
                 <SelectItem value="waived">{t("bookings.paymentWaived", "Waived")}</SelectItem>
               </SelectContent>
             </Select>
+            {booking.paid_externally && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                {t("bookings.paidExternally", "Paid (external)")}
+              </p>
+            )}
           </div>
 
           {/* Notes */}
