@@ -9,6 +9,7 @@ interface SetupStatus {
   hasAvailability: boolean;
   paymentsComplete: boolean;
   hasPlayers: boolean;
+  isPublished: boolean;
   academyPaymentInfo?: AcademyPaymentInfo;
 }
 
@@ -41,7 +42,7 @@ export function TrainerSetupChecklist({
     { key: 'hasAvailability', label: 'Add 3 more time slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
     { key: 'hasPlayers', label: 'Add your existing players', route: '/trainer/players', complete: setupStatus.hasPlayers },
     { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/trainer/earnings', complete: setupStatus.paymentsComplete, isAcademyManaged: academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled },
-    { key: 'isPublished', label: 'Publish your profile', route: '/trainer/settings', complete: false },
+    { key: 'isPublished', label: 'Publish your profile', route: '/trainer/settings', complete: setupStatus.isPublished },
   ];
 
   const completedCount = steps.filter(s => s.complete).length;
