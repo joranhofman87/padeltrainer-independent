@@ -76,6 +76,7 @@ import AdminPricing from '@/pages/admin/AdminPricing';
 import AdminOnboardingEmails from '@/pages/admin/AdminOnboardingEmails';
 import AdminBanners from '@/pages/admin/AdminBanners';
 import AdminClubClaims from '@/pages/admin/AdminClubClaims';
+import AdminPlayerRatings from '@/pages/admin/AdminPlayerRatings';
 import ClubDashboard from '@/pages/club/ClubDashboard';
 import ClubLayout from '@/components/club/ClubLayout';
 import ClubPlayers from '@/pages/club/ClubPlayers';
@@ -187,6 +188,7 @@ export function DomainRouter() {
         <Route path="pricing" element={<AdminPricing />} />
         <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
         <Route path="banners" element={<AdminBanners />} />
+        <Route path="player-ratings" element={<AdminPlayerRatings />} />
       </Route>
       
       {/* Club routes */}
