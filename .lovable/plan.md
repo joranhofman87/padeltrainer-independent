@@ -1,18 +1,18 @@
 
 
-## Sort Admin Tables by Newest First
+## Reverse Month Column Order in Player Ratings
 
 ### What
-Change the default sort order on the Academies, Trainers, and Users admin tables so they sort by creation date (newest first) by default, making it easy to spot new sign-ups.
+Show the most recent month first (leftmost) so admins don't have to scroll right to enter ratings for the current month.
 
-### Changes
+### Change
 
-**1. `src/pages/admin/AdminAcademies.tsx` (line 126)**
-- Change default sort key from `"name"` to `"created_at"` and add `"desc"` direction
+**`src/pages/admin/AdminPlayerRatings.tsx`**
 
-**2. `src/pages/admin/AdminTrainers.tsx` (line 132)**
-- Change default sort key from `"_name"` to `"created_at"` and add `"desc"` direction
+Reverse the `months` array before rendering. Currently `getMonthColumns()` returns months in chronological order (Jan 2026 first). We'll reverse it so the current month appears right after the fixed columns (Name, KNLTB #, Current).
 
-**3. `src/pages/admin/AdminUsers.tsx`** -- already sorted by `"created_at"` descending, no change needed.
+- After calling `getMonthColumns()`, reverse the result: change line 36 from using `months` directly to `.reverse()` or `.toReversed()`
+- This affects both the header row and each player's data row, since both iterate over the same `months` array
 
-All three tables already have `created_at` as a sortable column, so clicking the header to re-sort will continue to work as before. The only difference is the initial load order.
+No other files need to change.
+
