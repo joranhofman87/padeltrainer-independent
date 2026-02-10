@@ -254,7 +254,19 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Allow both the trainer AND the player to access the invoice
     const isTrainer = trainerProfile.user_id === user.id;
-    const isPlayer = invoice.player_id === user.id;
+    let isPlayer = invoice.player_id === user.id;
+
+    // player_id may reference profiles.id rather than auth user id, so check via profiles table
+    if (!isPlayer && invoice.player_id) {
+      const { data: playerProfile } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('id', invoice.player_id)
+        .single();
+      if (playerProfile?.user_id === user.id) {
+        isPlayer = true;
+      }
+    }
 
     if (!isTrainer && !isPlayer) {
       return new Response(
