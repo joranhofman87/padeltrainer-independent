@@ -132,3 +132,6 @@ verify_jwt = false
 
 [functions.send-digest-emails]
 verify_jwt = false
+
+[functions.toggle-player-role]
+verify_jwt = false

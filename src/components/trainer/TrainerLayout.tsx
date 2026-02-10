@@ -12,20 +12,20 @@ export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, role, loading, subscription } = useAuth();
+  const { user, role, roles, loading, subscription } = useAuth();
 
-  // Auth guard
+  // Auth guard - use roles array to support dual-role trainers
   useEffect(() => {
     if (!loading) {
       if (!user) {
         navigate('/app/auth');
-      } else if (!role) {
+      } else if (roles.length === 0) {
         navigate('/app/auth');
-      } else if (role !== 'trainer') {
+      } else if (!roles.includes('trainer') && !roles.includes('admin')) {
         navigate('/app/player');
       }
     }
-  }, [user, role, loading, navigate]);
+  }, [user, roles, loading, navigate]);
 
   if (loading) {
     return (

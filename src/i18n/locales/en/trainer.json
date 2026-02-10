@@ -417,7 +417,15 @@
     "hiddenMessage": "Your profile is hidden. Toggle to go live.",
     "trialExpiredMessage": "Your trial has ended. Subscribe to be visible to players.",
     "subscribe": "Subscribe",
-    "dangerZone": "Danger Zone"
+    "dangerZone": "Danger Zone",
+    "playerMode": "Player mode",
+    "playerModeDescription": "Access the player dashboard to book lessons with other trainers",
+    "playerModeEnabled": "Player mode enabled — you can now access the player dashboard",
+    "playerModeDisabled": "Player mode disabled",
+    "marketplaceVisibility": "Marketplace visibility",
+    "visibleHelper": "Visible — players can find you and request lessons",
+    "hiddenHelper": "Hidden — you won't appear in search and players can't book you",
+    "visibilitySafety": "You can switch this off anytime."
   },
   "terms": {
     "title": "General Terms",

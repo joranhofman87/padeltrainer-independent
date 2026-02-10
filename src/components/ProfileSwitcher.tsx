@@ -58,8 +58,10 @@ export function ProfileSwitcher({
   const [loading, setLoading] = useState(true);
 
   const isTrainer = roles.includes('trainer');
+  const isPlayer = roles.includes('player');
   const hasMultipleClubs = clubs.length > 1;
   const hasMultipleAcademies = academies.length > 1;
+  const hasDualTrainerPlayer = isTrainer && isPlayer;
   
   // Show switcher if user has multiple roles, clubs, or academies
   const showSwitcher = 
@@ -67,7 +69,8 @@ export function ProfileSwitcher({
     hasMultipleClubs ||
     hasMultipleAcademies ||
     (isClubManager && isAcademyManager) ||
-    (clubs.length > 0 && academies.length > 0);
+    (clubs.length > 0 && academies.length > 0) ||
+    hasDualTrainerPlayer;
 
   useEffect(() => {
     async function fetchData() {
@@ -175,7 +178,7 @@ export function ProfileSwitcher({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         {/* Trainer Section - show when trainer wants to switch back */}
-        {isTrainer && (context === 'club' || context === 'academy') && (
+        {isTrainer && (context === 'club' || context === 'academy' || context === 'player') && (
           <>
             <DropdownMenuLabel className="flex items-center gap-2">
               <User className="h-4 w-4" />
@@ -192,6 +195,29 @@ export function ProfileSwitcher({
                 </AvatarFallback>
               </Avatar>
               <span className="flex-1">{t('trainerDashboard')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {/* Player Section - show when trainer with player role wants to switch to player */}
+        {hasDualTrainerPlayer && context === 'trainer' && (
+          <>
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              {t('switchRole')}
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => navigate('/app/player')}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={profile?.avatar_url || undefined} />
+                <AvatarFallback className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                  {profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'PL'}
+                </AvatarFallback>
+              </Avatar>
+              <span className="flex-1">{t('playerDashboard')}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>

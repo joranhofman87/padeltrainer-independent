@@ -417,7 +417,15 @@
     "hiddenMessage": "Je profiel is verborgen. Zet aan om live te gaan.",
     "trialExpiredMessage": "Je proefperiode is afgelopen. Neem een abonnement om zichtbaar te zijn.",
     "subscribe": "Abonneren",
-    "dangerZone": "Gevarenzone"
+    "dangerZone": "Gevarenzone",
+    "playerMode": "Spelersmodus",
+    "playerModeDescription": "Toegang tot het spelerdashboard om lessen te boeken bij andere trainers",
+    "playerModeEnabled": "Spelersmodus ingeschakeld — je hebt nu toegang tot het spelerdashboard",
+    "playerModeDisabled": "Spelersmodus uitgeschakeld",
+    "marketplaceVisibility": "Marktplaats zichtbaarheid",
+    "visibleHelper": "Zichtbaar — spelers kunnen je vinden en lessen aanvragen",
+    "hiddenHelper": "Verborgen — je verschijnt niet in de zoekresultaten",
+    "visibilitySafety": "Je kunt dit altijd weer uitzetten."
   },
   "terms": {
     "title": "Algemene Voorwaarden",

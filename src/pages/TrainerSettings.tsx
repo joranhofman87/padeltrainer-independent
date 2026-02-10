@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
@@ -16,12 +16,14 @@ import { isTrainerInPaidAcademy } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 
 export default function TrainerSettings() {
-  const { user, role, loading, subscription, refreshSubscription } = useAuth();
+  const { user, role, roles, loading, subscription, refreshSubscription, session, refreshAuth } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('trainer');
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
   const [inPaidAcademy, setInPaidAcademy] = useState(false);
+  const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
+  const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
 
   // Auth is now handled by TrainerLayout
 
@@ -31,6 +33,11 @@ export default function TrainerSettings() {
       setIsPublic(subscription.isPublic);
     }
   }, [subscription]);
+
+  // Sync player mode with roles
+  useEffect(() => {
+    setPlayerModeEnabled(roles.includes('player'));
+  }, [roles]);
 
   // Check academy membership for visibility eligibility
   useEffect(() => {
@@ -80,6 +87,34 @@ export default function TrainerSettings() {
       toast.error(t('common:error', 'Something went wrong'));
     } finally {
       setUpdatingVisibility(false);
+    }
+  };
+
+  const handlePlayerModeToggle = async (checked: boolean) => {
+    if (!session?.access_token) return;
+
+    setUpdatingPlayerMode(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('toggle-player-role', {
+        body: { enable: checked },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      setPlayerModeEnabled(checked);
+      await refreshAuth();
+      toast.success(checked
+        ? t('settings.playerModeEnabled', 'Player mode enabled — you can now access the player dashboard')
+        : t('settings.playerModeDisabled', 'Player mode disabled')
+      );
+    } catch (error) {
+      logger.error('Error toggling player mode', error as Error, { component: 'TrainerSettings' });
+      toast.error(t('common:error', 'Something went wrong'));
+    } finally {
+      setUpdatingPlayerMode(false);
     }
   };
 
@@ -241,6 +276,30 @@ export default function TrainerSettings() {
                 </Alert>
               )}
             </CardContent>
+          </Card>
+        </div>
+
+        {/* Player Mode Section */}
+        <div className="max-w-4xl mb-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${playerModeEnabled ? 'bg-blue-500/10' : 'bg-muted'}`}>
+                  <Gamepad2 className={`h-5 w-5 ${playerModeEnabled ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                </div>
+                <div className="flex-1">
+                  <CardTitle className="text-lg">{t('settings.playerMode', 'Player mode')}</CardTitle>
+                  <CardDescription>
+                    {t('settings.playerModeDescription', 'Access the player dashboard to book lessons with other trainers')}
+                  </CardDescription>
+                </div>
+                <Switch
+                  checked={playerModeEnabled}
+                  onCheckedChange={handlePlayerModeToggle}
+                  disabled={updatingPlayerMode}
+                />
+              </div>
+            </CardHeader>
           </Card>
         </div>
 
