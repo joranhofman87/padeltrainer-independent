@@ -159,7 +159,11 @@
     "activeContract": "Actief Contract",
     "activeContractHint": "Inactieve contracten zijn verborgen op publieke pagina's",
     "inactive": "Inactief",
-    "inactiveContracts": "Inactieve Contracten"
+    "inactiveContracts": "Inactieve Contracten",
+    "requestNew": "Nieuwe Locatie Aanvragen",
+    "requestNewDescription": "Locatie niet in onze database? Dien het in ter beoordeling door een beheerder.",
+    "requestSubmitted": "Aanvraag Ingediend",
+    "requestSubmittedDescription": "Een beheerder zal je locatie-aanvraag beoordelen."
   },
   "profile": {
     "title": "Academy Profiel",
