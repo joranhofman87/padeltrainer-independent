@@ -39,7 +39,7 @@ export default function AdminPlayerRatings() {
   const [editingCell, setEditingCell] = useState<{ profileId: string; month: string } | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const months = getMonthColumns();
+  const months = [...getMonthColumns()].reverse();
 
   const { data: players = [], isLoading: loadingPlayers } = useQuery({
     queryKey: ["admin-rating-players"],
