@@ -348,21 +348,47 @@ export default function EditProfile() {
     setSaving(true);
     
     try {
-      // Update profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: formData.full_name,
-          phone: formData.phone,
-          location: formData.location,
-          bio: formData.bio,
-          skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
-          rating_system: formData.rating_system,
-          rating_member_id: formData.rating_member_id,
-        })
-        .eq('user_id', user.id);
-      
-      if (profileError) throw profileError;
+      const emailChanged = formData.email !== (profile?.email || '');
+
+      // If email changed, use edge function to update auth + profile
+      if (emailChanged) {
+        const { data: response, error: emailError } = await supabase.functions.invoke('update-user', {
+          body: {
+            target_user_id: user.id,
+            email: formData.email,
+            full_name: formData.full_name,
+            phone: formData.phone,
+            bio: formData.bio,
+            skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
+            rating_system: formData.rating_system,
+            rating_member_id: formData.rating_member_id,
+          },
+        });
+
+        if (emailError) throw emailError;
+        if (response?.error) throw new Error(response.error);
+
+        toast({
+          title: t('settings.emailChangeSent', 'Verification email sent'),
+          description: t('settings.emailChangeDescription', 'Please check your new email address to confirm the change.'),
+        });
+      } else {
+        // Update profile directly (no email change)
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: formData.full_name,
+            phone: formData.phone,
+            location: formData.location,
+            bio: formData.bio,
+            skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
+            rating_system: formData.rating_system,
+            rating_member_id: formData.rating_member_id,
+          })
+          .eq('user_id', user.id);
+        
+        if (profileError) throw profileError;
+      }
 
       // Update player locations if player
       if (role === 'player' && profile?.id) {
@@ -566,9 +592,13 @@ export default function EditProfile() {
                     id="email"
                     type="email"
                     value={formData.email}
-                    disabled
-                    className="bg-muted"
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
+                  {formData.email !== (profile?.email || '') && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('settings.emailChangeVerification', 'A verification email will be sent to your new address.')}
+                    </p>
+                  )}
                 </div>
               </div>
               

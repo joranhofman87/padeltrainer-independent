@@ -15,7 +15,10 @@
     "profileDescription": "Werk je profielgegevens en voorkeuren bij",
     "calendarSyncDescription": "Synchroniseer je boekingen met externe kalenders",
     "notificationsDescription": "Beheer je meldingsvoorkeuren",
-    "dangerZone": "Gevarenzone"
+    "dangerZone": "Gevarenzone",
+    "emailChangeVerification": "Er wordt een verificatie-e-mail naar je nieuwe adres gestuurd.",
+    "emailChangeSent": "Verificatie-e-mail verzonden",
+    "emailChangeDescription": "Controleer je nieuwe e-mailadres om de wijziging te bevestigen."
   },
   "badge": "Speler",
   "ratingSystem": {

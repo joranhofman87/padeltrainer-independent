@@ -15,7 +15,10 @@
     "profileDescription": "Update your profile information and preferences",
     "calendarSyncDescription": "Sync your bookings with external calendars",
     "notificationsDescription": "Manage your notification preferences",
-    "dangerZone": "Danger Zone"
+    "dangerZone": "Danger Zone",
+    "emailChangeVerification": "A verification email will be sent to your new address.",
+    "emailChangeSent": "Verification email sent",
+    "emailChangeDescription": "Please check your new email address to confirm the change."
   },
   "badge": "Player",
   "ratingSystem": {
