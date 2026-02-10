@@ -1,34 +1,51 @@
 
-## Add "Create Slots First" Reminder Dialog Before Generating Proposals
+
+## Add "Mark as Paid" Option to Slot and Cyclus Creation
 
 ### Overview
-When a trainer or academy clicks "Generate Proposals", show an informational AlertDialog reminding them that slots/cycles must exist in the calendar first for matching to work. The dialog has two CTAs: "Go to Calendar" (navigates to the calendar page) and "Continue" (proceeds to open the existing ScoringWeightsDialog).
+Allow trainers and academies to mark bookings as already paid when creating slots or training cycles with players. This is for cases where payment was handled outside the platform (cash, bank transfer, etc.). These bookings will be visually distinguished from Mollie-processed payments throughout the dashboard.
 
-### Changes
+### Database Changes
 
-**New Component: `src/components/cycles/GenerateProposalsGuard.tsx`**
-- An AlertDialog with an info/warning message explaining that slots must be created in the calendar first
-- Props: `open`, `onOpenChange`, `onContinue`, `calendarPath`
-- "Go to Calendar" button (outline) navigates to the provided calendar path
-- "Continue" button (primary) closes this dialog and triggers `onContinue` (which opens the ScoringWeightsDialog)
-- Uses existing AlertDialog UI components
+Add a `paid_externally` boolean column (default `false`) to the `bookings` table. This allows the system to differentiate between payments processed through the platform (Mollie) and payments handled outside.
 
-**`src/pages/TrainerIntakeRequests.tsx`**
-- Add state `showGuardDialog` (boolean)
-- Change the "Generate Proposals" button `onClick` from `setShowWeightsDialog(true)` to `setShowGuardDialog(true)`
-- Render `GenerateProposalsGuard` with `calendarPath="/app/trainer/calendar"` and `onContinue` that closes guard and opens weights dialog
+```sql
+ALTER TABLE public.bookings ADD COLUMN paid_externally boolean DEFAULT false;
+```
 
-**`src/pages/academy/AcademyIntakeRequests.tsx`**
-- Same pattern with `calendarPath="/app/academy/calendar"`
+### UI Changes
 
-**Translation keys** (EN and NL, in `cycles` namespace):
-- `proposals.guard.title` -- e.g. "Important"
-- `proposals.guard.description` -- e.g. "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences."
-- `proposals.guard.goToCalendar` -- "Go to Calendar"
-- `proposals.guard.continue` -- "Continue"
+**1. BulkCreateSheet (Training Cycle creation) -- `src/components/trainer/AddSlotDialog.tsx`**
+
+- Add `markAsPaid` boolean to the `BulkSlotConfig` interface (default `false`)
+- Add a checkbox at the bottom of each slot config (near the existing "Mark as private" checkbox): "Mark bookings as paid (payment handled externally)"
+- Only show this checkbox when `addPlayers` is enabled and at least one player is selected
+- When generating bookings, set `payment_status: "paid"`, `paid_at: now()`, and `paid_externally: true` instead of `payment_status: "pending"`
+
+**2. DuplicateCyclusDialog -- `src/components/trainer/DuplicateCyclusDialog.tsx`**
+
+- Add a `markAsPaid` checkbox when `includeExistingPlayers` is enabled
+- When creating duplicated bookings with this flag, set `payment_status: "paid"`, `paid_at: now()`, `paid_externally: true`
+
+**3. Dashboard Display Differentiation**
+
+Update payment status badges in the following locations to show "Paid (external)" instead of just "Paid" when `paid_externally` is true:
+- `src/pages/TrainerEarnings.tsx` -- earnings history and pending payments lists
+- `src/pages/academy/AcademyDashboard.tsx` -- recent bookings table
+- `src/components/trainer/UnpaidBookingsCard.tsx` -- exclude externally-paid bookings from unpaid list
+- `src/components/trainer/EditBookingDialog.tsx` -- show indicator when viewing externally-paid booking
+
+### Translation Keys (EN and NL, `trainer` namespace)
+
+- `calendar.markAsPaid` -- "Mark as paid"
+- `calendar.markAsPaidHint` -- "Payment was handled outside the platform (e.g. cash, bank transfer)"
+- `bookings.paidExternally` -- "Paid (external)"
 
 ### Technical Details
-- The guard dialog is a simple AlertDialog (not a full Dialog) since it's a short confirmation message
-- The "Go to Calendar" button uses `useNavigate()` to route to the appropriate calendar page
-- The "Continue" button chains into the existing `setShowWeightsDialog(true)` flow, so no changes to the scoring/generation logic are needed
-- Both Trainer and Academy intake request pages get the same treatment with only the calendar path differing
+
+- The `BulkSlotConfig` interface gets a new `markAsPaid: boolean` field (default `false`)
+- The checkbox only appears conditionally when players are being added to the slot/cyclus
+- When `markAsPaid` is true, the booking insert uses `payment_status: "paid"`, `paid_at: new Date().toISOString()`, `paid_externally: true`
+- The `paid_externally` flag is purely informational -- it does not change any payment processing logic
+- Existing payment status select in EditBookingDialog continues to work as before; when manually marking as paid there, `paid_externally` remains false (since it is a platform action)
+
