@@ -8,6 +8,7 @@ import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
@@ -20,8 +21,15 @@ export default function TrainerLayout() {
   useEffect(() => {
     const check = async () => {
       if (user) {
-        const academy = await getTrainerAcademy(user.id);
-        setHasAcademy(!!academy);
+        const { data: trainerProfile } = await supabase
+          .from('trainer_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (trainerProfile) {
+          const academy = await getTrainerAcademy(trainerProfile.id);
+          setHasAcademy(!!academy);
+        }
       }
     };
     check();
@@ -76,7 +84,7 @@ export default function TrainerLayout() {
     ? getTrialDaysRemaining(subscription.trialEndsAt) 
     : 0;
   const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
-  const isOnSubscriptionPage = location.pathname === '/subscription' || location.pathname === '/trainer/subscription';
+  const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
 
   // Feature translations for subscription overlay
   const subscriptionFeatures = [
@@ -106,7 +114,7 @@ export default function TrainerLayout() {
       {!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy && (
         <SubscriptionOverlay
           roleName="trainer"
-          subscriptionPath="/trainer/subscription"
+          subscriptionPath="/app/trainer/subscription"
           pricing={{
             monthly: SUBSCRIPTION_TIERS.professional.monthlyPrice,
             yearly: SUBSCRIPTION_TIERS.professional.yearlyPrice,

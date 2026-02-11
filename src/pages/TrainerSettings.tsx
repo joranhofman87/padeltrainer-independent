@@ -44,8 +44,15 @@ export default function TrainerSettings() {
   useEffect(() => {
     const checkAcademy = async () => {
       if (user) {
-        const academy = await getTrainerAcademy(user.id);
-        setHasAcademy(!!academy);
+        const { data: trainerProfile } = await supabase
+          .from('trainer_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (trainerProfile) {
+          const academy = await getTrainerAcademy(trainerProfile.id);
+          setHasAcademy(!!academy);
+        }
       }
       if (!subscription?.isSubscribed && user) {
         // Only check if trainer doesn't have their own paid subscription
