@@ -221,6 +221,18 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`Welcome email sent to ${email}`);
     }
 
+    // Send Slack notification (non-blocking)
+    try {
+      await supabaseAdmin.functions.invoke('slack-notify', {
+        body: {
+          event: 'new_signup',
+          data: { name: fullName, email, role: 'trainer' },
+        },
+      });
+    } catch (slackErr) {
+      console.error("Slack notification failed (non-fatal):", slackErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
