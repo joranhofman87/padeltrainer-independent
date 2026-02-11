@@ -305,6 +305,41 @@ serve(async (req) => {
             },
           });
           logStep("Confirmation email sent");
+
+          // Slack notification for payment received
+          const trainerProfileId = booking.availability_slots.trainer_id;
+          let trainerName = "Unknown";
+          if (trainerProfileId) {
+            const { data: tp } = await supabase
+              .from("trainer_profiles")
+              .select("user_id")
+              .eq("id", trainerProfileId)
+              .single();
+            if (tp?.user_id) {
+              const { data: prof } = await supabase
+                .from("profiles")
+                .select("full_name")
+                .eq("user_id", tp.user_id)
+                .single();
+              trainerName = prof?.full_name || "Unknown";
+            }
+          }
+
+          try {
+            await supabase.functions.invoke("slack-notify", {
+              body: {
+                event: "payment_received",
+                data: {
+                  player: booking.profiles.full_name,
+                  trainer: trainerName,
+                  amount: `€${payment.amount?.value || "?"}`,
+                  bookings: bookingIds.length,
+                },
+              },
+            });
+          } catch (slackErr) {
+            logStep("Slack notification failed (non-fatal)", { error: String(slackErr) });
+          }
         }
       } catch (emailError) {
         logStep("Failed to send confirmation email", { 

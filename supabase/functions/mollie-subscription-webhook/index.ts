@@ -130,6 +130,24 @@ serve(async (req) => {
         .eq("id", metadata.trainer_profile_id);
 
       logStep("Trainer subscription activated");
+
+      // Slack notification
+      try {
+        const { data: tp } = await supabase.from("profiles").select("full_name").eq("user_id", (await supabase.from("trainer_profiles").select("user_id").eq("id", metadata.trainer_profile_id).single()).data?.user_id).single();
+        await supabase.functions.invoke("slack-notify", {
+          body: {
+            event: "subscription_purchased",
+            data: {
+              name: tp?.full_name || "Unknown",
+              type: "Trainer",
+              plan: planId,
+              amount: `€${plan.amount}`,
+            },
+          },
+        });
+      } catch (slackErr) {
+        logStep("Slack notification failed (non-fatal)", { error: String(slackErr) });
+      }
     }
 
     // Handle club subscription

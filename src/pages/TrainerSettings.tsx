@@ -90,6 +90,24 @@ export default function TrainerSettings() {
 
       setIsPublic(checked);
       await refreshSubscription();
+
+      // Slack notification when profile goes public
+      if (checked) {
+        try {
+          await supabase.functions.invoke('slack-notify', {
+            body: {
+              event: 'profile_published',
+              data: {
+                name: user?.user_metadata?.full_name || 'Unknown',
+                email: user?.email || '',
+              },
+            },
+          });
+        } catch (slackErr) {
+          console.error('Slack notification failed (non-fatal):', slackErr);
+        }
+      }
+
       toast.success(checked 
         ? t('settings.visibilityOn', 'Your profile is now visible to players')
         : t('settings.visibilityOff', 'Your profile is now hidden')

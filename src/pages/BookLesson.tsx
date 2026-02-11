@@ -371,6 +371,24 @@ export default function BookLesson() {
         const { data: insertedBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
         if (error) throw error;
 
+        // Slack notification for booking created
+        try {
+          await supabase.functions.invoke('slack-notify', {
+            body: {
+              event: 'booking_created',
+              data: {
+                player: profile.full_name,
+                trainer: trainer.profiles.full_name,
+                type: 'Cycle',
+                sessions: selectedCyclus.slots.length,
+                price: `€${selectedCyclus.totalPrice}`,
+              },
+            },
+          });
+        } catch (slackErr) {
+          console.error('Slack notification failed (non-fatal):', slackErr);
+        }
+
         // Auto-create invoice for manual invoicing cyclus bookings
         if (useManualInvoicing && insertedBookings?.length) {
           try {
