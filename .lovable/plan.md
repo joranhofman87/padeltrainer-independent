@@ -1,38 +1,35 @@
 
-## Add Player Management (Add + Import) to Academy Players Page
 
-### Problem
+## Update Social Share (OG) Image with Logo and Text
 
-The Academy Players page is read-only. Academy managers cannot manually add or import players like trainers can. They should have the same "Add Player" and "Import Players" functionality available on the trainer dashboard.
+### What happens when you share a link
 
-### Key Challenge
+Social platforms display three things from your page:
+- **Image** (`og:image`) -- currently an old placeholder at `public/og-image.png`
+- **Title** (`og:title`) -- already set dynamically per page (e.g. "Find Your Perfect Padel Trainer | PadelTrainer.ai")
+- **Description** (`og:description`) -- already set dynamically per page
 
-The `guest_players` table requires a `trainer_id`. When an academy has multiple trainers, the manager needs to select which trainer the player should be associated with. The existing `AddPlayerDialog` and `ImportPlayersDialog` components already accept a `trainerId` prop, so we can reuse them directly.
+The title and description text are already working. Only the image needs replacing.
+
+### Option: Branded OG Image with Text
+
+Since you want text on the image itself, the best approach is to create a simple branded OG image (1200x630px, the standard size) that includes:
+- The PadelTrainer.ai logo (from the uploaded files)
+- A tagline, e.g. the hero subtitle or something like "Find Your Perfect Padel Trainer"
+- Clean background matching brand colors
+
+I will generate this as a static image file using an HTML canvas rendered to PNG via an edge function, then save it as `public/og-image.png`.
 
 ### Changes
 
-**`src/pages/academy/AcademyPlayers.tsx`**
+1. **`public/og-image.png`** -- replace with a new branded image containing logo + tagline text
+2. **No code changes needed** -- the SEO component already references this file as the default
 
-1. Add state for `showAddPlayer`, `showImportPlayers`, `searchQuery`, and `trainerIds` (list of active academy trainer IDs)
-2. If the academy has multiple trainers, add a trainer selector (dropdown) so the manager can choose which trainer to associate new players with -- defaulting to the first trainer
-3. Add header section with "Import" and "Add Player" buttons (same layout as TrainerPlayers)
-4. Add search input for filtering
-5. Reuse the existing `AddPlayerDialog` and `ImportPlayersDialog` components, passing the selected `trainerId`
-6. Add callbacks (`handlePlayerCreated`, `handlePlayersImported`) that refresh the player list after add/import
-7. Expand the `PlayerRow` interface to include `phone`, `skill_rating`, `notes`, `rating_system` fields to match the trainer view
-8. Add edit/delete actions for guest players using the existing `EditPlayerDialog` component
-9. Add the same contact info, skill rating columns from the trainer view
+### Text suggestion
 
-### Technical Details
+The tagline on the image could be the hero title: the translated value of `home.hero.title` + `home.hero.titleHighlight`. I will check the English and Dutch marketing translations to pick the right text. Since OG images are static, we will use one language (English is standard for international reach, or Dutch if preferred).
 
-- Reuse `AddPlayerDialog` from `@/components/trainer/AddPlayerDialog` (takes `trainerId` prop)
-- Reuse `ImportPlayersDialog` from `@/components/trainer/ImportPlayersDialog` (takes `trainerId` prop)
-- Reuse `EditPlayerDialog` from `@/components/trainer/EditPlayerDialog`
-- Fetch trainer list from `academy_trainers` table to populate trainer selector and set default
-- When adding/importing, the selected trainer ID determines ownership of guest_players records
-- After add/import, call `fetchPlayers()` to refresh the full list
-- RLS: The `guest_players` table already allows inserts by trainers. Academy managers acting on behalf of trainers may need the `create-manual-player` edge function for registered players, but for guest players the existing `AddPlayerDialog` inserts directly. Since the academy user may not own those trainer profiles, we should verify RLS allows this -- if not, we use the existing pattern where academy managers can manage their trainers' data
+### After publishing
 
-### Files to modify
+Social platforms cache OG images. You may need to clear the cache using Facebook Sharing Debugger or LinkedIn Post Inspector to see the update.
 
-- `src/pages/academy/AcademyPlayers.tsx` -- major rewrite to add buttons, search, dialogs, trainer selector, and action menus
