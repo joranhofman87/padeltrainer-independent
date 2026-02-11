@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { Building2, ArrowLeft, Check } from 'lucide-react';
 import { z } from 'zod';
@@ -81,16 +82,20 @@ export default function ClubSignup() {
         variant: 'destructive',
       });
     } else if (data?.session) {
-      // Session is immediately available - safe to navigate
       localStorage.setItem('pendingRole', 'club');
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },
+      }).catch(() => {});
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
       });
       navigate('/app/onboarding/club');
     } else {
-      // No immediate session - email verification required
       localStorage.setItem('pendingRole', 'club');
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },
+      }).catch(() => {});
       setShowVerification(true);
     }
 
