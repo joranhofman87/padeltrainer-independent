@@ -43,6 +43,7 @@ import {
   ProfileContentGrid,
   ProfileMainColumn,
   ProfileSidebarColumn,
+  ProfileFullWidthSection,
   ProfileHeroCard,
   ProfileQuickStatsCard,
   ProfileContactCard,
@@ -580,8 +581,6 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Video Gallery */}
-            <VideoGallery trainerProfileId={trainer.id} />
 
             {/* About */}
             {profile.bio && (
@@ -832,6 +831,11 @@ export default function TrainerProfile() {
             )}
           </ProfileSidebarColumn>
         </ProfileContentGrid>
+
+        {/* Videos - Full Width at Bottom */}
+        <ProfileFullWidthSection>
+          <VideoGallery trainerProfileId={trainer.id} />
+        </ProfileFullWidthSection>
       </ProfileLayout>
     </>
   );

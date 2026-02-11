@@ -353,9 +353,6 @@ export default function AcademyPublicProfile() {
         <ProfileContentGrid>
           {/* Main Content */}
           <ProfileMainColumn>
-            {/* Videos */}
-            <VideoGallery academyProfileId={academy.id!} />
-
             {/* About Card */}
             <Card>
               <CardHeader>
@@ -471,6 +468,11 @@ export default function AcademyPublicProfile() {
         {/* Full Width - Reviews Section */}
         <ProfileFullWidthSection>
           <AcademyReviews academyId={academy.id!} />
+        </ProfileFullWidthSection>
+
+        {/* Full Width - Videos Section */}
+        <ProfileFullWidthSection>
+          <VideoGallery academyProfileId={academy.id!} />
         </ProfileFullWidthSection>
 
         {/* Full Width - Locations Section */}

@@ -63,28 +63,22 @@ export function VideoGallery({ trainerProfileId, academyProfileId }: VideoGaller
             const info = parseVideoUrl(video.video_url);
             if (!info) return null;
 
+            const isInstagram = info.platform === 'instagram';
+
             return (
               <div key={video.id} className="space-y-2">
                 {video.title && (
                   <p className="text-sm font-medium">{video.title}</p>
                 )}
-                <div className="aspect-video rounded-lg overflow-hidden bg-muted">
-                  {info.platform === 'instagram' ? (
-                    <iframe
-                      src={info.embedUrl}
-                      className="w-full h-full border-0"
-                      allowFullScreen
-                      loading="lazy"
-                    />
-                  ) : (
-                    <iframe
-                      src={info.embedUrl}
-                      className="w-full h-full"
-                      allow="fullscreen"
-                      allowFullScreen
-                      loading="lazy"
-                    />
-                  )}
+                <div className={`rounded-lg overflow-hidden bg-muted ${isInstagram ? 'aspect-[4/5]' : 'aspect-video'}`}>
+                  <iframe
+                    src={info.embedUrl}
+                    className="w-full h-full border-0"
+                    allow="fullscreen; autoplay; encrypted-media"
+                    allowFullScreen
+                    loading="lazy"
+                    scrolling={isInstagram ? 'no' : undefined}
+                  />
                 </div>
               </div>
             );
