@@ -47,6 +47,7 @@ import {
   ProfileQuickStatsCard,
   ProfileContactCard,
   ProfileSocialCard,
+  VideoGallery,
 } from '@/components/profiles';
 
 interface TrainerData {
@@ -579,27 +580,8 @@ export default function TrainerProfile() {
               </Card>
             )}
 
-            {/* Video Section */}
-            {videoInfo && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Play className="h-5 w-5 text-primary" />
-                    {t('trainer:profile.watchIntro', 'Meet Your Coach')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="aspect-video rounded-lg overflow-hidden bg-muted">
-                    <iframe
-                      src={videoInfo.embedUrl}
-                      className="w-full h-full"
-                      allow="fullscreen"
-                      allowFullScreen
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Video Gallery */}
+            <VideoGallery trainerProfileId={trainer.id} />
 
             {/* About */}
             {profile.bio && (

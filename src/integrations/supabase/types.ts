@@ -2369,6 +2369,72 @@ export type Database = {
           },
         ]
       }
+      profile_videos: {
+        Row: {
+          academy_profile_id: string | null
+          created_at: string | null
+          id: string
+          sort_order: number | null
+          title: string | null
+          trainer_profile_id: string | null
+          video_url: string
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string
+          sort_order?: number | null
+          title?: string | null
+          trainer_profile_id?: string | null
+          video_url: string
+        }
+        Update: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string
+          sort_order?: number | null
+          title?: string | null
+          trainer_profile_id?: string | null
+          video_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_videos_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_videos_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

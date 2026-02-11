@@ -27,6 +27,7 @@ import {
   ProfileFullWidthSection,
   ProfileHeroCard,
   ProfileQuickStatsCard,
+  VideoGallery,
 } from '@/components/profiles';
 import { 
   getAcademyBySlug, 
@@ -352,6 +353,9 @@ export default function AcademyPublicProfile() {
         <ProfileContentGrid>
           {/* Main Content */}
           <ProfileMainColumn>
+            {/* Videos */}
+            <VideoGallery academyProfileId={academy.id!} />
+
             {/* About Card */}
             <Card>
               <CardHeader>

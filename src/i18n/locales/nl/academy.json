@@ -195,7 +195,9 @@
     "bannerInvalidType": "Selecteer een afbeeldingsbestand.",
     "bannerTooLarge": "Afbeelding moet kleiner zijn dan 10MB.",
     "bannerInvalidWidth": "Afbeeldingsbreedte moet tussen 800 en 2400 pixels zijn.",
-    "bannerInvalidRatio": "Beeldverhouding moet tussen 2.5:1 en 5:1 zijn (brede banner)."
+    "bannerInvalidRatio": "Beeldverhouding moet tussen 2.5:1 en 5:1 zijn (brede banner).",
+    "videos": "Video's",
+    "videosDescription": "Voeg YouTube, Vimeo, TikTok of Instagram video's toe aan je profiel"
   },
   "managers": {
     "title": "Academy Beheerders",

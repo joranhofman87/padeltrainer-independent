@@ -13,3 +13,6 @@ export {
   ProfileSocialCard, 
   ProfileContactCard 
 } from './ProfileSidebar';
+
+export { VideoGallery } from './VideoGallery';
+export { VideoManager } from './VideoManager';

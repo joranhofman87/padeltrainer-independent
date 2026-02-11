@@ -198,7 +198,9 @@
     "bannerInvalidType": "Please select an image file.",
     "bannerTooLarge": "Image must be smaller than 10MB.",
     "bannerInvalidWidth": "Image width must be between 800 and 2400 pixels.",
-    "bannerInvalidRatio": "Image aspect ratio must be between 2.5:1 and 5:1 (wide banner)."
+    "bannerInvalidRatio": "Image aspect ratio must be between 2.5:1 and 5:1 (wide banner).",
+    "videos": "Videos",
+    "videosDescription": "Add YouTube, Vimeo, TikTok, or Instagram videos to your profile"
   },
   "managers": {
     "title": "Academy Managers",
