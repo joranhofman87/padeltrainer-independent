@@ -221,8 +221,7 @@ export default function CycleForm({
 
       const durationHours = durationMinutes / 60;
       const pricePerSession = Math.round(hourlyRate * durationHours * 100) / 100;
-      const extraCostPerSession = extraCosts.reduce((sum, ec) => sum + (ec.price || 0), 0);
-      const totalPrice = Math.round((pricePerSession + extraCostPerSession) * watchedWeeks * 100) / 100;
+      const totalPrice = Math.round(pricePerSession * watchedWeeks * 100) / 100;
 
       form.setValue('price_per_session', pricePerSession);
       form.setValue('total_price', totalPrice);
@@ -657,7 +656,9 @@ export default function CycleForm({
               <FormDescription className="text-xs">
                 {t('form.levelRequirementHelp', 'Only players within this level range can register')}
               </FormDescription>
-            </div>
+              </div>
+
+
 
 
             {/* Pricing - only for cyclus */}
@@ -724,6 +725,32 @@ export default function CycleForm({
                   )}
                 />
               </div>
+
+              {/* Pricing breakdown when extra costs exist */}
+              {(() => {
+                const ecTotal = extraCosts.reduce((sum, ec) => sum + (ec.price || 0), 0);
+                const weeks = form.watch('number_of_weeks') || 0;
+                const totalExtraCosts = Math.round(ecTotal * weeks * 100) / 100;
+                const baseTotal = form.watch('total_price') || 0;
+                const grandTotal = Math.round((Number(baseTotal) + totalExtraCosts) * 100) / 100;
+                if (ecTotal <= 0) return null;
+                return (
+                  <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('form.totalPrice')}</span>
+                      <span>€{Number(baseTotal).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{ecTotal.toFixed(2)})</span>
+                      <span>€{totalExtraCosts.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t pt-1 flex justify-between font-semibold">
+                      <span>Total</span>
+                      <span>€{grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Allow single booking toggle */}
               <div className="flex flex-row items-center justify-between rounded-lg border p-3">
