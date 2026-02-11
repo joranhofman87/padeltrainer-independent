@@ -78,10 +78,12 @@ export function parseVideoUrl(url: string): VideoEmbedInfo | null {
     const match = trimmedUrl.match(pattern);
     if (match && match[1]) {
       const videoId = match[1];
+      const isReel = trimmedUrl.includes('/reel/');
+      const embedPath = isReel ? 'reel' : 'p';
       return {
         platform: 'instagram',
         videoId,
-        embedUrl: `https://www.instagram.com/p/${videoId}/embed/`,
+        embedUrl: `https://www.instagram.com/${embedPath}/${videoId}/embed/?cr=1&v=14&wp=540`,
         thumbnailUrl: '',
       };
     }
