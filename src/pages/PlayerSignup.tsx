@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { Users, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
@@ -78,9 +79,12 @@ export default function PlayerSignup() {
         variant: 'destructive',
       });
     } else if (data?.session) {
-      // Session is immediately available (auto-confirm enabled for dev)
       trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
+      // Slack notification (non-blocking)
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
+      }).catch(() => {});
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {
@@ -92,9 +96,12 @@ export default function PlayerSignup() {
       });
       navigate('/onboarding/player');
     } else {
-      // No immediate session - email verification required
       trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
+      // Slack notification (non-blocking)
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },
+      }).catch(() => {});
       // Store redirect URL if present
       const redirectUrl = searchParams.get('redirect');
       if (redirectUrl) {

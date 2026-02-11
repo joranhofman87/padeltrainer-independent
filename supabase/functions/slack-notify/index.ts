@@ -12,7 +12,7 @@ interface SlackNotifyPayload {
 }
 
 const EVENT_CONFIG: Record<string, { emoji: string; title: string }> = {
-  new_signup: { emoji: "👤", title: "New Signup" },
+  new_signup: { emoji: "👤", title: "New Sign up" },
   new_club_signup: { emoji: "🏟️", title: "New Club Signup" },
   new_academy_signup: { emoji: "🎓", title: "New Academy Signup" },
   booking_created: { emoji: "📅", title: "Booking Created" },
@@ -26,6 +26,12 @@ const EVENT_CONFIG: Record<string, { emoji: string; title: string }> = {
 
 function formatMessage(event: string, data: Record<string, unknown>): object {
   const config = EVENT_CONFIG[event] || { emoji: "ℹ️", title: event };
+
+  // For signup events, append the role to the title
+  let title = config.title;
+  if (event === "new_signup" && data.role) {
+    title = `${config.title}: ${String(data.role)}`;
+  }
 
   const fields: { type: string; text: string }[] = [];
   for (const [key, value] of Object.entries(data)) {
@@ -44,7 +50,7 @@ function formatMessage(event: string, data: Record<string, unknown>): object {
         type: "header",
         text: {
           type: "plain_text",
-          text: `${config.emoji} ${config.title}`,
+          text: `${config.emoji} ${title}`,
           emoji: true,
         },
       },

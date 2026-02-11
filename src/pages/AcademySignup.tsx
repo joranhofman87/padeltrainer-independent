@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap, ArrowLeft, Check } from 'lucide-react';
 import { z } from 'zod';
@@ -76,6 +77,9 @@ export default function AcademySignup() {
       });
     } else if (data?.session) {
       localStorage.setItem('pendingRole', 'academy');
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Academy' } },
+      }).catch(() => {});
       toast({
         title: t('signUp.success'),
         description: t('signUp.successDescription'),
@@ -83,6 +87,9 @@ export default function AcademySignup() {
       navigate('/academy/onboarding');
     } else {
       localStorage.setItem('pendingRole', 'academy');
+      supabase.functions.invoke('slack-notify', {
+        body: { event: 'new_signup', data: { name: fullName, email, role: 'Academy' } },
+      }).catch(() => {});
       setShowVerification(true);
     }
 
