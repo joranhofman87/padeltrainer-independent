@@ -1,35 +1,26 @@
 
 
-## Update Social Share (OG) Image with Logo and Text
+## Fix Extra Costs Layout in Cycle Form
 
-### What happens when you share a link
+### Problem
+The extra cost inputs in the cycle creation form don't align with the "Price per session" and "Total cyclus price" fields above them. The description and price inputs use a `grid-cols-[1fr_auto_auto]` layout with a fixed `w-24` price input, while the fields above use a clean `grid-cols-2` layout.
 
-Social platforms display three things from your page:
-- **Image** (`og:image`) -- currently an old placeholder at `public/og-image.png`
-- **Title** (`og:title`) -- already set dynamically per page (e.g. "Find Your Perfect Padel Trainer | PadelTrainer.ai")
-- **Description** (`og:description`) -- already set dynamically per page
+### Fix
 
-The title and description text are already working. Only the image needs replacing.
+**File: `src/components/cycles/CycleForm.tsx`** (lines 766-800)
 
-### Option: Branded OG Image with Text
+Change the extra cost row layout from `grid-cols-[1fr_auto_auto]` to `grid-cols-2` with the delete button placed inside or next to the description field, so the two inputs (description + price) align with the two pricing fields above.
 
-Since you want text on the image itself, the best approach is to create a simple branded OG image (1200x630px, the standard size) that includes:
-- The PadelTrainer.ai logo (from the uploaded files)
-- A tagline, e.g. the hero subtitle or something like "Find Your Perfect Padel Trainer"
-- Clean background matching brand colors
+Specifically:
+- Change the row grid from `grid-cols-[1fr_auto_auto]` to `grid-cols-[1fr_1fr_auto]` -- making the description and price inputs equal width, with just the delete button as auto
+- Remove the fixed `w-24` from the price input wrapper, letting it fill its grid column
+- Keep the euro prefix styling on the price input
 
-I will generate this as a static image file using an HTML canvas rendered to PNG via an edge function, then save it as `public/og-image.png`.
+This will make the extra cost description input align with "Price per session" and the extra cost price input align with "Total cyclus price", matching the screenshot.
 
-### Changes
+### Technical detail
 
-1. **`public/og-image.png`** -- replace with a new branded image containing logo + tagline text
-2. **No code changes needed** -- the SEO component already references this file as the default
-
-### Text suggestion
-
-The tagline on the image could be the hero title: the translated value of `home.hero.title` + `home.hero.titleHighlight`. I will check the English and Dutch marketing translations to pick the right text. Since OG images are static, we will use one language (English is standard for international reach, or Dutch if preferred).
-
-### After publishing
-
-Social platforms cache OG images. You may need to clear the cache using Facebook Sharing Debugger or LinkedIn Post Inspector to see the update.
+Line 766 changes:
+- `grid-cols-[1fr_auto_auto]` becomes `grid-cols-[1fr_1fr_auto] gap-3`
+- Line 776: remove `w-24` from the price wrapper div, so it fills the column naturally
 
