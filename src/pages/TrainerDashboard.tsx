@@ -17,6 +17,7 @@ import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { getTrainerAcademy } from '@/lib/academy';
 
 interface DashboardStats {
   totalStudents: number;
@@ -46,6 +47,18 @@ export default function TrainerDashboard() {
   const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [recentRegistrations, setRecentRegistrations] = useState<any[]>([]);
   const [upcomingSlots, setUpcomingSlots] = useState<any[]>([]);
+  const [hasAcademy, setHasAcademy] = useState(false);
+
+  // Check academy membership
+  useEffect(() => {
+    const check = async () => {
+      if (trainerId) {
+        const academy = await getTrainerAcademy(trainerId);
+        setHasAcademy(!!academy);
+      }
+    };
+    check();
+  }, [trainerId]);
 
   useEffect(() => {
     if (user && role === 'trainer') {
@@ -278,7 +291,7 @@ export default function TrainerDashboard() {
   return (
     <main className="container mx-auto px-4 py-8">
       {/* Trial Banner */}
-      {subscription && !subscription.isSubscribed && (
+      {subscription && !subscription.isSubscribed && !hasAcademy && (
         <TrainerTrialBanner 
           trialEndsAt={subscription.trialEndsAt}
           onUpgrade={() => navigate('/app/trainer/subscription')}
