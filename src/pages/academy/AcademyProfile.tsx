@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GraduationCap, Globe, Instagram, Facebook, Youtube, Linkedin, Upload, ImageIcon } from 'lucide-react';
+import { VideoManager } from '@/components/profiles/VideoManager';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -425,6 +426,9 @@ export default function AcademyProfile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Videos */}
+        <VideoManager academyProfileId={activeAcademy.id} />
 
         <div className="flex justify-end">
           <Button type="submit" disabled={isLoading}>

@@ -23,6 +23,7 @@ import { CertificationsPicker } from '@/components/trainer/CertificationsPicker'
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
 import { isValidVideoUrl, getVideoThumbnail } from '@/lib/videoEmbed';
+import { VideoManager } from '@/components/profiles/VideoManager';
 import { canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy } from '@/lib/academy';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -779,39 +780,10 @@ export default function EditProfile() {
                     />
                   </div>
 
-                  {/* Video URL */}
-                  <div className="space-y-2">
-                    <Label htmlFor="video_url" className="flex items-center gap-2">
-                      <Video className="h-4 w-4" />
-                      {t('trainer:profile.introVideo', 'Intro Video')}
-                    </Label>
-                    <Input
-                      id="video_url"
-                      value={trainerData.video_url}
-                      onChange={(e) => setTrainerData({ ...trainerData, video_url: e.target.value })}
-                      placeholder="https://youtube.com/watch?v=..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {t('trainer:profile.introVideoHelp', 'Paste a YouTube or Vimeo URL')}
-                    </p>
-                    {trainerData.video_url && isValidVideoUrl(trainerData.video_url) && (
-                      <div className="mt-2 rounded-lg overflow-hidden border">
-                        <img 
-                          src={getVideoThumbnail(trainerData.video_url) || ''} 
-                          alt="Video thumbnail"
-                          className="w-full h-32 object-cover"
-                        />
-                        <p className="text-xs text-green-600 p-2 bg-green-50 dark:bg-green-900/20">
-                          ✓ Valid video URL
-                        </p>
-                      </div>
-                    )}
-                    {trainerData.video_url && !isValidVideoUrl(trainerData.video_url) && (
-                      <p className="text-xs text-destructive">
-                        Invalid video URL. Please use a YouTube or Vimeo link.
-                      </p>
-                    )}
-                  </div>
+                  {/* Videos */}
+                  {trainerProfileId && (
+                    <VideoManager trainerProfileId={trainerProfileId} />
+                  )}
 
                   {/* Social Media */}
                   <div className="space-y-4">

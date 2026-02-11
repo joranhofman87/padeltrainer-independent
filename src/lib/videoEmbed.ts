@@ -1,5 +1,5 @@
 export interface VideoEmbedInfo {
-  platform: 'youtube' | 'vimeo' | 'tiktok';
+  platform: 'youtube' | 'vimeo' | 'tiktok' | 'instagram';
   videoId: string;
   embedUrl: string;
   thumbnailUrl: string;
@@ -62,6 +62,26 @@ export function parseVideoUrl(url: string): VideoEmbedInfo | null {
         videoId,
         embedUrl: `https://www.tiktok.com/embed/v2/${videoId}`,
         // TikTok doesn't have a simple thumbnail API, use a placeholder
+        thumbnailUrl: '',
+      };
+    }
+  }
+
+  // Instagram patterns
+  // Supports: instagram.com/p/{id}/, instagram.com/reel/{id}/
+  const instagramPatterns = [
+    /instagram\.com\/reel\/([a-zA-Z0-9_-]+)/,
+    /instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
+  ];
+
+  for (const pattern of instagramPatterns) {
+    const match = trimmedUrl.match(pattern);
+    if (match && match[1]) {
+      const videoId = match[1];
+      return {
+        platform: 'instagram',
+        videoId,
+        embedUrl: `https://www.instagram.com/p/${videoId}/embed/`,
         thumbnailUrl: '',
       };
     }
