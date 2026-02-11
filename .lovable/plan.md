@@ -1,26 +1,38 @@
 
 
-## Fix Extra Costs Layout in Cycle Form
+## Fix Extra Costs Not Adding to Total Price
 
 ### Problem
-The extra cost inputs in the cycle creation form don't align with the "Price per session" and "Total cyclus price" fields above them. The description and price inputs use a `grid-cols-[1fr_auto_auto]` layout with a fixed `w-24` price input, while the fields above use a clean `grid-cols-2` layout.
+The auto-calculation on line 225 of `CycleForm.tsx` combines extra costs INTO the `total_price` field, which makes the "Total cyclus price" field show the combined amount. The user wants the pricing to work as a breakdown:
 
-### Fix
+- **Price per session**: trainer hourly rate x duration (e.g. 75)
+- **Total cyclus price**: price per session x number of weeks (e.g. 75 x 10 = 750)
+- **Extra costs per session**: sum of extra cost lines (e.g. 25)
+- **Total extra costs**: extra cost per session x weeks (e.g. 25 x 10 = 250)
+- **Grand total**: total cyclus price + total extra costs (e.g. 750 + 250 = 1000)
 
-**File: `src/components/cycles/CycleForm.tsx`** (lines 766-800)
+Currently the extra costs are baked into `total_price`, so there's no visible breakdown.
 
-Change the extra cost row layout from `grid-cols-[1fr_auto_auto]` to `grid-cols-2` with the delete button placed inside or next to the description field, so the two inputs (description + price) align with the two pricing fields above.
+### Changes
 
-Specifically:
-- Change the row grid from `grid-cols-[1fr_auto_auto]` to `grid-cols-[1fr_1fr_auto]` -- making the description and price inputs equal width, with just the delete button as auto
-- Remove the fixed `w-24` from the price input wrapper, letting it fill its grid column
-- Keep the euro prefix styling on the price input
+**File: `src/components/cycles/CycleForm.tsx`**
 
-This will make the extra cost description input align with "Price per session" and the extra cost price input align with "Total cyclus price", matching the screenshot.
+1. **Line 224-225** -- Remove extra costs from `total_price` calculation:
+   ```
+   const totalPrice = Math.round(pricePerSession * watchedWeeks * 100) / 100;
+   ```
+   (Remove `extraCostPerSession` from this line)
+
+2. **After the total_price field (around line 725)** -- Add a summary showing the breakdown when extra costs exist:
+   - Extra costs per session total
+   - Total extra costs (per session x weeks)
+   - Grand total (total_price + total extra costs)
+
+   This will be a read-only display block (not editable fields), shown only when there are extra costs with prices > 0.
 
 ### Technical detail
 
-Line 766 changes:
-- `grid-cols-[1fr_auto_auto]` becomes `grid-cols-[1fr_1fr_auto] gap-3`
-- Line 776: remove `w-24` from the price wrapper div, so it fills the column naturally
-
+- `price_per_session` stays as is (trainer rate x duration)
+- `total_price` reverts to `pricePerSession * weeks` only
+- A new computed summary section shows the combined total
+- The `extra_costs` are already saved in `settings.extra_costs` on the cycle, so downstream invoice generation can use them independently
