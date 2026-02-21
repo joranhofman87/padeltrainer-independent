@@ -2448,6 +2448,7 @@ export type Database = {
           id: string
           location: string | null
           phone: string | null
+          preferred_language: string | null
           rating_member_id: string | null
           rating_system: string
           skill_rating: number | null
@@ -2466,6 +2467,7 @@ export type Database = {
           id?: string
           location?: string | null
           phone?: string | null
+          preferred_language?: string | null
           rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null
@@ -2484,6 +2486,7 @@ export type Database = {
           id?: string
           location?: string | null
           phone?: string | null
+          preferred_language?: string | null
           rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null

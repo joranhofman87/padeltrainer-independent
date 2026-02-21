@@ -33,7 +33,7 @@ export default function PlayerSignup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
-  const { t } = useTranslation('auth');
+  const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
   useEffect(() => {
@@ -81,6 +81,10 @@ export default function PlayerSignup() {
     } else if (data?.session) {
       trackEvent('signup_completed', { role: 'player', method: 'email' });
       localStorage.setItem('pendingRole', 'player');
+      // Save language preference (non-blocking)
+      if (data.user?.id) {
+        supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
+      }
       // Slack notification (non-blocking)
       supabase.functions.invoke('slack-notify', {
         body: { event: 'new_signup', data: { name: fullName, email, role: 'Player' } },

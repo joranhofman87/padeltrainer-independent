@@ -13,6 +13,7 @@ import {
   UserPlus,
   Trash2
 } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
@@ -37,7 +38,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AcademySettings() {
-  const { t } = useTranslation('academy');
+  const { t, i18n } = useTranslation('academy');
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
@@ -495,6 +496,38 @@ export default function AcademySettings() {
               )}
             </div>
           </CardContent>
+        </Card>
+
+        {/* Language Setting */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-indigo-500/10">
+                <Globe className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg">{t("settings.language", "Language")}</CardTitle>
+                <CardDescription>{t("settings.languageDescription", "Choose your preferred language for the app")}</CardDescription>
+              </div>
+              <Select
+                value={i18n.language}
+                onValueChange={async (value) => {
+                  i18n.changeLanguage(value);
+                  if (user) {
+                    await supabase.from('profiles').update({ preferred_language: value } as any).eq('user_id', user.id);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nl">🇳🇱 Nederlands</SelectItem>
+                  <SelectItem value="en">🇬🇧 English</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
         </Card>
 
         {/* Danger Zone */}

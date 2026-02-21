@@ -132,7 +132,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { email, password, fullName, phone, redirectTo }: SignupRequest = await req.json();
+    const { email, password, fullName, phone, redirectTo, language }: SignupRequest & { language?: string } = await req.json();
 
     if (!email || !password || !fullName) {
       throw new Error("Missing required fields: email, password, fullName");
@@ -171,11 +171,15 @@ const handler = async (req: Request): Promise<Response> => {
     const user = userData.user;
     console.log(`User created: ${user.id}`);
 
-    // Update profile with phone if provided
-    if (phone && user) {
+    // Update profile with phone and language if provided
+    if (user && (phone || language)) {
+      const updates: Record<string, string> = {};
+      if (phone) updates.phone = phone;
+      if (language) updates.preferred_language = language;
+      
       await supabaseAdmin
         .from('profiles')
-        .update({ phone })
+        .update(updates)
         .eq('user_id', user.id);
     }
 

@@ -5,7 +5,8 @@ import {
   Trash2, 
   Crown, 
   UserPlus, 
-  Loader2
+  Loader2,
+  Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,8 +35,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useClubContext } from "@/components/club/ClubLayout";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabaseClient";
 import {
   getClubManagers,
   inviteClubManager,
@@ -56,9 +60,10 @@ interface Manager {
 }
 
 export default function ClubSettings() {
-  const { t } = useTranslation("club");
+  const { t, i18n } = useTranslation("club");
   const { toast } = useToast();
   const { activeClub } = useClubContext();
+  const { user } = useAuth();
 
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,6 +271,38 @@ export default function ClubSettings() {
             )}
           </div>
         </CardContent>
+      </Card>
+
+      {/* Language Setting */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-indigo-500/10">
+              <Globe className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div className="flex-1">
+              <CardTitle className="text-lg">{t("settings.language", "Language")}</CardTitle>
+              <CardDescription>{t("settings.languageDescription", "Choose your preferred language for the app")}</CardDescription>
+            </div>
+            <Select
+              value={i18n.language}
+              onValueChange={async (value) => {
+                i18n.changeLanguage(value);
+                if (user) {
+                  await supabase.from('profiles').update({ preferred_language: value } as any).eq('user_id', user.id);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nl">🇳🇱 Nederlands</SelectItem>
+                <SelectItem value="en">🇬🇧 English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
       </Card>
 
       {/* Danger Zone */}

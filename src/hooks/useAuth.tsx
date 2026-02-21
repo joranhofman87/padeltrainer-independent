@@ -7,6 +7,7 @@ import { isUserClubManager } from '@/lib/club';
 import { logger } from '@/lib/logger';
 import { isUserAcademyManager } from '@/lib/academy';
 import { identifyUser, resetUser } from '@/lib/tracking';
+import i18n from '@/i18n';
 
 interface AuthContextType {
   user: User | null;
@@ -68,6 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsClubManager(clubManagerStatus);
       setIsAcademyManager(academyManagerStatus);
       setProfile(userProfile);
+
+      // Apply saved language preference
+      if (userProfile?.preferred_language && userProfile.preferred_language !== i18n.language) {
+        i18n.changeLanguage(userProfile.preferred_language);
+      }
 
       // Link anonymous browsing history to this user in PostHog
       identifyUser(userId, {

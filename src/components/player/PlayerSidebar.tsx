@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { NavLink } from "@/components/NavLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -289,7 +289,6 @@ export function PlayerSidebar() {
               collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
             )}
           >
-            <LanguageSwitcher />
             <ThemeToggle />
             <Button
               variant="ghost"

@@ -16,6 +16,7 @@ export interface UserProfile {
   skill_rating: number | null;
   rating_member_id: string | null;
   rating_system: string;
+  preferred_language: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -34,7 +35,7 @@ export interface TrainerProfile {
   updated_at: string;
 }
 
-export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string) {
+export async function signUpWithEmail(email: string, password: string, fullName: string, phone?: string, language?: string) {
   // Use custom edge function to create user with Admin API
   // This bypasses Supabase's automatic email and sends our branded email instead
   try {
@@ -44,6 +45,7 @@ export async function signUpWithEmail(email: string, password: string, fullName:
         password,
         fullName,
         phone,
+        language,
         redirectTo: getAuthRedirectUrl('/app/auth'),
       },
     });
