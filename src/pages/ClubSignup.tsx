@@ -31,7 +31,7 @@ export default function ClubSignup() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, role, loading } = useAuth();
-  const { t } = useTranslation('auth');
+  const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
   useEffect(() => {
@@ -83,6 +83,10 @@ export default function ClubSignup() {
       });
     } else if (data?.session) {
       localStorage.setItem('pendingRole', 'club');
+      // Save language preference (non-blocking)
+      if (data.user?.id) {
+        supabase.from('profiles').update({ preferred_language: i18n.language } as any).eq('user_id', data.user.id).then(() => {});
+      }
       supabase.functions.invoke('slack-notify', {
         body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },
       }).catch(() => {});

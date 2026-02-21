@@ -32,7 +32,7 @@ export default function TrainerSignup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, role, loading } = useAuth();
-  const { t } = useTranslation('auth');
+  const { t, i18n } = useTranslation('auth');
   const { honeypotRef, isSuspicious } = useHoneypot();
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function TrainerSignup() {
     trackEvent('signup_started', { role: 'trainer', method: 'email' });
     setIsLoading(true);
 
-    const { data, error } = await signUpWithEmail(email, password, fullName);
+    const { data, error } = await signUpWithEmail(email, password, fullName, undefined, i18n.language);
 
     if (error) {
       toast({

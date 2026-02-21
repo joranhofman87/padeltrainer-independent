@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Menu, X, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { useState } from 'react';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
@@ -85,7 +84,6 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
-              <LanguageSwitcher />
               <ThemeToggle />
               {user ? (
                 <Button asChild className="bg-primary hover:bg-primary/90">
@@ -137,8 +135,6 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 ))}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">{t('nav.language')}:</span>
-                    <LanguageSwitcher />
                     <ThemeToggle />
                   </div>
                   {user ? (
