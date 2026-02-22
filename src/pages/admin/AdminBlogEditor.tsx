@@ -115,11 +115,33 @@ export default function AdminBlogEditor() {
         return data;
       }
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-articles'] });
       queryClient.invalidateQueries({ queryKey: ['admin-article', id] });
       toast.success(isNew ? 'Article created' : 'Article saved');
       if (isNew && data?.id) navigate(`/app/admin/blog/${data.id}`, { replace: true });
+
+      // Auto-translate when publishing
+      const articleId = isNew ? data?.id : id;
+      if (form.status === 'published' && articleId) {
+        const currentLocale = form.locale;
+        const localesToTranslate = LOCALES.filter(l => l !== currentLocale && !translations.some((t: any) => t.locale === l));
+        if (localesToTranslate.length > 0) {
+          toast.info(`Generating ${localesToTranslate.length} translations in the background...`);
+          for (const locale of localesToTranslate) {
+            supabase.functions.invoke('translate-blog-article', {
+              body: { article_id: articleId, target_locale: locale },
+            }).then(({ error }) => {
+              if (error) {
+                toast.error(`Translation to ${locale.toUpperCase()} failed`);
+              } else {
+                toast.success(`${locale.toUpperCase()} translation ready`);
+                queryClient.invalidateQueries({ queryKey: ['admin-article-translations'] });
+              }
+            });
+          }
+        }
+      }
     },
     onError: (err: any) => toast.error(err.message || 'Failed to save'),
   });
