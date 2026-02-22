@@ -1,0 +1,346 @@
+{
+  "title": "Training Cycles",
+  "cycle": "Cycle",
+  "cycles": "Cycles",
+  "cyclesCount": "cycles",
+  "registration": {
+    "openCycles": "Open for Registration",
+    "deadline": "Deadline",
+    "notFound": "Registration Not Found",
+    "noCycles": "No open registrations",
+    "checkBackLater": "Check back later for upcoming training cycles."
+  },
+  "createCycle": "Create Cycle",
+  "createRegistration": "Create Registration",
+  "editCycle": "Edit Cycle",
+  "deleteCycle": "Delete Cycle",
+  "noCycles": "No training cycles yet",
+  "noCyclesDescription": "Create your first training cycle to start accepting applications",
+  "noRegistrations": "No registrations yet",
+  "noRegistrationsDescription": "Create a registration to start collecting player interest",
+  "academyDescription": "Create and manage registration cycles for your academy programs",
+  
+  "status": {
+    "draft": "Draft",
+    "open": "Open",
+    "closed": "Closed",
+    "archived": "Archived"
+  },
+  
+  "form": {
+    "name": "Cycle Name",
+    "namePlaceholder": "e.g., Spring Cycle 2026",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe this training cycle...",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "numberOfWeeks": "Number of weeks",
+    "endsOn": "Ends on {{date}}",
+    "startTime": "Start Time",
+    "endTime": "End Time",
+    "enrollmentDeadline": "Enrollment Deadline",
+    "lessonTypes": "Lesson Types Offered",
+    "showPreferredTrainer": "Allow trainer preference",
+    "showPreferredTrainerHelp": "Players can indicate a preferred trainer when applying",
+    "maxGroupSize": "Max Group Size",
+    "minGroupSize": "Min Group Size",
+    "minGroupSizeHelp": "Minimum players required per session",
+    "assignedTrainer": "Assigned Trainer",
+    "selectTrainer": "Select trainer",
+    "assignedTrainerHelp": "The trainer who will give the lessons in this cycle",
+    "levelRequirement": "Level Requirement",
+    "ratingSystem": "Rating System",
+    "minLevel": "Min Level",
+    "maxLevel": "Max Level",
+    "minLevelPlaceholder": "e.g. 3.0",
+    "maxLevelPlaceholder": "e.g. 5.0",
+    "levelRequirementHelp": "Only players within this level range can register",
+    "applicableTrainers": "Applicable Trainers",
+    "applicableTrainersHelp": "Which trainers can be assigned to this cycle",
+    "location": "Training Location",
+    "locationHelp": "Which club is this registration for?",
+    "selectLocation": "Select location",
+    "pricing": "Pricing",
+    "pricePerSession": "Price per session",
+    "totalPrice": "Total price (package)",
+    "currency": "Currency",
+    "pricingHelp": "Set either price per session or a fixed package price",
+    "save": "Save Cycle",
+    "saveAndOpen": "Save & Open Enrollment",
+    "allowSingleBooking": "Allow individual lesson booking",
+    "allowSingleBookingHelp": "When off, players must book the entire cycle",
+    "extraCosts": "Extra Costs",
+    "extraCostsHelp": "Add recurring costs like court rental that appear as separate invoice lines",
+    "addCost": "Add cost",
+    "costDescription": "Description",
+    "costPrice": "Price per session",
+    "sessions": "sessions"
+  },
+  
+  "actions": {
+    "openEnrollment": "Open Enrollment",
+    "closeEnrollment": "Close Enrollment",
+    "generateProposals": "Generate Proposals",
+    "viewRequests": "View Requests",
+    "archive": "Archive",
+    "shareLink": "Share Registration Link",
+    "linkCopied": "Registration link copied!"
+  },
+  
+  "stats": {
+    "applications": "Applications",
+    "new": "New",
+    "proposed": "Proposed",
+    "confirmed": "Confirmed",
+    "waitlist": "Waitlist"
+  },
+  
+  "application": {
+    "title": "Apply for Training",
+    "subtitle": "Submit your application for {{cycleName}}",
+    "applyButton": "Apply for Training",
+    "loginRequired": "Please log in to apply",
+    "alreadyApplied": "You have already applied",
+    "enrollmentClosed": "Enrollment is closed",
+    "deadlinePassed": "The enrollment deadline has passed",
+    "apply": "Apply",
+    "signUpAndApply": "Sign up & apply",
+    "loginToApply": "Login to apply",
+    
+    "form": {
+      "personalInfo": "Personal Information",
+      "name": "Full Name",
+      "email": "Email",
+      "phone": "Phone (optional)",
+      "rating": "Your Rating/Level",
+      "ratingLabel": "Rating/Level",
+      "ratingSystem": "Rating System",
+      
+      "preferences": "Training Preferences",
+      "lessonType": "Lesson Type",
+      "lessonTypeRequired": "Select at least one lesson type",
+      "lessonTypes": {
+        "private": "Private (1:1)",
+        "duo": "Duo (2 players)",
+        "group": "Group (3+ players)",
+        "kids": "Kids Training"
+      },
+      "preferredDuration": "Preferred Duration",
+      "sessionsPerWeek": "Sessions per week",
+      "sessionsPerWeekHelp": "How many times per week would you like to train?",
+      "timesPerWeek": "per week",
+      "preferredTrainer": "Preferred Trainer (optional)",
+      "preferredTrainers": "Preferred Trainers (optional)",
+      "preferredTrainersHelp": "Select trainers you'd prefer to train with",
+      "noPreference": "No preference",
+      "location": "Preferred Location",
+      
+      "availability": "Your Availability",
+      "availabilityLabel": "Availability",
+      "availabilityHelp": "Select the days and times you're available for training",
+      "preferredDays": "Preferred Days",
+      "days": {
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday",
+        "sunday": "Sunday"
+      },
+      "startTime": "From",
+      "endTime": "To",
+      "addTimeBlock": "Add another time",
+      "noAvailability": "Please select at least one day with available times",
+      "invalidTimeRange": "End time must be after start time",
+      "timeWindows": "Preferred Times",
+      "timePresets": {
+        "morning": "Mornings (8:00-12:00)",
+        "afternoon": "Afternoons (12:00-17:00)",
+        "evening": "Evenings (17:00-21:00)",
+        "weekend": "Weekends"
+      },
+      "customTimes": "Or set specific times",
+      
+      "additional": "More information about your padel experience",
+      "notes": "Experience (optional)",
+      "notesPlaceholder": "Tell us more about your experience with Padel, or other racket sports. This helps us to place you in the right group if you don't have a rating yet.",
+      "consent": "I agree to be contacted regarding my application and consent to the processing of my data.",
+      "consentRequired": "You must agree to continue",
+      
+      "submit": "Submit Application",
+      "submitting": "Submitting..."
+    },
+    
+    "success": {
+      "title": "Application Submitted!",
+      "message": "Thank you for your application. You will receive a confirmation email shortly.",
+      "whatNext": "What happens next?",
+      "step1": "We will review your application and availability",
+      "step2": "You will be matched with an appropriate training slot",
+      "step3": "You will receive an email with your confirmed schedule",
+      "backToProfile": "Back to Profile"
+    }
+  },
+  
+  "intakeRequests": {
+    "title": "Intake Requests",
+    "noRequests": "No intake requests yet",
+    "noRequestsDescription": "Requests will appear here when players apply",
+    "addManual": "Add Registration",
+    "addManualTitle": "Manual Registration",
+    "addManualDescription": "Register a player who signed up via phone, email, or in-person",
+    "addManualSuccess": "Registration added successfully",
+    "addManualSuccessNewAccount": "Registration added. A player account has been created.",
+    "profileCreationNote": "If this player doesn't have an account yet, one will be created automatically. They'll receive an email confirming their registration.",
+    "filters": {
+      "all": "All",
+      "new": "New",
+      "proposed": "Proposed",
+      "confirmed": "Confirmed",
+      "waitlist": "Waitlist",
+      "rejected": "Rejected"
+    },
+    "table": {
+      "player": "Player",
+      "lessonType": "Lesson Type",
+      "rating": "Rating",
+      "availability": "Availability",
+      "preferredTrainer": "Pref. Trainer",
+      "status": "Status",
+      "applied": "Applied"
+    },
+    "detail": {
+      "title": "Request Details",
+      "contactInfo": "Contact Information",
+      "preferences": "Preferences",
+      "availability": "Availability",
+      "notes": "Notes",
+      "proposal": "Proposed Assignment",
+      "noProposal": "No proposal generated yet"
+    },
+    "actions": {
+      "propose": "Generate Proposal",
+      "confirm": "Confirm",
+      "reject": "Reject",
+      "waitlist": "Move to Waitlist",
+      "viewProposal": "View Proposal",
+      "delete": "Delete",
+      "deleteSuccess": "Application deleted"
+    },
+    "delete": {
+      "title": "Delete Application?",
+      "description": "This will permanently delete this application. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    }
+  },
+  
+  "proposals": {
+    "title": "Proposed Assignments",
+    "noProposals": "No proposals yet",
+    "noProposalsDescription": "Generate proposals from the intake requests",
+    "generateAll": "Generate All Proposals",
+    "approveAll": "Approve All",
+    "generating": "Generating proposals...",
+    "generated": "{{count}} proposals generated",
+    "card": {
+      "player": "Player",
+      "slot": "Proposed Slot",
+      "trainer": "Trainer",
+      "confidence": "Match Score",
+      "rationale": "Why this match?"
+    },
+    "rationaleTypes": {
+      "time_match": "Time preference matched",
+      "preferred_trainer": "Preferred trainer matched",
+      "level_compatible": "Level compatible",
+      "level_in_trainer_range": "Within trainer's preferred range",
+      "level_group_spread": "Rating spread within limits",
+      "priority_bonus": "Early registration bonus",
+      "capacity_available": "Slot has capacity",
+      "sessions_per_week": "Training frequency considered"
+    },
+    "actions": {
+      "approve": "Approve",
+      "edit": "Edit",
+      "reject": "Reject",
+      "changeSlot": "Change Slot",
+      "changeTrainer": "Change Trainer"
+    },
+    "confirmDialog": {
+      "title": "Confirm Assignment",
+      "message": "This will add the player to the slot and send them a confirmation email.",
+      "confirm": "Confirm & Notify",
+      "cancel": "Cancel"
+    },
+    "weights": {
+      "title": "Scoring Settings",
+      "description": "Adjust how players are matched to slots",
+      "timeMatch": "Time Preference",
+      "timeMatchHelp": "How much weight to give to matching player's preferred days/times",
+      "preferredTrainer": "Trainer Preference",
+      "preferredTrainerHelp": "How much weight to give when player's preferred trainer is available",
+      "levelCompatible": "Level Compatibility",
+      "levelCompatibleHelp": "How much weight to give to rating/skill level matching",
+      "priorityBonus": "Registration Order",
+      "priorityBonusHelp": "Bonus for players who registered earlier",
+      "capacityAvailable": "Slot Capacity",
+      "capacityAvailableHelp": "Consider available spots in the slot",
+      "total": "Total Weight",
+      "saveAsDefault": "Save as default for this cycle",
+      "generate": "Generate Proposals",
+      "sessionsPerWeek": "Trainings Per Week",
+      "sessionsPerWeekHelp": "Prioritize players wanting fewer sessions to help more unique individuals",
+      "presets": {
+        "balanced": "Balanced",
+        "timeFocused": "Time-focused",
+        "levelFocused": "Level-focused"
+      },
+      "ratingSettings": "Rating Compatibility",
+      "maxRatingSpread": "Max Rating Difference",
+      "maxRatingSpreadHelp": "Maximum rating difference allowed between players in the same group",
+      "ratingSystem": "Rating System",
+      "spreadPlaceholder": "e.g., 0.5 for KNLTB"
+    },
+    "guard": {
+      "title": "Important",
+      "description": "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences.",
+      "goToCalendar": "Go to Calendar",
+      "continue": "Continue"
+    }
+  },
+
+  "skipReasons": {
+    "no_matching_slots": {
+      "short": "No match",
+      "title": "No matching times",
+      "description": "None of the available slots match this player's preferred days and times."
+    },
+    "all_slots_full": {
+      "short": "Full",
+      "title": "All slots full",
+      "description": "Slots matching this player's preferences are already at capacity."
+    },
+    "no_available_trainers": {
+      "short": "No trainers",
+      "title": "No trainers available",
+      "description": "No trainers have availability during this player's preferred times."
+    },
+    "rating_outside_trainer_range": {
+      "short": "Rating mismatch",
+      "title": "Rating outside trainer preferences",
+      "description": "This player's rating is outside the preferred range of all available trainers."
+    },
+    "rating_spread_exceeded": {
+      "short": "Level gap",
+      "title": "Rating spread too large",
+      "description": "The rating difference with other players in available slots exceeds the maximum allowed."
+    }
+  },
+  
+  "emails": {
+    "applicationReceived": "Application Received",
+    "scheduleConfirmed": "Your Training Schedule is Confirmed"
+  }
+}

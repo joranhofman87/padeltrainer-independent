@@ -1,0 +1,95 @@
+{
+  "notifications": {
+    "title": "Configuración de notificaciones",
+    "heading": "Notificaciones por email",
+    "subtitle": "Elige cómo y cuándo recibes notificaciones por email de PadelTrainer.ai.",
+    "saved": "¡Preferencias de notificación guardadas!",
+    "saveError": "Error al guardar preferencias",
+    "securityNote": "Las notificaciones esenciales de cuenta y seguridad no se pueden desactivar.",
+    "frequency": {
+      "instant": "Instantáneo",
+      "daily": "Diario",
+      "weekly": "Semanal",
+      "off": "Desactivado"
+    },
+    "categories": {
+      "bookings": "Reservas",
+      "bookingsDesc": "Notificaciones sobre tus sesiones de entrenamiento",
+      "bookingsDescTrainer": "Notificaciones cuando los jugadores reservan o cancelan",
+      "availability": "Disponibilidad",
+      "availabilityDesc": "Actualizaciones sobre plazas libres de entrenadores que sigues",
+      "schedule": "Horario",
+      "scheduleDesc": "Resumen de tus próximas sesiones de entrenamiento",
+      "scheduleDescTrainer": "Resumen de tus próximas sesiones de coaching",
+      "payments": "Pagos",
+      "paymentsDesc": "Confirmaciones de pago y recibos",
+      "paymentsDescTrainer": "Notificaciones cuando recibes pagos",
+      "waitlist": "Lista de espera",
+      "waitlistDesc": "Actualizaciones cuando hay plazas disponibles",
+      "players": "Jugadores",
+      "playersDesc": "Notificaciones sobre nuevos seguidores y jugadores",
+      "registrations": "Inscripciones",
+      "registrationsDesc": "Notificaciones de inscripción en ciclos y sesiones",
+      "reviews": "Reseñas",
+      "reviewsDesc": "Notificaciones cuando los jugadores dejan reseñas"
+    },
+    "types": {
+      "booking_confirmation": {
+        "label": "Confirmaciones de reserva",
+        "description": "Recibe una notificación cuando se reserva una sesión"
+      },
+      "booking_reminder": {
+        "label": "Recordatorios de sesión",
+        "description": "Recibe un recordatorio antes de tu sesión"
+      },
+      "open_slots_digest": {
+        "label": "Plazas libres de entrenadores seguidos",
+        "description": "Actualizaciones cuando los entrenadores que sigues añaden nuevas plazas"
+      },
+      "upcoming_sessions_digest": {
+        "label": "Resumen de próximas sesiones",
+        "description": "Resumen de tus próximas sesiones de entrenamiento"
+      },
+      "payment_receipt": {
+        "label": "Recibos de pago",
+        "description": "Confirmación después de un pago exitoso"
+      },
+      "waitlist_update": {
+        "label": "Actualizaciones de lista de espera",
+        "description": "Recibe notificación cuando se abre una plaza"
+      },
+      "new_booking": {
+        "label": "Nuevas reservas",
+        "description": "Recibe notificación cuando un jugador reserva una sesión"
+      },
+      "booking_cancelled": {
+        "label": "Reservas canceladas",
+        "description": "Recibe notificación cuando un jugador cancela"
+      },
+      "new_follower": {
+        "label": "Nuevos seguidores",
+        "description": "Recibe notificación cuando alguien te sigue"
+      },
+      "new_player": {
+        "label": "Nuevos jugadores",
+        "description": "Recibe notificación cuando se une un nuevo jugador"
+      },
+      "new_registration": {
+        "label": "Nuevas inscripciones",
+        "description": "Recibe notificación para nuevas inscripciones en ciclos"
+      },
+      "new_review": {
+        "label": "Nuevas reseñas",
+        "description": "Recibe notificación cuando un jugador deja una reseña"
+      },
+      "upcoming_schedule_digest": {
+        "label": "Resumen de agenda próxima",
+        "description": "Resumen de tus próximas sesiones de coaching"
+      },
+      "payment_received": {
+        "label": "Pagos recibidos",
+        "description": "Recibe notificación cuando recibes un pago"
+      }
+    }
+  }
+}
