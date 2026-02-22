@@ -581,17 +581,19 @@
       "trustMicrocopy": "Spelers zijn altijd gratis. Trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
     },
     "socialProof": {
-      "headline": "Vertrouwd door padeltrainers en academies",
+      "headline": "Vertrouwd door padeltrainers & academies",
       "testimonial1": "Ik heb mijn avonden terug — geen planningschaos meer.",
-      "author1": "Trainer, Spanje",
+      "author1": "Bram Meijer",
+      "author1role": "Hoofdtrainer, Bramos Padel Academy",
       "testimonial2": "Spelers boeken sneller en ik hoef minder betalingen na te jagen.",
-      "author2": "Academy eigenaar, Nederland",
-      "metric_hours_value": "Bespaar __ uur/week",
-      "metric_hours_label": "op administratie",
-      "metric_slots_value": "Vul __ extra slots",
-      "metric_slots_label": "per maand",
-      "metric_noshows_value": "Verminder no-shows",
-      "metric_noshows_label": "met __%"
+      "author2": "René Lindenbergh",
+      "author2role": "Oprichter, RL Padel Performance",
+      "metric_hours_value": "10 uur/maand",
+      "metric_hours_label": "bespaard op admin",
+      "metric_slots_value": "5+ extra slots",
+      "metric_slots_label": "gevuld per maand",
+      "metric_noshows_value": "50%",
+      "metric_noshows_label": "minder lege slots"
     },
     "chaos": {
       "headline": "De meeste padeltrainers runnen hun bedrijf in chaos",

@@ -581,17 +581,19 @@
       "trustMicrocopy": "Players are always free. Trainers start with a free trial, then from €9/month."
     },
     "socialProof": {
-      "headline": "Trusted by padel trainers and academies",
+      "headline": "Trusted by padel trainers & academies",
       "testimonial1": "I got my evenings back — no more scheduling chaos.",
-      "author1": "Trainer, Spain",
+      "author1": "Bram Meijer",
+      "author1role": "Head Trainer, Bramos Padel Academy",
       "testimonial2": "Players book faster, and I chase payments less.",
-      "author2": "Academy owner, Netherlands",
-      "metric_hours_value": "Save __ hours/week",
-      "metric_hours_label": "on admin",
-      "metric_slots_value": "Fill __ extra slots",
-      "metric_slots_label": "per month",
-      "metric_noshows_value": "Reduce no-shows",
-      "metric_noshows_label": "by __%"
+      "author2": "René Lindenbergh",
+      "author2role": "Founder, RL Padel Performance",
+      "metric_hours_value": "10 hours/month",
+      "metric_hours_label": "saved on admin",
+      "metric_slots_value": "5+ extra slots",
+      "metric_slots_label": "filled per month",
+      "metric_noshows_value": "50%",
+      "metric_noshows_label": "fewer empty slots"
     },
     "chaos": {
       "headline": "Most padel trainers run their business on chaos",

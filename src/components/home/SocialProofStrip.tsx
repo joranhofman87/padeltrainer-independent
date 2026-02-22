@@ -1,20 +1,36 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { Star, Quote } from 'lucide-react';
+import { Star, Quote, Clock, CalendarPlus, TrendingDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+
+import bramosLogo from '@/assets/testimonials/bramos-padel.png';
+import rlPadelLogo from '@/assets/testimonials/rl-padel-performance.avif';
+import bramPhoto from '@/assets/testimonials/bram-meijer.png';
+import renePhoto from '@/assets/testimonials/rene-lindenbergh.png';
 
 export function SocialProofStrip() {
   const { t } = useTranslation('marketing');
 
   const testimonials = [
-    { key: '1', rating: 5 },
-    { key: '2', rating: 5 },
+    {
+      key: '1',
+      rating: 5,
+      photo: bramPhoto,
+      logo: bramosLogo,
+    },
+    {
+      key: '2',
+      rating: 5,
+      photo: renePhoto,
+      logo: rlPadelLogo,
+    },
   ];
 
   const metrics = [
-    { key: 'hours', emoji: '⏱️' },
-    { key: 'slots', emoji: '📅' },
-    { key: 'noshows', emoji: '📉' },
+    { key: 'hours', icon: Clock },
+    { key: 'slots', icon: CalendarPlus },
+    { key: 'noshows', icon: TrendingDown },
   ];
 
   return (
@@ -29,15 +45,38 @@ export function SocialProofStrip() {
           {t('homev2.socialProof.headline')}
         </motion.h2>
 
-        {/* Logo placeholders */}
-        <div className="flex flex-wrap items-center justify-center gap-8 mb-12 opacity-40">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-8 w-24 rounded bg-muted-foreground/20" />
-          ))}
+        {/* Logos */}
+        <div className="flex flex-wrap items-center justify-center gap-10 mb-12">
+          <img src={bramosLogo} alt="Bramos Padel Academy" className="h-10 object-contain" />
+          <img src={rlPadelLogo} alt="RL Padel Performance" className="h-10 object-contain" />
+        </div>
+
+        {/* Metrics */}
+        <div className="flex flex-wrap justify-center gap-8 md:gap-14 text-center mb-12">
+          {metrics.map(m => {
+            const Icon = m.icon;
+            return (
+              <motion.div
+                key={m.key}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="flex flex-col items-center gap-1"
+              >
+                <Icon className="h-5 w-5 text-primary mb-1" />
+                <span className="text-2xl font-bold text-foreground">
+                  {t(`homev2.socialProof.metric_${m.key}_value`)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {t(`homev2.socialProof.metric_${m.key}_label`)}
+                </span>
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Testimonials */}
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-10">
+        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {testimonials.map((item, i) => (
             <motion.div
               key={item.key}
@@ -54,21 +93,29 @@ export function SocialProofStrip() {
                       <Star key={j} className="h-3.5 w-3.5 fill-primary text-primary" />
                     ))}
                   </div>
-                  <p className="text-foreground mb-3 italic">"{t(`homev2.socialProof.testimonial${item.key}`)}"</p>
-                  <p className="text-sm text-muted-foreground">— {t(`homev2.socialProof.author${item.key}`)}</p>
+                  <p className="text-foreground mb-4 italic">
+                    "{t(`homev2.socialProof.testimonial${item.key}`)}"
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={item.photo} alt={t(`homev2.socialProof.author${item.key}`)} />
+                      <AvatarFallback>
+                        {t(`homev2.socialProof.author${item.key}`).charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {t(`homev2.socialProof.author${item.key}`)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {t(`homev2.socialProof.author${item.key}role`)}
+                      </p>
+                    </div>
+                    <img src={item.logo} alt="" className="h-6 object-contain opacity-60" />
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
-          ))}
-        </div>
-
-        {/* Metric placeholders */}
-        <div className="flex flex-wrap justify-center gap-8 text-center">
-          {metrics.map(m => (
-            <div key={m.key} className="flex flex-col items-center">
-              <span className="text-2xl font-bold text-foreground">{t(`homev2.socialProof.metric_${m.key}_value`)}</span>
-              <span className="text-sm text-muted-foreground">{t(`homev2.socialProof.metric_${m.key}_label`)}</span>
-            </div>
           ))}
         </div>
       </div>
