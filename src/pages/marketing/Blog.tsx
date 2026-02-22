@@ -72,7 +72,7 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
         <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
           <div className="aspect-video bg-muted">
             <img
-              src={article.cover_image_url || '/placeholder.svg'}
+              src={article.cover_image_url ? `${article.cover_image_url}?v=${article.cover_image_generated_at ? new Date(article.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'}
               alt={article.title}
               className="w-full h-full object-cover"
               loading="lazy"
@@ -208,7 +208,7 @@ export default function Blog() {
                   <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
                     <div className="grid md:grid-cols-2">
                       <div className="aspect-video md:aspect-auto bg-muted">
-                        <img src={featuredPost.cover_image_url || '/placeholder.svg'} alt={featuredPost.title} className="w-full h-full object-cover" loading="lazy" />
+                        <img src={featuredPost.cover_image_url ? `${featuredPost.cover_image_url}?v=${featuredPost.cover_image_generated_at ? new Date(featuredPost.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'} alt={featuredPost.title} className="w-full h-full object-cover" loading="lazy" />
                       </div>
                       <CardContent className="p-8 flex flex-col justify-center">
                         {featuredPost.tags?.[0] && <Badge className="w-fit mb-4">{featuredPost.tags[0]}</Badge>}

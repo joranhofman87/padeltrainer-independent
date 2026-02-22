@@ -44,7 +44,7 @@ function RelatedPosts({ articles, dateLocale }: { articles: Article[]; dateLocal
           <LocalizedLink key={article.id} to={`/blog/${article.slug}`}>
             <div className="group">
               <div className="aspect-video bg-muted rounded-lg overflow-hidden mb-3">
-                <img src={article.cover_image_url || '/placeholder.svg'} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                <img src={article.cover_image_url ? `${article.cover_image_url}?v=${article.cover_image_generated_at ? new Date(article.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
               </div>
               <h3 className="font-semibold line-clamp-2 group-hover:text-primary transition-colors">{article.title}</h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -179,7 +179,7 @@ export default function BlogPost() {
         {/* Cover Image */}
         {post.cover_image_url && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="aspect-[1200/630] bg-muted rounded-xl overflow-hidden mb-8">
-            <img src={post.cover_image_url} alt={post.cover_image_alt || post.title} width={1200} height={630} className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
+            <img src={`${post.cover_image_url}?v=${post.cover_image_generated_at ? new Date(post.cover_image_generated_at).getTime() : '1'}`} alt={post.cover_image_alt || post.title} width={1200} height={630} className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
           </motion.div>
         )}
 
