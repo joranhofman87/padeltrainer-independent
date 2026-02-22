@@ -35,7 +35,7 @@ export function SocialProofStrip() {
 
   return (
     <section className="border-y bg-muted/30">
-      <div className="container mx-auto px-4 py-14">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-14">
         <motion.h2
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
@@ -46,7 +46,7 @@ export function SocialProofStrip() {
         </motion.h2>
 
         {/* Testimonials */}
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-12">
+        <div className="grid md:grid-cols-2 gap-6 mb-12">
           {testimonials.map((item, i) => (
             <motion.div
               key={item.key}

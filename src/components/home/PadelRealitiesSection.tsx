@@ -8,7 +8,7 @@ export function PadelRealitiesSection() {
 
   return (
     <section className="py-20 md:py-28">
-      <div className="container mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.h2
           className="text-3xl md:text-4xl font-bold mb-12 text-center"
           initial={{ opacity: 0, y: 20 }}
@@ -18,7 +18,7 @@ export function PadelRealitiesSection() {
           {t('homev2.realities.headline')}
         </motion.h2>
 
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div className="space-y-4">
           {/* Header row - desktop only */}
           <div className="hidden md:grid md:grid-cols-2 gap-4 text-sm font-semibold text-muted-foreground px-4">
             <span>{t('homev2.realities.col_current')}</span>

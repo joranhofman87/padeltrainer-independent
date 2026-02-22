@@ -15,9 +15,9 @@ export function SolutionOverview() {
 
   return (
     <section id="features" className="py-20 md:py-28">
-      <div className="container mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.div
-          className="text-center mb-14 max-w-3xl mx-auto"
+          className="text-center mb-14"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -30,7 +30,7 @@ export function SolutionOverview() {
           </p>
         </motion.div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {values.map((v, i) => (
             <motion.div
               key={v.key}

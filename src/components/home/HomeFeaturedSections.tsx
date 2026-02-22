@@ -169,7 +169,7 @@ export function HomeFeaturedSections() {
       {/* Featured Trainers */}
       {featuredTrainers.length > 0 && (
         <section className="py-16 md:py-20">
-          <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto px-4 md:px-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -271,7 +271,7 @@ export function HomeFeaturedSections() {
       {/* Featured Academies */}
       {featuredAcademies.length > 0 && (
         <section className="py-16 md:py-20 bg-accent/30">
-          <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto px-4 md:px-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -351,7 +351,7 @@ export function HomeFeaturedSections() {
       {/* Featured Locations */}
       {featuredLocations.length > 0 && (
         <section className="py-16 md:py-20">
-          <div className="container mx-auto px-4">
+          <div className="max-w-6xl mx-auto px-4 md:px-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}

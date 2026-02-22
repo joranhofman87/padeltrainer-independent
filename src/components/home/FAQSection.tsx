@@ -31,7 +31,7 @@ export function FAQSection() {
 
   return (
     <section id="faq" className="py-20 md:py-28">
-      <div className="container mx-auto px-4 max-w-3xl">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}

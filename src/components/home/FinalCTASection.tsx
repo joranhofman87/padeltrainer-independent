@@ -10,7 +10,7 @@ export function FinalCTASection() {
 
   return (
     <section className="py-20 md:py-28 bg-accent text-accent-foreground">
-      <div className="container mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.div
           className="text-center max-w-2xl mx-auto"
           initial={{ opacity: 0, y: 20 }}

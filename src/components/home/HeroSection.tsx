@@ -23,7 +23,7 @@ export function HeroSection() {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5 pointer-events-none" />
       <div className="absolute top-20 right-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="container relative mx-auto px-4 py-20 md:py-28">
+      <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-20 md:py-28">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left: Copy */}
           <motion.div initial="initial" animate="animate" variants={staggerContainer}>
