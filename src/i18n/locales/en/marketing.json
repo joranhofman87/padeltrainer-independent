@@ -593,7 +593,8 @@
       "metric_slots_value": "5+ extra slots",
       "metric_slots_label": "filled per month",
       "metric_noshows_value": "50%",
-      "metric_noshows_label": "fewer empty slots"
+      "metric_noshows_label": "fewer empty slots",
+      "disclaimer": "Based on trainers using Padel Trainer. Results may vary."
     },
     "chaos": {
       "headline": "Most padel trainers run their business on chaos",

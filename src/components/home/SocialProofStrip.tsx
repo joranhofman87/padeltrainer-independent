@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { Star, Quote, Clock, CalendarPlus, TrendingDown } from 'lucide-react';
+import { Star, Clock, CalendarPlus, TrendingDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
@@ -45,38 +45,8 @@ export function SocialProofStrip() {
           {t('homev2.socialProof.headline')}
         </motion.h2>
 
-        {/* Logos */}
-        <div className="flex flex-wrap items-center justify-center gap-10 mb-12">
-          <img src={bramosLogo} alt="Bramos Padel Academy" className="h-10 object-contain" />
-          <img src={rlPadelLogo} alt="RL Padel Performance" className="h-10 object-contain" />
-        </div>
-
-        {/* Metrics */}
-        <div className="flex flex-wrap justify-center gap-8 md:gap-14 text-center mb-12">
-          {metrics.map(m => {
-            const Icon = m.icon;
-            return (
-              <motion.div
-                key={m.key}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                className="flex flex-col items-center gap-1"
-              >
-                <Icon className="h-5 w-5 text-primary mb-1" />
-                <span className="text-2xl font-bold text-foreground">
-                  {t(`homev2.socialProof.metric_${m.key}_value`)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {t(`homev2.socialProof.metric_${m.key}_label`)}
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
-
         {/* Testimonials */}
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-12">
           {testimonials.map((item, i) => (
             <motion.div
               key={item.key}
@@ -87,7 +57,6 @@ export function SocialProofStrip() {
             >
               <Card className="h-full">
                 <CardContent className="p-6">
-                  <Quote className="h-5 w-5 text-primary/40 mb-3" />
                   <div className="flex gap-0.5 mb-3">
                     {Array.from({ length: item.rating }).map((_, j) => (
                       <Star key={j} className="h-3.5 w-3.5 fill-primary text-primary" />
@@ -118,6 +87,33 @@ export function SocialProofStrip() {
             </motion.div>
           ))}
         </div>
+
+        {/* Metrics */}
+        <div className="flex flex-wrap justify-center gap-8 md:gap-14 text-center mb-4">
+          {metrics.map(m => {
+            const Icon = m.icon;
+            return (
+              <motion.div
+                key={m.key}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="flex flex-col items-center gap-1"
+              >
+                <Icon className="h-5 w-5 text-primary mb-1" />
+                <span className="text-2xl font-bold text-foreground">
+                  {t(`homev2.socialProof.metric_${m.key}_value`)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {t(`homev2.socialProof.metric_${m.key}_label`)}
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+        <p className="text-center text-xs text-muted-foreground">
+          {t('homev2.socialProof.disclaimer')}
+        </p>
       </div>
     </section>
   );
