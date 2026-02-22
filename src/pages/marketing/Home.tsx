@@ -6,6 +6,7 @@ import { SocialProofStrip } from '@/components/home/SocialProofStrip';
 import { ChaosPainSection } from '@/components/home/ChaosPainSection';
 import { ImpactSection } from '@/components/home/ImpactSection';
 import { SolutionOverview } from '@/components/home/SolutionOverview';
+import { WhyPadelTrainerSection } from '@/components/home/WhyPadelTrainerSection';
 import { HowItWorksSection } from '@/components/home/HowItWorksSection';
 import { PadelRealitiesSection } from '@/components/home/PadelRealitiesSection';
 import { JobsToBeDoneSection } from '@/components/home/JobsToBeDoneSection';
@@ -58,6 +59,7 @@ export default function Home() {
       <ChaosPainSection />
       <ImpactSection />
       <SolutionOverview />
+      <WhyPadelTrainerSection />
       <HowItWorksSection />
       <PadelRealitiesSection />
       <JobsToBeDoneSection />

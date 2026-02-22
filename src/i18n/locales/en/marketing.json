@@ -625,6 +625,15 @@
       "value_player_title": "Better player experience",
       "value_player_desc": "Players can book lessons online and get clear communication."
     },
+    "whyPadelTrainer": {
+      "headline": "Why Padel Trainer wins for padel trainers",
+      "focus_title": "Padel-only focus",
+      "focus_desc": "Everything is designed for padel coaches.",
+      "paid_title": "Get paid upfront",
+      "paid_desc": "Online payments in EUR (iDEAL + cards) to reduce no-shows.",
+      "visibility_title": "Grow visibility",
+      "visibility_desc": "Create a public profile and share it or be found on the marketplace."
+    },
     "howItWorks": {
       "headline": "Set it up once. Let players book. Keep coaching.",
       "step1_title": "Create your availability",
