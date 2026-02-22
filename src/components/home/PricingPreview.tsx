@@ -62,6 +62,7 @@ export function PricingPreview() {
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
+                <p className="text-sm text-muted-foreground">{t('homev2.pricing.no_cc')}</p>
                 <p className="text-sm text-muted-foreground">{t('homev2.pricing.trainers_microcopy')}</p>
                 <LocalizedLink to="/pricing" className="text-sm text-primary hover:underline">
                   {t('homev2.pricing.seeAllPlans')}
