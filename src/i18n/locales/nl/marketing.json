@@ -563,11 +563,11 @@
   },
   "homev2": {
     "hero": {
-      "h1": "Laat spelers online boeken en betalen, synchroniseer je agenda en vul geannuleerde slots direct weer op.",
-      "subheadline": "Beheer je coachingbedrijf vanuit één plek: houd je agenda overzichtelijk, laat spelers online boeken, verminder no-shows met herinneringen en besteed minder tijd aan administratie.",
-      "bullet1": "Stop het WhatsApp heen-en-weer — beschikbaarheid, omboekingen, bevestigingen",
-      "bullet2": "Word sneller geboekt en betaald met online boeken + veilige betalingen",
-      "bullet3": "Bescherm je inkomen met herinneringen en minder no-shows",
+      "h1": "Vul meer sessies. Besteed minder tijd aan administratie.",
+      "subheadline": "Eén plek om je agenda te beheren, no-shows te verminderen en gaten op te vullen bij annuleringen.",
+      "bullet1": "Vul annuleringen sneller met een overzichtelijke boekingsflow",
+      "bullet2": "Bespaar admin-tijd (geen WhatsApp-planning meer)",
+      "bullet3": "Verminder no-shows met bevestigingen en herinneringen",
       "mockAgenda": "Jouw Agenda",
       "openSlot": "Open",
       "pill1": "Online boeken",
