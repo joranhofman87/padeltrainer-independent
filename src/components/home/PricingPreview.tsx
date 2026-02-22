@@ -35,8 +35,9 @@ export function PricingPreview() {
                 <CardTitle className="text-xl">{t('homev2.pricing.players_title')}</CardTitle>
                 <p className="text-3xl font-bold mt-2">{t('homev2.pricing.players_price')}</p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
                 <p className="text-muted-foreground text-center">{t('homev2.pricing.players_desc')}</p>
+                <p className="text-muted-foreground text-center">{t('homev2.pricing.players_desc2')}</p>
               </CardContent>
             </Card>
           </motion.div>
