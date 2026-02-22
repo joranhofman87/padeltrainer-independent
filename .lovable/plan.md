@@ -1,86 +1,200 @@
 
 
-## Rebuild Homepage as Trainer-Focused Conversion Landing Page
+# Automated Multilingual Blog System
 
-### Build Error Fix
+## Overview
 
-The `send-digest-emails` edge function uses `npm:resend@2.0.0` which fails. Fix by switching to `https://esm.sh/resend@2.0.0` (same fix pattern as `forward-invoice`).
+Replace the current Contentful-based blog with a fully self-hosted, automated, multilingual blog system powered by your existing backend. This includes database tables, public blog pages, an admin CMS, and AI-powered content generation with scheduled automation.
 
-### Overview
+---
 
-Replace the current player-focused homepage with a 13-section, trainer-conversion landing page following SPICED narrative and April Dunford positioning. The page will be fully internationalized (EN + NL).
+## Phase 1: Cleanup -- Remove Contentful
 
-### Navigation Changes
+**What gets removed:**
+- `src/lib/contentful.ts` (Contentful client and data fetchers)
+- npm packages: `contentful`, `@contentful/rich-text-react-renderer` (and its types dependency `@contentful/rich-text-types` if unused elsewhere)
+- Environment variables: `VITE_CONTENTFUL_SPACE_ID`, `VITE_CONTENTFUL_ACCESS_TOKEN` (currently referenced in code but not in `.env` -- just clean up code references)
+- Blog pages (`Blog.tsx`, `BlogPost.tsx`) will be **rewritten** to use the new database, not removed
 
-Update `MarketingLayout.tsx` nav links:
-- Replace: Home, Pricing, About, Blog
-- With: **How it works**, **Features**, **Pricing**, **FAQ** (anchor links to sections on the homepage)
-- CTA button: "Start free trial" (links to trainer signup) or "Dashboard" when logged in
+**What stays:**
+- Blog routes in `DomainRouter.tsx` (`/:lang/blog` and `/:lang/blog/:slug`) -- these stay but point to rewritten components
+- Marketing translation keys for blog UI (`blog.title`, `blog.subtitle`, etc.)
 
-### Page Structure (13 sections in `Home.tsx`)
+---
 
-Each section gets its own component for maintainability:
+## Phase 2: Database Schema
 
-| # | Section | Component | Key Elements |
-|---|---------|-----------|-------------|
-| 1 | Hero | `HeroSection` | H1 with "padel trainers", 3 pain bullets, dual CTA, trust microcopy, screenshot placeholder |
-| 2 | Social Proof | `SocialProofStrip` | Logo placeholders, 2 testimonial cards, metric placeholders |
-| 3 | Chaos/Pain | `ChaosPainSection` | Empathetic paragraph + competitive alternatives list |
-| 4 | Impact | `ImpactSection` | 4-6 impact bullets + CTA |
-| 5 | Solution Overview | `SolutionOverview` | Category statement + 4 value theme cards |
-| 6 | How It Works | `HowItWorksSection` | 3 steps with icons |
-| 7 | Built for Padel | `PadelRealitiesSection` | 6 pain/solution/outcome rows |
-| 8 | Jobs to be Done | `JobsToBeDoneSection` | 7 first-person JTBD bullets |
-| 9 | Critical Events | `CriticalEventsSection` | 5 trigger scenarios + CTA |
-| 10 | Pricing | `PricingPreview` | 2 cards (Players free, Trainers from 9/mo) |
-| 11 | FAQ | `FAQSection` | 9 FAQ items with accordion + FAQ schema |
-| 12 | Final CTA | `FinalCTASection` | Closing headline + dual CTA |
-| 13 | Featured | `HomeFeaturedSections` | Keep existing featured trainers/academies/locations |
+Four new tables with RLS policies:
 
-### i18n Updates
+### A) `articles`
+Core blog content table with multilingual support via `canonical_id` grouping.
 
-Both `en/marketing.json` and `nl/marketing.json` will get a new `"homev2"` key with all section copy. The existing `"home"` key stays for reference. All copy provided in the brief will be used as-is for English; Dutch translations will be written to match.
+Key columns: `id`, `canonical_id`, `locale`, `title`, `slug` (unique per locale), `excerpt`, `body_html`, `body_md`, `status` (draft/review/published), `published_at`, `author_name`, `cover_image_url`, `tags`, `primary_keyword`, `meta_title`, `meta_description`, `created_at`, `updated_at`
 
-### SEO
+Indexes: unique on `(locale, slug)`, index on `(status, published_at)`, index on `canonical_id`
 
-- H1: "Scheduling, bookings, and payments for padel trainers across Europe"
-- Meta title: "Padel Trainer -- Scheduling, Bookings & Payments for Padel Trainers"
-- Meta description: "Run your padel coaching business from one place. Online booking, secure payments, calendar sync, and fewer no-shows. Free trial, then from 9/month."
-- FAQ structured data (JSON-LD FAQPage schema)
-- Existing WebSite + Organization schemas kept
+RLS:
+- Public: SELECT where `status = 'published'`
+- Admin: full CRUD
 
-### Files to Create
+### B) `content_topics`
+Topic queue for the automation pipeline.
 
-| File | Purpose |
-|------|---------|
-| `src/components/home/HeroSection.tsx` | Hero with H1, bullets, CTAs, screenshot placeholder |
-| `src/components/home/SocialProofStrip.tsx` | Logos, testimonials, metrics |
-| `src/components/home/ChaosPainSection.tsx` | Competitive alternatives |
-| `src/components/home/ImpactSection.tsx` | Impact bullets |
-| `src/components/home/SolutionOverview.tsx` | Category + value cards |
-| `src/components/home/HowItWorksSection.tsx` | 3-step PLG flow |
-| `src/components/home/PadelRealitiesSection.tsx` | Pain/solution/outcome grid |
-| `src/components/home/JobsToBeDoneSection.tsx` | JTBD bullets |
-| `src/components/home/CriticalEventsSection.tsx` | Switch triggers |
-| `src/components/home/PricingPreview.tsx` | 2-card pricing |
-| `src/components/home/FAQSection.tsx` | Accordion FAQ + schema |
-| `src/components/home/FinalCTASection.tsx` | Closing CTA |
+Columns: `id`, `primary_keyword`, `locales` (text array), `angle`, `notes`, `status` (queued/in_progress/done/failed), `created_at`, `updated_at`
 
-### Files to Modify
+RLS: Admin only (all operations)
 
-| File | Change |
-|------|--------|
-| `supabase/functions/send-digest-emails/index.ts` | Fix `npm:resend` to `esm.sh` import |
-| `src/pages/marketing/Home.tsx` | Replace current content with new section components |
-| `src/components/marketing/MarketingLayout.tsx` | Update nav to anchor links (How it works, Features, Pricing, FAQ) + "Start free trial" CTA |
-| `src/i18n/locales/en/marketing.json` | Add all new section copy under `homev2` |
-| `src/i18n/locales/nl/marketing.json` | Add Dutch translations under `homev2` |
+### C) `sources`
+Reference URLs used during article generation.
 
-### Copy & CTA Summary
+Columns: `id`, `article_id` (FK to articles), `source_url`, `source_title`, `notes`, `allowed_to_use`, `retrieved_at`
 
-**Primary CTA**: "Start free trial" -> links to `/signup/trainer`
-**Secondary CTA**: "Watch demo" / "See how it works" -> anchor or placeholder link
-**Trust microcopy**: "Players are always free. Trainers start with a free trial, then from 9/month."
+RLS: Admin only
 
-All exact copy from the brief will be used verbatim in the English translations. Dutch copy will be a professional translation.
+### D) `internal_links`
+Cross-linking between articles.
+
+Columns: `id`, `from_slug`, `to_slug`, `locale`, `anchor_text`
+
+RLS: Admin only
+
+---
+
+## Phase 3: Public Blog Pages
+
+### Blog Index (`/:lang/blog`)
+- Fetches published articles for current locale from the database
+- Featured post (latest) + grid of recent posts
+- Pagination support
+- Tag filtering
+- SEO: structured data (Blog schema), hreflang tags, meta tags
+- Locale switcher integration (already exists in marketing layout)
+- Reuses existing UI patterns (cards, skeletons, motion animations)
+
+### Blog Post (`/:lang/blog/:slug`)
+- Fetches article by slug + locale
+- Renders `body_html` directly (no rich-text renderer needed -- simpler and better for SEO)
+- Related posts section (same locale, shared tags)
+- hreflang links to translations (found via `canonical_id`)
+- Article structured data (JSON-LD)
+- CTA at bottom
+- Cover image, author, date, read time (calculated from HTML word count)
+
+### New data layer: `src/lib/blog.ts`
+- `getPublishedArticles(locale, page, tag?)` -- paginated list
+- `getArticleBySlug(slug, locale)` -- single article + translations
+- `getRelatedArticles(articleId, locale, tags)` -- related posts
+
+---
+
+## Phase 4: Admin CMS
+
+### New admin routes (under `/app/admin`)
+- `/app/admin/blog` -- Article list with filters (locale, status, tags)
+- `/app/admin/blog/new` -- Create article
+- `/app/admin/blog/:id` -- Edit article
+- `/app/admin/blog/topics` -- Topic queue management
+- `/app/admin/blog/:id/sources` -- Sources view per article
+
+### Admin sidebar update
+Add a "Content" section to `AdminSidebar.tsx` with links to Blog and Topics.
+
+### Article Editor
+- Title, slug (auto-generated from title), locale, excerpt, tags, primary keyword
+- Markdown editor (using existing TipTap editor or a simpler textarea) with live HTML preview
+- Cover image upload (to existing `avatars` bucket or a new `blog-images` bucket)
+- Status transitions: draft -> review -> published (publishing auto-sets `published_at`)
+- Translation panel: view all translations by `canonical_id`, button to trigger translation generation
+
+### Topic Queue
+- Table view of topics with status, keyword, locales, angle
+- Add/edit topics
+- Trigger generation manually per topic
+
+---
+
+## Phase 5: Automation Pipeline (Edge Functions)
+
+### A) `generate-blog-article`
+- Input: `topic_id`
+- Uses AI (Lovable AI / supported models) to generate article content
+- Produces: title, slug, excerpt, body in HTML, meta title/description, tags
+- Stores in `articles` with `status = 'review'`
+- Stores sources in `sources` table
+- Updates topic status to `done` or `failed`
+
+### B) `translate-blog-article`
+- Input: `article_id`, `target_locale`
+- Takes original article as base
+- Generates localized translation (title, slug, excerpt, body, meta fields)
+- Creates new article row with same `canonical_id`, `status = 'review'`
+
+### C) `process-blog-queue` (scheduled)
+- Picks N queued topics (1-3 per run)
+- Calls `generate-blog-article` for each
+- Optionally triggers translations for configured locales
+- Scheduled via pg_cron (daily at a configured time)
+
+### Content guardrails
+- Focus on how-to/framework content (no factual claims)
+- Padel-only, aligned with platform positioning
+- Sources stored but no copy-paste of long text
+- AI model: `google/gemini-2.5-flash` for cost-efficient generation
+
+---
+
+## Phase 6: SEO Integration
+
+### Sitemap updates
+- Update `supabase/functions/sitemap/index.ts` to include published blog articles for all locales
+- Include `lastmod` from `updated_at`/`published_at`
+- Include hreflang links between translations
+
+### Render-page updates
+- Add blog route handling to `supabase/functions/render-page/index.ts` for bot/crawler pre-rendering
+- Render full HTML for `/blog` and `/blog/:slug` routes
+
+### robots.txt
+- Already allows `/blog` crawling (no changes needed)
+
+### On-page SEO
+- Canonical URLs per locale
+- hreflang tags linking translations via `canonical_id`
+- OpenGraph + Twitter cards
+- Article JSON-LD structured data
+
+---
+
+## Technical Details
+
+### Files to create
+- `src/lib/blog.ts` -- Data fetching layer
+- `src/pages/marketing/Blog.tsx` -- Rewrite (replace Contentful with database)
+- `src/pages/marketing/BlogPost.tsx` -- Rewrite
+- `src/pages/admin/AdminBlog.tsx` -- Article list
+- `src/pages/admin/AdminBlogEditor.tsx` -- Create/edit article
+- `src/pages/admin/AdminBlogTopics.tsx` -- Topic queue
+- `src/pages/admin/AdminBlogSources.tsx` -- Sources per article
+- `supabase/functions/generate-blog-article/index.ts`
+- `supabase/functions/translate-blog-article/index.ts`
+- `supabase/functions/process-blog-queue/index.ts`
+
+### Files to modify
+- `src/components/DomainRouter.tsx` -- Add admin blog routes
+- `src/components/admin/AdminSidebar.tsx` -- Add Content nav section
+- `supabase/functions/sitemap/index.ts` -- Add blog articles
+- `supabase/functions/render-page/index.ts` -- Add blog rendering
+- `package.json` -- Remove `contentful` and `@contentful/rich-text-react-renderer`
+
+### Files to delete
+- `src/lib/contentful.ts`
+
+### Database migration
+- Create `articles`, `content_topics`, `sources`, `internal_links` tables
+- Add RLS policies using existing `is_admin()` function
+- Add indexes
+- Optionally create a `blog-images` storage bucket
+
+### Scheduling
+- pg_cron job calling `process-blog-queue` edge function daily
 
