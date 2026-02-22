@@ -1,172 +1,172 @@
 {
   "nav": {
     "dashboard": "Dashboard",
-    "bookings": "Bookings",
-    "following": "Following",
-    "account": "Account",
-    "settings": "Settings",
-    "editProfile": "Edit Profile",
-    "notifications": "Notifications",
-    "calendarSync": "Calendar Sync"
+    "bookings": "Buchungen",
+    "following": "Folge ich",
+    "account": "Konto",
+    "settings": "Einstellungen",
+    "editProfile": "Profil bearbeiten",
+    "notifications": "Benachrichtigungen",
+    "calendarSync": "Kalender-Synchronisation"
   },
   "settings": {
-    "title": "Settings",
-    "subtitle": "Manage your account settings",
-    "profileDescription": "Update your profile information and preferences",
-    "calendarSyncDescription": "Sync your bookings with external calendars",
-    "notificationsDescription": "Manage your notification preferences",
-    "dangerZone": "Danger Zone",
-    "emailChangeVerification": "A verification email will be sent to your new address.",
-    "emailChangeSent": "Verification email sent",
-    "emailChangeDescription": "Please check your new email address to confirm the change."
+    "title": "Einstellungen",
+    "subtitle": "Verwalte deine Kontoeinstellungen",
+    "profileDescription": "Aktualisiere deine Profilinformationen und Einstellungen",
+    "calendarSyncDescription": "Synchronisiere deine Buchungen mit externen Kalendern",
+    "notificationsDescription": "Verwalte deine Benachrichtigungseinstellungen",
+    "dangerZone": "Gefahrenzone",
+    "emailChangeVerification": "Eine Bestätigungs-E-Mail wird an deine neue Adresse gesendet.",
+    "emailChangeSent": "Bestätigungs-E-Mail gesendet",
+    "emailChangeDescription": "Bitte überprüfe deine neue E-Mail-Adresse, um die Änderung zu bestätigen."
   },
-  "badge": "Player",
+  "badge": "Spieler",
   "ratingSystem": {
-    "label": "Rating System",
+    "label": "Bewertungssystem",
     "knltb": "KNLTB",
     "playtomic": "Playtomic",
-    "description": "Select which rating system you use",
+    "description": "Wähle dein Bewertungssystem",
     "range": "{{min}} - {{max}}"
   },
   "ratingHistory": {
-    "title": "Rating Progress",
-    "noData": "No rating history yet",
-    "noDataDescription": "Your rating history will appear here as you update it",
-    "trackingDescription": "Tracking your padel improvement over time",
-    "started": "Started",
-    "current": "Current",
-    "improvement": "Improvement",
-    "knltbNote": "In KNLTB, a lower rating means better performance"
+    "title": "Bewertungsverlauf",
+    "noData": "Noch kein Bewertungsverlauf",
+    "noDataDescription": "Dein Bewertungsverlauf erscheint hier, sobald du ihn aktualisierst",
+    "trackingDescription": "Verfolge deine Padel-Verbesserung über die Zeit",
+    "started": "Gestartet",
+    "current": "Aktuell",
+    "improvement": "Verbesserung",
+    "knltbNote": "Bei KNLTB bedeutet eine niedrigere Bewertung eine bessere Leistung"
   },
   "dashboard": {
-    "welcome": "Welcome back, {{name}}! 👋",
-    "subtitle": "Find your next training session and improve your padel skills",
+    "welcome": "Willkommen zurück, {{name}}! 👋",
+    "subtitle": "Finde deine nächste Trainingseinheit und verbessere deine Padel-Fähigkeiten",
     "skillRating": {
-      "title": "Your Skill Rating",
-      "noRating": "Add your rating or ask a trainer to set your level"
+      "title": "Deine Spielstärke",
+      "noRating": "Füge deine Bewertung hinzu oder bitte einen Trainer, dein Level festzulegen"
     },
     "stats": {
-      "upcoming": "Upcoming",
-      "completed": "Completed",
-      "totalBookings": "Total Bookings",
-      "following": "Following"
+      "upcoming": "Bevorstehend",
+      "completed": "Abgeschlossen",
+      "totalBookings": "Gesamte Buchungen",
+      "following": "Folge ich"
     },
-    "nextUp": "Next Up",
-    "allBookings": "All Bookings",
-    "with": "with",
-    "following": "Following",
-    "manage": "Manage",
+    "nextUp": "Als nächstes",
+    "allBookings": "Alle Buchungen",
+    "with": "mit",
+    "following": "Folge ich",
+    "manage": "Verwalten",
     "quickActions": {
       "findTrainers": {
-        "title": "Find Trainers",
-        "description": "Browse all available trainers and find the perfect match for your skill level"
+        "title": "Trainer finden",
+        "description": "Durchsuche alle verfügbaren Trainer und finde die perfekte Übereinstimmung für dein Spielniveau"
       },
       "myBookings": {
-        "title": "My Bookings",
-        "description": "View and manage your upcoming and past training sessions"
+        "title": "Meine Buchungen",
+        "description": "Sieh und verwalte deine bevorstehenden und vergangenen Trainingseinheiten"
       },
       "editProfile": {
-        "title": "Edit Profile",
-        "description": "Update your profile, skill rating, and KNLTB number"
+        "title": "Profil bearbeiten",
+        "description": "Aktualisiere dein Profil, deine Spielstärke und KNLTB-Nummer"
       }
     },
     "featuredTrainers": {
-      "title": "Featured Trainers",
-      "viewAll": "View All Trainers",
-      "book": "Book"
+      "title": "Empfohlene Trainer",
+      "viewAll": "Alle Trainer ansehen",
+      "book": "Buchen"
     }
   },
   "trainers": {
-    "title": "Find Trainers",
-    "searchPlaceholder": "Search trainers by name, specialty...",
+    "title": "Trainer finden",
+    "searchPlaceholder": "Suche Trainer nach Name, Spezialgebiet...",
     "sort": {
-      "label": "Sort by",
-      "topRated": "Top Rated",
-      "priceLow": "Price: Low to High",
-      "priceHigh": "Price: High to Low",
-      "experience": "Most Experienced"
+      "label": "Sortieren nach",
+      "topRated": "Bestbewertet",
+      "priceLow": "Preis: Niedrig bis Hoch",
+      "priceHigh": "Preis: Hoch bis Niedrig",
+      "experience": "Meiste Erfahrung"
     },
     "filters": {
-      "activeFilters": "Active filters:",
-      "location": "Location",
-      "allLocations": "All Locations",
-      "priceRange": "Price Range",
-      "minRating": "Min Rating",
-      "anyRating": "Any rating",
-      "stars": "{{count}}+ stars",
-      "experience": "Experience",
-      "anyExperience": "Any experience",
-      "yearsPlus": "{{count}}+ years",
-      "specializations": "Specializations",
-      "knltbRating": "KNLTB Rating",
-      "anyKnltb": "Any rating",
+      "activeFilters": "Aktive Filter:",
+      "location": "Standort",
+      "allLocations": "Alle Standorte",
+      "priceRange": "Preisbereich",
+      "minRating": "Mindestbewertung",
+      "anyRating": "Jede Bewertung",
+      "stars": "{{count}}+ Sterne",
+      "experience": "Erfahrung",
+      "anyExperience": "Jede Erfahrung",
+      "yearsPlus": "{{count}}+ Jahre",
+      "specializations": "Spezialisierungen",
+      "knltbRating": "KNLTB-Bewertung",
+      "anyKnltb": "Jede Bewertung",
       "ratingPlus": "{{count}}+",
-      "verifiedOnly": "Verified Only",
-      "applyFilters": "Apply Filters",
-      "resetFilters": "Reset Filters"
+      "verifiedOnly": "Nur Verifizierte",
+      "applyFilters": "Filter anwenden",
+      "resetFilters": "Filter zurücksetzen"
     },
-    "results": "{{count}} trainer found",
-    "results_plural": "{{count}} trainers found",
-    "noResults": "No trainers found",
-    "beFirst": "Be the first trainer to join!"
+    "results": "{{count}} Trainer gefunden",
+    "results_plural": "{{count}} Trainer gefunden",
+    "noResults": "Keine Trainer gefunden",
+    "beFirst": "Sei der erste Trainer, der sich anmeldet!"
   },
   "trainerProfile": {
-    "about": "About",
-    "experience": "Experience",
-    "yearsExperience": "{{count}} years experience",
-    "certifications": "Certifications",
-    "specializations": "Specializations",
-    "knltbRating": "KNLTB Rating",
-    "lessons": "Available Sessions",
-    "noLessons": "No sessions available at this time",
-    "bookLesson": "Book Session",
-    "reviews": "Reviews",
-    "noReviews": "No reviews yet",
-    "follow": "Follow",
-    "following": "Following",
-    "followers": "{{count}} followers"
+    "about": "Über",
+    "experience": "Erfahrung",
+    "yearsExperience": "{{count}} Jahre Erfahrung",
+    "certifications": "Zertifizierungen",
+    "specializations": "Spezialisierungen",
+    "knltbRating": "KNLTB-Bewertung",
+    "lessons": "Verfügbare Einheiten",
+    "noLessons": "Derzeit keine Einheiten verfügbar",
+    "bookLesson": "Einheit buchen",
+    "reviews": "Bewertungen",
+    "noReviews": "Noch keine Bewertungen",
+    "follow": "Folgen",
+    "following": "Folge ich",
+    "followers": "{{count}} Follower"
   },
   "booking": {
-    "title": "Book a Session",
-    "selectSlot": "Select a Time Slot",
-    "noSlots": "No available slots for this session",
-    "notes": "Notes for the trainer (optional)",
-    "notesPlaceholder": "Any special requests or information for the trainer...",
-    "summary": "Booking Summary",
-    "lesson": "Session",
+    "title": "Einheit buchen",
+    "selectSlot": "Zeitfenster wählen",
+    "noSlots": "Keine verfügbaren Plätze für diese Einheit",
+    "notes": "Notizen für den Trainer (optional)",
+    "notesPlaceholder": "Besondere Wünsche oder Informationen für den Trainer...",
+    "summary": "Buchungsübersicht",
+    "lesson": "Einheit",
     "trainer": "Trainer",
-    "date": "Date",
-    "time": "Time",
-    "duration": "Duration",
-    "price": "Price",
-    "confirmAndPay": "Confirm & Pay",
-    "processing": "Processing...",
+    "date": "Datum",
+    "time": "Uhrzeit",
+    "duration": "Dauer",
+    "price": "Preis",
+    "confirmAndPay": "Bestätigen & Bezahlen",
+    "processing": "Wird verarbeitet...",
     "success": {
-      "title": "Booking Confirmed!",
-      "description": "Your session has been booked successfully."
+      "title": "Buchung bestätigt!",
+      "description": "Deine Einheit wurde erfolgreich gebucht."
     }
   },
   "bookings": {
-    "title": "My Bookings",
-    "empty": "No bookings yet",
-    "emptyDescription": "Book your first session to get started!",
-    "findTrainer": "Find a Trainer",
+    "title": "Meine Buchungen",
+    "empty": "Noch keine Buchungen",
+    "emptyDescription": "Buche deine erste Einheit, um loszulegen!",
+    "findTrainer": "Trainer finden",
     "tabs": {
-      "upcoming": "Upcoming",
-      "past": "Past"
+      "upcoming": "Bevorstehend",
+      "past": "Vergangen"
     },
     "status": {
-      "confirmed": "Confirmed",
-      "pending": "Pending",
-      "cancelled": "Cancelled"
+      "confirmed": "Bestätigt",
+      "pending": "Ausstehend",
+      "cancelled": "Storniert"
     },
-    "cancelBooking": "Cancel Booking"
+    "cancelBooking": "Buchung stornieren"
   },
   "followingList": {
-    "title": "Following",
-    "empty": "You're not following any trainers yet",
-    "emptyDescription": "Follow trainers to get notified when they add new availability.",
-    "browseTrainers": "Browse Trainers",
-    "notifyAvailability": "Notify me of new availability"
+    "title": "Folge ich",
+    "empty": "Du folgst noch keinen Trainern",
+    "emptyDescription": "Folge Trainern, um benachrichtigt zu werden, wenn sie neue Verfügbarkeiten hinzufügen.",
+    "browseTrainers": "Trainer durchsuchen",
+    "notifyAvailability": "Bei neuer Verfügbarkeit benachrichtigen"
   }
 }
