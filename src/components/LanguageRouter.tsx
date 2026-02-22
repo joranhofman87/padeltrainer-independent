@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-const SUPPORTED_LANGUAGES = ['en', 'nl'];
+const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
 const DEFAULT_LANGUAGE = 'nl';
 
 export function LanguageRouter() {

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Menu, X, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPath } from '@/hooks/useLocalizedPath';
@@ -51,7 +52,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
   // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
-    const currentPath = location.pathname.replace(/^\/(en|nl)/, '');
+    const currentPath = location.pathname.replace(/^\/(en|nl|es|de|fr)/, '');
     return currentPath === path || (path === '/' && currentPath === '');
   };
 
@@ -94,6 +95,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
+              <LanguageSwitcher />
               <ThemeToggle />
               {user ? (
                 <Button asChild className="bg-primary hover:bg-primary/90">
@@ -156,6 +158,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 )}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
+                    <LanguageSwitcher />
                     <ThemeToggle />
                   </div>
                   {user ? (

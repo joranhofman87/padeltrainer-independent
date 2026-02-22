@@ -13,6 +13,9 @@ import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRout
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
   { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
+  { code: 'es', name: 'Español', flag: '🇪🇸' },
+  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' },
 ];
 
 export function LanguageSwitcher() {
@@ -29,7 +32,7 @@ export function LanguageSwitcher() {
     
     if (isLanguagePrefixedRoute) {
       // Replace the language prefix in the URL
-      const pathWithoutLang = location.pathname.replace(/^\/(en|nl)/, '');
+      const pathWithoutLang = location.pathname.replace(/^\/(en|nl|es|de|fr)/, '');
       const newPath = `/${newLang}${pathWithoutLang || ''}${location.search}`;
       navigate(newPath);
     } else {
