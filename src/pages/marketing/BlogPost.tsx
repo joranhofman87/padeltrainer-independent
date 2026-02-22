@@ -178,8 +178,8 @@ export default function BlogPost() {
 
         {/* Cover Image */}
         {post.cover_image_url && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="aspect-video bg-muted rounded-xl overflow-hidden mb-8">
-            <img src={post.cover_image_url} alt={post.title} className="w-full h-full object-cover" loading="lazy" />
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="aspect-[1200/630] bg-muted rounded-xl overflow-hidden mb-8">
+            <img src={post.cover_image_url} alt={post.cover_image_alt || post.title} width={1200} height={630} className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
           </motion.div>
         )}
 
