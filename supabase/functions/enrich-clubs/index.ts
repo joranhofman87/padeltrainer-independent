@@ -13,6 +13,24 @@ interface Location {
   website_url: string | null;
   indoor_courts: number | null;
   outdoor_courts: number | null;
+  description: string | null;
+  phone: string | null;
+  email: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  opening_hours: string | null;
+  logo_url: string | null;
+}
+
+interface ExtractedData {
+  indoor_courts: number;
+  outdoor_courts: number;
+  description: string;
+  phone: string | null;
+  email: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  opening_hours: string | null;
 }
 
 interface EnrichmentResult {
@@ -20,19 +38,13 @@ interface EnrichmentResult {
   location_name: string;
   status: "success" | "skipped" | "error";
   error?: string;
-  data?: {
-    indoor_courts: number;
-    outdoor_courts: number;
-    description: string;
-    logo_url: string | null;
-  };
+  fields_updated?: string[];
+  data?: ExtractedData & { logo_url: string | null };
 }
 
 async function callLovableAI(prompt: string): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) {
-    throw new Error("LOVABLE_API_KEY not configured");
-  }
+  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -56,11 +68,9 @@ async function callLovableAI(prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content || "";
 }
 
-async function scrapeWebsite(url: string): Promise<{ markdown: string; logoUrl: string | null } | null> {
+async function scrapeWebsite(url: string): Promise<{ markdown: string; links: string[]; logoUrl: string | null } | null> {
   const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!apiKey) {
-    throw new Error("FIRECRAWL_API_KEY not configured");
-  }
+  if (!apiKey) throw new Error("FIRECRAWL_API_KEY not configured");
 
   let formattedUrl = url.trim();
   if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
@@ -77,8 +87,8 @@ async function scrapeWebsite(url: string): Promise<{ markdown: string; logoUrl: 
     },
     body: JSON.stringify({
       url: formattedUrl,
-      formats: ["markdown", "branding"],
-      onlyMainContent: false, // Get full page to capture "Over de club" sections
+      formats: ["markdown", "links", "branding"],
+      onlyMainContent: false,
       waitFor: 3000,
     }),
   });
@@ -91,46 +101,81 @@ async function scrapeWebsite(url: string): Promise<{ markdown: string; logoUrl: 
 
   const data = await response.json();
   const markdown = data.data?.markdown || data.markdown || "";
+  const links: string[] = data.data?.links || data.links || [];
   const logoUrl = data.data?.branding?.images?.logo || data.branding?.images?.logo || null;
 
-  // Log first 500 chars of scraped content for debugging
-  console.log("Scraped content preview:", markdown.substring(0, 500));
-  
-  // Also check if padel is mentioned
-  const padelMentions = (markdown.match(/padel/gi) || []).length;
-  console.log(`Found ${padelMentions} mentions of 'padel' in content`);
+  console.log("Scraped content length:", markdown.length, "links:", links.length);
 
-  return { markdown, logoUrl };
+  return { markdown, links, logoUrl };
 }
 
-async function extractPadelCourts(websiteContent: string): Promise<{ indoor_courts: number; outdoor_courts: number }> {
-  const prompt = `Analyze this Dutch club website content and extract the number of PADEL courts.
+function extractSocialFromLinks(links: string[]): { facebook_url: string | null; instagram_url: string | null } {
+  let facebook_url: string | null = null;
+  let instagram_url: string | null = null;
 
-CRITICAL RULES:
-1. ONLY count PADEL courts (padelbanen) - COMPLETELY IGNORE tennis, squash, smashcourt, or other sports
-2. Dutch terms for padel: "padelbanen", "padelcourts", "padelvelden", "padel banen", "padel court"
-3. For INDOOR padel: "overdekt", "indoor", "binnen", "hal", "overdekte padelbanen"
-4. For OUTDOOR padel: "buiten", "outdoor", "buitenbanen" 
-5. DEFAULT RULE: If padel courts are mentioned WITHOUT specifying indoor/outdoor → count them as OUTDOOR
-6. smashcourtbanen = tennis courts, NOT padel - ignore these completely
+  for (const link of links) {
+    if (!facebook_url && link.includes("facebook.com/") && !link.includes("sharer")) {
+      facebook_url = link;
+    }
+    if (!instagram_url && link.includes("instagram.com/") && !link.includes("/p/")) {
+      instagram_url = link;
+    }
+  }
 
-IMPORTANT: Look for patterns like:
-- "vier padelbanen" = 4 padel courts (outdoor since no indoor specified)
-- "8 smashcourtbanen en 4 padelbanen" = ONLY count the 4 padelbanen, ignore the 8 smashcourt
-- "2 overdekte padelbanen" = 2 indoor padel courts
+  return { facebook_url, instagram_url };
+}
 
-Return ONLY valid JSON: { "indoor_courts": number, "outdoor_courts": number }
+async function extractAllFields(
+  websiteContent: string,
+  links: string[],
+  locationName: string,
+  city: string,
+  address: string | null,
+  missingFields: string[]
+): Promise<ExtractedData> {
+  const socialFromLinks = extractSocialFromLinks(links);
+
+  const prompt = `Analyze this club website content and extract information about this PADEL club.
+Return ONLY valid JSON with these fields. Use null for any field you cannot find.
+
+{
+  "indoor_courts": number (ONLY padel courts marked as indoor/overdekt/binnen, default outdoor if unspecified),
+  "outdoor_courts": number (ONLY padel courts, ignore tennis/squash/smashcourt),
+  "description": "2-3 sentence factual description in Dutch about this padel club. Write in third person. Do NOT start with 'Welkom'. Focus on padel facilities only.",
+  "phone": "phone number string or null",
+  "email": "email address string or null",
+  "facebook_url": "facebook page URL or null",
+  "instagram_url": "instagram profile URL or null",
+  "opening_hours": "opening hours as a compact string or null (e.g. 'Ma-Vr 08:00-23:00, Za-Zo 08:00-22:00')"
+}
+
+IMPORTANT RULES:
+- ONLY count PADEL courts (padelbanen), NOT tennis, squash, or smashcourt
+- Dutch terms: "padelbanen", "padelcourts", "padelvelden"
+- Indoor: "overdekt", "indoor", "binnen", "hal"
+- Outdoor: "buiten", "outdoor", "buitenbanen"
+- If padel courts mentioned WITHOUT indoor/outdoor → count as OUTDOOR
+- smashcourtbanen = tennis, NOT padel
+- For description: write in Dutch, 2-3 sentences, max 150 words, third person, factual
+- Only extract fields we need: ${missingFields.join(", ")}
+- For fields not in the missing list, you can still extract them but they won't be used
+
+Club: ${locationName}
+City: ${city}
+Address: ${address || "unknown"}
 
 Website content:
-${websiteContent.substring(0, 6000)}`;
+${websiteContent.substring(0, 8000)}`;
 
   const response = await callLovableAI(prompt);
-  
-  // Extract JSON from response
+
   const jsonMatch = response.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) {
-    console.error("Failed to extract JSON from AI response:", response);
-    return { indoor_courts: 0, outdoor_courts: 0 };
+    console.error("Failed to extract JSON from AI response:", response.substring(0, 200));
+    return {
+      indoor_courts: 0, outdoor_courts: 0, description: "",
+      phone: null, email: null, facebook_url: null, instagram_url: null, opening_hours: null,
+    };
   }
 
   try {
@@ -138,45 +183,22 @@ ${websiteContent.substring(0, 6000)}`;
     return {
       indoor_courts: parseInt(parsed.indoor_courts) || 0,
       outdoor_courts: parseInt(parsed.outdoor_courts) || 0,
+      description: parsed.description || "",
+      phone: parsed.phone || null,
+      email: parsed.email || null,
+      facebook_url: parsed.facebook_url || socialFromLinks.facebook_url || null,
+      instagram_url: parsed.instagram_url || socialFromLinks.instagram_url || null,
+      opening_hours: parsed.opening_hours || null,
     };
   } catch (e) {
-    console.error("Failed to parse court counts:", e);
-    return { indoor_courts: 0, outdoor_courts: 0 };
+    console.error("Failed to parse AI response:", e);
+    return {
+      indoor_courts: 0, outdoor_courts: 0, description: "",
+      phone: null, email: null,
+      facebook_url: socialFromLinks.facebook_url, instagram_url: socialFromLinks.instagram_url,
+      opening_hours: null,
+    };
   }
-}
-
-async function generateDescription(
-  name: string,
-  city: string,
-  address: string | null,
-  indoorCourts: number,
-  outdoorCourts: number,
-  websiteContent: string
-): Promise<string> {
-  const totalCourts = indoorCourts + outdoorCourts;
-  const courtInfo = totalCourts > 0
-    ? `${indoorCourts} overdekte en ${outdoorCourts} buitenbanen`
-    : "padelbanen";
-
-  const prompt = `Schrijf een feitelijke beschrijving (2-3 zinnen, max 150 woorden) over deze padelclub in het Nederlands.
-
-REGELS:
-- Begin NIET met "Welkom bij" of andere welkomstzinnen
-- Gebruik GEEN generieke gastvrijheidstaal
-- Schrijf in de derde persoon over de club
-- Focus ALLEEN op padelfaciliteiten, niet op tennis
-- Noem: aantal padelbanen (${courtInfo}), locatie, eventuele padel-specifieke diensten
-- Wees feitelijk en informatief
-
-Club: ${name}
-Stad: ${city}
-Adres: ${address || "onbekend"}
-Padelbanen: ${indoorCourts} overdekt, ${outdoorCourts} buiten
-Website inhoud (voor context):
-${websiteContent.substring(0, 2000)}`;
-
-  const response = await callLovableAI(prompt);
-  return response.trim();
 }
 
 async function uploadLogo(
@@ -186,36 +208,21 @@ async function uploadLogo(
 ): Promise<string | null> {
   try {
     console.log("Downloading logo from:", logoUrl);
-    
     const response = await fetch(logoUrl);
-    if (!response.ok) {
-      console.error("Failed to download logo:", response.status);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const blob = await response.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
+    const uint8Array = new Uint8Array(await blob.arrayBuffer());
     const extension = logoUrl.split(".").pop()?.split("?")[0] || "png";
     const filePath = `clubs/${locationId}/logo.${extension}`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(filePath, uint8Array, {
-        contentType: blob.type || "image/png",
-        upsert: true,
-      });
+      .upload(filePath, uint8Array, { contentType: blob.type || "image/png", upsert: true });
 
-    if (uploadError) {
-      console.error("Failed to upload logo:", uploadError);
-      return null;
-    }
+    if (uploadError) { console.error("Upload error:", uploadError); return null; }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(filePath);
-
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(filePath);
     return publicUrl;
   } catch (error) {
     console.error("Error uploading logo:", error);
@@ -223,99 +230,139 @@ async function uploadLogo(
   }
 }
 
+function getMissingFields(location: Location): string[] {
+  const missing: string[] = [];
+  if (!location.description) missing.push("description");
+  if ((location.indoor_courts ?? 0) === 0 && (location.outdoor_courts ?? 0) === 0) missing.push("indoor_courts", "outdoor_courts");
+  if (!location.phone) missing.push("phone");
+  if (!location.email) missing.push("email");
+  if (!location.facebook_url) missing.push("facebook_url");
+  if (!location.instagram_url) missing.push("instagram_url");
+  if (!location.opening_hours) missing.push("opening_hours");
+  if (!location.logo_url) missing.push("logo_url");
+  return missing;
+}
+
 async function processLocation(
   supabase: SupabaseClient,
   location: Location,
-  dryRun: boolean
+  dryRun: boolean,
+  fillMissingOnly: boolean
 ): Promise<EnrichmentResult> {
   const result: EnrichmentResult = {
     location_id: location.id,
     location_name: location.name,
     status: "success",
+    fields_updated: [],
   };
 
   try {
-    // Skip if no website URL
     if (!location.website_url) {
       result.status = "skipped";
       result.error = "No website URL";
       return result;
     }
 
-    // Step 1: Scrape the website
-    console.log(`Processing: ${location.name}`);
+    const missingFields = getMissingFields(location);
+    if (fillMissingOnly && missingFields.length === 0) {
+      result.status = "skipped";
+      result.error = "All fields already filled";
+      return result;
+    }
+
+    console.log(`Processing: ${location.name} (missing: ${missingFields.join(", ")})`);
+
+    // Step 1: Scrape
     const scrapeResult = await scrapeWebsite(location.website_url);
-    
     if (!scrapeResult || !scrapeResult.markdown) {
       result.status = "error";
       result.error = "Failed to scrape website";
       return result;
     }
 
-    // Step 2: Extract padel court counts
-    const courts = await extractPadelCourts(scrapeResult.markdown);
-    console.log(`Extracted courts for ${location.name}:`, courts);
-
-    // Step 3: Generate description
-    const description = await generateDescription(
-      location.name,
-      location.city,
-      location.street_address,
-      courts.indoor_courts,
-      courts.outdoor_courts,
-      scrapeResult.markdown
+    // Step 2: Extract all fields in one AI call
+    const extracted = await extractAllFields(
+      scrapeResult.markdown, scrapeResult.links,
+      location.name, location.city, location.street_address, missingFields
     );
-    console.log(`Generated description for ${location.name}:`, description.substring(0, 100));
+    console.log(`Extracted for ${location.name}:`, JSON.stringify(extracted).substring(0, 200));
 
-    // Step 4: Upload logo (if found)
+    // Step 3: Upload logo if missing
     let storedLogoUrl: string | null = null;
-    if (scrapeResult.logoUrl && !dryRun) {
+    if (!location.logo_url && scrapeResult.logoUrl && !dryRun) {
       storedLogoUrl = await uploadLogo(supabase, location.id, scrapeResult.logoUrl);
     }
 
-    result.data = {
-      indoor_courts: courts.indoor_courts,
-      outdoor_courts: courts.outdoor_courts,
-      description,
-      logo_url: storedLogoUrl || scrapeResult.logoUrl,
-    };
+    result.data = { ...extracted, logo_url: storedLogoUrl || scrapeResult.logoUrl };
 
-    // Step 5: Update database (if not dry run)
+    // Step 4: Build conditional update (only NULL fields)
     if (!dryRun) {
-      // Update locations table with court counts, description, and logo
-      const { error: locError } = await supabase
-        .from("locations")
-        .update({
-          indoor_courts: courts.indoor_courts,
-          outdoor_courts: courts.outdoor_courts,
-          description: description,
-          logo_url: storedLogoUrl,
-        })
-        .eq("id", location.id);
+      const locUpdate: Record<string, unknown> = {};
 
-      if (locError) {
-        console.error("Error updating location:", locError);
+      if (!location.description && extracted.description) {
+        locUpdate.description = extracted.description;
+        result.fields_updated!.push("description");
+      }
+      if ((location.indoor_courts ?? 0) === 0 && (location.outdoor_courts ?? 0) === 0 && (extracted.indoor_courts > 0 || extracted.outdoor_courts > 0)) {
+        locUpdate.indoor_courts = extracted.indoor_courts;
+        locUpdate.outdoor_courts = extracted.outdoor_courts;
+        result.fields_updated!.push("courts");
+      }
+      if (!location.phone && extracted.phone) {
+        locUpdate.phone = extracted.phone;
+        result.fields_updated!.push("phone");
+      }
+      if (!location.email && extracted.email) {
+        locUpdate.email = extracted.email;
+        result.fields_updated!.push("email");
+      }
+      if (!location.facebook_url && extracted.facebook_url) {
+        locUpdate.facebook_url = extracted.facebook_url;
+        result.fields_updated!.push("facebook_url");
+      }
+      if (!location.instagram_url && extracted.instagram_url) {
+        locUpdate.instagram_url = extracted.instagram_url;
+        result.fields_updated!.push("instagram_url");
+      }
+      if (!location.opening_hours && extracted.opening_hours) {
+        locUpdate.opening_hours = extracted.opening_hours;
+        result.fields_updated!.push("opening_hours");
+      }
+      if (!location.logo_url && storedLogoUrl) {
+        locUpdate.logo_url = storedLogoUrl;
+        result.fields_updated!.push("logo_url");
       }
 
-      // Also update club_profile if it exists (claimed clubs can have override)
+      if (Object.keys(locUpdate).length > 0) {
+        const { error: locError } = await supabase
+          .from("locations")
+          .update(locUpdate)
+          .eq("id", location.id);
+        if (locError) console.error("Error updating location:", locError);
+      }
+
+      // Also update club_profile if it exists (only NULL fields)
       const { data: existingProfile } = await supabase
         .from("club_profiles")
-        .select("id")
+        .select("id, description, logo_url, phone, contact_email, social_facebook, social_instagram")
         .eq("location_id", location.id)
         .single();
 
       if (existingProfile) {
-        // Update existing club_profile (only if it doesn't already have values)
-        const { error: profileError } = await supabase
-          .from("club_profiles")
-          .update({
-            description: description,
-            logo_url: storedLogoUrl,
-          })
-          .eq("location_id", location.id);
+        const profileUpdate: Record<string, unknown> = {};
+        if (!existingProfile.description && extracted.description) profileUpdate.description = extracted.description;
+        if (!existingProfile.logo_url && storedLogoUrl) profileUpdate.logo_url = storedLogoUrl;
+        if (!existingProfile.phone && extracted.phone) profileUpdate.phone = extracted.phone;
+        if (!existingProfile.contact_email && extracted.email) profileUpdate.contact_email = extracted.email;
+        if (!existingProfile.social_facebook && extracted.facebook_url) profileUpdate.social_facebook = extracted.facebook_url;
+        if (!existingProfile.social_instagram && extracted.instagram_url) profileUpdate.social_instagram = extracted.instagram_url;
 
-        if (profileError) {
-          console.error("Error updating club_profile:", profileError);
+        if (Object.keys(profileUpdate).length > 0) {
+          const { error: profileError } = await supabase
+            .from("club_profiles")
+            .update(profileUpdate)
+            .eq("location_id", location.id);
+          if (profileError) console.error("Error updating club_profile:", profileError);
         }
       }
     }
@@ -339,19 +386,18 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Parse request body
     const body = await req.json().catch(() => ({}));
     const batchSize = Math.min(body.batch_size || 10, 50);
     const offset = body.offset || 0;
     const dryRun = body.dry_run === true;
+    const fillMissingOnly = body.fill_missing_only !== false; // default true
     const locationIds: string[] | undefined = body.location_ids;
 
-    console.log(`Starting enrichment - batch_size: ${batchSize}, offset: ${offset}, dry_run: ${dryRun}`);
+    console.log(`Starting enrichment - batch: ${batchSize}, offset: ${offset}, dry_run: ${dryRun}, fill_missing: ${fillMissingOnly}`);
 
-    // Fetch locations to process
     let query = supabase
       .from("locations")
-      .select("id, name, city, street_address, website_url, indoor_courts, outdoor_courts")
+      .select("id, name, city, street_address, website_url, indoor_courts, outdoor_courts, description, phone, email, facebook_url, instagram_url, opening_hours, logo_url")
       .not("website_url", "is", null)
       .order("name", { ascending: true });
 
@@ -363,31 +409,22 @@ Deno.serve(async (req) => {
 
     const { data: locations, error: fetchError } = await query;
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch locations: ${fetchError.message}`);
-    }
+    if (fetchError) throw new Error(`Failed to fetch locations: ${fetchError.message}`);
 
     if (!locations || locations.length === 0) {
       return new Response(
-        JSON.stringify({
-          success: true,
-          message: "No locations to process",
-          results: [],
-          total_processed: 0,
-        }),
+        JSON.stringify({ success: true, message: "No locations to process", results: [], total_processed: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log(`Processing ${locations.length} locations...`);
 
-    // Process each location with a delay to avoid rate limits
     const results: EnrichmentResult[] = [];
     for (const location of locations) {
-      const result = await processLocation(supabase, location as Location, dryRun);
+      const result = await processLocation(supabase, location as Location, dryRun, fillMissingOnly);
       results.push(result);
 
-      // Add delay between requests to avoid rate limits (reduced for faster processing)
       if (locations.indexOf(location) < locations.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
@@ -397,6 +434,7 @@ Deno.serve(async (req) => {
       success: results.filter((r) => r.status === "success").length,
       skipped: results.filter((r) => r.status === "skipped").length,
       errors: results.filter((r) => r.status === "error").length,
+      fields_updated: results.flatMap((r) => r.fields_updated || []),
     };
 
     console.log("Enrichment complete:", summary);
@@ -405,6 +443,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         dry_run: dryRun,
+        fill_missing_only: fillMissingOnly,
         batch_size: batchSize,
         offset,
         next_offset: offset + locations.length,
@@ -417,10 +456,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("Enrichment error:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
