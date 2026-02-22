@@ -1,86 +1,53 @@
 
 
-# Enrich Location Profiles via Firecrawl
+# Automate Location Enrichment via Scheduled Background Job
 
-## Current Situation
+## Problem
+There are 1,608 locations missing descriptions (out of 1,678 with websites). Running the enricher manually in batches of 10-50 would require dozens of tedious API calls.
 
-You already have a working `enrich-clubs` edge function that scrapes websites using Firecrawl and extracts court counts, descriptions, and logos. However, it doesn't extract all available fields.
-
-**Data gaps across 1,678 locations with websites:**
-
-| Field | Missing | Coverage |
-|-------|---------|----------|
-| Description | 1,609 | 4% |
-| Opening hours | 801 | 52% |
-| Email | 777 | 54% |
-| Phone | 759 | 55% |
-| Instagram | 642 | 62% |
-| Facebook | 629 | 63% |
-| Court counts (both 0) | 401 | 76% |
-| Logo | 355 | 79% |
-
-## Approach
-
-Upgrade the existing `enrich-clubs` edge function to also extract phone, email, social media URLs, and opening hours -- all in a single scrape + AI call per location. Only fill fields that are currently empty (never overwrite existing data).
+## Solution
+Set up a scheduled background job (like the existing logo fetch job) that runs the enricher automatically in small batches, plus add admin UI controls to start/stop/monitor progress.
 
 ## Changes
 
-### 1. Upgrade `enrich-clubs` edge function
+### 1. Database: Add cron job management functions
 
-Expand the AI extraction prompt to return a single JSON object with all fields:
+Create two new database functions (matching the existing `schedule_logo_fetch_job` / `unschedule_logo_fetch_job` pattern):
 
-- `indoor_courts`, `outdoor_courts` (existing)
-- `description` (existing)
-- `phone` -- extract from contact page / footer
-- `email` -- extract from contact info
-- `facebook_url` -- look for Facebook links
-- `instagram_url` -- look for Instagram links
-- `opening_hours` -- extract opening hours text
+- `schedule_enrichment_job()` -- creates a pg_cron job that calls `enrich-clubs` every 2 minutes with `batch_size: 5`
+- `unschedule_enrichment_job()` -- removes the cron job
+- `check_enrichment_job_status()` -- returns whether the job is active
 
-The function will:
-1. Scrape the website (already done)
-2. Send content to AI with an expanded prompt asking for ALL fields
-3. Only UPDATE fields that are currently NULL/empty in the database (preserve manual edits)
-4. Continue to handle logo upload as it does now
+Using batch_size of 5 and a 2-minute interval keeps API costs manageable and avoids rate limits (each location = 1 Firecrawl scrape + 1-3 AI calls).
 
-### 2. Add "only missing fields" mode
+### 2. Admin UI: Add enrichment controls to AdminLocations page
 
-Add a `fill_missing_only` parameter (default: true) so the function:
-- Fetches the current location data including all fields
-- Skips locations that already have all fields filled
-- Only writes to NULL fields, never overwrites existing values
+Add a section (or button group) to the AdminLocations page header with:
 
-### 3. Admin UI trigger (existing)
+- **"Start Enrichment"** button -- calls `schedule_enrichment_job()`, shows a toast
+- **"Stop Enrichment"** button -- calls `unschedule_enrichment_job()`
+- **Status indicator** -- shows "Running" / "Stopped" based on `check_enrichment_job_status()`
+- **Progress stats** -- show how many locations still need enrichment (missing description count)
 
-The function is already callable from the admin dashboard. No UI changes needed -- just use the existing batch processing with the updated function.
+### 3. Auto-stop when complete
+
+The enricher already skips locations with all fields filled. Once all are processed, each batch will return `"skipped"` for everything. We could optionally add logic to auto-disable the cron job when a batch returns 0 successes -- but this adds complexity. A simpler approach: just let admins check progress and stop manually when satisfied.
 
 ## Technical Details
 
-**File modified:** `supabase/functions/enrich-clubs/index.ts`
+**Cron job SQL** (same pattern as `schedule_logo_fetch_job`):
+- Job name: `enrich-locations-background`
+- Schedule: `*/2 * * * *` (every 2 minutes)
+- Payload: `{"batch_size": 5, "fill_missing_only": true}`
+- Uses `pg_net` to POST to the edge function
 
-Key changes:
-- Expand the `Location` interface to include phone, email, social URLs, opening_hours
-- Merge the two separate AI calls (court extraction + description) into one combined call for efficiency (saves API costs and time)
-- Add conditional update logic: only set fields where current value is NULL
-- Request `links` format from Firecrawl alongside `markdown` to better detect social media URLs
-- Increase content sent to AI (from 6000 to 8000 chars) for better extraction
+**Estimated processing time**: 
+- 5 locations per batch, every 2 minutes = ~150 locations/hour
+- 1,608 locations / 150 per hour = roughly 11 hours to complete all
 
-**No new tables or migrations needed** -- all target columns already exist.
+**Files to modify:**
+- New migration: create `schedule_enrichment_job()`, `unschedule_enrichment_job()`, `check_enrichment_job_status()` functions
+- `src/pages/admin/AdminLocations.tsx` -- add enrichment controls to the page header
 
-## Usage
-
-After deployment, run enrichment from the admin panel or directly:
-
-```
-// Process 10 locations, only filling missing data
-{ "batch_size": 10, "fill_missing_only": true }
-
-// Process specific locations
-{ "location_ids": ["uuid1", "uuid2"], "fill_missing_only": true }
-
-// Dry run to preview what would be extracted
-{ "batch_size": 5, "dry_run": true }
-```
-
-To process all 1,609 locations missing descriptions, run in batches of 10-20 (the function already supports offset-based pagination).
+**No new edge functions needed** -- reuses the existing `enrich-clubs` function.
 
