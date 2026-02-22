@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { MessageSquare, Globe, UserX, CreditCard, Calendar, RefreshCw, ArrowRight } from 'lucide-react';
+import { MessageSquare, Globe, UserX, CreditCard, Calendar, RefreshCw, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const cardConfig = [
@@ -71,11 +71,14 @@ export function PadelRealitiesSection() {
                         </div>
 
                         {/* After */}
-                        <div className="rounded-md bg-primary/5 px-3 py-2 -mx-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-primary/60">
-                            {t('homev2.realities.label_after')}
-                          </span>
-                          <p className="text-sm font-medium text-foreground mt-0.5">
+                        <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 px-3 py-2 -mx-1">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600/70 dark:text-emerald-400/70">
+                              {t('homev2.realities.label_after')}
+                            </span>
+                          </div>
+                          <p className="text-[15px] font-semibold text-foreground mt-0.5">
                             {t(`homev2.realities.${card.key}_with`)}
                           </p>
                         </div>
