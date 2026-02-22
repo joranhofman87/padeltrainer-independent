@@ -42,12 +42,24 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const privacyPath = useLocalizedPath('/privacy');
   const termsPath = useLocalizedPath('/terms');
 
-  const navLinks = [
-    { href: homePath, label: t('nav.home'), path: '/' },
-    { href: pricingPath, label: t('nav.pricing'), path: '/pricing' },
-    { href: aboutPath, label: t('nav.about'), path: '/about' },
-    { href: blogPath, label: t('nav.blog'), path: '/blog' },
-  ];
+  const isHomePage = (() => {
+    const currentPath = location.pathname.replace(/^\/(en|nl)/, '');
+    return currentPath === '/' || currentPath === '';
+  })();
+
+  const navLinks = isHomePage
+    ? [
+        { href: '#how-it-works', label: t('nav.howItWorks', 'How it works'), path: '#how-it-works', isAnchor: true },
+        { href: '#features', label: t('nav.features', 'Features'), path: '#features', isAnchor: true },
+        { href: '#pricing', label: t('nav.pricing'), path: '#pricing', isAnchor: true },
+        { href: '#faq', label: 'FAQ', path: '#faq', isAnchor: true },
+      ]
+    : [
+        { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
+        { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
+        { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
+        { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
+      ];
 
   // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
@@ -68,19 +80,29 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    isActive(link.path)
-                      ? 'text-primary'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => 
+                link.isAnchor ? (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(link.path)
+                        ? 'text-primary'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                )
+              )}
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
@@ -95,7 +117,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                     <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                   </Button>
                   <Button asChild className="bg-primary hover:bg-primary/90">
-                    <Link to={getAppUrl('/signup/player')}>{t('nav.getStarted')}</Link>
+                    <Link to={getAppUrl('/signup/trainer')}>{t('homev2.cta.startTrial', 'Start free trial')}</Link>
                   </Button>
                 </>
               )}
@@ -119,20 +141,31 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               className="md:hidden py-4 border-t"
             >
               <nav className="flex flex-col gap-4">
-                {navLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                      isActive(link.path)
-                        ? 'text-primary'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+                {navLinks.map((link) => 
+                  link.isAnchor ? (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
+                    >
+                      {link.label}
+                    </a>
+                  ) : (
+                    <Link
+                      key={link.href}
+                      to={link.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`text-sm font-medium transition-colors hover:text-primary ${
+                        isActive(link.path)
+                          ? 'text-primary'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  )
+                )}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
                     <ThemeToggle />
@@ -147,7 +180,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                         <Link to={getAppUrl('/auth')}>{t('nav.signIn')}</Link>
                       </Button>
                       <Button asChild className="bg-primary hover:bg-primary/90">
-                        <Link to={getAppUrl('/signup/player')}>{t('nav.getStarted')}</Link>
+                        <Link to={getAppUrl('/signup/trainer')}>{t('homev2.cta.startTrial', 'Start free trial')}</Link>
                       </Button>
                     </>
                   )}
