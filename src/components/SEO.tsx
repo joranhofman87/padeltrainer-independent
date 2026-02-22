@@ -35,7 +35,7 @@ export function SEO({
   const baseUrl = MARKETING_DOMAIN;
   
   // Get the path without language prefix for hreflang generation
-  const pathWithoutLang = url?.replace(/^\/(en|nl)/, '') || '';
+  const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr)/, '') || '';
   
   // For app pages, use the path directly without language prefix
   // For marketing pages, include the language prefix
