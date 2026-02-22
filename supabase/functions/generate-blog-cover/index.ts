@@ -7,14 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function makeDisplayTitle(title: string, metaTitle: string | null, maxLen = 50): string {
-  const source = metaTitle || title;
-  if (source.length <= maxLen) return source;
-  const trimmed = source.substring(0, maxLen);
-  const lastSpace = trimmed.lastIndexOf(" ");
-  if (lastSpace <= 10) return trimmed + "...";
-  return trimmed.substring(0, lastSpace) + "...";
-}
+const LOGO_URL = "https://ppkbhdiiqdusdeatgdft.supabase.co/storage/v1/object/public/blog-images/blog-covers/default/logo-dark.png";
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const raw = atob(base64);
@@ -74,22 +67,18 @@ serve(async (req) => {
 
     for (const article of articles) {
       try {
-        const displayTitle = makeDisplayTitle(article.title, article.meta_title);
         const tagsHint = article.tags?.slice(0, 3)?.join(", ") || "padel";
 
-        const language = article.locale === "nl" ? "Dutch" : article.locale === "es" ? "Spanish" : article.locale === "de" ? "German" : article.locale === "fr" ? "French" : "English";
-
-        const prompt = `Create a photorealistic blog cover image in landscape 1200x630 format.
+        const prompt = `Create a photorealistic landscape photograph in exactly 1200x630 pixels.
 Style: editorial sports photography, shot on a DSLR camera, natural lighting, realistic textures and colors. Must look like a real photograph, NOT like AI art.
 Scene: a real-looking padel court with natural shadows, or a close-up of padel equipment (racket, ball, court surface), or a candid moment of players on court. Use shallow depth of field where appropriate.
-Add a semi-transparent dark gradient overlay on the lower half for text readability.
-Text overlay: "${displayTitle}" in a large, bold, clean sans-serif font (white text). The text must be in ${language}.
-Small "PadelTrainer.ai" watermark in the bottom-right corner (subtle, small).
 Topic hint: ${tagsHint}.
-Do NOT include any other text, logos, watermarks, or UI elements. Do NOT make it look like a graphic design or illustration.`;
+Do NOT include ANY text, logos, watermarks, overlays, or UI elements. Just a clean photograph.
+Do NOT make it look like a graphic design or illustration.`;
 
         console.log(`Generating cover for article ${article.id} (${article.locale})...`);
 
+        // Step 1: Generate clean photo
         const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -111,20 +100,61 @@ Do NOT include any other text, logos, watermarks, or UI elements. Do NOT make it
         }
 
         const aiData = await aiResponse.json();
-        const imageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        const photoUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
-        if (!imageUrl || !imageUrl.startsWith("data:image/")) {
+        if (!photoUrl || !photoUrl.startsWith("data:image/")) {
           console.error("No image returned from AI");
           results.push({ id: article.id, locale: article.locale, error: "No image generated" });
           continue;
         }
 
+        // Step 2: Composite the logo onto the photo
+        console.log(`Adding logo to cover for article ${article.id}...`);
+        const compositeResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-image",
+            messages: [{
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Add a semi-transparent dark gradient overlay on the bottom 30% of this image. Then place the provided logo in the bottom-right corner of the image, small and subtle (about 15% of image width). Keep the rest of the photograph exactly as is. Do not add any text. Output the final composited image at 1200x630."
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: photoUrl }
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: LOGO_URL }
+                }
+              ]
+            }],
+            modalities: ["image", "text"],
+          }),
+        });
+
+        let finalImageUrl: string;
+        if (!compositeResponse.ok) {
+          console.warn("Logo composite failed, using photo without logo");
+          finalImageUrl = photoUrl;
+        } else {
+          const compositeData = await compositeResponse.json();
+          const composited = compositeData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+          finalImageUrl = (composited && composited.startsWith("data:image/")) ? composited : photoUrl;
+        }
+
         // Extract base64 data
-        const base64Data = imageUrl.split(",")[1];
+        const base64Data = finalImageUrl.split(",")[1];
         const imageBytes = base64ToUint8Array(base64Data);
 
         // Determine content type from data URI
-        const mimeMatch = imageUrl.match(/^data:(image\/\w+);/);
+        const mimeMatch = finalImageUrl.match(/^data:(image\/\w+);/);
         const contentType = mimeMatch ? mimeMatch[1] : "image/png";
         const ext = contentType === "image/webp" ? "webp" : contentType === "image/jpeg" ? "jpg" : "png";
 
