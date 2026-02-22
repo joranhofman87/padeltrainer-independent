@@ -42,24 +42,12 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const privacyPath = useLocalizedPath('/privacy');
   const termsPath = useLocalizedPath('/terms');
 
-  const isHomePage = (() => {
-    const currentPath = location.pathname.replace(/^\/(en|nl)/, '');
-    return currentPath === '/' || currentPath === '';
-  })();
-
-  const navLinks = isHomePage
-    ? [
-        { href: '#how-it-works', label: t('nav.howItWorks', 'How it works'), path: '#how-it-works', isAnchor: true },
-        { href: '#features', label: t('nav.features', 'Features'), path: '#features', isAnchor: true },
-        { href: '#pricing', label: t('nav.pricing'), path: '#pricing', isAnchor: true },
-        { href: '#faq', label: 'FAQ', path: '#faq', isAnchor: true },
-      ]
-    : [
-        { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
-        { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
-        { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
-        { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
-      ];
+  const navLinks = [
+    { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
+    { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
+    { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
+    { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
+  ];
 
   // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
