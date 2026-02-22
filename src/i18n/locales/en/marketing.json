@@ -148,12 +148,12 @@
       "yearly": "Yearly",
       "month": "month",
       "year": "year",
-      "save20": "Save 20%",
+      "save20": "Save 30%",
       "saveAmount": "Save €{{amount}}/year",
       "plans": {
         "starter": {
           "name": "Starter",
-          "price": "€10",
+          "price": "€9",
           "description": "Everything you need to streamline your admin.",
           "cta": "Start Free",
           "featureList": [
@@ -168,9 +168,9 @@
         },
         "professional": {
           "name": "Professional",
-          "price": "€39",
+          "price": "€29",
           "period": "/month",
-          "yearlyPrice": "€374/year (save 20%)",
+          "yearlyPrice": "€243.60/year (save 30%)",
           "description": "For serious trainers",
           "cta": "Get Professional",
           "featureList": [
@@ -183,7 +183,7 @@
           "name": "Academy",
           "price": "€99",
           "period": "/month",
-          "yearlyPrice": "€950/year (save 20%)",
+          "yearlyPrice": "€831.60/year (save 30%)",
           "description": "For training academies",
           "cta": "Contact Sales",
           "featureList": [
