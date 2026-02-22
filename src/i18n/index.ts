@@ -26,6 +26,42 @@ import nlAcademy from './locales/nl/academy.json';
 import nlWaitingList from './locales/nl/waitingList.json';
 import nlNotifications from './locales/nl/notifications.json';
 
+import esCommon from './locales/es/common.json';
+import esMarketing from './locales/es/marketing.json';
+import esAuth from './locales/es/auth.json';
+import esPlayer from './locales/es/player.json';
+import esTrainer from './locales/es/trainer.json';
+import esClub from './locales/es/club.json';
+import esCycles from './locales/es/cycles.json';
+import esAdmin from './locales/es/admin.json';
+import esAcademy from './locales/es/academy.json';
+import esWaitingList from './locales/es/waitingList.json';
+import esNotifications from './locales/es/notifications.json';
+
+import deCommon from './locales/de/common.json';
+import deMarketing from './locales/de/marketing.json';
+import deAuth from './locales/de/auth.json';
+import dePlayer from './locales/de/player.json';
+import deTrainer from './locales/de/trainer.json';
+import deClub from './locales/de/club.json';
+import deCycles from './locales/de/cycles.json';
+import deAdmin from './locales/de/admin.json';
+import deAcademy from './locales/de/academy.json';
+import deWaitingList from './locales/de/waitingList.json';
+import deNotifications from './locales/de/notifications.json';
+
+import frCommon from './locales/fr/common.json';
+import frMarketing from './locales/fr/marketing.json';
+import frAuth from './locales/fr/auth.json';
+import frPlayer from './locales/fr/player.json';
+import frTrainer from './locales/fr/trainer.json';
+import frClub from './locales/fr/club.json';
+import frCycles from './locales/fr/cycles.json';
+import frAdmin from './locales/fr/admin.json';
+import frAcademy from './locales/fr/academy.json';
+import frWaitingList from './locales/fr/waitingList.json';
+import frNotifications from './locales/fr/notifications.json';
+
 const resources = {
   en: {
     common: { ...enCommon, ...enNotifications },
@@ -50,6 +86,42 @@ const resources = {
     admin: nlAdmin,
     academy: nlAcademy,
     waitingList: nlWaitingList,
+  },
+  es: {
+    common: { ...esCommon, ...esNotifications },
+    marketing: esMarketing,
+    auth: esAuth,
+    player: esPlayer,
+    trainer: esTrainer,
+    club: esClub,
+    cycles: esCycles,
+    admin: esAdmin,
+    academy: esAcademy,
+    waitingList: esWaitingList,
+  },
+  de: {
+    common: { ...deCommon, ...deNotifications },
+    marketing: deMarketing,
+    auth: deAuth,
+    player: dePlayer,
+    trainer: deTrainer,
+    club: deClub,
+    cycles: deCycles,
+    admin: deAdmin,
+    academy: deAcademy,
+    waitingList: deWaitingList,
+  },
+  fr: {
+    common: { ...frCommon, ...frNotifications },
+    marketing: frMarketing,
+    auth: frAuth,
+    player: frPlayer,
+    trainer: frTrainer,
+    club: frClub,
+    cycles: frCycles,
+    admin: frAdmin,
+    academy: frAcademy,
+    waitingList: frWaitingList,
   },
 };
 
