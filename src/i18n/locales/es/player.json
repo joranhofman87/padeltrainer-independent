@@ -1,0 +1,172 @@
+{
+  "nav": {
+    "dashboard": "Panel",
+    "bookings": "Reservas",
+    "following": "Siguiendo",
+    "account": "Cuenta",
+    "settings": "Configuración",
+    "editProfile": "Editar perfil",
+    "notifications": "Notificaciones",
+    "calendarSync": "Sincronización de calendario"
+  },
+  "settings": {
+    "title": "Configuración",
+    "subtitle": "Gestiona la configuración de tu cuenta",
+    "profileDescription": "Actualiza tu perfil y preferencias",
+    "calendarSyncDescription": "Sincroniza tus reservas con calendarios externos",
+    "notificationsDescription": "Gestiona tus preferencias de notificación",
+    "dangerZone": "Zona de peligro",
+    "emailChangeVerification": "Se enviará un email de verificación a tu nueva dirección.",
+    "emailChangeSent": "Email de verificación enviado",
+    "emailChangeDescription": "Revisa tu nueva dirección de email para confirmar el cambio."
+  },
+  "badge": "Jugador",
+  "ratingSystem": {
+    "label": "Sistema de clasificación",
+    "knltb": "KNLTB",
+    "playtomic": "Playtomic",
+    "description": "Selecciona qué sistema de clasificación usas",
+    "range": "{{min}} - {{max}}"
+  },
+  "ratingHistory": {
+    "title": "Progreso de clasificación",
+    "noData": "Sin historial de clasificación",
+    "noDataDescription": "Tu historial aparecerá aquí cuando lo actualices",
+    "trackingDescription": "Sigue tu mejora en pádel a lo largo del tiempo",
+    "started": "Inicio",
+    "current": "Actual",
+    "improvement": "Mejora",
+    "knltbNote": "En KNLTB, una clasificación más baja significa mejor rendimiento"
+  },
+  "dashboard": {
+    "welcome": "¡Bienvenido de nuevo, {{name}}! 👋",
+    "subtitle": "Encuentra tu próxima sesión de entrenamiento y mejora tus habilidades de pádel",
+    "skillRating": {
+      "title": "Tu clasificación",
+      "noRating": "Añade tu clasificación o pide a un entrenador que establezca tu nivel"
+    },
+    "stats": {
+      "upcoming": "Próximas",
+      "completed": "Completadas",
+      "totalBookings": "Total de reservas",
+      "following": "Siguiendo"
+    },
+    "nextUp": "Siguiente",
+    "allBookings": "Todas las reservas",
+    "with": "con",
+    "following": "Siguiendo",
+    "manage": "Gestionar",
+    "quickActions": {
+      "findTrainers": {
+        "title": "Buscar entrenadores",
+        "description": "Explora todos los entrenadores disponibles y encuentra el ideal para tu nivel"
+      },
+      "myBookings": {
+        "title": "Mis reservas",
+        "description": "Ver y gestionar tus sesiones de entrenamiento pasadas y futuras"
+      },
+      "editProfile": {
+        "title": "Editar perfil",
+        "description": "Actualiza tu perfil, clasificación y número KNLTB"
+      }
+    },
+    "featuredTrainers": {
+      "title": "Entrenadores destacados",
+      "viewAll": "Ver todos los entrenadores",
+      "book": "Reservar"
+    }
+  },
+  "trainers": {
+    "title": "Buscar entrenadores",
+    "searchPlaceholder": "Buscar entrenadores por nombre, especialidad...",
+    "sort": {
+      "label": "Ordenar por",
+      "topRated": "Mejor valorados",
+      "priceLow": "Precio: menor a mayor",
+      "priceHigh": "Precio: mayor a menor",
+      "experience": "Más experimentados"
+    },
+    "filters": {
+      "activeFilters": "Filtros activos:",
+      "location": "Ubicación",
+      "allLocations": "Todas las ubicaciones",
+      "priceRange": "Rango de precio",
+      "minRating": "Valoración mínima",
+      "anyRating": "Cualquier valoración",
+      "stars": "{{count}}+ estrellas",
+      "experience": "Experiencia",
+      "anyExperience": "Cualquier experiencia",
+      "yearsPlus": "{{count}}+ años",
+      "specializations": "Especializaciones",
+      "knltbRating": "Clasificación KNLTB",
+      "anyKnltb": "Cualquier clasificación",
+      "ratingPlus": "{{count}}+",
+      "verifiedOnly": "Solo verificados",
+      "applyFilters": "Aplicar filtros",
+      "resetFilters": "Restablecer filtros"
+    },
+    "results": "{{count}} entrenador encontrado",
+    "results_plural": "{{count}} entrenadores encontrados",
+    "noResults": "No se encontraron entrenadores",
+    "beFirst": "¡Sé el primer entrenador en unirte!"
+  },
+  "trainerProfile": {
+    "about": "Acerca de",
+    "experience": "Experiencia",
+    "yearsExperience": "{{count}} años de experiencia",
+    "certifications": "Certificaciones",
+    "specializations": "Especializaciones",
+    "knltbRating": "Clasificación KNLTB",
+    "lessons": "Sesiones disponibles",
+    "noLessons": "No hay sesiones disponibles en este momento",
+    "bookLesson": "Reservar sesión",
+    "reviews": "Reseñas",
+    "noReviews": "Sin reseñas todavía",
+    "follow": "Seguir",
+    "following": "Siguiendo",
+    "followers": "{{count}} seguidores"
+  },
+  "booking": {
+    "title": "Reservar una sesión",
+    "selectSlot": "Selecciona un horario",
+    "noSlots": "No hay horarios disponibles para esta sesión",
+    "notes": "Notas para el entrenador (opcional)",
+    "notesPlaceholder": "Cualquier solicitud especial o información para el entrenador...",
+    "summary": "Resumen de la reserva",
+    "lesson": "Sesión",
+    "trainer": "Entrenador",
+    "date": "Fecha",
+    "time": "Hora",
+    "duration": "Duración",
+    "price": "Precio",
+    "confirmAndPay": "Confirmar y pagar",
+    "processing": "Procesando...",
+    "success": {
+      "title": "¡Reserva confirmada!",
+      "description": "Tu sesión ha sido reservada correctamente."
+    }
+  },
+  "bookings": {
+    "title": "Mis reservas",
+    "empty": "Sin reservas todavía",
+    "emptyDescription": "¡Reserva tu primera sesión para empezar!",
+    "findTrainer": "Buscar un entrenador",
+    "tabs": {
+      "upcoming": "Próximas",
+      "past": "Pasadas"
+    },
+    "status": {
+      "confirmed": "Confirmada",
+      "pending": "Pendiente",
+      "cancelled": "Cancelada"
+    },
+    "cancelBooking": "Cancelar reserva"
+  },
+  "followingList": {
+    "title": "Siguiendo",
+    "empty": "Aún no sigues a ningún entrenador",
+    "emptyDescription": "Sigue a entrenadores para recibir notificaciones de nueva disponibilidad.",
+    "browseTrainers": "Explorar entrenadores",
+    "notifyAvailability": "Notificarme de nueva disponibilidad"
+  }
+}

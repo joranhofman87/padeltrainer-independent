@@ -1,0 +1,52 @@
+{
+  "title": "Lista de espera",
+  "joinWaitingList": "Unirse a la lista de espera",
+  "noSpotsAvailable": "No hay plazas de entrenamiento disponibles ahora",
+  "getNotified": "Únete a la lista de espera y te notificaremos cuando se abra una plaza.",
+  "alreadyOnList": "Ya estás en la lista de espera",
+  "form": {
+    "lessonType": "¿Qué tipo de entrenamiento buscas?",
+    "lessonTypes": {
+      "private": "Clase privada",
+      "duo": "Clase dúo (2 jugadores)",
+      "group": "Entrenamiento grupal",
+      "kids": "Entrenamiento infantil"
+    },
+    "hasGroup": "¿Ya tienes compañeros de entrenamiento?",
+    "groupSize": "¿Cuántas personas en tu grupo?",
+    "rating": "Tu nivel de habilidad",
+    "ratingSystem": "Sistema de clasificación",
+    "availability": "¿Cuándo estás disponible?",
+    "notes": "¿Algo más que debamos saber?",
+    "notesPlaceholder": "p.ej., entrenador preferido, objetivos específicos, restricciones de horario...",
+    "submit": "Añadir a la lista de espera",
+    "submitting": "Añadiendo..."
+  },
+  "success": {
+    "title": "¡Estás en la lista!",
+    "message": "Te contactaremos cuando haya una plaza disponible."
+  },
+  "myEntries": {
+    "title": "Mi lista de espera",
+    "empty": "No estás en ninguna lista de espera",
+    "active": "Activo",
+    "contacted": "Contactado",
+    "archived": "Archivado",
+    "remove": "Eliminar",
+    "removeConfirm": "¿Estás seguro de que quieres eliminarte de esta lista de espera?",
+    "joinedOn": "Unido"
+  },
+  "management": {
+    "title": "Lista de espera",
+    "empty": "Nadie en la lista de espera todavía",
+    "markContacted": "Marcar como contactado",
+    "archive": "Archivar",
+    "contactPlayer": "Contactar jugador",
+    "filters": {
+      "all": "Todos",
+      "active": "Activos",
+      "contacted": "Contactados",
+      "archived": "Archivados"
+    }
+  }
+}

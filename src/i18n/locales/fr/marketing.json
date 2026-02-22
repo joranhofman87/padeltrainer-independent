@@ -1,0 +1,737 @@
+{
+  "nav": {
+    "home": "Home",
+    "pricing": "Pricing",
+    "about": "About",
+    "blog": "Blog",
+    "signIn": "Sign In",
+    "getStarted": "Get Started",
+    "language": "Language"
+  },
+  "footer": {
+    "tagline": "Your journey to better padel.",
+    "platform": "Platform",
+    "findTrainers": "Find Padel Trainers",
+    "locations": "Padel Clubs",
+    "academies": "Padel Academies",
+    "popularCities": "Padel Trainers by City",
+    "registerClub": "Register your club",
+    "company": "Company",
+    "aboutUs": "About Us",
+    "becomePartner": "Become a Partner",
+    "contact": "Contact",
+    "legal": "Legal",
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "copyright": "© {{year}} PadelTrainer.ai. All rights reserved."
+  },
+  "home": {
+    "badge": "From beginner to pro",
+    "hero": {
+      "title": "Find Your Perfect",
+      "titleHighlight": "Padel Trainer",
+      "subtitle": "Connect with certified trainers, book lessons that match your skill level, and start improving your game today.",
+      "cta": "Start as Player",
+      "ctaSecondary": "Join as Trainer"
+    },
+    "trust": {
+      "freeToJoin": "Free to join",
+      "knltbVerified": "KNLTB verified",
+      "securePayments": "Secure payments"
+    },
+    "stats": {
+      "trainers": "Certified Trainers",
+      "lessons": "Sessions Booked",
+      "rating": "Average Rating",
+      "cities": "Cities Covered"
+    },
+    "features": {
+      "title": "Everything you need to improve your game",
+      "subtitle": "From finding the right trainer to booking and paying, we make the entire process seamless.",
+      "verified": {
+        "title": "Verified Trainers",
+        "description": "Every trainer is verified with their KNLTB credentials and real reviews from players."
+      },
+      "booking": {
+        "title": "Easy Booking",
+        "description": "Book lessons with just a few clicks. Flexible scheduling that fits your life."
+      },
+      "matching": {
+        "title": "Skill Matching",
+        "description": "Find trainers that specialize in your skill level, from beginner to advanced."
+      },
+      "local": {
+        "title": "Local Trainers",
+        "description": "Connect with trainers near you across all major cities in the Netherlands."
+      },
+      "payments": {
+        "title": "Secure Payments",
+        "description": "Pay securely through our platform with iDEAL and card support."
+      },
+      "progress": {
+        "title": "Track Progress",
+        "description": "Monitor your improvement and get insights on your padel journey."
+      }
+    },
+    "howItWorks": {
+      "title": "How it works",
+      "subtitle": "Get started in 3 simple steps",
+      "step1": {
+        "title": "Create your profile",
+        "description": "Sign up and add your KNLTB rating to get personalized trainer recommendations."
+      },
+      "step2": {
+        "title": "Find your trainer",
+        "description": "Browse verified trainers, read reviews, and find the perfect match for your goals."
+      },
+      "step3": {
+        "title": "Book & play",
+        "description": "Select a time slot, pay securely, and start improving your padel game."
+      }
+    },
+    "testimonials": {
+      "title": "Loved by players & trainers",
+      "subtitle": "See what our community has to say",
+      "items": {
+        "1": {
+          "name": "Thomas de Vries",
+          "role": "Player since 2023",
+          "content": "Found an amazing trainer in Amsterdam within minutes. My game has improved significantly in just 2 months!"
+        },
+        "2": {
+          "name": "Lisa van den Berg",
+          "role": "KNLTB Level 6",
+          "content": "The skill matching is spot-on. My trainer knows exactly how to push me to the next level."
+        },
+        "3": {
+          "name": "Mark Jansen",
+          "role": "Padel Trainer",
+          "content": "As a trainer, PadelTrainer.ai has helped me fill my schedule and connect with motivated players."
+        }
+      }
+    },
+    "cta": {
+      "title": "Ready to level up your padel game?",
+      "subtitle": "Join thousands of players who are already improving with PadelTrainer.ai",
+      "button": "Get Started Free",
+      "browseTrainers": "Browse Trainers"
+    }
+  },
+  "pricing": {
+    "hero": {
+      "title": "Simple, transparent pricing",
+      "subtitle": "Free for players. Flexible plans for trainers to grow their business."
+    },
+    "players": {
+      "badge": "For Players",
+      "title": "Always Free",
+      "description": "No subscription fees. Just pay for the lessons you book.",
+      "cta": "Get Started Free",
+      "features": {
+        "browse": "Browse all verified trainers",
+        "reviews": "Read reviews and ratings",
+        "book": "Book lessons online",
+        "payments": "Secure iDEAL & card payments",
+        "calendar": "Google Calendar sync",
+        "notifications": "Email notifications",
+        "tracking": "Track your bookings"
+      }
+    },
+  "trainers": {
+      "badge": "For Trainers",
+      "title": "Choose your plan",
+      "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
+      "platformFee": "per booking",
+      "feeTooltip": "A flat fee is deducted from each lesson payment. Higher tiers pay less.",
+      "mostPopular": "Most Popular",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "month": "month",
+      "year": "year",
+      "save20": "Save 30%",
+      "saveAmount": "Save €{{amount}}/year",
+      "plans": {
+        "starter": {
+          "name": "Starter",
+          "price": "€9",
+          "description": "Everything you need to streamline your admin.",
+          "cta": "Start Free",
+          "featureList": [
+            { "title": "Trainer profile", "description": "Showcase yourself to players" },
+            { "title": "Add to marketplace", "description": "Be found & receive new bookings" },
+            { "title": "Unlimited players", "description": "No limitation on the number of players" },
+            { "title": "Unlimited trainings", "description": "No limitations on the number of sessions" },
+            { "title": "Waiting list", "description": "Allow players to sign up to your waiting list" },
+            { "title": "Open registration", "description": "Open up a registration & have our system plan things for you" },
+            { "title": "€1.00 per booking fee", "description": "Charge players right when they book a session, no need to chase money anymore" }
+          ]
+        },
+        "professional": {
+          "name": "Professional",
+          "price": "€29",
+          "period": "/month",
+          "yearlyPrice": "€243.60/year (save 30%)",
+          "description": "For serious trainers",
+          "cta": "Get Professional",
+          "featureList": [
+            { "title": "Everything from Starter", "description": "All the features you need to streamline your admin processes" },
+            { "title": "Manual invoicing", "description": "Send invoices yourself, we can auto generate these for you" },
+            { "title": "€0.75 per booking fee", "description": "Reduced fee for charging players when they book a session with you" }
+          ]
+        },
+        "academy": {
+          "name": "Academy",
+          "price": "€99",
+          "period": "/month",
+          "yearlyPrice": "€831.60/year (save 30%)",
+          "description": "For training academies",
+          "cta": "Contact Sales",
+          "featureList": [
+            { "title": "Add up to 15 trainers", "description": "Manage & add your team to streamline the bookings" },
+            { "title": "Add players to the marketplace", "description": "Add your branding to their profile & increase bookings for your team" },
+            { "title": "Add academy to the marketplace", "description": "Be marked as featured in the marketplace to receive more bookings" },
+            { "title": "€0.50 per booking fee", "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking" }
+          ]
+        }
+      }
+  },
+  "clubs": {
+    "badge": "For Clubs",
+    "title": "Club Plan",
+    "subtitle": "Complete platform for managing your club's training operations",
+    "price": "€199",
+    "period": "/month",
+    "billedAnnually": "Billed annually at €2,388/year",
+    "trialBadge": "14-day free trial",
+    "cta": "Start Free Trial",
+    "features": {
+      "trainers": "Unlimited trainers",
+      "calendar": "Unified trainer calendar",
+      "players": "Player management",
+      "bookings": "Centralized booking system",
+      "analytics": "Club analytics dashboard",
+      "profile": "Custom club profile page",
+      "support": "Priority support",
+      "branding": "Club branding"
+    }
+  },
+  "faq": {
+    "title": "Frequently asked questions",
+    "questions": {
+      "platformFee": {
+        "q": "How does the platform fee work?",
+        "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
+      },
+      "changePlans": {
+        "q": "Can I change plans later?",
+        "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+      },
+      "contract": {
+        "q": "Is there a contract or commitment?",
+        "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+      },
+      "payouts": {
+        "q": "How do payouts work?",
+        "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+      },
+      "clubTrial": {
+        "q": "How does the club free trial work?",
+        "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+      }
+    }
+  }
+  },
+  "about": {
+    "hero": {
+      "title": "Making padel training",
+      "titleHighlight": "accessible to everyone",
+      "subtitle": "We're on a mission to connect every padel player in the Netherlands with the perfect trainer to help them improve their game."
+    },
+    "story": {
+      "title": "Our Story",
+      "p1": "PadelTrainer.ai was born from a simple frustration: finding a good padel trainer shouldn't be this hard. As padel exploded in popularity across the Netherlands, we saw players struggling to find quality training, while talented trainers had no easy way to reach new students.",
+      "p2": "We set out to build the platform we wished existed. One where players could easily find verified trainers matched to their skill level, and where trainers could grow their business without the hassle of managing bookings, payments, and scheduling.",
+      "p3": "Today, PadelTrainer.ai connects hundreds of trainers with thousands of players across the Netherlands. We're proud to be part of the growing padel community and excited about where we're heading next."
+    },
+    "values": {
+      "title": "Our Values",
+      "subtitle": "The principles that guide everything we do",
+      "quality": {
+        "title": "Quality First",
+        "description": "We verify every trainer to ensure players get the best possible experience."
+      },
+      "playerFocused": {
+        "title": "Player Focused",
+        "description": "Every feature we build starts with the question: how does this help players improve?"
+      },
+      "community": {
+        "title": "Community Driven",
+        "description": "We believe in the power of the padel community to help each other grow."
+      },
+      "simplicity": {
+        "title": "Simplicity",
+        "description": "Booking a lesson should be as easy as sending a text message."
+      }
+    },
+    "stats": {
+      "founded": "Founded",
+      "trainers": "Trainers",
+      "cities": "Cities"
+    },
+    "cta": {
+      "title": "Join our community",
+      "subtitle": "Whether you're a player looking to improve or a trainer looking to grow, we'd love to have you.",
+      "getStarted": "Get Started",
+      "contact": "Contact Us"
+    }
+  },
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Tips, insights, and stories from the Dutch padel community",
+    "recentArticles": "Recent Articles",
+    "categories": {
+      "tips": "Tips & Advice",
+      "industry": "Industry",
+      "training": "Training",
+      "spotlight": "Spotlight",
+      "guides": "Guides"
+    },
+    "newsletter": {
+      "title": "Stay in the loop",
+      "subtitle": "Get the latest padel tips and platform updates delivered to your inbox.",
+      "placeholder": "Enter your email",
+      "subscribe": "Subscribe"
+    },
+    "notFound": {
+      "title": "Article not found",
+      "description": "The article you're looking for doesn't exist or has been moved.",
+      "backToBlog": "Back to Blog"
+    },
+    "share": "Share",
+    "backToBlog": "Back to Blog",
+    "readyToFind": "Ready to find your perfect trainer?",
+    "browseTrainers": "Browse verified trainers matched to your skill level.",
+    "findTrainers": "Find Trainers"
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "lastUpdated": "Last updated: {{date}}",
+    "sections": {
+      "introduction": {
+        "title": "1. Introduction",
+        "content": "Welcome to PadelTrainer.ai (\"we,\" \"our,\" or \"us\"). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform."
+      },
+      "dataCollection": {
+        "title": "2. Information We Collect",
+        "intro": "We collect information that you provide directly to us, including:",
+        "items": {
+          "account": "Account Information: Name, email address, phone number, and profile photo when you create an account.",
+          "profile": "Profile Data: For trainers, this includes certifications, experience, specializations, KNLTB ratings, and availability schedules.",
+          "booking": "Booking Information: Lesson details, booking history, and communication between players and trainers.",
+          "payment": "Payment Information: We use Mollie for payment processing. We do not store your full credit card details on our servers.",
+          "communications": "Communications: When you contact us or respond to surveys, we collect the information you provide."
+        }
+      },
+      "usage": {
+        "title": "3. How We Use Your Information",
+        "intro": "We use the collected information for:",
+        "items": {
+          "provide": "Providing, maintaining, and improving our platform",
+          "process": "Processing bookings and payments",
+          "send": "Sending booking confirmations, reminders, and updates",
+          "facilitate": "Facilitating communication between players and trainers",
+          "support": "Providing customer support",
+          "promo": "Sending promotional communications (with your consent)",
+          "analyze": "Analyzing usage patterns to improve user experience",
+          "prevent": "Preventing fraud and ensuring platform security"
+        }
+      },
+      "sharing": {
+        "title": "4. Information Sharing",
+        "intro": "We may share your information in the following situations:",
+        "items": {
+          "users": "With Trainers/Players: To facilitate bookings, we share relevant contact and booking information between parties.",
+          "providers": "Service Providers: We use third-party services for payment processing (Mollie), email delivery (Resend), and hosting infrastructure.",
+          "legal": "Legal Requirements: We may disclose information if required by law or to protect our rights, privacy, safety, or property.",
+          "business": "Business Transfers: In connection with a merger, acquisition, or sale of assets."
+        }
+      },
+      "cookies": {
+        "title": "5. Cookies and Tracking",
+        "intro": "We use cookies and similar tracking technologies to:",
+        "items": {
+          "login": "Keep you logged in to your account",
+          "preferences": "Remember your preferences",
+          "analyze": "Analyze how you use our platform",
+          "improve": "Improve our services"
+        },
+        "control": "You can control cookies through your browser settings, but disabling them may affect platform functionality."
+      },
+      "security": {
+        "title": "6. Data Security",
+        "content": "We implement appropriate technical and organizational security measures to protect your personal information. However, no method of transmission over the Internet or electronic storage is 100% secure. We strive to use commercially acceptable means to protect your data but cannot guarantee absolute security."
+      },
+      "gdpr": {
+        "title": "7. Your Rights (GDPR)",
+        "intro": "Under the General Data Protection Regulation (GDPR), you have the following rights:",
+        "items": {
+          "access": "Access: Request a copy of your personal data",
+          "rectification": "Rectification: Request correction of inaccurate data",
+          "erasure": "Erasure: Request deletion of your data (\"right to be forgotten\")",
+          "restriction": "Restriction: Request limitation of data processing",
+          "portability": "Portability: Request transfer of your data to another service",
+          "objection": "Objection: Object to processing of your data",
+          "withdraw": "Withdraw Consent: Withdraw previously given consent"
+        },
+        "contact": "To exercise these rights, please contact us at privacy@padeltrainer.ai."
+      },
+      "retention": {
+        "title": "8. Data Retention",
+        "content": "We retain your personal information for as long as your account is active or as needed to provide you services. We may retain certain information for legitimate business purposes or as required by law, such as for tax, legal reporting, and auditing obligations."
+      },
+      "children": {
+        "title": "9. Children's Privacy",
+        "content": "Our platform is not intended for children under 16 years of age. We do not knowingly collect personal information from children under 16. If we become aware that we have collected data from a child under 16, we will take steps to delete that information."
+      },
+      "changes": {
+        "title": "10. Changes to This Policy",
+        "content": "We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the \"Last updated\" date. We encourage you to review this policy periodically."
+      },
+      "contact": {
+        "title": "11. Contact Us",
+        "content": "If you have any questions about this Privacy Policy or our data practices, please contact us at:",
+        "company": "PadelTrainer.ai",
+        "emailPrivacy": "Email: privacy@padeltrainer.ai",
+        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+      }
+    }
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "lastUpdated": "Last updated: {{date}}",
+    "sections": {
+      "agreement": {
+        "title": "1. Agreement to Terms",
+        "content": "By accessing or using PadelTrainer.ai (\"Platform\"), you agree to be bound by these Terms of Service (\"Terms\"). If you disagree with any part of these terms, you may not access the Platform. These Terms apply to all visitors, users, and others who access or use the Platform."
+      },
+      "description": {
+        "title": "2. Description of Service",
+        "content": "PadelTrainer.ai is an online platform that connects padel players (\"Players\") with padel trainers (\"Trainers\"). We provide scheduling, booking, and payment processing tools to facilitate training sessions. PadelTrainer.ai acts as an intermediary and is not a party to the agreements between Players and Trainers."
+      },
+      "accounts": {
+        "title": "3. User Accounts",
+        "intro": "When you create an account with us, you must provide accurate, complete, and current information. You are responsible for:",
+        "items": {
+          "confidentiality": "Maintaining the confidentiality of your account and password",
+          "access": "Restricting access to your account",
+          "activities": "All activities that occur under your account",
+          "notify": "Notifying us immediately of any unauthorized use of your account"
+        }
+      },
+      "players": {
+        "title": "4. For Players",
+        "intro": "As a Player using our Platform, you agree to:",
+        "items": {
+          "accurate": "Provide accurate information when booking lessons",
+          "pay": "Pay for booked lessons as agreed",
+          "arrive": "Arrive on time for scheduled sessions",
+          "respect": "Treat Trainers with respect and professionalism",
+          "cancellation": "Follow the cancellation policy outlined below",
+          "reviews": "Leave honest and fair reviews based on your actual experience"
+        }
+      },
+      "trainers": {
+        "title": "5. For Trainers",
+        "intro": "As a Trainer using our Platform, you agree to:",
+        "items": {
+          "qualifications": "Provide accurate information about your qualifications and experience",
+          "certifications": "Maintain appropriate certifications and insurance",
+          "bookings": "Honor all confirmed bookings",
+          "quality": "Provide professional, safe, and quality training sessions",
+          "respond": "Respond to booking requests in a timely manner",
+          "comply": "Comply with all applicable laws and regulations",
+          "fees": "Pay platform fees as specified in your subscription plan"
+        }
+      },
+      "payments": {
+        "title": "6. Payments and Fees",
+        "forPlayers": {
+          "title": "For Players:",
+          "content": "Payment is processed through Mollie at the time of booking. The full lesson price is charged to your payment method. Refunds are handled according to our cancellation policy."
+        },
+        "forTrainers": {
+          "title": "For Trainers:",
+          "content": "PadelTrainer.ai charges a flat platform fee per completed booking, which varies by subscription plan (e.g., €1.00 for Starter, €0.75 for Professional, €0.50 for Academy). The remaining amount is transferred to your connected Mollie account. Subscription fees are billed according to your chosen plan."
+        }
+      },
+      "cancellation": {
+        "title": "7. Cancellation Policy",
+        "items": {
+          "24h": "More than 24 hours before: Full refund",
+          "12h": "12-24 hours before: 50% refund",
+          "less12h": "Less than 12 hours before: No refund",
+          "trainer": "Trainer cancellations: Players receive a full refund for any trainer-initiated cancellation"
+        },
+        "note": "Repeated cancellations by either party may result in account restrictions or termination."
+      },
+      "ip": {
+        "title": "8. Intellectual Property",
+        "content": "The Platform and its original content, features, and functionality are owned by PadelTrainer.ai and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws. You may not reproduce, distribute, modify, create derivative works of, publicly display, or exploit any content from our Platform without prior written permission."
+      },
+      "userContent": {
+        "title": "9. User Content",
+        "content": "You retain ownership of any content you submit to the Platform (reviews, profile information, etc.). By submitting content, you grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, and display such content in connection with operating the Platform. You are solely responsible for the content you submit and must ensure it does not violate any third-party rights or applicable laws."
+      },
+      "prohibited": {
+        "title": "10. Prohibited Activities",
+        "intro": "You agree not to:",
+        "items": {
+          "illegal": "Use the Platform for any illegal purpose",
+          "harass": "Harass, abuse, or harm other users",
+          "false": "Provide false or misleading information",
+          "circumvent": "Attempt to circumvent the Platform to avoid fees",
+          "scrape": "Scrape or collect user data without consent",
+          "malicious": "Upload malicious code or attempt to compromise Platform security",
+          "impersonate": "Impersonate another person or entity",
+          "spam": "Spam or send unsolicited communications"
+        }
+      },
+      "disclaimer": {
+        "title": "11. Disclaimer of Warranties",
+        "content": "The Platform is provided on an \"AS IS\" and \"AS AVAILABLE\" basis. We make no warranties, expressed or implied, regarding the Platform's operation or the information, content, or materials included. We do not guarantee the accuracy, reliability, or completeness of any information on the Platform. We are not responsible for the quality, safety, or legality of training sessions arranged through the Platform."
+      },
+      "liability": {
+        "title": "12. Limitation of Liability",
+        "content": "To the maximum extent permitted by law, PadelTrainer.ai shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or other intangible losses, resulting from your use or inability to use the Platform, any conduct of third parties on the Platform, or unauthorized access to your account."
+      },
+      "indemnification": {
+        "title": "13. Indemnification",
+        "content": "You agree to indemnify and hold harmless PadelTrainer.ai, its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from your use of the Platform, violation of these Terms, or infringement of any third-party rights."
+      },
+      "disputes": {
+        "title": "14. Dispute Resolution",
+        "intro": "In case of disputes:",
+        "items": {
+          "users": "Between Users: We encourage Players and Trainers to resolve disputes directly. We may assist in mediation but are not obligated to do so.",
+          "platform": "With PadelTrainer.ai: Any disputes with the Platform shall be resolved through binding arbitration in accordance with Dutch law, or through the courts of the Netherlands."
+        }
+      },
+      "termination": {
+        "title": "15. Termination",
+        "content": "We may terminate or suspend your account immediately, without prior notice, for any reason, including breach of these Terms. Upon termination, your right to use the Platform will immediately cease. All provisions of the Terms which should survive termination shall survive, including ownership provisions, warranty disclaimers, and limitations of liability."
+      },
+      "changes": {
+        "title": "16. Changes to Terms",
+        "content": "We reserve the right to modify or replace these Terms at any time. If changes are material, we will provide at least 30 days' notice before the new terms take effect. What constitutes a material change will be determined at our sole discretion. Continued use of the Platform after changes constitutes acceptance of the new Terms."
+      },
+      "governing": {
+        "title": "17. Governing Law",
+        "content": "These Terms shall be governed by and construed in accordance with the laws of the Netherlands, without regard to its conflict of law provisions. Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights."
+      },
+      "contact": {
+        "title": "18. Contact Us",
+        "content": "If you have any questions about these Terms, please contact us at:",
+        "company": "PadelTrainer.ai",
+        "emailLegal": "Email: legal@padeltrainer.ai",
+        "emailGeneral": "General inquiries: hello@padeltrainer.ai"
+      }
+    }
+  },
+  "partner": {
+    "title": "Become a Partner",
+    "subtitle": "Interested in partnering with PadelTrainer.ai? Let's discuss how we can work together to grow padel in the Netherlands.",
+    "thankYouTitle": "Thank you for your interest!",
+    "thankYouMessage": "We've received your inquiry and will get back to you within 2 business days.",
+    "successTitle": "Message sent!",
+    "successMessage": "We'll be in touch soon.",
+    "errorTitle": "Something went wrong",
+    "errorMessage": "Please try again or email us directly at info@padeltrainer.ai",
+    "form": {
+      "name": "Your name",
+      "namePlaceholder": "John Doe",
+      "companyName": "Company name",
+      "companyNamePlaceholder": "Padel Club Amsterdam",
+      "email": "Email address",
+      "emailPlaceholder": "john@example.com",
+      "phone": "Phone number",
+      "phonePlaceholder": "+31 6 12345678",
+      "message": "How can we help?",
+      "messagePlaceholder": "Tell us about your company and how you'd like to partner with PadelTrainer.ai...",
+      "submit": "Send Message",
+      "sending": "Sending..."
+    }
+  },
+  "homev2": {
+    "hero": {
+      "h1": "Fill more sessions. Spend less time on admin.",
+      "subheadline": "One place to run your agenda, reduce no-shows, and fill gaps when cancellations happen.",
+      "bullet1": "Fill cancellations faster with a clean booking flow",
+      "bullet2": "Cut admin time (no more WhatsApp scheduling)",
+      "bullet3": "Reduce no-shows with confirmations and reminders",
+      "mockAgenda": "Your Agenda",
+      "openSlot": "Open",
+      "pill1": "Online booking",
+      "pill2": "Secure payments",
+      "pill3": "Calendar sync",
+      "pill4": "Email notifications"
+    },
+    "cta": {
+      "startTrial": "Start free trial",
+      "watchDemo": "See how it works",
+      "trustMicrocopy": "Players are always free. Trainers start with a free trial, then from €9/month."
+    },
+    "socialProof": {
+      "headline": "Trusted by padel trainers & academies",
+      "testimonial1": "I got my evenings back — no more scheduling chaos.",
+      "author1": "Bram Meijer",
+      "author1role": "Head Trainer, Bramos Padel Academy",
+      "testimonial2": "Players book faster, and I chase payments less.",
+      "author2": "René Lindenbergh",
+      "author2role": "Founder, RL Padel Performance",
+      "metric_hours_value": "10 hours/month",
+      "metric_hours_label": "saved on admin",
+      "metric_slots_value": "5+ extra slots",
+      "metric_slots_label": "filled per month",
+      "metric_noshows_value": "50%",
+      "metric_noshows_label": "fewer empty slots",
+      "disclaimer": "Based on trainers using Padel Trainer. Results may vary."
+    },
+    "chaos": {
+      "headline": "Most padel trainers run their business on chaos",
+      "intro": "You became a coach to be on court — not to be a scheduling assistant. But without a proper system, your day looks something like this:",
+      "item_whatsapp": "WhatsApp & voice notes to coordinate availability and confirmations",
+      "item_spreadsheet": "Spreadsheet or notepad to track your schedule",
+      "item_calendar": "Separate calendar + separate payment tool",
+      "item_rescheduling": "DM-based rescheduling that never ends",
+      "item_generic": "Generic scheduling tools that break on group sessions and courts",
+      "closing": "It works… until it doesn't."
+    },
+    "impact": {
+      "headline": "This isn't just annoying. It costs sessions.",
+      "item_revenue": "Unfilled gaps after cancellations = lost revenue you can't recover.",
+      "item_admin": "Admin steals hours you could spend coaching (or resting).",
+      "item_noshows": "No-shows make income unpredictable.",
+      "item_lateReply": "Late replies hurt your conversion from 'interested' to 'booked'."
+    },
+    "solution": {
+      "headline": "Padel Trainer is a padel-only booking and operations platform for trainers.",
+      "category": "Padel Trainer helps padel coaches manage their agenda, bookings, and admin — and make it easier for players to book and pay. Built padel-first, so your schedule stays organized even as demand grows across Europe.",
+      "value_filled_title": "More filled sessions",
+      "value_filled_desc": "Make booking effortless so more interested players become paying sessions.",
+      "value_admin_title": "Less admin",
+      "value_admin_desc": "Replace coordination chaos with one place to manage sessions and updates.",
+      "value_noshows_title": "Fewer no-shows",
+      "value_noshows_desc": "Confirmations and reminders reduce last-minute surprises.",
+      "value_player_title": "Better player experience",
+      "value_player_desc": "Players can book lessons online and get clear communication."
+    },
+    "whyPadelTrainer": {
+      "headline": "Why Padel Trainer wins for padel trainers",
+      "focus_title": "Padel-only focus",
+      "focus_desc": "Everything is designed for padel coaches.",
+      "paid_title": "Get paid upfront",
+      "paid_desc": "Online payments in EUR (iDEAL + cards) to reduce no-shows.",
+      "visibility_title": "Public profile",
+      "visibility_desc": "Create a public profile and share your booking link. Marketplace visibility in our network."
+    },
+    "howItWorks": {
+      "headline": "Set it up once. Let players book. Keep coaching.",
+      "step1_title": "Create your availability",
+      "step1_desc": "Define when you coach and how players can book.",
+      "step2_title": "Share your booking link",
+      "step2_desc": "Put it on your profile, socials, and WhatsApp bio — players book in seconds.",
+      "step3_title": "Automate the boring stuff",
+      "step3_desc": "Get email notifications, keep track of bookings, sync to your calendar, and collect payments smoothly.",
+      "microcopy": "Designed for trainers operating across Europe — consistent workflows, EUR pricing, and scalable for growth."
+    },
+    "realities": {
+      "headline": "Built for padel realities — not generic appointments.",
+      "intro": "See the before-and-after of running your padel coaching business with Padel Trainer.",
+      "label_before": "Before",
+      "label_after": "After",
+      "chat_current": "Bookings live in WhatsApp threads.",
+      "chat_with": "One place for bookings and updates.",
+      "oncourt_current": "Players can't book when you're on court.",
+      "oncourt_with": "Online booking link, available 24/7.",
+      "noshows_current": "No-shows mess up your week.",
+      "noshows_with": "Booking confirmations + reminder emails.",
+      "payments_current": "Payments require chasing and reminders.",
+      "payments_with": "Secure online payments (iDEAL + cards).",
+      "calendar_current": "Your calendar is split across tools.",
+      "calendar_with": "Google Calendar sync for every booking.",
+      "scale_current": "Changes and reschedules create admin.",
+      "scale_with": "Manage bookings and changes in one place.",
+      "result": "Result: Less admin, fewer no-shows, more filled sessions."
+    },
+    "jtbd": {
+      "headline": "Built for every padel coaching business",
+      "intro": "Whether you run an academy, coach independently, or manage a club — Padel Trainer helps you fill sessions with less admin.",
+      "cta": "Start free trial",
+      "academy_title": "Academy owners",
+      "academy_subtitle": "Keep trainers' schedules full and admin under control.",
+      "academy_b1": "Fill empty trainer slots when cancellations happen",
+      "academy_b2": "Centralize bookings across trainers in one place",
+      "academy_b3": "Reduce no-shows with confirmations and reminders",
+      "academy_b4": "Get paid smoothly for lessons and programs",
+      "trainer_title": "Trainers",
+      "trainer_subtitle": "Stay booked and earn more without WhatsApp chaos.",
+      "trainer_b1": "Let players self-book and pay online",
+      "trainer_b2": "Keep your calendar synced automatically",
+      "trainer_b3": "Reduce no-shows and last-minute gaps",
+      "trainer_b4": "Spend less time messaging and rescheduling",
+      "club_title": "Clubs",
+      "club_subtitle": "Make it easy for members to book sessions.",
+      "club_b1": "Give members a simple booking flow",
+      "club_b2": "Reduce front-desk/admin workload",
+      "club_b3": "Keep schedules accurate with calendar sync",
+      "club_b4": "Offer smooth payments where needed"
+    },
+    "criticalEvents": {
+      "headline": "When trainers switch to Padel Trainer",
+      "event_season": "A new season or cycle starts and you want structure.",
+      "event_independent": "You're going independent and need a real booking system.",
+      "event_noshows": "Cancellations and no-shows are killing utilization.",
+      "event_volume": "You're increasing volume — more sessions, more locations.",
+      "event_fulltime": "You want to go full-time coaching without admin overload.",
+      "closing": "If any of this is you, start your free trial today."
+    },
+    "pricing": {
+      "headline": "Simple pricing that matches how you grow",
+      "players_title": "Players",
+      "players_price": "Free (always)",
+      "players_desc": "Find trainers, book lessons in seconds, and pay online.",
+      "players_desc2": "Grab open slots when they appear and get instant booking confirmation.",
+      "trainers_title": "Trainers",
+      "trainers_price": "Free trial → from €9/mo",
+      "trainers_desc": "Everything you need to run your coaching business with less admin and smoother booking.",
+      "no_cc": "No credit card required.",
+      "trainers_microcopy": "Upgrade when you're ready. From €9/month after the trial.",
+      "seeAllPlans": "See all plans →"
+    },
+    "faq": {
+      "headline": "FAQ",
+      "onlyPadel_q": "Is this only for padel?",
+      "onlyPadel_a": "Yes — Padel Trainer is built specifically for padel coaching and padel players.",
+      "playersFree_q": "Are players really free?",
+      "playersFree_a": "Yes. Players can use the platform for free.",
+      "trialHow_q": "How does the trainer free trial work?",
+      "trialHow_a": "Start the trial to set up your profile and booking flow. When the trial ends, trainer plans start from €9/month.",
+      "needWebsite_q": "Do I need a website?",
+      "needWebsite_a": "No — you can share your booking link directly on socials or in messages.",
+      "onlineBooking_q": "Can players book online?",
+      "onlineBooking_a": "Yes — players can book lessons online through your booking page.",
+      "payments_q": "Do you support payments?",
+      "payments_a": "Yes — secure online payments are supported (including iDEAL and cards).",
+      "calendarSync_q": "Can I sync it with my calendar?",
+      "calendarSync_a": "Yes — calendar sync is supported (e.g., Google Calendar).",
+      "europe_q": "Does this work across Europe?",
+      "europe_a": "Yes — the platform is designed to be used internationally across Europe.",
+      "gdpr_q": "Is it GDPR-friendly?",
+      "gdpr_a": "Padel Trainer supports GDPR-friendly workflows. See our privacy policy for details."
+    },
+    "finalCta": {
+      "headline": "Stop running your coaching business in WhatsApp.",
+      "body": "Keep your agenda clean, reduce admin, and make it effortless for players to book lessons — built for padel trainers across Europe."
+    }
+  }
+}
