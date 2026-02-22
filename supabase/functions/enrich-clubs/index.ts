@@ -739,11 +739,17 @@ Deno.serve(async (req) => {
       .from("locations")
       .select("id, name, city, street_address, website_url, indoor_courts, outdoor_courts, description, phone, email, facebook_url, instagram_url, opening_hours, logo_url")
       .not("website_url", "is", null)
+      .eq("is_active", true)
       .order("name", { ascending: true });
 
     if (locationIds && locationIds.length > 0) {
       query = query.in("id", locationIds);
     } else {
+      // When running in fill_missing mode, filter to only locations with missing description
+      // so we don't keep re-processing the same already-enriched locations
+      if (fillMissingOnly) {
+        query = query.is("description", null);
+      }
       query = query.range(offset, offset + batchSize - 1);
     }
 
