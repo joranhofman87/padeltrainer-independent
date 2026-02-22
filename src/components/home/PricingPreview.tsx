@@ -12,7 +12,7 @@ export function PricingPreview() {
 
   return (
     <section id="pricing" className="py-20 md:py-28 bg-muted/30">
-      <div className="container mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.h2
           className="text-3xl md:text-4xl font-bold text-center mb-12"
           initial={{ opacity: 0, y: 20 }}
