@@ -243,6 +243,46 @@ function getMissingFields(location: Location): string[] {
   return missing;
 }
 
+async function generateTranslatedDescriptions(
+  baseDescription: string,
+  locationName: string,
+  city: string
+): Promise<Record<string, string>> {
+  const locales = ["nl", "en", "es", "de", "fr"];
+  const descriptions: Record<string, string> = { nl: baseDescription };
+
+  const prompt = `Translate this Dutch padel club description into English, Spanish, German, and French.
+Keep the same factual tone, third person, 2-3 sentences. Return ONLY valid JSON.
+
+Original Dutch description of "${locationName}" in ${city}:
+"${baseDescription}"
+
+Return JSON:
+{
+  "en": "English translation",
+  "es": "Spanish translation",
+  "de": "German translation",
+  "fr": "French translation"
+}`;
+
+  try {
+    const response = await callLovableAI(prompt);
+    const jsonMatch = response.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      for (const locale of locales) {
+        if (locale !== "nl" && parsed[locale]) {
+          descriptions[locale] = parsed[locale];
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Translation error:", e);
+  }
+
+  return descriptions;
+}
+
 async function processLocation(
   supabase: SupabaseClient,
   location: Location,
@@ -363,6 +403,40 @@ async function processLocation(
             .update(profileUpdate)
             .eq("location_id", location.id);
           if (profileError) console.error("Error updating club_profile:", profileError);
+        }
+      }
+
+      // Step 5: Generate and store translated descriptions
+      const descriptionToTranslate = extracted.description || location.description;
+      if (descriptionToTranslate) {
+        // Check which locales are missing
+        const { data: existingTranslations } = await supabase
+          .from("location_translations")
+          .select("locale")
+          .eq("location_id", location.id);
+
+        const existingLocales = new Set((existingTranslations || []).map((t: { locale: string }) => t.locale));
+        const missingLocales = ["nl", "en", "es", "de", "fr"].filter((l) => !existingLocales.has(l));
+
+        if (missingLocales.length > 0) {
+          console.log(`Generating translations for ${location.name}: ${missingLocales.join(", ")}`);
+          const translations = await generateTranslatedDescriptions(descriptionToTranslate, location.name, location.city);
+
+          const rows = missingLocales
+            .filter((locale) => translations[locale])
+            .map((locale) => ({
+              location_id: location.id,
+              locale,
+              description: translations[locale],
+            }));
+
+          if (rows.length > 0) {
+            const { error: transError } = await supabase
+              .from("location_translations")
+              .upsert(rows, { onConflict: "location_id,locale" });
+            if (transError) console.error("Error inserting translations:", transError);
+            else result.fields_updated!.push(`translations(${rows.map((r) => r.locale).join(",")})`);
+          }
         }
       }
     }
