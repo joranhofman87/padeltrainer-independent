@@ -560,5 +560,156 @@
       "submit": "Send Message",
       "sending": "Sending..."
     }
+  },
+  "homev2": {
+    "hero": {
+      "h1": "Scheduling, bookings, and payments for padel trainers across Europe.",
+      "subheadline": "Run your coaching business from one place: keep your agenda clean, let players book online, reduce no-shows with reminders, and spend less time on admin.",
+      "bullet1": "Stop the WhatsApp back-and-forth — availability, reschedules, confirmations",
+      "bullet2": "Get booked and paid faster with online booking + secure payments",
+      "bullet3": "Protect your income with reminders and fewer no-shows",
+      "mockAgenda": "Your Agenda",
+      "openSlot": "Open",
+      "pill1": "Online booking",
+      "pill2": "Secure payments",
+      "pill3": "Calendar sync",
+      "pill4": "Email notifications"
+    },
+    "cta": {
+      "startTrial": "Start free trial",
+      "watchDemo": "See how it works",
+      "trustMicrocopy": "Players are always free. Trainers start with a free trial, then from €9/month."
+    },
+    "socialProof": {
+      "headline": "Trusted by padel trainers and academies",
+      "testimonial1": "I got my evenings back — no more scheduling chaos.",
+      "author1": "Trainer, Spain",
+      "testimonial2": "Players book faster, and I chase payments less.",
+      "author2": "Academy owner, Netherlands",
+      "metric_hours_value": "Save __ hours/week",
+      "metric_hours_label": "on admin",
+      "metric_slots_value": "Fill __ extra slots",
+      "metric_slots_label": "per month",
+      "metric_noshows_value": "Reduce no-shows",
+      "metric_noshows_label": "by __%"
+    },
+    "chaos": {
+      "headline": "Most padel trainers run their business on chaos",
+      "intro": "You became a coach to be on court — not to be a scheduling assistant. But without a proper system, your day looks something like this:",
+      "item_whatsapp": "WhatsApp & voice notes to coordinate availability and confirmations",
+      "item_spreadsheet": "Spreadsheet or notepad to track your schedule",
+      "item_calendar": "Separate calendar + separate payment tool",
+      "item_rescheduling": "DM-based rescheduling that never ends",
+      "item_generic": "Generic scheduling tools that break on group sessions and courts",
+      "closing": "It works… until it doesn't."
+    },
+    "impact": {
+      "headline": "This isn't just annoying. It costs sessions.",
+      "item_revenue": "Unfilled gaps after cancellations = lost revenue you can't recover.",
+      "item_admin": "Admin steals hours you could spend coaching (or resting).",
+      "item_noshows": "No-shows make income unpredictable.",
+      "item_lateReply": "Late replies hurt your conversion from 'interested' to 'booked'."
+    },
+    "solution": {
+      "headline": "Padel Trainer is a padel-only booking and operations platform for trainers.",
+      "category": "Padel Trainer helps padel coaches manage their agenda, bookings, and admin — and make it easier for players to book and pay. Built padel-first, so your schedule stays organized even as demand grows across Europe.",
+      "value_filled_title": "More filled sessions",
+      "value_filled_desc": "Make booking effortless so more interested players become paying sessions.",
+      "value_admin_title": "Less admin",
+      "value_admin_desc": "Replace coordination chaos with one place to manage sessions and updates.",
+      "value_noshows_title": "Fewer no-shows",
+      "value_noshows_desc": "Confirmations and reminders reduce last-minute surprises.",
+      "value_player_title": "Better player experience",
+      "value_player_desc": "Players can book lessons online and get clear communication."
+    },
+    "howItWorks": {
+      "headline": "Set it up once. Let players book. Keep coaching.",
+      "step1_title": "Create your availability",
+      "step1_desc": "Define when you coach and how players can book.",
+      "step2_title": "Share your booking link",
+      "step2_desc": "Put it on your profile, socials, and WhatsApp bio — players book in seconds.",
+      "step3_title": "Automate the boring stuff",
+      "step3_desc": "Get email notifications, keep track of bookings, sync to your calendar, and collect payments smoothly.",
+      "microcopy": "Designed for trainers operating across Europe — consistent workflows, EUR pricing, and scalable for growth."
+    },
+    "realities": {
+      "headline": "Built for padel realities — not generic appointments.",
+      "col_pain": "Pain",
+      "col_solution": "Padel Trainer",
+      "col_outcome": "Outcome",
+      "chat_pain": "Scheduling lives in chat threads.",
+      "chat_solution": "Centralize bookings and updates in one place.",
+      "chat_outcome": "Less back-and-forth, fewer mistakes.",
+      "oncourt_pain": "Players want to book when I'm on court.",
+      "oncourt_solution": "Online booking flow that works 24/7.",
+      "oncourt_outcome": "More bookings without more admin.",
+      "noshows_pain": "No-shows hurt my week.",
+      "noshows_solution": "Automated notifications and a tighter booking flow.",
+      "noshows_outcome": "More predictable sessions.",
+      "payments_pain": "Payments create friction.",
+      "payments_solution": "Secure online payments (iDEAL + cards).",
+      "payments_outcome": "Get paid faster, less chasing.",
+      "calendar_pain": "My calendar is split across tools.",
+      "calendar_solution": "Calendar sync (e.g., Google Calendar).",
+      "calendar_outcome": "Fewer double bookings.",
+      "scale_pain": "Admin grows as I get more demand.",
+      "scale_solution": "Track bookings + streamline operations.",
+      "scale_outcome": "Scale sessions without burnout."
+    },
+    "jtbd": {
+      "headline": "Jobs we help you get done",
+      "job_selfbook": "When a player asks \"can I book tomorrow?\", I want them to self-book so I can stay focused on coaching.",
+      "job_refill": "When someone cancels last-minute, I want to refill the slot fast so I don't lose revenue.",
+      "job_group": "When I run group sessions, I want signups and confirmations to be clear so I don't chase people.",
+      "job_payments": "When I'm on court all day, I want payments handled smoothly so my evenings aren't admin time.",
+      "job_schedule": "When my schedule changes, I want everyone to have the right info so I avoid confusion.",
+      "job_scale": "When demand grows, I want a system that scales so I don't drown in messages.",
+      "job_locations": "When I coach across locations, I want my calendar synced so I stay in control."
+    },
+    "criticalEvents": {
+      "headline": "When trainers switch to Padel Trainer",
+      "event_season": "A new season or cycle starts and you want structure.",
+      "event_independent": "You're going independent and need a real booking system.",
+      "event_noshows": "Cancellations and no-shows are killing utilization.",
+      "event_volume": "You're increasing volume — more sessions, more locations.",
+      "event_fulltime": "You want to go full-time coaching without admin overload.",
+      "closing": "If any of this is you, start your free trial today."
+    },
+    "pricing": {
+      "headline": "Simple pricing that matches how you grow",
+      "players_title": "Players",
+      "players_price": "Free (always)",
+      "players_desc": "Players can use the platform for free.",
+      "trainers_title": "Trainers",
+      "trainers_price": "Free trial → from €9/mo",
+      "trainers_desc": "Everything you need to run your coaching business with less admin and smoother booking.",
+      "trainers_microcopy": "Upgrade when you're ready. From €9/month after the trial.",
+      "seeAllPlans": "See all plans →"
+    },
+    "faq": {
+      "headline": "FAQ",
+      "onlyPadel_q": "Is this only for padel?",
+      "onlyPadel_a": "Yes — Padel Trainer is built specifically for padel coaching and padel players.",
+      "playersFree_q": "Are players really free?",
+      "playersFree_a": "Yes. Players can use the platform for free.",
+      "trialHow_q": "How does the trainer free trial work?",
+      "trialHow_a": "Start the trial to set up your profile and booking flow. When the trial ends, trainer plans start from €9/month.",
+      "needWebsite_q": "Do I need a website?",
+      "needWebsite_a": "No — you can share your booking link directly on socials or in messages.",
+      "onlineBooking_q": "Can players book online?",
+      "onlineBooking_a": "Yes — players can book lessons online through your booking page.",
+      "payments_q": "Do you support payments?",
+      "payments_a": "Yes — secure online payments are supported (including iDEAL and cards).",
+      "calendarSync_q": "Can I sync it with my calendar?",
+      "calendarSync_a": "Yes — calendar sync is supported (e.g., Google Calendar).",
+      "europe_q": "Does this work across Europe?",
+      "europe_a": "Yes — the platform is designed to be used internationally across Europe.",
+      "gdpr_q": "Is it GDPR-friendly?",
+      "gdpr_a": "Padel Trainer supports GDPR-friendly workflows. See our privacy policy for details."
+    },
+    "finalCta": {
+      "headline": "Stop running your coaching business in WhatsApp.",
+      "body": "Keep your agenda clean, reduce admin, and make it effortless for players to book lessons — built for padel trainers across Europe."
+    }
   }
 }
