@@ -77,13 +77,16 @@ serve(async (req) => {
         const displayTitle = makeDisplayTitle(article.title, article.meta_title);
         const tagsHint = article.tags?.slice(0, 3)?.join(", ") || "padel";
 
-        const prompt = `Create a professional blog cover image in landscape 1200x630 format for a padel sports website called PadelTrainer.ai. 
-Style: modern, clean, high contrast, editorial quality. 
-Background: a padel court scene, player in action, or abstract padel-themed visuals. Keep it visually striking but not cluttered.
-Text overlay: "${displayTitle}" — render this text prominently in a large, bold, readable sans-serif font. Ensure high contrast between text and background (use a dark overlay or text shadow if needed). The text must be in ${article.locale === "nl" ? "Dutch" : article.locale === "es" ? "Spanish" : article.locale === "de" ? "German" : article.locale === "fr" ? "French" : "English"}.
-Small "PadelTrainer.ai" watermark in the bottom-right corner.
+        const language = article.locale === "nl" ? "Dutch" : article.locale === "es" ? "Spanish" : article.locale === "de" ? "German" : article.locale === "fr" ? "French" : "English";
+
+        const prompt = `Create a photorealistic blog cover image in landscape 1200x630 format.
+Style: editorial sports photography, shot on a DSLR camera, natural lighting, realistic textures and colors. Must look like a real photograph, NOT like AI art.
+Scene: a real-looking padel court with natural shadows, or a close-up of padel equipment (racket, ball, court surface), or a candid moment of players on court. Use shallow depth of field where appropriate.
+Add a semi-transparent dark gradient overlay on the lower half for text readability.
+Text overlay: "${displayTitle}" in a large, bold, clean sans-serif font (white text). The text must be in ${language}.
+Small "PadelTrainer.ai" watermark in the bottom-right corner (subtle, small).
 Topic hint: ${tagsHint}.
-Do NOT include any other text, logos, or UI elements.`;
+Do NOT include any other text, logos, watermarks, or UI elements. Do NOT make it look like a graphic design or illustration.`;
 
         console.log(`Generating cover for article ${article.id} (${article.locale})...`);
 
