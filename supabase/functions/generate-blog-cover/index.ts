@@ -69,16 +69,21 @@ serve(async (req) => {
       try {
         const tagsHint = article.tags?.slice(0, 3)?.join(", ") || "padel";
 
-        const prompt = `Create a photorealistic landscape photograph in exactly 1200x630 pixels.
-Style: editorial sports photography, shot on a DSLR camera, natural lighting, realistic textures and colors. Must look like a real photograph, NOT like AI art.
-Scene: a real-looking padel court with natural shadows, or a close-up of padel equipment (racket, ball, court surface), or a candid moment of players on court. Use shallow depth of field where appropriate.
-Topic hint: ${tagsHint}.
-Do NOT include ANY text, logos, watermarks, overlays, or UI elements. Just a clean photograph.
-Do NOT make it look like a graphic design or illustration.`;
+        const prompt = `Generate a wide landscape photograph (1200x630 aspect ratio) for a blog article about padel.
+
+CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind. No titles, no captions, no watermarks, no labels, no letters, no words, no numbers.
+- ABSOLUTELY NO LOGOS or brand marks.
+- Just a clean, beautiful photograph.
+
+Style: Professional editorial sports photography. Natural lighting. Photorealistic. Shot on a Canon EOS R5.
+Subject: A padel court scene related to: ${tagsHint}. Could be a beautiful padel court at golden hour, a close-up of a padel racket on the court, players in action, or padel equipment artistically arranged.
+Composition: Wide landscape format (16:9 ratio). Shallow depth of field. Vibrant but natural colors.
+
+Remember: ZERO text, ZERO logos, ZERO overlays. Pure photography only.`;
 
         console.log(`Generating cover for article ${article.id} (${article.locale})...`);
 
-        // Step 1: Generate clean photo
         const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -86,7 +91,7 @@ Do NOT make it look like a graphic design or illustration.`;
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-image",
+            model: "google/gemini-3-pro-image-preview",
             messages: [{ role: "user", content: prompt }],
             modalities: ["image", "text"],
           }),
@@ -100,53 +105,12 @@ Do NOT make it look like a graphic design or illustration.`;
         }
 
         const aiData = await aiResponse.json();
-        const photoUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        const finalImageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
-        if (!photoUrl || !photoUrl.startsWith("data:image/")) {
+        if (!finalImageUrl || !finalImageUrl.startsWith("data:image/")) {
           console.error("No image returned from AI");
           results.push({ id: article.id, locale: article.locale, error: "No image generated" });
           continue;
-        }
-
-        // Step 2: Composite the logo onto the photo
-        console.log(`Adding logo to cover for article ${article.id}...`);
-        const compositeResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-image",
-            messages: [{
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Add a semi-transparent dark gradient overlay on the bottom 30% of this image. Then place the provided logo in the bottom-right corner of the image, small and subtle (about 15% of image width). Keep the rest of the photograph exactly as is. Do not add any text. Output the final composited image at 1200x630."
-                },
-                {
-                  type: "image_url",
-                  image_url: { url: photoUrl }
-                },
-                {
-                  type: "image_url",
-                  image_url: { url: LOGO_URL }
-                }
-              ]
-            }],
-            modalities: ["image", "text"],
-          }),
-        });
-
-        let finalImageUrl: string;
-        if (!compositeResponse.ok) {
-          console.warn("Logo composite failed, using photo without logo");
-          finalImageUrl = photoUrl;
-        } else {
-          const compositeData = await compositeResponse.json();
-          const composited = compositeData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-          finalImageUrl = (composited && composited.startsWith("data:image/")) ? composited : photoUrl;
         }
 
         // Extract base64 data
