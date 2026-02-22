@@ -33,6 +33,19 @@ interface ExtractedData {
   opening_hours: string | null;
 }
 
+interface DetectedAcademy {
+  name: string;
+  website_url: string | null;
+  description: string | null;
+  contact_email: string | null;
+  phone: string | null;
+  social_facebook: string | null;
+  social_instagram: string | null;
+  social_linkedin: string | null;
+  social_youtube: string | null;
+  social_tiktok: string | null;
+}
+
 interface EnrichmentResult {
   location_id: string;
   location_name: string;
@@ -40,6 +53,7 @@ interface EnrichmentResult {
   error?: string;
   fields_updated?: string[];
   data?: ExtractedData & { logo_url: string | null };
+  academy_created?: string;
 }
 
 async function callLovableAI(prompt: string): Promise<string> {
@@ -109,9 +123,12 @@ async function scrapeWebsite(url: string): Promise<{ markdown: string; links: st
   return { markdown, links, logoUrl };
 }
 
-function extractSocialFromLinks(links: string[]): { facebook_url: string | null; instagram_url: string | null } {
+function extractSocialFromLinks(links: string[]): { facebook_url: string | null; instagram_url: string | null; linkedin_url: string | null; youtube_url: string | null; tiktok_url: string | null } {
   let facebook_url: string | null = null;
   let instagram_url: string | null = null;
+  let linkedin_url: string | null = null;
+  let youtube_url: string | null = null;
+  let tiktok_url: string | null = null;
 
   for (const link of links) {
     if (!facebook_url && link.includes("facebook.com/") && !link.includes("sharer")) {
@@ -120,9 +137,18 @@ function extractSocialFromLinks(links: string[]): { facebook_url: string | null;
     if (!instagram_url && link.includes("instagram.com/") && !link.includes("/p/")) {
       instagram_url = link;
     }
+    if (!linkedin_url && link.includes("linkedin.com/")) {
+      linkedin_url = link;
+    }
+    if (!youtube_url && (link.includes("youtube.com/") || link.includes("youtu.be/"))) {
+      youtube_url = link;
+    }
+    if (!tiktok_url && link.includes("tiktok.com/")) {
+      tiktok_url = link;
+    }
   }
 
-  return { facebook_url, instagram_url };
+  return { facebook_url, instagram_url, linkedin_url, youtube_url, tiktok_url };
 }
 
 async function extractAllFields(
@@ -198,6 +224,219 @@ ${websiteContent.substring(0, 8000)}`;
       facebook_url: socialFromLinks.facebook_url, instagram_url: socialFromLinks.instagram_url,
       opening_hours: null,
     };
+  }
+}
+
+async function detectAcademy(
+  websiteContent: string,
+  links: string[],
+  locationName: string,
+  city: string
+): Promise<DetectedAcademy | null> {
+  const prompt = `Analyze this padel club website. Is there a PADEL ACADEMY or TRAINING SCHOOL mentioned that operates at this location?
+
+Look for:
+- Named academies (e.g. "Padel Time Academy", "Dutch Padel Academy")
+- Training programs run by a separate organization
+- Partnerships with padel schools or training institutes
+- NOT the club's own lesson offerings (e.g. "we offer padel lessons" is NOT an academy)
+- The academy must be a SEPARATE ENTITY with its own name, not just a club feature
+
+Club: ${locationName}
+City: ${city}
+
+Website content:
+${websiteContent.substring(0, 8000)}
+
+If an academy is found, return ONLY valid JSON:
+{
+  "found": true,
+  "name": "Academy Name",
+  "website_url": "https://academy-website.com or null if not found",
+  "description_hint": "Brief note about what they do (from the club page)"
+}
+
+If NO separate academy is detected, return:
+{ "found": false }`;
+
+  try {
+    const response = await callLovableAI(prompt);
+    const jsonMatch = response.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed.found || !parsed.name) return null;
+
+    // Try to find academy URL from links if not extracted
+    let academyUrl = parsed.website_url || null;
+    if (!academyUrl && parsed.name) {
+      const nameLower = parsed.name.toLowerCase().replace(/\s+/g, "");
+      for (const link of links) {
+        const linkLower = link.toLowerCase().replace(/\s+/g, "");
+        if (linkLower.includes(nameLower) || nameLower.split(" ").some((w: string) => w.length > 4 && linkLower.includes(w))) {
+          academyUrl = link;
+          break;
+        }
+      }
+    }
+
+    console.log(`Detected academy at ${locationName}: ${parsed.name} (url: ${academyUrl})`);
+
+    return {
+      name: parsed.name,
+      website_url: academyUrl,
+      description: null,
+      contact_email: null,
+      phone: null,
+      social_facebook: null,
+      social_instagram: null,
+      social_linkedin: null,
+      social_youtube: null,
+      social_tiktok: null,
+    };
+  } catch (e) {
+    console.error("Academy detection error:", e);
+    return null;
+  }
+}
+
+async function enrichAcademyFromWebsite(academy: DetectedAcademy): Promise<DetectedAcademy> {
+  if (!academy.website_url) return academy;
+
+  try {
+    const scrapeResult = await scrapeWebsite(academy.website_url);
+    if (!scrapeResult || !scrapeResult.markdown) return academy;
+
+    const socialFromLinks = extractSocialFromLinks(scrapeResult.links);
+
+    const prompt = `Analyze this padel academy website and extract information.
+Return ONLY valid JSON with these fields. Use null for any field you cannot find.
+
+{
+  "description": "2-3 sentence factual description in Dutch about this padel academy. Write in third person. Focus on what they offer, their approach, and who they serve.",
+  "contact_email": "email address or null",
+  "phone": "phone number or null"
+}
+
+Academy: ${academy.name}
+
+Website content:
+${scrapeResult.markdown.substring(0, 8000)}`;
+
+    const response = await callLovableAI(prompt);
+    const jsonMatch = response.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      academy.description = parsed.description || null;
+      academy.contact_email = parsed.contact_email || null;
+      academy.phone = parsed.phone || null;
+    }
+
+    academy.social_facebook = socialFromLinks.facebook_url;
+    academy.social_instagram = socialFromLinks.instagram_url;
+    academy.social_linkedin = socialFromLinks.linkedin_url;
+    academy.social_youtube = socialFromLinks.youtube_url;
+    academy.social_tiktok = socialFromLinks.tiktok_url;
+  } catch (e) {
+    console.error(`Error enriching academy ${academy.name}:`, e);
+  }
+
+  return academy;
+}
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+async function createAcademyProfile(
+  supabase: SupabaseClient,
+  academy: DetectedAcademy,
+  locationId: string,
+  country: string
+): Promise<string | null> {
+  try {
+    // Check if academy with same name already exists
+    const slug = generateSlug(academy.name);
+    const { data: existing } = await supabase
+      .from("academy_profiles")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`Academy "${academy.name}" already exists (${existing.id}), linking to location`);
+      // Ensure location link exists
+      await ensureAcademyLocationLink(supabase, existing.id, locationId);
+      return existing.id;
+    }
+
+    // Create academy profile
+    const { data: newAcademy, error: createError } = await supabase
+      .from("academy_profiles")
+      .insert({
+        name: academy.name,
+        slug,
+        country,
+        description: academy.description,
+        contact_email: academy.contact_email,
+        phone: academy.phone,
+        website_url: academy.website_url,
+        social_facebook: academy.social_facebook,
+        social_instagram: academy.social_instagram,
+        social_linkedin: academy.social_linkedin,
+        social_youtube: academy.social_youtube,
+        social_tiktok: academy.social_tiktok,
+        is_public: false, // stays non-public until manually reviewed
+        is_verified: false,
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      console.error("Error creating academy profile:", createError);
+      return null;
+    }
+
+    console.log(`Created academy profile: ${academy.name} (${newAcademy.id})`);
+
+    // Link academy to location
+    await ensureAcademyLocationLink(supabase, newAcademy.id, locationId);
+
+    return newAcademy.id;
+  } catch (e) {
+    console.error("Error in createAcademyProfile:", e);
+    return null;
+  }
+}
+
+async function ensureAcademyLocationLink(
+  supabase: SupabaseClient,
+  academyId: string,
+  locationId: string
+): Promise<void> {
+  const { data: existingLink } = await supabase
+    .from("academy_locations")
+    .select("id")
+    .eq("academy_profile_id", academyId)
+    .eq("location_id", locationId)
+    .maybeSingle();
+
+  if (!existingLink) {
+    const { error } = await supabase
+      .from("academy_locations")
+      .insert({
+        academy_profile_id: academyId,
+        location_id: locationId,
+        is_active: true,
+        show_on_academy_page: true,
+        show_on_club_page: true,
+      });
+    if (error) console.error("Error linking academy to location:", error);
+    else console.log(`Linked academy ${academyId} to location ${locationId}`);
   }
 }
 
@@ -409,7 +648,6 @@ async function processLocation(
       // Step 5: Generate and store translated descriptions
       const descriptionToTranslate = extracted.description || location.description;
       if (descriptionToTranslate) {
-        // Check which locales are missing
         const { data: existingTranslations } = await supabase
           .from("location_translations")
           .select("locale")
@@ -437,6 +675,34 @@ async function processLocation(
             if (transError) console.error("Error inserting translations:", transError);
             else result.fields_updated!.push(`translations(${rows.map((r) => r.locale).join(",")})`);
           }
+        }
+      }
+
+      // Step 6: Detect and auto-create academy if found
+      const detected = await detectAcademy(
+        scrapeResult.markdown,
+        scrapeResult.links,
+        location.name,
+        location.city
+      );
+
+      if (detected) {
+        console.log(`Academy detected at ${location.name}: ${detected.name}`);
+        
+        // Enrich academy from its own website
+        const enrichedAcademy = await enrichAcademyFromWebsite(detected);
+        
+        // Create or link
+        const academyId = await createAcademyProfile(
+          supabase,
+          enrichedAcademy,
+          location.id,
+          location.city ? "NL" : "NL" // default country
+        );
+        
+        if (academyId) {
+          result.academy_created = `${detected.name} (${academyId})`;
+          result.fields_updated!.push(`academy:${detected.name}`);
         }
       }
     }
@@ -509,6 +775,7 @@ Deno.serve(async (req) => {
       skipped: results.filter((r) => r.status === "skipped").length,
       errors: results.filter((r) => r.status === "error").length,
       fields_updated: results.flatMap((r) => r.fields_updated || []),
+      academies_created: results.filter((r) => r.academy_created).map((r) => r.academy_created),
     };
 
     console.log("Enrichment complete:", summary);
