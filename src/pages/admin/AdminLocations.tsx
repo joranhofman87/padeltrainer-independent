@@ -16,6 +16,7 @@ import {
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
 import { ScrapeLogosDialog } from '@/components/admin/ScrapeLogosDialog';
+import { EnrichmentControls } from '@/components/admin/EnrichmentControls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -206,7 +207,8 @@ export default function AdminLocations() {
             Manage padel venues · {locations.length} total locations
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <EnrichmentControls />
           <Button variant="outline" onClick={() => setScrapeLogosDialogOpen(true)}>
             <Image className="h-4 w-4 mr-2" />
             Fetch Logos
