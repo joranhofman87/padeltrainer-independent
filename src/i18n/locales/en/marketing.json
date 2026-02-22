@@ -563,11 +563,11 @@
   },
   "homev2": {
     "hero": {
-      "h1": "Let players book and pay online, keep your calendar in sync, and turn cancellations into filled sessions.",
-      "subheadline": "Run your coaching business from one place: keep your agenda clean, let players book online, reduce no-shows with reminders, and spend less time on admin.",
-      "bullet1": "Stop the WhatsApp back-and-forth — availability, reschedules, confirmations",
-      "bullet2": "Get booked and paid faster with online booking + secure payments",
-      "bullet3": "Protect your income with reminders and fewer no-shows",
+      "h1": "Fill more sessions. Spend less time on admin.",
+      "subheadline": "One place to run your agenda, reduce no-shows, and fill gaps when cancellations happen.",
+      "bullet1": "Fill cancellations faster with a clean booking flow",
+      "bullet2": "Cut admin time (no more WhatsApp scheduling)",
+      "bullet3": "Reduce no-shows with confirmations and reminders",
       "mockAgenda": "Your Agenda",
       "openSlot": "Open",
       "pill1": "Online booking",
