@@ -12,6 +12,8 @@ export interface Article {
   published_at: string | null;
   author_name: string;
   cover_image_url: string | null;
+  cover_image_alt: string | null;
+  cover_image_generated_at: string | null;
   tags: string[] | null;
   primary_keyword: string | null;
   meta_title: string | null;

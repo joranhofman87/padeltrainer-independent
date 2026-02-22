@@ -147,3 +147,6 @@ verify_jwt = false
 
 [functions.process-blog-queue]
 verify_jwt = false
+
+[functions.generate-blog-cover]
+verify_jwt = false

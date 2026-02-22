@@ -79,6 +79,7 @@ export default function AdminBlog() {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-16">Cover</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Locale</TableHead>
             <TableHead>Status</TableHead>
@@ -88,12 +89,21 @@ export default function AdminBlog() {
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
           ) : filtered.length === 0 ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">No articles found</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8">No articles found</TableCell></TableRow>
           ) : (
             filtered.map((article: any) => (
               <TableRow key={article.id}>
+                <TableCell>
+                  <div className="w-14 h-7 rounded overflow-hidden bg-muted flex-shrink-0">
+                    {article.cover_image_url ? (
+                      <img src={article.cover_image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-[10px]">—</div>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="font-medium max-w-xs truncate">{article.title}</TableCell>
                 <TableCell><Badge variant="outline">{article.locale?.toUpperCase()}</Badge></TableCell>
                 <TableCell><Badge variant={statusColor(article.status)}>{article.status}</Badge></TableCell>

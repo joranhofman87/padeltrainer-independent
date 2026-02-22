@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Save, Globe, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Globe, Loader2, ImageIcon, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const LOCALES = ['en', 'nl', 'es', 'de', 'fr'];
@@ -121,9 +121,24 @@ export default function AdminBlogEditor() {
       toast.success(isNew ? 'Article created' : 'Article saved');
       if (isNew && data?.id) navigate(`/app/admin/blog/${data.id}`, { replace: true });
 
-      // Auto-translate when publishing
       const articleId = isNew ? data?.id : id;
       if (form.status === 'published' && articleId) {
+        // Auto-generate cover image if missing
+        if (!form.cover_image_url) {
+          toast.info('Generating cover image...');
+          supabase.functions.invoke('generate-blog-cover', {
+            body: { article_id: articleId },
+          }).then(({ error }) => {
+            if (error) {
+              toast.error('Cover image generation failed');
+            } else {
+              toast.success('Cover image generated');
+              queryClient.invalidateQueries({ queryKey: ['admin-article', id] });
+            }
+          });
+        }
+
+        // Auto-translate
         const currentLocale = form.locale;
         const localesToTranslate = LOCALES.filter(l => l !== currentLocale && !translations.some((t: any) => t.locale === l));
         if (localesToTranslate.length > 0) {
@@ -140,6 +155,19 @@ export default function AdminBlogEditor() {
               }
             });
           }
+
+          // After translations, generate covers for all locales
+          setTimeout(() => {
+            supabase.functions.invoke('generate-blog-cover', {
+              body: { canonical_id: form.canonical_id, all_locales: true },
+            }).then(({ error }) => {
+              if (error) console.error('Batch cover generation failed:', error);
+              else {
+                toast.success('Cover images generated for all translations');
+                queryClient.invalidateQueries({ queryKey: ['admin-article-translations'] });
+              }
+            });
+          }, 30000); // Wait 30s for translations to complete
         }
       }
     },
@@ -236,6 +264,18 @@ export default function AdminBlogEditor() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+          {/* Cover Image Card */}
+          <CoverImageCard
+            articleId={isNew ? undefined : id}
+            canonicalId={form.canonical_id}
+            coverImageUrl={form.cover_image_url}
+            coverImageGeneratedAt={article?.cover_image_generated_at}
+            isNew={isNew}
+            onImageGenerated={() => {
+              queryClient.invalidateQueries({ queryKey: ['admin-article', id] });
+            }}
+          />
+
           <Card>
             <CardHeader><CardTitle className="text-sm">Meta</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -297,5 +337,108 @@ export default function AdminBlogEditor() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CoverImageCard({
+  articleId,
+  canonicalId,
+  coverImageUrl,
+  coverImageGeneratedAt,
+  isNew,
+  onImageGenerated,
+}: {
+  articleId?: string;
+  canonicalId: string;
+  coverImageUrl: string;
+  coverImageGeneratedAt?: string | null;
+  isNew: boolean;
+  onImageGenerated: () => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
+
+  const generateCover = async (force?: boolean) => {
+    if (!articleId) return;
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-blog-cover', {
+        body: { article_id: articleId, force: true },
+      });
+      if (error) throw error;
+      const result = data?.results?.[0];
+      if (result?.error) throw new Error(result.error);
+      toast.success('Cover image generated');
+      onImageGenerated();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate cover image');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateAllLocales = async () => {
+    setGeneratingAll(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-blog-cover', {
+        body: { canonical_id: canonicalId, all_locales: true, force: true },
+      });
+      if (error) throw error;
+      const successes = data?.results?.filter((r: any) => r.success)?.length || 0;
+      toast.success(`Generated ${successes} cover image(s)`);
+      onImageGenerated();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate cover images');
+    } finally {
+      setGeneratingAll(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Cover Image</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {coverImageUrl ? (
+          <div className="aspect-[1200/630] bg-muted rounded-lg overflow-hidden">
+            <img src={coverImageUrl} alt="Cover" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <div className="aspect-[1200/630] bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-sm">
+            No cover image
+          </div>
+        )}
+
+        {coverImageGeneratedAt && (
+          <p className="text-xs text-muted-foreground">
+            Generated: {new Date(coverImageGeneratedAt).toLocaleString()}
+          </p>
+        )}
+
+        {!isNew && (
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateCover()}
+              disabled={generating || generatingAll}
+              className="w-full"
+            >
+              {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-2" />}
+              {coverImageUrl ? 'Regenerate Cover' : 'Generate Cover'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={generateAllLocales}
+              disabled={generating || generatingAll}
+              className="w-full"
+            >
+              {generatingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Generate for All Locales
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

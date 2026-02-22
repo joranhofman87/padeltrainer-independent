@@ -599,6 +599,8 @@ export type Database = {
           body_html: string | null
           body_md: string | null
           canonical_id: string
+          cover_image_alt: string | null
+          cover_image_generated_at: string | null
           cover_image_url: string | null
           created_at: string
           excerpt: string | null
@@ -619,6 +621,8 @@ export type Database = {
           body_html?: string | null
           body_md?: string | null
           canonical_id?: string
+          cover_image_alt?: string | null
+          cover_image_generated_at?: string | null
           cover_image_url?: string | null
           created_at?: string
           excerpt?: string | null
@@ -639,6 +643,8 @@ export type Database = {
           body_html?: string | null
           body_md?: string | null
           canonical_id?: string
+          cover_image_alt?: string | null
+          cover_image_generated_at?: string | null
           cover_image_url?: string | null
           created_at?: string
           excerpt?: string | null
