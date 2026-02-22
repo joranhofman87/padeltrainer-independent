@@ -37,6 +37,8 @@ export function EnrichmentControls() {
 
   useEffect(() => {
     checkStatus();
+    const interval = setInterval(checkStatus, 30000); // refresh every 30s
+    return () => clearInterval(interval);
   }, [checkStatus]);
 
   const startJob = async () => {
