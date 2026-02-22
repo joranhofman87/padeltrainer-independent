@@ -1,52 +1,52 @@
 {
-  "title": "Waiting List",
-  "joinWaitingList": "Join Waiting List",
-  "noSpotsAvailable": "No training spots available right now",
-  "getNotified": "Join the waiting list and we'll notify you when a spot opens up.",
-  "alreadyOnList": "You're already on the waiting list",
+  "title": "Warteliste",
+  "joinWaitingList": "Auf die Warteliste setzen",
+  "noSpotsAvailable": "Derzeit keine Trainingsplätze verfügbar",
+  "getNotified": "Setze dich auf die Warteliste und wir benachrichtigen dich, wenn ein Platz frei wird.",
+  "alreadyOnList": "Du stehst bereits auf der Warteliste",
   "form": {
-    "lessonType": "What type of training are you looking for?",
+    "lessonType": "Welche Art von Training suchst du?",
     "lessonTypes": {
-      "private": "Private lesson",
-      "duo": "Duo lesson (2 players)",
-      "group": "Group training",
-      "kids": "Kids training"
+      "private": "Einzelstunde",
+      "duo": "Duo-Stunde (2 Spieler)",
+      "group": "Gruppentraining",
+      "kids": "Kindertraining"
     },
-    "hasGroup": "Do you already have training partners?",
-    "groupSize": "How many people in your group?",
-    "rating": "Your skill level",
-    "ratingSystem": "Rating system",
-    "availability": "When are you available?",
-    "notes": "Anything else we should know?",
-    "notesPlaceholder": "e.g., preferred trainer, specific goals, schedule constraints...",
-    "submit": "Add to Waiting List",
-    "submitting": "Adding..."
+    "hasGroup": "Hast du bereits Trainingspartner?",
+    "groupSize": "Wie viele Personen sind in eurer Gruppe?",
+    "rating": "Dein Spielniveau",
+    "ratingSystem": "Bewertungssystem",
+    "availability": "Wann bist du verfügbar?",
+    "notes": "Gibt es sonst noch etwas, das wir wissen sollten?",
+    "notesPlaceholder": "z.B. bevorzugter Trainer, bestimmte Ziele, Terminbeschränkungen...",
+    "submit": "Auf die Warteliste setzen",
+    "submitting": "Wird hinzugefügt..."
   },
   "success": {
-    "title": "You're on the list!",
-    "message": "We'll reach out when a spot becomes available."
+    "title": "Du stehst auf der Liste!",
+    "message": "Wir melden uns, sobald ein Platz frei wird."
   },
   "myEntries": {
-    "title": "My Waiting List",
-    "empty": "You're not on any waiting lists",
-    "active": "Active",
-    "contacted": "Contacted",
-    "archived": "Archived",
-    "remove": "Remove",
-    "removeConfirm": "Are you sure you want to remove yourself from this waiting list?",
-    "joinedOn": "Joined"
+    "title": "Meine Warteliste",
+    "empty": "Du stehst auf keiner Warteliste",
+    "active": "Aktiv",
+    "contacted": "Kontaktiert",
+    "archived": "Archiviert",
+    "remove": "Entfernen",
+    "removeConfirm": "Möchtest du dich wirklich von dieser Warteliste entfernen?",
+    "joinedOn": "Beigetreten"
   },
   "management": {
-    "title": "Waiting List",
-    "empty": "No one on the waiting list yet",
-    "markContacted": "Mark Contacted",
-    "archive": "Archive",
-    "contactPlayer": "Contact Player",
+    "title": "Warteliste",
+    "empty": "Noch niemand auf der Warteliste",
+    "markContacted": "Als kontaktiert markieren",
+    "archive": "Archivieren",
+    "contactPlayer": "Spieler kontaktieren",
     "filters": {
-      "all": "All",
-      "active": "Active",
-      "contacted": "Contacted",
-      "archived": "Archived"
+      "all": "Alle",
+      "active": "Aktiv",
+      "contacted": "Kontaktiert",
+      "archived": "Archiviert"
     }
   }
 }
