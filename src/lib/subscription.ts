@@ -17,20 +17,20 @@ export const TRIAL_DURATION_DAYS = 7;
 export const SUBSCRIPTION_TIERS = {
   professional: {
     name: 'Professional',
-    monthlyPrice: 39,
-    yearlyPrice: 374,
+    monthlyPrice: 29,
+    yearlyPrice: 243.60,
   },
   academy: {
     name: 'Academy',
     monthlyPrice: 99,
-    yearlyPrice: 950,
+    yearlyPrice: 831.60,
   },
 } as const;
 
 export const STARTER_TIER = {
   name: 'Starter',
-  monthlyPrice: 10,
-  yearlyPrice: 96,
+  monthlyPrice: 9,
+  yearlyPrice: 75.60,
 };
 
 // Re-export shared utilities

@@ -148,12 +148,12 @@
       "yearly": "Jaarlijks",
       "month": "maand",
       "year": "jaar",
-      "save20": "Bespaar 20%",
+      "save20": "Bespaar 30%",
       "saveAmount": "Bespaar €{{amount}}/jaar",
       "plans": {
         "starter": {
           "name": "Starter",
-          "price": "€10",
+          "price": "€9",
           "description": "Alles wat je nodig hebt om je administratie te stroomlijnen.",
           "cta": "Start Gratis",
           "featureList": [
@@ -168,9 +168,9 @@
         },
         "professional": {
           "name": "Professional",
-          "price": "€39",
+          "price": "€29",
           "period": "/maand",
-          "yearlyPrice": "€374/jaar (bespaar 20%)",
+          "yearlyPrice": "€243,60/jaar (bespaar 30%)",
           "description": "Voor serieuze trainers",
           "cta": "Kies Professional",
           "featureList": [
@@ -183,7 +183,7 @@
           "name": "Academy",
           "price": "€99",
           "period": "/maand",
-          "yearlyPrice": "€950/jaar (bespaar 20%)",
+          "yearlyPrice": "€831,60/jaar (bespaar 30%)",
           "description": "Voor trainingsacademies",
           "cta": "Neem Contact Op",
           "featureList": [
