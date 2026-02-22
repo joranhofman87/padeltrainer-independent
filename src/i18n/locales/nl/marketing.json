@@ -646,8 +646,9 @@
     },
     "realities": {
       "headline": "Gebouwd voor padel-realiteiten — niet voor generieke afspraken.",
-      "col_current": "Huidig",
-      "col_with": "Met Padel Trainer",
+      "intro": "Bekijk het verschil tussen hoe je nu werkt en hoe het kan met Padel Trainer.",
+      "label_before": "Nu",
+      "label_after": "Straks",
       "chat_current": "Boekingen zitten in WhatsApp-gesprekken.",
       "chat_with": "Eén plek voor boekingen en updates.",
       "oncourt_current": "Spelers kunnen niet boeken als je op de baan staat.",

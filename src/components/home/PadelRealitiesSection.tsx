@@ -1,53 +1,95 @@
+import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
+import { MessageSquare, Globe, UserX, CreditCard, Calendar, RefreshCw, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const cardConfig = [
+  { key: 'chat', icon: MessageSquare },
+  { key: 'oncourt', icon: Globe },
+  { key: 'noshows', icon: UserX },
+  { key: 'payments', icon: CreditCard },
+  { key: 'calendar', icon: Calendar },
+  { key: 'scale', icon: RefreshCw },
+];
 
 export function PadelRealitiesSection() {
   const { t } = useTranslation('marketing');
 
-  const rows = ['chat', 'oncourt', 'noshows', 'payments', 'calendar', 'scale'];
-
   return (
     <section className="py-20 md:py-28">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <motion.h2
-          className="text-3xl md:text-4xl font-bold mb-12 text-center"
+        <motion.div
+          className="text-center mb-14"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
-          {t('homev2.realities.headline')}
-        </motion.h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            {t('homev2.realities.headline')}
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            {t('homev2.realities.intro')}
+          </p>
+        </motion.div>
 
-        <div className="space-y-4">
-          {/* Header row - desktop only */}
-          <div className="hidden md:grid md:grid-cols-2 gap-4 text-sm font-semibold text-muted-foreground px-4">
-            <span>{t('homev2.realities.col_current')}</span>
-            <span>{t('homev2.realities.col_with')}</span>
-          </div>
+        <div className="grid md:grid-cols-2 gap-5">
+          {cardConfig.map((card, i) => {
+            const Icon = card.icon;
+            return (
+              <motion.div
+                key={card.key}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.06 }}
+              >
+                <Card className="h-full hover:shadow-md transition-all border hover:border-primary/20">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      {/* Icon */}
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                        <Icon className="h-5 w-5 text-muted-foreground" />
+                      </div>
 
-          {rows.map((key, i) => (
-            <motion.div
-              key={key}
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.05 }}
-              className="grid md:grid-cols-2 gap-4 p-4 rounded-lg border bg-card hover:shadow-sm transition-shadow"
-            >
-              <div>
-                <span className="md:hidden text-xs font-semibold text-muted-foreground">{t('homev2.realities.col_current')}</span>
-                <p className="text-foreground">{t(`homev2.realities.${key}_current`)}</p>
-              </div>
-              <div>
-                <span className="md:hidden text-xs font-semibold text-muted-foreground">{t('homev2.realities.col_with')}</span>
-                <p className="text-primary font-medium">{t(`homev2.realities.${key}_with`)}</p>
-              </div>
-            </motion.div>
-          ))}
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Before */}
+                        <div className="mb-3">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                            {t('homev2.realities.label_before')}
+                          </span>
+                          <p className="text-sm text-muted-foreground mt-0.5">
+                            {t(`homev2.realities.${card.key}_current`)}
+                          </p>
+                        </div>
+
+                        {/* Arrow separator */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-px flex-1 bg-border" />
+                          <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+
+                        {/* After */}
+                        <div className="rounded-md bg-primary/5 px-3 py-2 -mx-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-primary/60">
+                            {t('homev2.realities.label_after')}
+                          </span>
+                          <p className="text-sm font-medium text-foreground mt-0.5">
+                            {t(`homev2.realities.${card.key}_with`)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
 
         <motion.p
-          className="text-center text-muted-foreground mt-8 font-medium"
+          className="text-center text-muted-foreground mt-10 font-medium"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}

@@ -646,8 +646,9 @@
     },
     "realities": {
       "headline": "Built for padel realities — not generic appointments.",
-      "col_current": "Current",
-      "col_with": "With Padel Trainer",
+      "intro": "See the before-and-after of running your padel coaching business with Padel Trainer.",
+      "label_before": "Before",
+      "label_after": "After",
       "chat_current": "Bookings live in WhatsApp threads.",
       "chat_with": "One place for bookings and updates.",
       "oncourt_current": "Players can't book when you're on court.",
