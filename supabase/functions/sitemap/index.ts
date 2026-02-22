@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const SITE_URL = 'https://padeltrainer.ai';
-const LANGUAGES = ['en', 'nl'];
+const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
 
 // Helper to fetch all rows (handles >1000 limit)
 // deno-lint-ignore no-explicit-any
@@ -181,6 +181,25 @@ Deno.serve(async (req) => {
           ? new Date(academy.updated_at).toISOString().split('T')[0] 
           : today;
         xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
+      }
+    }
+
+    // Fetch published blog articles for sitemap
+    const { data: blogArticles } = await supabase
+      .from('articles')
+      .select('slug, locale, published_at, updated_at')
+      .eq('status', 'published');
+
+    if (blogArticles) {
+      for (const article of blogArticles) {
+        const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
+        const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
+        xml += '  <url>\n';
+        xml += `    <loc>${articleUrl}</loc>\n`;
+        xml += `    <lastmod>${lastmod}</lastmod>\n`;
+        xml += `    <changefreq>weekly</changefreq>\n`;
+        xml += `    <priority>0.7</priority>\n`;
+        xml += '  </url>\n';
       }
     }
 

@@ -78,6 +78,10 @@ import AdminOnboardingEmails from '@/pages/admin/AdminOnboardingEmails';
 import AdminBanners from '@/pages/admin/AdminBanners';
 import AdminClubClaims from '@/pages/admin/AdminClubClaims';
 import AdminPlayerRatings from '@/pages/admin/AdminPlayerRatings';
+import AdminBlog from '@/pages/admin/AdminBlog';
+import AdminBlogEditor from '@/pages/admin/AdminBlogEditor';
+import AdminBlogTopics from '@/pages/admin/AdminBlogTopics';
+import AdminBlogSources from '@/pages/admin/AdminBlogSources';
 import ClubDashboard from '@/pages/club/ClubDashboard';
 import ClubLayout from '@/components/club/ClubLayout';
 import ClubPlayers from '@/pages/club/ClubPlayers';
@@ -194,6 +198,11 @@ export function DomainRouter() {
         <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
         <Route path="banners" element={<AdminBanners />} />
         <Route path="player-ratings" element={<AdminPlayerRatings />} />
+        <Route path="blog" element={<AdminBlog />} />
+        <Route path="blog/new" element={<AdminBlogEditor />} />
+        <Route path="blog/topics" element={<AdminBlogTopics />} />
+        <Route path="blog/:id" element={<AdminBlogEditor />} />
+        <Route path="blog/:id/sources" element={<AdminBlogSources />} />
       </Route>
       
       {/* Club routes */}

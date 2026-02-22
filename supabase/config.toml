@@ -138,3 +138,12 @@ verify_jwt = false
 
 [functions.toggle-player-role]
 verify_jwt = false
+
+[functions.generate-blog-article]
+verify_jwt = false
+
+[functions.translate-blog-article]
+verify_jwt = false
+
+[functions.process-blog-queue]
+verify_jwt = false

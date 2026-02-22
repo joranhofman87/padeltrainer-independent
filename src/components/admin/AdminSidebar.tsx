@@ -45,6 +45,8 @@ import {
   PanelLeft,
   Mail,
   ImageIcon,
+  FileText,
+  ListTodo,
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -57,6 +59,11 @@ const mainNavItems = [
   { title: "Player Ratings", url: "/app/admin/player-ratings", icon: Star },
   { title: "Trainers", url: "/app/admin/trainers", icon: GraduationCap },
   { title: "Academies", url: "/app/admin/academies", icon: School },
+];
+
+const contentNavItems = [
+  { title: "Blog Articles", url: "/app/admin/blog", icon: FileText },
+  { title: "Topics Queue", url: "/app/admin/blog/topics", icon: ListTodo },
 ];
 
 const settingsNavItems = [
@@ -230,6 +237,28 @@ export function AdminSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Content Group */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {contentNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title}>
+                    <NavLink
+                      to={item.url}
+                      className="flex items-center gap-2"
+                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
