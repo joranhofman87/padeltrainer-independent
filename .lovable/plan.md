@@ -1,69 +1,86 @@
 
 
-# Fix Blog Content: Formatting, Full Length, and Auto-Translation
+# Enrich Location Profiles via Firecrawl
 
-## Problem Summary
+## Current Situation
 
-Three issues with the current blog generation:
+You already have a working `enrich-clubs` edge function that scrapes websites using Firecrawl and extracts court counts, descriptions, and logos. However, it doesn't extract all available fields.
 
-1. **No formatting visible** -- The `@tailwindcss/typography` plugin is installed as a dependency but not registered in `tailwind.config.ts`, so the `prose` CSS classes on the blog post page have zero effect. The HTML tags are there (h2, h3, ul, li, etc.) but render as plain text.
+**Data gaps across 1,678 locations with websites:**
 
-2. **Article cuts off mid-sentence** -- The AI generation call doesn't set `max_tokens`, so the model hits its default output limit and truncates. The current article ends with "Don" mid-word in Phase 2.
+| Field | Missing | Coverage |
+|-------|---------|----------|
+| Description | 1,609 | 4% |
+| Opening hours | 801 | 52% |
+| Email | 777 | 54% |
+| Phone | 759 | 55% |
+| Instagram | 642 | 62% |
+| Facebook | 629 | 63% |
+| Court counts (both 0) | 401 | 76% |
+| Logo | 355 | 79% |
 
-3. **English only** -- There's no automatic translation trigger when publishing. Translations exist as a manual button in the admin editor, but nothing fires automatically.
+## Approach
 
----
+Upgrade the existing `enrich-clubs` edge function to also extract phone, email, social media URLs, and opening hours -- all in a single scrape + AI call per location. Only fill fields that are currently empty (never overwrite existing data).
 
-## Fix 1: Enable Typography Plugin
+## Changes
 
-**File: `tailwind.config.ts`**
+### 1. Upgrade `enrich-clubs` edge function
 
-Add `@tailwindcss/typography` to the plugins array alongside `tailwindcss-animate`. This immediately makes the `prose`, `prose-lg`, and `dark:prose-invert` classes work on blog post pages.
+Expand the AI extraction prompt to return a single JSON object with all fields:
 
----
+- `indoor_courts`, `outdoor_courts` (existing)
+- `description` (existing)
+- `phone` -- extract from contact page / footer
+- `email` -- extract from contact info
+- `facebook_url` -- look for Facebook links
+- `instagram_url` -- look for Instagram links
+- `opening_hours` -- extract opening hours text
 
-## Fix 2: Increase AI Output Length and Improve Prompt
+The function will:
+1. Scrape the website (already done)
+2. Send content to AI with an expanded prompt asking for ALL fields
+3. Only UPDATE fields that are currently NULL/empty in the database (preserve manual edits)
+4. Continue to handle logo upload as it does now
 
-**File: `supabase/functions/generate-blog-article/index.ts`**
+### 2. Add "only missing fields" mode
 
-- Add `max_tokens: 16384` to the AI request body so articles aren't truncated
-- Strengthen the prompt to explicitly request 1000-1500 words with proper HTML structure (h2, h3, p, ul/ol, strong, em)
-- Add clear instruction: "Write the COMPLETE article. Do not stop early."
+Add a `fill_missing_only` parameter (default: true) so the function:
+- Fetches the current location data including all fields
+- Skips locations that already have all fields filled
+- Only writes to NULL fields, never overwrites existing values
 
----
+### 3. Admin UI trigger (existing)
 
-## Fix 3: Increase Translation Output Length
+The function is already callable from the admin dashboard. No UI changes needed -- just use the existing batch processing with the updated function.
 
-**File: `supabase/functions/translate-blog-article/index.ts`**
+## Technical Details
 
-- Add `max_tokens: 16384` to the translation AI request as well, since translations of full articles also need room
+**File modified:** `supabase/functions/enrich-clubs/index.ts`
 
----
+Key changes:
+- Expand the `Location` interface to include phone, email, social URLs, opening_hours
+- Merge the two separate AI calls (court extraction + description) into one combined call for efficiency (saves API costs and time)
+- Add conditional update logic: only set fields where current value is NULL
+- Request `links` format from Firecrawl alongside `markdown` to better detect social media URLs
+- Increase content sent to AI (from 6000 to 8000 chars) for better extraction
 
-## Fix 4: Auto-Translate on Publish
+**No new tables or migrations needed** -- all target columns already exist.
 
-**File: `src/pages/admin/AdminBlogEditor.tsx`**
+## Usage
 
-When an article's status changes to "published", automatically trigger translation generation for all missing locales. This happens after the save succeeds:
+After deployment, run enrichment from the admin panel or directly:
 
-- Detect when status transitions to "published"
-- For each missing locale, call `translate-blog-article` edge function
-- Show a toast indicating translations are being generated in the background
+```
+// Process 10 locations, only filling missing data
+{ "batch_size": 10, "fill_missing_only": true }
 
----
+// Process specific locations
+{ "location_ids": ["uuid1", "uuid2"], "fill_missing_only": true }
 
-## Fix 5: Re-generate the Existing Article
+// Dry run to preview what would be extracted
+{ "batch_size": 5, "dry_run": true }
+```
 
-After deploying the updated edge function, the existing truncated article should be re-generated. You can do this from the admin Topics page by resetting the topic to "queued" and triggering generation again, or manually editing the article in the admin editor.
-
----
-
-## Technical Changes
-
-| File | Change |
-|------|--------|
-| `tailwind.config.ts` | Add `require("@tailwindcss/typography")` to plugins |
-| `supabase/functions/generate-blog-article/index.ts` | Add `max_tokens: 16384`, improve prompt for complete articles |
-| `supabase/functions/translate-blog-article/index.ts` | Add `max_tokens: 16384` |
-| `src/pages/admin/AdminBlogEditor.tsx` | Auto-trigger translations when publishing |
+To process all 1,609 locations missing descriptions, run in batches of 10-20 (the function already supports offset-based pagination).
 
