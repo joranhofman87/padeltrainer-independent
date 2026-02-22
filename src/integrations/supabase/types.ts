@@ -593,6 +593,69 @@ export type Database = {
         }
         Relationships: []
       }
+      articles: {
+        Row: {
+          author_name: string
+          body_html: string | null
+          body_md: string | null
+          canonical_id: string
+          cover_image_url: string | null
+          created_at: string
+          excerpt: string | null
+          id: string
+          locale: string
+          meta_description: string | null
+          meta_title: string | null
+          primary_keyword: string | null
+          published_at: string | null
+          slug: string
+          status: string
+          tags: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          author_name?: string
+          body_html?: string | null
+          body_md?: string | null
+          canonical_id?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          locale?: string
+          meta_description?: string | null
+          meta_title?: string | null
+          primary_keyword?: string | null
+          published_at?: string | null
+          slug: string
+          status?: string
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          author_name?: string
+          body_html?: string | null
+          body_md?: string | null
+          canonical_id?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          locale?: string
+          meta_description?: string | null
+          meta_title?: string | null
+          primary_keyword?: string | null
+          published_at?: string | null
+          slug?: string
+          status?: string
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       availability_slots: {
         Row: {
           academy_profile_id: string | null
@@ -1403,6 +1466,39 @@ export type Database = {
           },
         ]
       }
+      content_topics: {
+        Row: {
+          angle: string | null
+          created_at: string
+          id: string
+          locales: string[]
+          notes: string | null
+          primary_keyword: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          angle?: string | null
+          created_at?: string
+          id?: string
+          locales?: string[]
+          notes?: string | null
+          primary_keyword: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          angle?: string | null
+          created_at?: string
+          id?: string
+          locales?: string[]
+          notes?: string | null
+          primary_keyword?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cycles: {
         Row: {
           created_at: string
@@ -1662,6 +1758,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      internal_links: {
+        Row: {
+          anchor_text: string
+          from_slug: string
+          id: string
+          locale: string
+          to_slug: string
+        }
+        Insert: {
+          anchor_text: string
+          from_slug: string
+          id?: string
+          locale: string
+          to_slug: string
+        }
+        Update: {
+          anchor_text?: string
+          from_slug?: string
+          id?: string
+          locale?: string
+          to_slug?: string
+        }
+        Relationships: []
       }
       invoices: {
         Row: {
@@ -2775,6 +2895,44 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sources: {
+        Row: {
+          allowed_to_use: boolean
+          article_id: string
+          id: string
+          notes: string | null
+          retrieved_at: string
+          source_title: string | null
+          source_url: string
+        }
+        Insert: {
+          allowed_to_use?: boolean
+          article_id: string
+          id?: string
+          notes?: string | null
+          retrieved_at?: string
+          source_title?: string | null
+          source_url: string
+        }
+        Update: {
+          allowed_to_use?: boolean
+          article_id?: string
+          id?: string
+          notes?: string | null
+          retrieved_at?: string
+          source_title?: string | null
+          source_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sources_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "articles"
             referencedColumns: ["id"]
           },
         ]
