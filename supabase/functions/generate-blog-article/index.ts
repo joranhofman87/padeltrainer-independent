@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     const primaryLocale = topic.locales?.[0] || 'en';
 
     // Generate article via AI
-    const prompt = `You are a padel content writer for PadelTrainer.ai. Write a comprehensive blog article about "${topic.primary_keyword}".
+    const prompt = `You are a padel content writer for PadelTrainer.ai. Write a COMPLETE, comprehensive blog article about "${topic.primary_keyword}".
 ${topic.angle ? `Angle/approach: ${topic.angle}` : ''}
 ${topic.notes ? `Additional notes: ${topic.notes}` : ''}
 
@@ -40,9 +40,13 @@ Requirements:
 - Write in ${primaryLocale === 'nl' ? 'Dutch' : primaryLocale === 'es' ? 'Spanish' : primaryLocale === 'de' ? 'German' : primaryLocale === 'fr' ? 'French' : 'English'}
 - Focus on how-to and framework content, avoid factual claims that could be wrong
 - Keep it padel-specific and aligned with trainer/academy/club positioning
-- Target 800-1200 words
-- Use clean HTML with semantic tags (h2, h3, p, ul, li, strong, em)
+- Target 1000-1500 words. Write the COMPLETE article from introduction to conclusion. Do NOT stop early or truncate.
+- Use clean, well-formatted HTML with semantic tags: h2 for main sections, h3 for subsections, p for paragraphs, ul/ol with li for lists, strong for emphasis, em for italic
+- Structure the article with clear sections: introduction, 3-5 main sections with h2 headings, and a conclusion
 - Do NOT include h1 (it's rendered separately)
+- Every section must have substantive content (at least 2-3 paragraphs)
+
+Write the COMPLETE article. Do not stop early. Include a proper conclusion section.
 
 Return a JSON object using the suggest_article tool.`;
 
@@ -80,6 +84,7 @@ Return a JSON object using the suggest_article tool.`;
           },
         }],
         tool_choice: { type: 'function', function: { name: 'suggest_article' } },
+        max_tokens: 16384,
       }),
     });
 

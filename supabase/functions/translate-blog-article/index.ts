@@ -71,6 +71,7 @@ Return a JSON object using the translate_article tool with localized title, slug
           },
         }],
         tool_choice: { type: 'function', function: { name: 'translate_article' } },
+        max_tokens: 16384,
       }),
     });
 
