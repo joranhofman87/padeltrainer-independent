@@ -1,36 +1,45 @@
 
 
-# Move "Refer & Earn" to Sidebar Footer
+# Fix Enrichment Loop: Track Failed Locations
 
-## Overview
+## Problem
+The enrichment cron job keeps retrying the same failing locations every 2 minutes because there's no way to mark a location as "failed". This wastes Firecrawl credits and blocks the remaining 1,452 locations.
 
-Move the "Refer & Earn" menu item from within the main sidebar navigation (SidebarContent) down into the SidebarFooter section in all four sidebars. This places it just above the ProfileSwitcher/ThemeToggle/Logout area, making it persistently visible at the bottom.
+## Solution
+Add failure tracking columns to `locations`, update the edge function to mark failures and skip them, and give admins a "Retry failed" button.
 
 ## Changes
 
-### 1. TrainerSidebar (`src/components/trainer/TrainerSidebar.tsx`)
-- Remove the "Refer & Earn" SidebarMenuItem block (lines 496-502) from SidebarContent
-- Add it inside SidebarFooter, as the first item before ProfileSwitcher (before line 535)
+### 1. Database Migration
+Add two columns to the `locations` table:
+- `enrichment_failed_at` (timestamptz, nullable) -- timestamp of last failure
+- `enrichment_error_msg` (text, nullable) -- error reason for admin visibility
 
-### 2. PlayerSidebar (`src/components/player/PlayerSidebar.tsx`)
-- Remove the "Refer & Earn" SidebarMenuItem block from inside the SidebarMenu in SidebarContent
-- Add it inside SidebarFooter, as the first item before ProfileSwitcher
+### 2. Edge Function (`supabase/functions/enrich-clubs/index.ts`)
 
-### 3. AcademySidebar (`src/components/academy/AcademySidebar.tsx`)
-- Remove the "Refer & Earn" SidebarMenuItem block (lines 446-452) from SidebarContent
-- Add it inside SidebarFooter, as the first item before ProfileSwitcher
+**Query filter**: When in `fillMissingOnly` mode, also exclude locations where `enrichment_failed_at` is not null. This ensures failed locations are skipped permanently until manually retried.
 
-### 4. ClubSidebar (`src/components/club/ClubSidebar.tsx`)
-- Remove the "Refer & Earn" SidebarMenuItem block (lines 356-362) from SidebarContent
-- Add it inside SidebarFooter, as the first item before ProfileSwitcher
+**On error**: After `processLocation` returns with `status: "error"`, update the location row:
+```
+enrichment_failed_at = now()
+enrichment_error_msg = result.error
+```
 
-## Footer Layout (all sidebars)
+**On success**: Clear both fields (set to null) so that if a previously-failed location is retried and succeeds, it's cleaned up.
 
-The footer will follow this order:
-1. **Refer & Earn** button (new position)
-2. ProfileSwitcher
-3. View Public Profile (where applicable)
-4. ThemeToggle + Logout row
+### 3. Admin UI (`src/components/admin/EnrichmentControls.tsx`)
 
-The "Refer & Earn" button will render as a full-width ghost button with the Gift icon, matching the existing footer button styling. When collapsed, it shows just the icon.
+- Add a query to count locations where `enrichment_failed_at IS NOT NULL` -- show as "X failed" next to the existing "X missing" count
+- Add a "Retry failed" button that sets `enrichment_failed_at = null` and `enrichment_error_msg = null` for all failed locations, putting them back in the queue
+- The "missing" count query should also exclude failed locations (so it shows truly pending vs failed separately)
+
+### 4. Admin Locations Table (`src/pages/admin/AdminLocations.tsx`)
+
+- Optionally show a small warning icon or red dot on locations that have `enrichment_failed_at` set, so admins can see which specific locations failed and what the error was (via tooltip on hover)
+
+## Expected Outcome
+- Failed locations get marked and skipped on subsequent runs
+- The job moves on to process the remaining 1,400+ locations
+- Admins see a clear split: "X pending | Y failed"
+- Admins can manually clear failures with one click to retry them
 
