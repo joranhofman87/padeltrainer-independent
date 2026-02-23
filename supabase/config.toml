@@ -94,6 +94,9 @@ verify_jwt = false
 [functions.cancel-mollie-subscription]
 verify_jwt = false
 
+[functions.create-club-mollie-subscription]
+verify_jwt = false
+
 [functions.create-academy-trainer]
 verify_jwt = false
 
