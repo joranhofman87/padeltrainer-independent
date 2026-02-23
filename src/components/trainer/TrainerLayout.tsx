@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { ReferralWidget } from '@/components/ReferralWidget';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
@@ -110,6 +111,9 @@ export default function TrainerLayout() {
         </main>
       </div>
       
+      
+      <ReferralWidget />
+
       {/* Subscription Paywall Overlay */}
       {!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy && (
         <SubscriptionOverlay

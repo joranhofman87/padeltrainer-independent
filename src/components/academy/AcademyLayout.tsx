@@ -10,6 +10,7 @@ import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkAcademySubscription, 
   getTrialDaysRemaining, 
@@ -215,6 +216,9 @@ export default function AcademyLayout() {
           </SidebarInset>
         </div>
         
+        
+        <ReferralWidget />
+
         {/* Subscription Paywall Overlay */}
         {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
           <SubscriptionOverlay

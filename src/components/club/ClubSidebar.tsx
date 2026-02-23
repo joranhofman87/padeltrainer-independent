@@ -43,7 +43,9 @@ import {
   PanelLeft,
   CheckCircle,
   Trophy,
+  Gift,
 } from "lucide-react";
+import { showReferralWidget } from "@/components/ReferralWidget";
 import { signOut } from "@/lib/auth";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
@@ -350,6 +352,14 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+
+              {/* Refer & Earn */}
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Refer & Earn" onClick={showReferralWidget}>
+                  <Gift className="h-4 w-4 text-primary" />
+                  {!collapsed && <span>Refer &amp; Earn</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

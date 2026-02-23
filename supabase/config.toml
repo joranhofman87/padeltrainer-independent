@@ -156,3 +156,9 @@ verify_jwt = false
 
 [functions.reconcile-subscriptions]
 verify_jwt = false
+
+[functions.reditus-referral-token]
+verify_jwt = false
+
+[functions.reditus-referral-webhook]
+verify_jwt = false
