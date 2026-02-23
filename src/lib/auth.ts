@@ -81,6 +81,14 @@ export async function signUpWithEmail(email: string, password: string, fullName:
       };
     }
 
+    // Track signup conversion in Reditus (affiliate tracking) — fires only here at signup
+    if (signInData.user && typeof window !== 'undefined' && (window as any).gr) {
+      (window as any).gr('track', 'conversion', {
+        email: signInData.user.email,
+        uid: signInData.user.id,
+      });
+    }
+
     return { 
       data: { 
         user: signInData.user, 
