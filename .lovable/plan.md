@@ -1,90 +1,120 @@
 
 
-# P3-P4: Upgrade/Downgrade, Reconciliation, and Payment Audit Trail
+# Referral Discount System
 
-## What's being built
+## Overview
 
-Three remaining items from the Mollie subscription audit:
-
-1. **Trainer upgrade/downgrade flow** -- Allow trainers to switch plans (e.g., Starter to Professional) without being blocked by the "already subscribed" check.
-2. **Reconciliation cron job** -- A scheduled backend function that syncs subscription status from Mollie every 6 hours, protecting against missed webhooks.
-3. **Subscription payments audit table** -- A new database table that logs every Mollie subscription payment for billing disputes and reconciliation.
+A universal discount system that admins can attach to any user (trainer, club, or academy). When a discounted user checks out via Mollie, the payment amount is reduced by the configured percentage. The discount has a limited duration in months, and the countdown starts from the first successful payment.
 
 ---
 
-## Technical Plan
+## Database Changes
 
-### 1. Upgrade/Downgrade Flow
+### New table: `user_discounts`
 
-**Problem:** `create-mollie-subscription` returns `hasActiveSubscription: true` and blocks checkout when a trainer already has an active subscription. There's no way to change plans.
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID (PK) | Auto-generated |
+| `user_id` | UUID (not null, unique) | References the user receiving the discount |
+| `discount_percent` | INTEGER (not null) | Percentage off (1-100) |
+| `duration_months` | INTEGER (not null) | Total months the discount lasts |
+| `months_remaining` | INTEGER (not null) | Months left (decremented on each payment) |
+| `source` | TEXT (default 'referral') | Origin of the discount (e.g., 'referral', 'promo') |
+| `is_active` | BOOLEAN (default true) | Whether the discount is currently active |
+| `first_payment_at` | TIMESTAMPTZ (nullable) | Set on first discounted payment to mark period start |
+| `created_at` | TIMESTAMPTZ (default now()) | When the discount was created |
+| `created_by` | UUID (nullable) | Admin who created it |
 
-**Solution:** When the user has an active subscription and requests a different plan:
-- Cancel the existing Mollie subscription (end-of-period)
-- Create a new first payment for the new plan
-- Return the checkout URL as normal
-
-**Files changed:**
-- `supabase/functions/create-mollie-subscription/index.ts` -- Replace the "block if active" logic (lines 102-114) with cancel-old + create-new logic. Add a `currentPlanId` detection from `subscription_tier` to prevent re-subscribing to the same plan.
-- `src/pages/TrainerSubscription.tsx` -- Update the button label: show "Switch Plan" instead of "Upgrade" when user already has an active paid subscription on a different tier.
-
-**Key behavior:**
-- Same plan selected = show "Current Plan" (no action, already implemented)
-- Different plan selected = cancel old subscription at Mollie, start new checkout
-- Old subscription access continues until `subscription_ends_at`; new subscription kicks in after first payment succeeds
-
-### 2. Reconciliation Cron Job
-
-**Problem:** If a webhook fails or is missed, the database goes out of sync with Mollie. `check-mollie-subscription` partially compensates by calling Mollie live, but that's per-user and adds latency.
-
-**Solution:** A new backend function `reconcile-subscriptions` that runs every 6 hours:
-- Fetches all profiles (trainer, academy, club) with a `mollie_customer_id`
-- For each, calls `GET /v2/customers/{id}/subscriptions`
-- Compares Mollie status with DB status and reconciles:
-  - If Mollie says `active` but DB says `inactive` or `canceled` -> update to `active`
-  - If Mollie has no active subscriptions but DB says `active` and `subscription_ends_at` has passed -> update to `inactive`
-  - Syncs `nextPaymentDate` into `subscription_ends_at`
-- Processes in batches to avoid Mollie rate limits
-
-**Files created:**
-- `supabase/functions/reconcile-subscriptions/index.ts` -- The reconciliation logic
-- `supabase/config.toml` -- Register the new function with `verify_jwt = false`
-
-**Scheduling:** Use `pg_cron` + `pg_net` to invoke the function every 6 hours (via SQL insert, not migration, since it contains project-specific URLs/keys).
-
-### 3. Subscription Payments Audit Table
-
-**Problem:** No record of individual subscription payments. Can't resolve billing disputes or reconcile revenue.
-
-**Solution:** A new `subscription_payments` table.
-
-**Schema:**
-- `id` (UUID, primary key, default gen_random_uuid())
-- `profile_type` (text, not null) -- 'trainer', 'academy', or 'club'
-- `profile_id` (UUID, not null) -- references the profile
-- `mollie_payment_id` (text, not null, unique) -- prevents duplicate inserts
-- `mollie_subscription_id` (text)
-- `mollie_customer_id` (text)
-- `amount` (numeric(10,2), not null)
-- `currency` (text, default 'EUR')
-- `status` (text, not null) -- 'paid', 'failed', 'expired', etc.
-- `paid_at` (timestamptz)
-- `created_at` (timestamptz, default now())
-
-**RLS:** Enable RLS. Only service role (backend functions) writes. No public access needed -- admins query via edge functions or admin dashboard.
-
-**Files changed:**
-- Database migration -- Creates the table with RLS and a unique constraint on `mollie_payment_id`
-- `supabase/functions/mollie-subscription-webhook/index.ts` -- After processing any payment (first or recurring, paid or failed), insert a row into `subscription_payments`
+RLS: Enabled. Admins can CRUD. Users can read their own discount. Service role writes from edge functions.
 
 ---
 
-## Implementation Order
+## Edge Function Changes
 
-1. Database migration for `subscription_payments` table
-2. Update `mollie-subscription-webhook` to insert payment records
-3. Update `create-mollie-subscription` with upgrade/downgrade logic
-4. Update `TrainerSubscription.tsx` button labels
-5. Create `reconcile-subscriptions` edge function
-6. Schedule the cron job
-7. Deploy all edge functions
+### 1. `create-mollie-subscription` (Trainer)
+
+Before creating the Mollie payment, look up the user's active discount from `user_discounts`:
+
+- If an active discount with `months_remaining > 0` exists, calculate the discounted amount: `plan.amount * (1 - discount_percent / 100)`
+- Format to 2 decimal places for Mollie
+- Pass the original and discounted amounts in the payment metadata so the webhook can track it
+- The recurring subscription created by the webhook will also need to use the discounted amount (passed via metadata)
+
+### 2. `create-academy-mollie-subscription` (Academy)
+
+Same logic: look up discount by manager's `user_id`, apply percentage to the `199.00` amount.
+
+### 3. `create-club-mollie-subscription` (Club)
+
+Same logic: look up discount by manager's `user_id`, apply percentage to the plan amount.
+
+### 4. `mollie-subscription-webhook`
+
+When processing a successful payment (first or recurring):
+
+- Check `user_discounts` for the profile's user
+- If active with `months_remaining > 0`:
+  - Decrement `months_remaining` by 1
+  - If `first_payment_at` is null, set it to now
+  - If `months_remaining` reaches 0, set `is_active = false`
+- When creating the Mollie recurring subscription (from first payment), use the discounted amount if the discount still has months remaining
+- For recurring payments: the subscription amount at Mollie is already set, so the discount is baked in at subscription creation time. When the discount expires (`months_remaining` hits 0), the webhook will need to update the Mollie subscription amount back to full price via the Mollie API (`PATCH /v2/customers/{id}/subscriptions/{subId}`)
+
+---
+
+## Admin UI Changes
+
+### AdminUsers page
+
+Add a "Discount" column to the users table showing:
+- The discount badge (e.g., "20% / 3mo left") if active
+- Empty if no discount
+
+Add a dropdown menu item "Manage Discount" that opens a dialog with:
+- Discount percentage (number input, 1-100)
+- Duration in months (number input)
+- A "Remove Discount" button if one exists
+- Save creates/updates the `user_discounts` row
+
+---
+
+## How the Month Countdown Works
+
+1. Admin sets discount: `discount_percent = 20`, `duration_months = 6`, `months_remaining = 6`
+2. User subscribes -- first payment is charged at 20% off. Webhook sets `first_payment_at = now()` and decrements `months_remaining` to 5
+3. Each recurring payment: webhook decrements `months_remaining`
+4. When `months_remaining` hits 0: webhook sets `is_active = false` and calls Mollie API to update the subscription amount back to full price
+
+---
+
+## Technical Details
+
+### Discount application in payment creation
+
+```text
+Original amount: 39.00
+Discount: 20%
+Discounted amount: 31.20
+Mollie payment body: { amount: { currency: "EUR", value: "31.20" } }
+```
+
+### Mollie subscription amount update (on expiry)
+
+The webhook will `PATCH` the subscription to restore full pricing:
+
+```text
+PATCH /v2/customers/{customerId}/subscriptions/{subscriptionId}
+Body: { amount: { currency: "EUR", value: "39.00" } }
+```
+
+### Files to create
+- Database migration for `user_discounts` table
+
+### Files to modify
+- `supabase/functions/create-mollie-subscription/index.ts` -- discount lookup and amount adjustment
+- `supabase/functions/create-academy-mollie-subscription/index.ts` -- discount lookup and amount adjustment
+- `supabase/functions/create-club-mollie-subscription/index.ts` -- discount lookup and amount adjustment
+- `supabase/functions/mollie-subscription-webhook/index.ts` -- decrement months, restore full price on expiry
+- `src/pages/admin/AdminUsers.tsx` -- discount column and manage dialog
+- `src/hooks/useAdminData.ts` -- fetch discount data with users
 
