@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     const payload = JSON.parse(rawBody);
     console.log("Reditus webhook received:", JSON.stringify(payload));
 
-    const eventType = payload.event || payload.type;
+    const eventType = payload.event_type || payload.event || payload.type;
 
     // Only handle lead.created events
     if (eventType !== "lead.created") {
