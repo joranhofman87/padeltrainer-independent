@@ -2038,6 +2038,8 @@ export type Database = {
           created_at: string
           description: string | null
           email: string | null
+          enrichment_error_msg: string | null
+          enrichment_failed_at: string | null
           facebook_url: string | null
           google_maps_url: string | null
           google_rating: number | null
@@ -2067,6 +2069,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           email?: string | null
+          enrichment_error_msg?: string | null
+          enrichment_failed_at?: string | null
           facebook_url?: string | null
           google_maps_url?: string | null
           google_rating?: number | null
@@ -2096,6 +2100,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           email?: string | null
+          enrichment_error_msg?: string | null
+          enrichment_failed_at?: string | null
           facebook_url?: string | null
           google_maps_url?: string | null
           google_rating?: number | null
