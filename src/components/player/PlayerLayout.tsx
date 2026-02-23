@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { PlayerSidebar } from '@/components/player/PlayerSidebar';
+import { ReferralWidget } from '@/components/ReferralWidget';
 
 export default function PlayerLayout() {
   const navigate = useNavigate();
@@ -65,6 +66,7 @@ export default function PlayerLayout() {
           </div>
         </main>
       </div>
+      <ReferralWidget />
     </SidebarProvider>
   );
 }

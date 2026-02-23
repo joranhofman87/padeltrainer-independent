@@ -44,7 +44,9 @@ import {
   PanelLeftClose,
   PanelLeft,
   Rocket,
+  Gift,
 } from "lucide-react";
+import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut, getTrainerProfile } from "@/lib/auth";
 import { getTrainerAcademy } from "@/lib/academy";
@@ -490,6 +492,14 @@ export function TrainerSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+
+              {/* Refer & Earn */}
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Refer & Earn" onClick={showReferralWidget}>
+                  <Gift className="h-4 w-4 text-primary" />
+                  {!collapsed && <span>Refer &amp; Earn</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {/* Get Started - shown at bottom when setup incomplete */}
               {showGetStarted && (

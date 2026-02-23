@@ -12,6 +12,7 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/s
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
 import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkClubSubscription, 
   getTrialDaysRemaining, 
@@ -241,6 +242,9 @@ export default function ClubLayout() {
           </SidebarInset>
         </div>
         
+        
+        <ReferralWidget />
+
         {/* Subscription Paywall Overlay */}
         {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
           <SubscriptionOverlay
