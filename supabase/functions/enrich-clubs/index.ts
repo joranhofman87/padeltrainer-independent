@@ -748,7 +748,7 @@ Deno.serve(async (req) => {
       // When running in fill_missing mode, filter to only locations with missing description
       // so we don't keep re-processing the same already-enriched locations
       if (fillMissingOnly) {
-        query = query.is("description", null);
+        query = query.is("description", null).is("enrichment_failed_at", null);
       }
       query = query.range(offset, offset + batchSize - 1);
     }
@@ -770,6 +770,27 @@ Deno.serve(async (req) => {
     for (const location of locations) {
       const result = await processLocation(supabase, location as Location, dryRun, fillMissingOnly);
       results.push(result);
+
+      // Track failures/successes in the database
+      if (!dryRun) {
+        if (result.status === "error") {
+          await supabase
+            .from("locations")
+            .update({
+              enrichment_failed_at: new Date().toISOString(),
+              enrichment_error_msg: result.error || "Unknown error",
+            })
+            .eq("id", location.id);
+        } else if (result.status === "success") {
+          await supabase
+            .from("locations")
+            .update({
+              enrichment_failed_at: null,
+              enrichment_error_msg: null,
+            })
+            .eq("id", location.id);
+        }
+      }
 
       if (locations.indexOf(location) < locations.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));

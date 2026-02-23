@@ -12,11 +12,13 @@ import {
   Upload,
   CheckCircle2,
   Image,
+  AlertTriangle,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
 import { ScrapeLogosDialog } from '@/components/admin/ScrapeLogosDialog';
 import { EnrichmentControls } from '@/components/admin/EnrichmentControls';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -359,6 +361,19 @@ export default function AdminLocations() {
                         <MapPin className="h-4 w-4 text-muted-foreground" />
                       )}
                       <span className="font-medium">{location.name}</span>
+                      {(location as any).enrichment_failed_at && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <AlertTriangle className="h-4 w-4 text-destructive" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="font-medium">Enrichment failed</p>
+                              <p className="text-xs">{(location as any).enrichment_error_msg || 'Unknown error'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>{location.city}</TableCell>
