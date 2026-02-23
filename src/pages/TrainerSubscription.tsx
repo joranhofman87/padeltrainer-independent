@@ -138,7 +138,7 @@ export default function TrainerSubscription() {
 
       if (data?.hasActiveSubscription) {
         toast({
-          title: 'Already Subscribed',
+          title: 'Same Plan',
           description: data.message,
         });
         setProcessingPlan(null);
@@ -359,6 +359,8 @@ export default function TrainerSubscription() {
                     'Current Plan'
                   ) : plan.monthly_price === 0 ? (
                     'Free Plan'
+                  ) : subscription?.isSubscribed && currentPlan !== 'starter' ? (
+                    'Switch Plan'
                   ) : (
                     'Upgrade'
                   )}

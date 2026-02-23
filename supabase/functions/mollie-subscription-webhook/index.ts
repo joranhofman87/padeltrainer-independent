@@ -64,6 +64,7 @@ serve(async (req) => {
     // --- Handle failed/expired payments (dunning) ---
     if (payment.status === "failed" || payment.status === "expired") {
       await handleFailedPayment(supabase, metadata, payment.status, paymentId);
+      await logSubscriptionPayment(supabase, payment, metadata);
       return new Response("OK", { status: 200 });
     }
 
@@ -134,6 +135,7 @@ serve(async (req) => {
 
       logStep("Trainer subscription activated", { subscriptionId: subscription.id });
       await sendSlackNotification(supabase, metadata.trainer_profile_id, "trainer_profiles", planId, plan.amount);
+      await logSubscriptionPayment(supabase, payment, metadata, "trainer", metadata.trainer_profile_id, planId);
     }
 
     // --- ACADEMY first payment ---
@@ -186,6 +188,7 @@ serve(async (req) => {
       }
 
       logStep("Academy subscription activated", { subscriptionId: subscription.id });
+      await logSubscriptionPayment(supabase, payment, metadata, "academy", metadata.academy_profile_id, "academy");
     }
 
     // --- CLUB first payment ---
@@ -249,6 +252,7 @@ serve(async (req) => {
       }
 
       logStep("Club subscription activated", { subscriptionId: subscription.id });
+      await logSubscriptionPayment(supabase, payment, metadata, "club", metadata.club_profile_id, "club");
     }
 
     // --- Handle RECURRING subscription payments ---
@@ -313,6 +317,8 @@ serve(async (req) => {
       }
 
       logStep("Recurring payment processed", { type: metadata.type, profileId });
+      const profileType = metadata.type === "trainer_subscription" ? "trainer" : metadata.type === "academy_subscription" ? "academy" : "club";
+      await logSubscriptionPayment(supabase, payment, metadata, profileType, profileId as string);
     }
 
     return new Response("OK", { status: 200 });
@@ -440,6 +446,46 @@ async function handleFailedPayment(
     });
   } catch (slackErr) {
     logStep("Slack notification failed (non-fatal)", { error: String(slackErr) });
+  }
+}
+
+async function logSubscriptionPayment(
+  supabase: ReturnType<typeof createClient>,
+  payment: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+  profileType?: string,
+  profileId?: string,
+  planId?: string,
+) {
+  try {
+    // Determine profile type and ID from metadata if not provided
+    const pType = profileType || (
+      metadata.trainer_profile_id ? "trainer" :
+      metadata.academy_profile_id ? "academy" :
+      metadata.club_profile_id ? "club" : "unknown"
+    );
+    const pId = profileId || (
+      metadata.trainer_profile_id || metadata.academy_profile_id || metadata.club_profile_id
+    ) as string;
+
+    if (!pId || pType === "unknown") return;
+
+    await supabase.from("subscription_payments").upsert({
+      profile_type: pType,
+      profile_id: pId,
+      mollie_payment_id: payment.id as string,
+      mollie_subscription_id: (payment.subscriptionId as string) || null,
+      mollie_customer_id: (payment.customerId as string) || null,
+      amount: parseFloat((payment.amount as { value: string })?.value || "0"),
+      currency: (payment.amount as { currency: string })?.currency || "EUR",
+      status: payment.status as string,
+      plan_id: planId || (metadata.plan_id as string) || null,
+      paid_at: payment.status === "paid" ? new Date().toISOString() : null,
+    }, { onConflict: "mollie_payment_id" });
+
+    logStep("Payment logged to audit table", { paymentId: payment.id });
+  } catch (err) {
+    logStep("Failed to log payment (non-fatal)", { error: String(err) });
   }
 }
 

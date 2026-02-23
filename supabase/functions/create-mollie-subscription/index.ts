@@ -48,10 +48,10 @@ serve(async (req) => {
 
     logStep("Plan selected", { planId, plan });
 
-    // Get or create trainer profile
+    // Get trainer profile
     const { data: trainerProfile } = await supabase
       .from("trainer_profiles")
-      .select("id, mollie_customer_id")
+      .select("id, mollie_customer_id, subscription_id, subscription_tier, subscription_status")
       .eq("user_id", user.id)
       .single();
 
@@ -59,6 +59,24 @@ serve(async (req) => {
 
     let customerId = trainerProfile.mollie_customer_id;
     const origin = req.headers.get("origin") || "https://padeltrainer.ai";
+
+    // Determine the requested tier (without _yearly suffix)
+    const requestedTier = planId.replace("_yearly", "");
+
+    // Block same-plan re-subscription
+    if (
+      trainerProfile.subscription_status === "active" &&
+      trainerProfile.subscription_tier === requestedTier
+    ) {
+      logStep("Already on this plan", { currentTier: trainerProfile.subscription_tier });
+      return new Response(
+        JSON.stringify({
+          hasActiveSubscription: true,
+          message: "You are already on this plan",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Create Mollie customer if needed
     if (!customerId) {
@@ -91,30 +109,46 @@ serve(async (req) => {
       logStep("Customer created", { customerId });
     }
 
-    // Check for existing active subscription
-    const subsResponse = await fetch(
-      `https://api.mollie.com/v2/customers/${customerId}/subscriptions?status=active`,
-      {
-        headers: { "Authorization": `Bearer ${mollieApiKey}` },
-      }
-    );
+    // If there's an existing active subscription on a DIFFERENT plan, cancel it at end of period
+    if (
+      trainerProfile.subscription_status === "active" &&
+      trainerProfile.subscription_id &&
+      trainerProfile.subscription_tier !== requestedTier
+    ) {
+      logStep("Cancelling existing subscription for plan switch", {
+        oldTier: trainerProfile.subscription_tier,
+        newTier: requestedTier,
+        subscriptionId: trainerProfile.subscription_id,
+      });
 
-    if (subsResponse.ok) {
-      const subs = await subsResponse.json();
-      if (subs.count > 0) {
-        logStep("Active subscription exists, returning manage URL");
-        return new Response(
-          JSON.stringify({ 
-            hasActiveSubscription: true,
-            message: "You already have an active subscription" 
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      try {
+        const cancelResponse = await fetch(
+          `https://api.mollie.com/v2/customers/${customerId}/subscriptions/${trainerProfile.subscription_id}`,
+          {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${mollieApiKey}` },
+          }
         );
+
+        if (cancelResponse.ok || cancelResponse.status === 404) {
+          logStep("Old subscription cancelled (or already gone)");
+        } else {
+          const errText = await cancelResponse.text();
+          logStep("Warning: failed to cancel old subscription", { error: errText });
+          // Continue anyway – we still want to create the new subscription
+        }
+      } catch (cancelErr) {
+        logStep("Warning: cancel request failed", { error: String(cancelErr) });
       }
+
+      // Clear old subscription ID so webhook doesn't skip
+      await supabase
+        .from("trainer_profiles")
+        .update({ subscription_id: null })
+        .eq("id", trainerProfile.id);
     }
 
     // Create first payment to get mandate for subscription
-    // Mollie requires a successful payment before creating a subscription
     const paymentResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
@@ -149,7 +183,7 @@ serve(async (req) => {
       .from("trainer_profiles")
       .update({ 
         subscription_status: "pending",
-        subscription_tier: planId.replace("_yearly", ""),
+        subscription_tier: requestedTier,
       })
       .eq("id", trainerProfile.id);
 

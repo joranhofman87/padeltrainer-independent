@@ -3011,6 +3011,51 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          id: string
+          mollie_customer_id: string | null
+          mollie_payment_id: string
+          mollie_subscription_id: string | null
+          paid_at: string | null
+          plan_id: string | null
+          profile_id: string
+          profile_type: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          id?: string
+          mollie_customer_id?: string | null
+          mollie_payment_id: string
+          mollie_subscription_id?: string | null
+          paid_at?: string | null
+          plan_id?: string | null
+          profile_id: string
+          profile_type: string
+          status: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          mollie_customer_id?: string | null
+          mollie_payment_id?: string
+          mollie_subscription_id?: string | null
+          paid_at?: string | null
+          plan_id?: string | null
+          profile_id?: string
+          profile_type?: string
+          status?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           badge: string | null
