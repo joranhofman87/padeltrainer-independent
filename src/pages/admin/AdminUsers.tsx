@@ -38,21 +38,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Loader2,
   Search,
-  MoreHorizontal,
-  UserCog,
   LogIn,
   Trash2,
   Pencil,
-  KeyRound,
   Percent,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -101,7 +91,6 @@ export default function AdminUsers() {
     searchParams.get("role") || "all"
   );
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
-  const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState<string>("");
   const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -109,7 +98,6 @@ export default function AdminUsers() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
-  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -120,7 +108,6 @@ export default function AdminUsers() {
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Discount state
-  const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
   const [discountPercent, setDiscountPercent] = useState("");
   const [discountMonths, setDiscountMonths] = useState("");
 
@@ -168,8 +155,6 @@ export default function AdminUsers() {
       });
 
       await invalidateUsers();
-      setChangeRoleDialogOpen(false);
-      setSelectedUser(null);
     } catch (error: any) {
       logger.error("Failed to update role", error as Error, { component: "AdminUsers", userId: selectedUser?.user_id });
       toast({
@@ -372,8 +357,6 @@ export default function AdminUsers() {
         description: `Password has been updated for ${data?.email || selectedUser.email}.`,
       });
 
-      setResetPasswordDialogOpen(false);
-      setSelectedUser(null);
       setNewPassword("");
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update password";
@@ -415,8 +398,7 @@ export default function AdminUsers() {
 
       toast({ title: "Discount saved", description: `${percent}% for ${months} months` });
       await invalidateUsers();
-      setDiscountDialogOpen(false);
-      setSelectedUser(null);
+      await invalidateUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save discount", variant: "destructive" });
     } finally {
@@ -432,8 +414,7 @@ export default function AdminUsers() {
       if (error) throw error;
       toast({ title: "Discount removed" });
       await invalidateUsers();
-      setDiscountDialogOpen(false);
-      setSelectedUser(null);
+      await invalidateUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to remove discount", variant: "destructive" });
     } finally {
@@ -598,6 +579,10 @@ export default function AdminUsers() {
                     setSelectedUser(u);
                     setEditName(u.full_name || "");
                     setEditEmail(u.email || "");
+                    setNewRole(u.role || "none");
+                    setNewPassword("");
+                    setDiscountPercent(u.discount?.discount_percent?.toString() || "");
+                    setDiscountMonths(u.discount?.duration_months?.toString() || "");
                     setEditDialogOpen(true);
                   }}
                 >
@@ -649,80 +634,23 @@ export default function AdminUsers() {
                     {format(new Date(u.created_at), "MMM d, yyyy")}
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setNewRole(u.role || "none");
-                            setChangeRoleDialogOpen(true);
-                          }}
-                        >
-                          <UserCog className="mr-2 h-4 w-4" />
-                          Change role
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setEditName(u.full_name || "");
-                            setEditEmail(u.email || "");
-                            setEditDialogOpen(true);
-                          }}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit user
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setResetPasswordDialogOpen(true);
-                          }}
-                        >
-                          <KeyRound className="mr-2 h-4 w-4" />
-                          Reset password
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setDiscountPercent(u.discount?.discount_percent?.toString() || "");
-                            setDiscountMonths(u.discount?.duration_months?.toString() || "");
-                            setDiscountDialogOpen(true);
-                          }}
-                        >
-                          <Percent className="mr-2 h-4 w-4" />
-                          Manage discount
-                        </DropdownMenuItem>
-                        {u.role !== "admin" && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedUser(u);
-                                setImpersonateDialogOpen(true);
-                              }}
-                            >
-                              <LogIn className="mr-2 h-4 w-4" />
-                              Login as user
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => {
-                                setSelectedUser(u);
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete user
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedUser(u);
+                        setEditName(u.full_name || "");
+                        setEditEmail(u.email || "");
+                        setNewRole(u.role || "none");
+                        setNewPassword("");
+                        setDiscountPercent(u.discount?.discount_percent?.toString() || "");
+                        setDiscountMonths(u.discount?.duration_months?.toString() || "");
+                        setEditDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -736,113 +664,164 @@ export default function AdminUsers() {
         Showing {filteredUsers.length} of {users.length} users
       </p>
 
-      {/* Change Role Dialog */}
-      <Dialog open={changeRoleDialogOpen} onOpenChange={setChangeRoleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Role</DialogTitle>
-            <DialogDescription>
-              Update the role for {selectedUser?.full_name || selectedUser?.email}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={newRole} onValueChange={setNewRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="trainer">Trainer</SelectItem>
-                  <SelectItem value="player">Player</SelectItem>
-                  <SelectItem value="none">No role</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setChangeRoleDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleChangeRole} disabled={actionLoading}>
-              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit User Dialog */}
+      {/* Combined Edit User Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>
-              Update user information
+              {selectedUser?.full_name || selectedUser?.email}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Full Name</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
+          <div className="space-y-6 py-4">
+            {/* User Details Section */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Details</h4>
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Full Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleEditUser} disabled={actionLoading} size="sm">
+                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Details
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditUser} disabled={actionLoading}>
-              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Reset Password Dialog */}
-      <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              Set a new password for {selectedUser?.email}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
-              <Input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
-              />
+            <div className="border-t" />
+
+            {/* Role Section */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Role</h4>
+              <div className="flex items-center gap-2">
+                <Select value={newRole} onValueChange={setNewRole}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="trainer">Trainer</SelectItem>
+                    <SelectItem value="player">Player</SelectItem>
+                    <SelectItem value="none">No role</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleChangeRole} disabled={actionLoading} size="sm">
+                  {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update
+                </Button>
+              </div>
             </div>
+
+            <div className="border-t" />
+
+            {/* Discount Section */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Discount</h4>
+              {selectedUser?.discount?.is_active && (
+                <p className="text-xs text-muted-foreground">
+                  Current: {selectedUser.discount.discount_percent}% — {selectedUser.discount.months_remaining}/{selectedUser.discount.duration_months} months remaining
+                  {selectedUser.discount.first_payment_at && ` (started ${format(new Date(selectedUser.discount.first_payment_at), "MMM d, yyyy")})`}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="discount-percent" className="text-xs">Percentage</Label>
+                  <Input
+                    id="discount-percent"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={discountPercent}
+                    onChange={(e) => setDiscountPercent(e.target.value)}
+                    placeholder="e.g. 20"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="discount-months" className="text-xs">Months</Label>
+                  <Input
+                    id="discount-months"
+                    type="number"
+                    min="1"
+                    value={discountMonths}
+                    onChange={(e) => setDiscountMonths(e.target.value)}
+                    placeholder="e.g. 6"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveDiscount} disabled={actionLoading} size="sm">
+                  {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Discount
+                </Button>
+                {selectedUser?.discount && (
+                  <Button variant="outline" size="sm" onClick={handleRemoveDiscount} disabled={actionLoading}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t" />
+
+            {/* Reset Password Section */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Reset Password</h4>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password (min 6 chars)"
+                  className="flex-1"
+                />
+                <Button onClick={handleResetPassword} disabled={actionLoading || newPassword.length < 6} size="sm">
+                  {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Reset
+                </Button>
+              </div>
+            </div>
+
+            {selectedUser?.role !== "admin" && (
+              <>
+                <div className="border-t" />
+
+                {/* Actions Section */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Actions</h4>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setImpersonateDialogOpen(true)}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      Login as user
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete user
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleResetPassword} disabled={actionLoading || newPassword.length < 6}>
-              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Update Password
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -902,121 +881,6 @@ export default function AdminUsers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Bulk Delete Dialog */}
-      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={(open) => {
-        setBulkDeleteDialogOpen(open);
-        if (!open) {
-          setBulkDeleteConfirmText("");
-          setBulkDeleteProgress(null);
-        }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedUserIds.size} Users</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action is permanent and cannot be undone. All selected users and their data will be deleted.
-              Type DELETE to confirm.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4 space-y-4">
-            <Input
-              placeholder="Type DELETE to confirm"
-              value={bulkDeleteConfirmText}
-              onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
-              disabled={actionLoading}
-            />
-            {bulkDeleteProgress && (
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">
-                  Deleting user {bulkDeleteProgress.current} of {bulkDeleteProgress.total}...
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className="bg-primary h-2 rounded-full transition-all"
-                    style={{ width: `${(bulkDeleteProgress.current / bulkDeleteProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={() => {
-              setBulkDeleteDialogOpen(false);
-              setBulkDeleteConfirmText("");
-            }} disabled={actionLoading}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={actionLoading || bulkDeleteConfirmText !== "DELETE"}
-            >
-              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete {selectedUserIds.size} Users
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Manage Discount Dialog */}
-      <Dialog open={discountDialogOpen} onOpenChange={setDiscountDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Manage Discount</DialogTitle>
-            <DialogDescription>
-              Set a discount for {selectedUser?.full_name || selectedUser?.email}
-              {selectedUser?.discount?.is_active && (
-                <span className="block mt-1 text-xs">
-                  Current: {selectedUser.discount.discount_percent}% — {selectedUser.discount.months_remaining}/{selectedUser.discount.duration_months} months remaining
-                  {selectedUser.discount.first_payment_at && ` (started ${format(new Date(selectedUser.discount.first_payment_at), "MMM d, yyyy")})`}
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="discount-percent">Discount Percentage</Label>
-              <Input
-                id="discount-percent"
-                type="number"
-                min="1"
-                max="100"
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(e.target.value)}
-                placeholder="e.g. 20"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="discount-months">Duration (months)</Label>
-              <Input
-                id="discount-months"
-                type="number"
-                min="1"
-                value={discountMonths}
-                onChange={(e) => setDiscountMonths(e.target.value)}
-                placeholder="e.g. 6"
-              />
-            </div>
-          </div>
-          <DialogFooter className="flex justify-between">
-            {selectedUser?.discount && (
-              <Button variant="destructive" onClick={handleRemoveDiscount} disabled={actionLoading}>
-                Remove Discount
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
-              <Button variant="outline" onClick={() => setDiscountDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveDiscount} disabled={actionLoading}>
-                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
