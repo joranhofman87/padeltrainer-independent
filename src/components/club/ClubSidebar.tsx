@@ -353,13 +353,6 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
                 </SidebarMenuItem>
               </Collapsible>
 
-              {/* Refer & Earn */}
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Refer & Earn" onClick={showReferralWidget}>
-                  <Gift className="h-4 w-4 text-primary" />
-                  {!collapsed && <span>Refer &amp; Earn</span>}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -370,6 +363,19 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
           "flex p-2",
           collapsed ? "flex-col items-center gap-2" : "flex-col gap-2"
         )}>
+          <Button
+            variant="ghost"
+            size={collapsed ? "icon" : "sm"}
+            className={cn(
+              collapsed ? "h-8 w-8" : "w-full justify-start",
+              "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+            onClick={showReferralWidget}
+          >
+            <Gift className="h-4 w-4 text-primary" />
+            {!collapsed && <span className="ml-2">Refer &amp; Earn</span>}
+          </Button>
+
           <ProfileSwitcher
             context="club"
             activeClubId={club?.id}
