@@ -317,6 +317,7 @@ export type Database = {
           id: string
           is_public: boolean
           is_verified: boolean
+          last_processed_payment_id: string | null
           logo_url: string | null
           mollie_customer_id: string | null
           name: string
@@ -348,6 +349,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           is_verified?: boolean
+          last_processed_payment_id?: string | null
           logo_url?: string | null
           mollie_customer_id?: string | null
           name: string
@@ -379,6 +381,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           is_verified?: boolean
+          last_processed_payment_id?: string | null
           logo_url?: string | null
           mollie_customer_id?: string | null
           name?: string
@@ -1257,6 +1260,7 @@ export type Database = {
           description: string | null
           id: string
           is_verified: boolean
+          last_processed_payment_id: string | null
           location_id: string
           logo_url: string | null
           mollie_customer_id: string | null
@@ -1282,6 +1286,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_verified?: boolean
+          last_processed_payment_id?: string | null
           location_id: string
           logo_url?: string | null
           mollie_customer_id?: string | null
@@ -1307,6 +1312,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_verified?: boolean
+          last_processed_payment_id?: string | null
           location_id?: string
           logo_url?: string | null
           mollie_customer_id?: string | null
@@ -3346,6 +3352,7 @@ export type Database = {
           is_verified: boolean | null
           knltb_rating: number | null
           kvk_number: string | null
+          last_processed_payment_id: string | null
           mollie_customer_id: string | null
           payment_terms_days: number | null
           platform_fee_override: number | null
@@ -3400,6 +3407,7 @@ export type Database = {
           is_verified?: boolean | null
           knltb_rating?: number | null
           kvk_number?: string | null
+          last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
           platform_fee_override?: number | null
@@ -3454,6 +3462,7 @@ export type Database = {
           is_verified?: boolean | null
           knltb_rating?: number | null
           kvk_number?: string | null
+          last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
           platform_fee_override?: number | null
