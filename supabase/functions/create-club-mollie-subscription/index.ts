@@ -120,6 +120,24 @@ serve(async (req) => {
       }
     }
 
+    // Look up active discount for this user
+    let paymentAmount = plan.amount;
+    let discountPercent = 0;
+    const { data: discount } = await supabase
+      .from("user_discounts")
+      .select("discount_percent, months_remaining")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .gt("months_remaining", 0)
+      .maybeSingle();
+
+    if (discount) {
+      discountPercent = discount.discount_percent;
+      const original = parseFloat(plan.amount);
+      paymentAmount = (original * (1 - discountPercent / 100)).toFixed(2);
+      logStep("Discount applied", { discountPercent, original: plan.amount, discounted: paymentAmount });
+    }
+
     // Create first payment to get mandate for subscription
     const paymentResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
@@ -128,7 +146,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: { currency: "EUR", value: plan.amount },
+        amount: { currency: "EUR", value: paymentAmount },
         description: `${plan.description} - First payment`,
         redirectUrl: `${origin}/club/subscription?success=true`,
         webhookUrl: `${supabaseUrl}/functions/v1/mollie-subscription-webhook`,
@@ -140,6 +158,9 @@ serve(async (req) => {
           plan_amount: plan.amount,
           trial_ends_at: null,
           type: "club_subscription_first_payment",
+          discount_percent: discountPercent || undefined,
+          original_amount: discountPercent ? plan.amount : undefined,
+          user_id: user.id,
         },
       }),
     });
