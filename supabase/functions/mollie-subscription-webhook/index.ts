@@ -100,8 +100,35 @@ serve(async (req) => {
         return new Response("OK", { status: 200 });
       }
 
+      // Apply discount to subscription amount if applicable
+      let subscriptionAmount = plan.amount;
+      if (metadata.discount_percent && metadata.user_id) {
+        const { data: discount } = await supabase
+          .from("user_discounts")
+          .select("discount_percent, months_remaining, first_payment_at")
+          .eq("user_id", metadata.user_id)
+          .eq("is_active", true)
+          .gt("months_remaining", 0)
+          .maybeSingle();
+
+        if (discount) {
+          subscriptionAmount = (parseFloat(plan.amount) * (1 - discount.discount_percent / 100)).toFixed(2);
+          // Decrement months_remaining and set first_payment_at
+          await supabase
+            .from("user_discounts")
+            .update({
+              months_remaining: discount.months_remaining - 1,
+              first_payment_at: discount.first_payment_at || new Date().toISOString(),
+              is_active: discount.months_remaining - 1 > 0,
+            })
+            .eq("user_id", metadata.user_id)
+            .eq("is_active", true);
+          logStep("Discount applied to subscription", { discountPercent: discount.discount_percent, subscriptionAmount });
+        }
+      }
+
       const subscription = await createMollieSubscription(mollieApiKey, supabaseUrl, customerId, {
-        amount: plan.amount,
+        amount: subscriptionAmount,
         interval: plan.interval,
         times: plan.times,
         description: `Trainer subscription - ${planId}`,
@@ -109,6 +136,8 @@ serve(async (req) => {
           trainer_profile_id: metadata.trainer_profile_id,
           plan_id: planId,
           type: "trainer_subscription",
+          user_id: metadata.user_id || undefined,
+          original_amount: metadata.original_amount || plan.amount,
         },
       });
 
@@ -157,13 +186,41 @@ serve(async (req) => {
         return new Response("OK", { status: 200 });
       }
 
+      // Apply discount to academy subscription if applicable
+      let academySubAmount = ACADEMY_PLAN.amount;
+      if (metadata.discount_percent && metadata.user_id) {
+        const { data: discount } = await supabase
+          .from("user_discounts")
+          .select("discount_percent, months_remaining, first_payment_at")
+          .eq("user_id", metadata.user_id)
+          .eq("is_active", true)
+          .gt("months_remaining", 0)
+          .maybeSingle();
+
+        if (discount) {
+          academySubAmount = (parseFloat(ACADEMY_PLAN.amount) * (1 - discount.discount_percent / 100)).toFixed(2);
+          await supabase
+            .from("user_discounts")
+            .update({
+              months_remaining: discount.months_remaining - 1,
+              first_payment_at: discount.first_payment_at || new Date().toISOString(),
+              is_active: discount.months_remaining - 1 > 0,
+            })
+            .eq("user_id", metadata.user_id)
+            .eq("is_active", true);
+          logStep("Discount applied to academy subscription", { discountPercent: discount.discount_percent, academySubAmount });
+        }
+      }
+
       const subscription = await createMollieSubscription(mollieApiKey, supabaseUrl, customerId, {
-        amount: ACADEMY_PLAN.amount,
+        amount: academySubAmount,
         interval: ACADEMY_PLAN.interval,
         description: "Academy subscription - monthly",
         metadata: {
           academy_profile_id: metadata.academy_profile_id,
           type: "academy_subscription",
+          user_id: metadata.user_id || undefined,
+          original_amount: metadata.original_amount || ACADEMY_PLAN.amount,
         },
       });
 
@@ -215,13 +272,41 @@ serve(async (req) => {
       const trialEndsAt = metadata.trial_ends_at;
       const startDate = trialEndsAt ? new Date(trialEndsAt) : undefined;
 
+      // Apply discount to club subscription if applicable
+      let clubSubAmount = planAmount;
+      if (metadata.discount_percent && metadata.user_id) {
+        const { data: discount } = await supabase
+          .from("user_discounts")
+          .select("discount_percent, months_remaining, first_payment_at")
+          .eq("user_id", metadata.user_id)
+          .eq("is_active", true)
+          .gt("months_remaining", 0)
+          .maybeSingle();
+
+        if (discount) {
+          clubSubAmount = (parseFloat(metadata.original_amount || planAmount) * (1 - discount.discount_percent / 100)).toFixed(2);
+          await supabase
+            .from("user_discounts")
+            .update({
+              months_remaining: discount.months_remaining - 1,
+              first_payment_at: discount.first_payment_at || new Date().toISOString(),
+              is_active: discount.months_remaining - 1 > 0,
+            })
+            .eq("user_id", metadata.user_id)
+            .eq("is_active", true);
+          logStep("Discount applied to club subscription", { discountPercent: discount.discount_percent, clubSubAmount });
+        }
+      }
+
       const subscriptionPayload: Record<string, unknown> = {
-        amount: planAmount,
+        amount: clubSubAmount,
         interval: billingCycle === "yearly" ? "12 months" : "1 month",
         description: `Club subscription - ${billingCycle}`,
         metadata: {
           club_profile_id: metadata.club_profile_id,
           type: "club_subscription",
+          user_id: metadata.user_id || undefined,
+          original_amount: metadata.original_amount || planAmount,
         },
       };
 
@@ -300,6 +385,53 @@ serve(async (req) => {
         }
       } else {
         endDate = calculateEndDate(metadata.type === "club_subscription" ? "12 months" : "1 month");
+      }
+
+      // Handle discount decrement for recurring payments
+      if (metadata.user_id) {
+        const { data: discount } = await supabase
+          .from("user_discounts")
+          .select("id, discount_percent, months_remaining, first_payment_at")
+          .eq("user_id", metadata.user_id)
+          .eq("is_active", true)
+          .gt("months_remaining", 0)
+          .maybeSingle();
+
+        if (discount) {
+          const newRemaining = discount.months_remaining - 1;
+          await supabase
+            .from("user_discounts")
+            .update({
+              months_remaining: newRemaining,
+              first_payment_at: discount.first_payment_at || new Date().toISOString(),
+              is_active: newRemaining > 0,
+            })
+            .eq("id", discount.id);
+
+          logStep("Recurring discount decremented", { monthsRemaining: newRemaining });
+
+          // If discount expired, update Mollie subscription to full price
+          if (newRemaining <= 0 && metadata.original_amount && payment.subscriptionId && customerId) {
+            try {
+              await fetch(
+                `https://api.mollie.com/v2/customers/${customerId}/subscriptions/${payment.subscriptionId}`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    "Authorization": `Bearer ${mollieApiKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    amount: { currency: "EUR", value: metadata.original_amount },
+                  }),
+                }
+              );
+              logStep("Subscription restored to full price", { amount: metadata.original_amount });
+            } catch (patchErr) {
+              logStep("Failed to restore full price (non-fatal)", { error: String(patchErr) });
+            }
+          }
+        }
       }
 
       const { error: updateError } = await supabase

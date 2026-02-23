@@ -49,6 +49,16 @@ export function usePendingClaimsCount() {
   });
 }
 
+interface UserDiscount {
+  id: string;
+  discount_percent: number;
+  duration_months: number;
+  months_remaining: number;
+  source: string;
+  is_active: boolean;
+  first_payment_at: string | null;
+}
+
 interface UserWithRole {
   user_id: string;
   email: string | null;
@@ -56,6 +66,7 @@ interface UserWithRole {
   avatar_url: string | null;
   created_at: string;
   role: string | null;
+  discount: UserDiscount | null;
 }
 
 export function useAdminUsers() {
@@ -79,11 +90,22 @@ export function useAdminUsers() {
 
       if (rolesError) throw rolesError;
 
-      // Merge profiles with roles
+      // Get all active discounts
+      const { data: discounts, error: discountsError } = await supabase
+        .from("user_discounts")
+        .select("id, user_id, discount_percent, duration_months, months_remaining, source, is_active, first_payment_at");
+
+      if (discountsError) throw discountsError;
+
+      // Merge profiles with roles and discounts
       const rolesMap = new Map(roles?.map((r) => [r.user_id, r.role]) || []);
+      const discountsMap = new Map(
+        (discounts || []).map((d) => [d.user_id, d])
+      );
       return (profiles || []).map((p) => ({
         ...p,
         role: rolesMap.get(p.user_id) || null,
+        discount: discountsMap.get(p.user_id) || null,
       }));
     },
     enabled: isAdmin === true,

@@ -53,6 +53,7 @@ import {
   Trash2,
   Pencil,
   KeyRound,
+  Percent,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +63,16 @@ import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { useTableSort } from "@/hooks/useTableSort";
 import { logger } from "@/lib/logger";
 
+interface UserDiscount {
+  id: string;
+  discount_percent: number;
+  duration_months: number;
+  months_remaining: number;
+  source: string;
+  is_active: boolean;
+  first_payment_at: string | null;
+}
+
 interface UserWithRole {
   user_id: string;
   email: string | null;
@@ -69,6 +80,7 @@ interface UserWithRole {
   avatar_url: string | null;
   created_at: string;
   role: string | null;
+  discount: UserDiscount | null;
 }
 
 // Extended type for sorting
@@ -106,6 +118,11 @@ export default function AdminUsers() {
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("");
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Discount state
+  const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState("");
+  const [discountMonths, setDiscountMonths] = useState("");
 
   const handleChangeRole = async () => {
     if (!selectedUser || !newRole) return;
@@ -371,6 +388,59 @@ export default function AdminUsers() {
     }
   };
 
+  const handleSaveDiscount = async () => {
+    if (!selectedUser) return;
+    const percent = parseInt(discountPercent);
+    const months = parseInt(discountMonths);
+    if (!percent || !months || percent < 1 || percent > 100 || months < 1) {
+      toast({ title: "Error", description: "Enter valid percentage (1-100) and months (≥1)", variant: "destructive" });
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const existing = selectedUser.discount;
+      if (existing) {
+        const { error } = await supabase
+          .from("user_discounts")
+          .update({ discount_percent: percent, duration_months: months, months_remaining: months, is_active: true, first_payment_at: null })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("user_discounts")
+          .insert({ user_id: selectedUser.user_id, discount_percent: percent, duration_months: months, months_remaining: months, created_by: user?.id || null });
+        if (error) throw error;
+      }
+
+      toast({ title: "Discount saved", description: `${percent}% for ${months} months` });
+      await invalidateUsers();
+      setDiscountDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to save discount", variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveDiscount = async () => {
+    if (!selectedUser?.discount) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.from("user_discounts").delete().eq("id", selectedUser.discount.id);
+      if (error) throw error;
+      toast({ title: "Discount removed" });
+      await invalidateUsers();
+      setDiscountDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to remove discount", variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Prepare data with computed fields for sorting
   const usersWithComputed = useMemo(() => {
     return users.map((u) => ({
@@ -497,6 +567,7 @@ export default function AdminUsers() {
               >
                 Role
               </SortableTableHead>
+              <TableHead>Discount</TableHead>
               <SortableTableHead
                 sortKey="created_at"
                 currentSortKey={sortConfig.key as string}
@@ -512,7 +583,7 @@ export default function AdminUsers() {
             {filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-center py-8 text-muted-foreground"
                 >
                   No users found
@@ -568,6 +639,13 @@ export default function AdminUsers() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
+                    {u.discount?.is_active ? (
+                      <Badge variant="outline" className="text-xs">
+                        {u.discount.discount_percent}% / {u.discount.months_remaining}mo left
+                      </Badge>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
                     {format(new Date(u.created_at), "MMM d, yyyy")}
                   </TableCell>
                   <TableCell>
@@ -607,6 +685,17 @@ export default function AdminUsers() {
                         >
                           <KeyRound className="mr-2 h-4 w-4" />
                           Reset password
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(u);
+                            setDiscountPercent(u.discount?.discount_percent?.toString() || "");
+                            setDiscountMonths(u.discount?.duration_months?.toString() || "");
+                            setDiscountDialogOpen(true);
+                          }}
+                        >
+                          <Percent className="mr-2 h-4 w-4" />
+                          Manage discount
                         </DropdownMenuItem>
                         {u.role !== "admin" && (
                           <>
@@ -869,6 +958,65 @@ export default function AdminUsers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manage Discount Dialog */}
+      <Dialog open={discountDialogOpen} onOpenChange={setDiscountDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage Discount</DialogTitle>
+            <DialogDescription>
+              Set a discount for {selectedUser?.full_name || selectedUser?.email}
+              {selectedUser?.discount?.is_active && (
+                <span className="block mt-1 text-xs">
+                  Current: {selectedUser.discount.discount_percent}% — {selectedUser.discount.months_remaining}/{selectedUser.discount.duration_months} months remaining
+                  {selectedUser.discount.first_payment_at && ` (started ${format(new Date(selectedUser.discount.first_payment_at), "MMM d, yyyy")})`}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="discount-percent">Discount Percentage</Label>
+              <Input
+                id="discount-percent"
+                type="number"
+                min="1"
+                max="100"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(e.target.value)}
+                placeholder="e.g. 20"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="discount-months">Duration (months)</Label>
+              <Input
+                id="discount-months"
+                type="number"
+                min="1"
+                value={discountMonths}
+                onChange={(e) => setDiscountMonths(e.target.value)}
+                placeholder="e.g. 6"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex justify-between">
+            {selectedUser?.discount && (
+              <Button variant="destructive" onClick={handleRemoveDiscount} disabled={actionLoading}>
+                Remove Discount
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button variant="outline" onClick={() => setDiscountDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveDiscount} disabled={actionLoading}>
+                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
