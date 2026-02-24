@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, ShieldCheck, Zap, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +19,9 @@ export default function TrainerBookingSettings() {
 
   const [requireApproval, setRequireApproval] = useState(false);
   const [useManualInvoicing, setUseManualInvoicing] = useState(false);
+  const [welcomeMessage, setWelcomeMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingWelcome, setSavingWelcome] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   useEffect(() => {
@@ -26,18 +29,18 @@ export default function TrainerBookingSettings() {
       fetchSettings();
     }
   }, [user, role, loading]);
-  // Auth is now handled by TrainerLayout
 
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('require_booking_approval, use_manual_invoicing')
+      .select('require_booking_approval, use_manual_invoicing, welcome_message')
       .eq('user_id', user!.id)
       .single();
 
     if (data) {
       setRequireApproval(data.require_booking_approval || false);
       setUseManualInvoicing(data.use_manual_invoicing || false);
+      setWelcomeMessage(data.welcome_message || '');
     }
     setLoadingSettings(false);
   };
@@ -67,6 +70,21 @@ export default function TrainerBookingSettings() {
     setSaving(false);
   };
 
+  const handleSaveWelcomeMessage = async () => {
+    setSavingWelcome(true);
+    const { error } = await supabase
+      .from('trainer_profiles')
+      .update({ welcome_message: welcomeMessage.trim() || null } as any)
+      .eq('user_id', user!.id);
+
+    if (error) {
+      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: t('welcomeMessage.saved') });
+    }
+    setSavingWelcome(false);
+  };
+
   if (loading || loadingSettings) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -91,7 +109,7 @@ export default function TrainerBookingSettings() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -167,6 +185,34 @@ export default function TrainerBookingSettings() {
                 {t('common:saving')}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Welcome Message Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              {t('welcomeMessage.title')}
+            </CardTitle>
+            <CardDescription>
+              {t('welcomeMessage.description')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={welcomeMessage}
+              onChange={(e) => setWelcomeMessage(e.target.value)}
+              placeholder={t('welcomeMessage.placeholder')}
+              rows={4}
+              maxLength={1000}
+            />
+            <div className="flex justify-end">
+              <Button onClick={handleSaveWelcomeMessage} disabled={savingWelcome}>
+                {savingWelcome && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t('common:save', 'Save')}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </main>

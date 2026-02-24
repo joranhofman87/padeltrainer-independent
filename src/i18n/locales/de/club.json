@@ -261,7 +261,11 @@
   },
   "settings": {
     "title": "Club-Einstellungen",
-    "description": "Verwalte die Einstellungen und das Team deines Clubs."
+    "description": "Verwalte die Einstellungen und das Team deines Clubs.",
+    "welcomeMessage": "Willkommensnachricht",
+    "welcomeMessageDescription": "Diese Nachricht wird Spielern angezeigt, nachdem sie sich auf deine Warteliste setzen.",
+    "welcomeMessagePlaceholder": "z.B. Danke für deine Anmeldung! Tritt unserer WhatsApp Community bei: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Willkommensnachricht gespeichert"
   },
   "calendar": {
     "description": "Alle Trainerzeitpläne anzeigen",

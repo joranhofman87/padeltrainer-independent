@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, Loader2, XCircle, Calendar, ArrowRight } from 'lucide-react';
+import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
@@ -17,6 +18,7 @@ interface BookingDetails {
   endTime: string;
   trainerName: string;
   trainerSlug: string;
+  welcomeMessage: string | null;
 }
 
 function toGoogleCalendarDate(iso: string): string {
@@ -84,7 +86,7 @@ export default function BookingSuccess() {
         if (slot?.trainer_id) {
           const { data: trainer } = await supabase
             .from('trainer_profiles')
-            .select('slug, user_id')
+            .select('slug, user_id, welcome_message')
             .eq('id', slot.trainer_id)
             .maybeSingle();
 
@@ -103,6 +105,7 @@ export default function BookingSuccess() {
             endTime: slot.end_time,
             trainerName,
             trainerSlug: trainer?.slug || '',
+            welcomeMessage: trainer?.welcome_message || null,
           });
         }
         return 'paid';
@@ -234,6 +237,14 @@ export default function BookingSuccess() {
                 </li>
               </ul>
             </div>
+          )}
+
+          {verified && bookingDetails?.welcomeMessage && (
+            <WelcomeMessageCard
+              message={bookingDetails.welcomeMessage}
+              ownerName={bookingDetails.trainerName}
+              labelKey={`Message from ${bookingDetails.trainerName}`}
+            />
           )}
 
           <div className="flex flex-col gap-3">

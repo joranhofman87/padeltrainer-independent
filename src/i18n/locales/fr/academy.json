@@ -247,6 +247,12 @@
     "description": "Conditions que les joueurs doivent accepter avant de réserver des cours avec vos entraîneurs.",
     "saved": "Conditions enregistrées avec succès"
   },
+  "welcomeMessage": {
+    "title": "Message de bienvenue",
+    "description": "Ce message est affiché aux joueurs après leur inscription à un cycle ou sur votre liste d'attente.",
+    "placeholder": "ex. Merci pour votre inscription ! Rejoignez notre communauté WhatsApp : https://chat.whatsapp.com/...",
+    "saved": "Message de bienvenue enregistré"
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "trainers": "Entraîneurs",

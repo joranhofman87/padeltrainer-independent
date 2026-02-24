@@ -26,6 +26,7 @@
     "title": "Du stehst auf der Liste!",
     "message": "Wir melden uns, sobald ein Platz frei wird."
   },
+  "messageFrom": "Nachricht von {{name}}",
   "myEntries": {
     "title": "Meine Warteliste",
     "empty": "Du stehst auf keiner Warteliste",

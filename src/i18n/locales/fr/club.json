@@ -261,7 +261,11 @@
   },
   "settings": {
     "title": "Paramètres du club",
-    "description": "Gérez les paramètres de votre club et votre équipe."
+    "description": "Gérez les paramètres de votre club et votre équipe.",
+    "welcomeMessage": "Message de bienvenue",
+    "welcomeMessageDescription": "Ce message est affiché aux joueurs après leur inscription sur votre liste d'attente.",
+    "welcomeMessagePlaceholder": "ex. Merci pour votre inscription ! Rejoignez notre communauté WhatsApp : https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Message de bienvenue enregistré"
   },
   "calendar": {
     "description": "Voir tous les plannings des entraîneurs",

@@ -26,6 +26,7 @@
     "title": "Vous êtes sur la liste !",
     "message": "Nous vous contacterons dès qu'une place sera disponible."
   },
+  "messageFrom": "Message de {{name}}",
   "myEntries": {
     "title": "Ma liste d'attente",
     "empty": "Vous n'êtes sur aucune liste d'attente",
