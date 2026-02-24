@@ -790,7 +790,7 @@ export default function CycleForm({
                 <Label className="text-sm font-medium">{t('form.extraCosts')}</Label>
                 <p className="text-xs text-muted-foreground">{t('form.extraCostsHelp')}</p>
                 {extraCosts.map((cost, index) => (
-                  <div key={index} className="grid grid-cols-[2fr_auto_auto] items-center gap-3">
+                  <div key={index} className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
                     <Input
                       placeholder={t('form.costDescription')}
                       value={cost.description}
