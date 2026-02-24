@@ -89,29 +89,35 @@ export default function AcademyPlayers() {
     fetchTrainers();
   }, [activeAcademy]);
 
-  // Fetch players when trainers are loaded
+  // Fetch players when trainers are loaded or academy changes
   useEffect(() => {
-    if (trainers.length > 0) {
+    if (activeAcademy) {
       fetchPlayers();
     }
-  }, [trainers]);
+  }, [trainers, activeAcademy]);
 
-  // Filter
+  // Filter by search query and selected trainer
   useEffect(() => {
+    let result = players;
+
+    // Filter by trainer
+    if (selectedTrainerId && selectedTrainerId !== 'all') {
+      result = result.filter((p) => p.trainer_id === selectedTrainerId);
+    }
+
+    // Filter by search query
     const query = searchQuery.toLowerCase().trim();
-    if (!query) {
-      setFilteredPlayers(players);
-    } else {
-      setFilteredPlayers(
-        players.filter(
-          (p) =>
-            p.full_name.toLowerCase().includes(query) ||
-            p.email.toLowerCase().includes(query) ||
-            p.phone.includes(query)
-        )
+    if (query) {
+      result = result.filter(
+        (p) =>
+          p.full_name.toLowerCase().includes(query) ||
+          p.email.toLowerCase().includes(query) ||
+          p.phone.includes(query)
       );
     }
-  }, [searchQuery, players]);
+
+    setFilteredPlayers(result);
+  }, [searchQuery, players, selectedTrainerId]);
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -125,7 +131,6 @@ export default function AcademyPlayers() {
     const trainerIds = academyTrainers?.map((t) => t.trainer_profile_id) || [];
     if (trainerIds.length === 0) {
       setTrainers([]);
-      setLoading(false);
       return;
     }
 
@@ -137,7 +142,6 @@ export default function AcademyPlayers() {
 
     if (!trainerProfiles || trainerProfiles.length === 0) {
       setTrainers([]);
-      setLoading(false);
       return;
     }
 
@@ -154,27 +158,47 @@ export default function AcademyPlayers() {
     }));
 
     setTrainers(opts);
-    if (opts.length > 0 && !selectedTrainerId) {
-      setSelectedTrainerId(opts[0].id);
-    }
   };
 
   const fetchPlayers = async () => {
-    if (!activeAcademy || trainers.length === 0) return;
+    if (!activeAcademy) return;
     setLoading(true);
 
     try {
       const trainerIds = trainers.map((t) => t.id);
       const trainerNameMap = new Map(trainers.map((t) => [t.id, t.name]));
 
-      // Fetch guest players
-      const { data: guestPlayers } = await supabase
+      // Fetch guest players: trainer-owned (for academy trainers) + academy-level
+      let allGuestPlayers: any[] = [];
+
+      // 1. Trainer-owned players
+      if (trainerIds.length > 0) {
+        const { data: trainerPlayers } = await supabase
+          .from('guest_players')
+          .select('*')
+          .in('trainer_id', trainerIds)
+          .order('full_name');
+        if (trainerPlayers) allGuestPlayers.push(...trainerPlayers);
+      }
+
+      // 2. Academy-level players (no trainer, linked to academy directly)
+      const { data: academyPlayers } = await supabase
         .from('guest_players')
         .select('*')
-        .in('trainer_id', trainerIds)
+        .eq('academy_profile_id', activeAcademy.id)
+        .is('trainer_id', null)
         .order('full_name');
+      if (academyPlayers) allGuestPlayers.push(...academyPlayers);
 
-      const guests: UnifiedPlayer[] = (guestPlayers || []).map((g: any) => ({
+      // Deduplicate by id
+      const seenIds = new Set<string>();
+      allGuestPlayers = allGuestPlayers.filter((g) => {
+        if (seenIds.has(g.id)) return false;
+        seenIds.add(g.id);
+        return true;
+      });
+
+      const guests: UnifiedPlayer[] = allGuestPlayers.map((g: any) => ({
         id: g.id,
         full_name: g.full_name,
         email: g.email || '',
@@ -186,7 +210,7 @@ export default function AcademyPlayers() {
         created_at: g.created_at,
         type: 'guest' as const,
         trainer_id: g.trainer_id,
-        trainer_name: trainerNameMap.get(g.trainer_id) || '—',
+        trainer_name: g.trainer_id ? (trainerNameMap.get(g.trainer_id) || '—') : t('nav.academy', 'Academy'),
         originalGuest: g as GuestPlayer,
       }));
 
@@ -224,7 +248,7 @@ export default function AcademyPlayers() {
 
           if (profiles) {
             const linkedIds = new Set(
-              (guestPlayers || [])
+              allGuestPlayers
                 .filter((g: any) => g.linked_profile_id)
                 .map((g: any) => g.linked_profile_id)
             );
@@ -329,12 +353,13 @@ export default function AcademyPlayers() {
           </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          {trainers.length > 1 && (
+          {trainers.length > 0 && (
             <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder={tTrainer('players.selectTrainer', 'Select trainer')} />
+                <SelectValue placeholder={tTrainer('players.allTrainers', 'All')} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">{tTrainer('players.allTrainers', 'All')}</SelectItem>
                 {trainers.map((tr) => (
                   <SelectItem key={tr.id} value={tr.id}>
                     {tr.name}
@@ -403,7 +428,7 @@ export default function AcademyPlayers() {
                   <TableHead>{tTrainer('players.name')}</TableHead>
                   <TableHead>{tTrainer('players.contact')}</TableHead>
                   <TableHead>{tTrainer('players.skillRating')}</TableHead>
-                  {trainers.length > 1 && <TableHead>{tTrainer('players.trainer', 'Trainer')}</TableHead>}
+                  <TableHead>{tTrainer('players.trainer', 'Trainer')}</TableHead>
                   <TableHead>{tTrainer('players.status')}</TableHead>
                   <TableHead>{tTrainer('players.addedOn')}</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -449,11 +474,9 @@ export default function AcademyPlayers() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    {trainers.length > 1 && (
-                      <TableCell className="text-sm text-muted-foreground">
-                        {player.trainer_name}
-                      </TableCell>
-                    )}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {player.trainer_name}
+                    </TableCell>
                     <TableCell>
                       {player.type === 'registered' ? (
                         <Badge variant="default">{tTrainer('players.registered', 'Registered')}</Badge>
@@ -499,24 +522,22 @@ export default function AcademyPlayers() {
       )}
 
       {/* Add Player Dialog */}
-      {selectedTrainerId && (
-        <AddPlayerDialog
-          open={showAddPlayer}
-          onOpenChange={setShowAddPlayer}
-          trainerId={selectedTrainerId}
-          onPlayerCreated={handlePlayerCreated}
-        />
-      )}
+      <AddPlayerDialog
+        open={showAddPlayer}
+        onOpenChange={setShowAddPlayer}
+        academyId={activeAcademy?.id}
+        trainerId={selectedTrainerId && selectedTrainerId !== 'all' ? selectedTrainerId : undefined}
+        onPlayerCreated={handlePlayerCreated}
+      />
 
       {/* Import Players Dialog */}
-      {selectedTrainerId && (
-        <ImportPlayersDialog
-          open={showImportPlayers}
-          onOpenChange={setShowImportPlayers}
-          trainerId={selectedTrainerId}
-          onPlayersImported={handlePlayersImported}
-        />
-      )}
+      <ImportPlayersDialog
+        open={showImportPlayers}
+        onOpenChange={setShowImportPlayers}
+        academyId={activeAcademy?.id}
+        trainerId={selectedTrainerId && selectedTrainerId !== 'all' ? selectedTrainerId : undefined}
+        onPlayersImported={handlePlayersImported}
+      />
 
       {/* Edit Player Dialog */}
       {editingPlayer && (

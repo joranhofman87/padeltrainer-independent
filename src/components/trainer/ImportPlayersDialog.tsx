@@ -37,7 +37,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 interface ImportPlayersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  trainerId: string;
+  trainerId?: string;
+  academyId?: string;
   onPlayersImported: (players: GuestPlayer[]) => void;
 }
 
@@ -66,6 +67,7 @@ export function ImportPlayersDialog({
   open,
   onOpenChange,
   trainerId,
+  academyId,
   onPlayersImported,
 }: ImportPlayersDialogProps) {
   const { t } = useTranslation("trainer");
@@ -292,14 +294,15 @@ export function ImportPlayersDialog({
         const { data, error } = await supabase
           .from("guest_players")
           .insert({
-            trainer_id: trainerId,
+            trainer_id: trainerId || null,
+            academy_profile_id: academyId || null,
             full_name: player.full_name,
             email: player.email.toLowerCase(),
             phone: player.phone,
             skill_rating: player.skill_rating,
             notes: player.notes,
             linked_profile_id: player.linked_profile_id || null,
-          })
+          } as any)
           .select()
           .single();
 

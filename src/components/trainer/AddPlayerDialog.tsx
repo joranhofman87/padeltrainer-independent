@@ -21,13 +21,15 @@ import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratin
 interface AddPlayerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  trainerId: string;
+  trainerId?: string;
+  academyId?: string;
   onPlayerCreated?: (player: GuestPlayer) => void;
 }
 
 export interface GuestPlayer {
   id: string;
-  trainer_id: string;
+  trainer_id: string | null;
+  academy_profile_id: string | null;
   full_name: string;
   email: string;
   phone: string;
@@ -50,6 +52,7 @@ export function AddPlayerDialog({
   open,
   onOpenChange,
   trainerId,
+  academyId,
   onPlayerCreated,
 }: AddPlayerDialogProps) {
   const { t } = useTranslation("trainer");
@@ -150,7 +153,8 @@ export function AddPlayerDialog({
       const { data, error } = await supabase
         .from("guest_players")
         .insert({
-          trainer_id: trainerId,
+          trainer_id: trainerId || null,
+          academy_profile_id: academyId || null,
           full_name: fullName.trim(),
           email: email.trim().toLowerCase() || null,
           phone: phone.trim() || null,
@@ -158,7 +162,7 @@ export function AddPlayerDialog({
           rating_system: ratingSystem,
           notes: notes.trim() || null,
           linked_profile_id: linkedProfile?.id || null,
-        })
+        } as any)
         .select()
         .single();
 
