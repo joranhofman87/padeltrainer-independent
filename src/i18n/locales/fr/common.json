@@ -90,5 +90,16 @@
   "reviewTags": { "teaching_style": "Style d'enseignement", "skill_focus": "Focus compétences", "specialties": "Spécialités" },
   "generalTerms": "Conditions générales",
   "acceptTerms": "J'ai lu et j'accepte les conditions générales",
-  "loadingTerms": "Chargement des conditions..."
+  "loadingTerms": "Chargement des conditions...",
+  "videos": "Vidéos",
+  "videosDescription": "Ajoutez des vidéos YouTube, Vimeo, TikTok ou Instagram pour présenter votre coaching",
+  "videoUrl": "URL de la vidéo",
+  "videoTitle": "Titre (optionnel)",
+  "videoTitlePlaceholder": "ex. Technique de coup droit",
+  "addVideo": "Ajouter une vidéo",
+  "adding": "Ajout en cours...",
+  "videoAdded": "Vidéo ajoutée",
+  "videoRemoved": "Vidéo supprimée",
+  "validVideoUrl": "URL {{platform}} valide",
+  "invalidVideoUrl": "Veuillez entrer une URL YouTube, Vimeo, TikTok ou Instagram valide."
 }

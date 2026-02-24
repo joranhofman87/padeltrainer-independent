@@ -90,5 +90,16 @@
   "reviewTags": { "teaching_style": "Unterrichtsstil", "skill_focus": "Schwerpunkt", "specialties": "Spezialgebiete" },
   "generalTerms": "Allgemeine Geschäftsbedingungen",
   "acceptTerms": "Ich habe die AGB gelesen und akzeptiere sie",
-  "loadingTerms": "AGB werden geladen..."
+  "loadingTerms": "AGB werden geladen...",
+  "videos": "Videos",
+  "videosDescription": "Füge YouTube-, Vimeo-, TikTok- oder Instagram-Videos hinzu, um dein Coaching zu präsentieren",
+  "videoUrl": "Video-URL",
+  "videoTitle": "Titel (optional)",
+  "videoTitlePlaceholder": "z.B. Vorhand-Technik",
+  "addVideo": "Video hinzufügen",
+  "adding": "Wird hinzugefügt...",
+  "videoAdded": "Video hinzugefügt",
+  "videoRemoved": "Video entfernt",
+  "validVideoUrl": "Gültige {{platform}}-URL",
+  "invalidVideoUrl": "Bitte gib eine gültige YouTube-, Vimeo-, TikTok- oder Instagram-URL ein."
 }
