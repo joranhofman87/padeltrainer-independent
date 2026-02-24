@@ -237,5 +237,16 @@
   },
   "generalTerms": "General Terms",
   "acceptTerms": "I have read and accept the general terms and conditions",
-  "loadingTerms": "Loading terms..."
+  "loadingTerms": "Loading terms...",
+  "videos": "Videos",
+  "videosDescription": "Add YouTube, Vimeo, TikTok, or Instagram videos to showcase your coaching",
+  "videoUrl": "Video URL",
+  "videoTitle": "Title (optional)",
+  "videoTitlePlaceholder": "e.g. Forehand technique",
+  "addVideo": "Add Video",
+  "adding": "Adding...",
+  "videoAdded": "Video added",
+  "videoRemoved": "Video removed",
+  "validVideoUrl": "Valid {{platform}} URL",
+  "invalidVideoUrl": "Please enter a valid YouTube, Vimeo, TikTok, or Instagram URL."
 }

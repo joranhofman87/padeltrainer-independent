@@ -237,5 +237,16 @@
   },
   "generalTerms": "Términos generales",
   "acceptTerms": "He leído y acepto los términos y condiciones generales",
-  "loadingTerms": "Cargando términos..."
+  "loadingTerms": "Cargando términos...",
+  "videos": "Vídeos",
+  "videosDescription": "Añade vídeos de YouTube, Vimeo, TikTok o Instagram para mostrar tu entrenamiento",
+  "videoUrl": "URL del vídeo",
+  "videoTitle": "Título (opcional)",
+  "videoTitlePlaceholder": "p. ej. Técnica de derecha",
+  "addVideo": "Añadir vídeo",
+  "adding": "Añadiendo...",
+  "videoAdded": "Vídeo añadido",
+  "videoRemoved": "Vídeo eliminado",
+  "validVideoUrl": "URL de {{platform}} válida",
+  "invalidVideoUrl": "Introduce una URL válida de YouTube, Vimeo, TikTok o Instagram."
 }
