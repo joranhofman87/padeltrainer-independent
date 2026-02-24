@@ -82,7 +82,7 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
         {trigger || (
-          <Button variant="destructive" className="w-full">
+          <Button variant="destructive" className="w-auto">
             <Trash2 className="h-4 w-4 mr-2" />
             {t('deleteAccount.title')}
           </Button>
