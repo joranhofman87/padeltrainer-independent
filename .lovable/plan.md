@@ -1,28 +1,45 @@
 
-# Move Refer & Earn to Icon-Only Between Theme Toggle and Logout
 
-## Overview
-Remove the full "Refer & Earn" button with label and move it as an icon-only button placed between the ThemeToggle and the Logout button in the footer row, across all 4 sidebars.
+# Speed Up Browser Back Button Navigation
 
-## Changes
+## Problem
+When you press the browser's back button, the app feels slow or unresponsive. The in-app back button is fast because it only updates state, but the browser back button triggers heavier processing.
 
-### 4 Files Modified
+## Root Causes Found
 
-**1. `src/components/player/PlayerSidebar.tsx`**
-- Remove the standalone Refer & Earn button block (lines 287-298)
-- In the ThemeToggle/Logout row, insert a Gift icon-only button between `<ThemeToggle />` and the Logout button
+1. **All 80+ pages are loaded upfront** -- Every single page in the app (admin, trainer, player, club, academy, marketing) is imported eagerly in `DomainRouter.tsx`. This means the initial bundle is massive and route transitions process more code than needed.
 
-**2. `src/components/trainer/TrainerSidebar.tsx`**
-- Remove the standalone Refer & Earn button block (lines 528-539)
-- In the ThemeToggle/Logout row (lines 559-571), insert a Gift icon-only button between ThemeToggle and Logout
+2. **ScrollToTop blocks rendering** -- `ScrollToTop` uses `useLayoutEffect`, which is synchronous and blocks the browser from painting until the scroll completes. On back navigation, this causes a visible freeze.
 
-**3. `src/components/club/ClubSidebar.tsx`**
-- Remove the standalone Refer & Earn button block (lines 366-377)
-- In the ThemeToggle/Logout row (lines 403-417), insert a Gift icon-only button between ThemeToggle and Logout
+3. **No route-level code splitting** -- There's zero use of `React.lazy` anywhere in the app. Every page transition loads the full app bundle.
 
-**4. `src/components/academy/AcademySidebar.tsx`**
-- Remove the standalone Refer & Earn button block (lines 456-467)
-- In the ThemeToggle/Logout row (lines 493-507), insert a Gift icon-only button between ThemeToggle and Logout
+## Solution
 
-### Result
-The footer row will consistently show: **[ThemeToggle] [Gift icon] [Logout icon]** across all sidebars, in both collapsed and expanded states.
+### 1. Lazy-load all page components in `DomainRouter.tsx`
+Convert all ~80 page imports from eager imports to `React.lazy()` with a shared `Suspense` wrapper. This means only the page you're navigating to gets loaded, and back/forward navigation is instant for already-loaded pages.
+
+### 2. Fix ScrollToTop to use non-blocking `useEffect`
+Change `useLayoutEffect` to `useEffect` so the scroll happens after paint rather than blocking it. This alone can eliminate the "frozen" feeling on back navigation.
+
+### 3. Add a lightweight loading fallback
+Wrap lazy routes in a `Suspense` boundary with a minimal skeleton/spinner so transitions feel instant even when a new page chunk hasn't loaded yet.
+
+---
+
+## Technical Details
+
+### File: `src/components/ScrollToTop.tsx`
+- Change `useLayoutEffect` to `useEffect` (1 line change)
+
+### File: `src/components/DomainRouter.tsx`
+- Convert all ~80 page imports to `React.lazy(() => import(...))` calls
+- Wrap the `<Routes>` block in a `<Suspense fallback={...}>` component
+- Layout components (`TrainerLayout`, `PlayerLayout`, `ClubLayout`, `AcademyLayout`, `AdminLayout`) stay eagerly loaded since they wrap multiple child routes
+
+This is a significant change to the file but purely mechanical -- the route structure stays identical, only the import style changes.
+
+### Expected Impact
+- Browser back button becomes near-instant (no more blocked paint)
+- Initial page load faster (smaller initial bundle)
+- Each page loads its own small chunk on first visit, then is cached
+
