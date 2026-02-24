@@ -1,16 +1,28 @@
 
-# Fix Delete Account Button Width
+# Move Refer & Earn to Icon-Only Between Theme Toggle and Logout
 
-## Problem
-The "Account verwijderen" (Delete Account) button is rendered full-width (`w-full`) across all settings pages (Trainer, Player, Club, Academy). This looks oversized for a danger-zone action button.
-
-## Solution
-Remove the `w-full` class from the default trigger button inside `DeleteAccountDialog.tsx`. Replace it with `w-auto` so the button only takes up as much space as its content needs.
+## Overview
+Remove the full "Refer & Earn" button with label and move it as an icon-only button placed between the ThemeToggle and the Logout button in the footer row, across all 4 sidebars.
 
 ## Changes
 
-### File: `src/components/settings/DeleteAccountDialog.tsx`
-- Change the default trigger `Button` from `className="w-full"` to `className="w-auto"` (line ~82)
-- This single change fixes all 4 settings pages (Trainer, Player, Club, Academy) since they all use the default trigger
+### 4 Files Modified
 
-No other files need to be modified.
+**1. `src/components/player/PlayerSidebar.tsx`**
+- Remove the standalone Refer & Earn button block (lines 287-298)
+- In the ThemeToggle/Logout row, insert a Gift icon-only button between `<ThemeToggle />` and the Logout button
+
+**2. `src/components/trainer/TrainerSidebar.tsx`**
+- Remove the standalone Refer & Earn button block (lines 528-539)
+- In the ThemeToggle/Logout row (lines 559-571), insert a Gift icon-only button between ThemeToggle and Logout
+
+**3. `src/components/club/ClubSidebar.tsx`**
+- Remove the standalone Refer & Earn button block (lines 366-377)
+- In the ThemeToggle/Logout row (lines 403-417), insert a Gift icon-only button between ThemeToggle and Logout
+
+**4. `src/components/academy/AcademySidebar.tsx`**
+- Remove the standalone Refer & Earn button block (lines 456-467)
+- In the ThemeToggle/Logout row (lines 493-507), insert a Gift icon-only button between ThemeToggle and Logout
+
+### Result
+The footer row will consistently show: **[ThemeToggle] [Gift icon] [Logout icon]** across all sidebars, in both collapsed and expanded states.
