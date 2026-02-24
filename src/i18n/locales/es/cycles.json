@@ -72,7 +72,18 @@
     "addCost": "Añadir coste",
     "costDescription": "Descripción",
     "costPrice": "Precio por sesión",
-    "sessions": "sesiones"
+    "sessions": "sesiones",
+    "paymentTiming": "Pago",
+    "paymentTimingHelp": "¿Cuándo se debe cobrar el pago para este ciclo?",
+    "paymentUpfront": "Pago por adelantado",
+    "paymentUpfrontHelp": "El jugador paga al reservar (pago online o factura inmediata)",
+    "paymentInvoiceAfter": "Facturar después de",
+    "paymentInvoiceAfterHelp": "Se envía automáticamente una factura después de un número configurable de semanas",
+    "paymentManual": "Manual (sin facturación)",
+    "paymentManualHelp": "Gestionas el cobro tú mismo (efectivo, transferencia, etc.)",
+    "invoiceDelayWeeks": "semanas después del inicio",
+    "weeksLabel": "{{count}} semana",
+    "weeksLabel_other": "{{count}} semanas"
   },
   "actions": {
     "openEnrollment": "Abrir inscripción",
@@ -81,7 +92,14 @@
     "viewRequests": "Ver solicitudes",
     "archive": "Archivar",
     "shareLink": "Compartir enlace de inscripción",
-    "linkCopied": "¡Enlace de inscripción copiado!"
+    "linkCopied": "¡Enlace de inscripción copiado!",
+    "copyLink": "Copiar enlace de inscripción"
+  },
+  
+  "paymentBadge": {
+    "upfront": "Pago adelantado",
+    "invoice_after_weeks": "Factura después de {{count}} sem.",
+    "manual": "Pago manual"
   },
   "stats": {
     "applications": "Solicitudes",

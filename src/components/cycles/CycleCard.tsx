@@ -14,6 +14,7 @@ import {
   Archive,
   FileText,
   Link2,
+  Euro,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -116,10 +117,25 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className={getStatusColor(cycle.status)}>
               {t(`status.${cycle.status}`)}
             </Badge>
+            
+            {/* Payment timing badge */}
+            {(() => {
+              const settings = cycle.settings as any;
+              const timing = settings?.payment_timing || (settings?.mark_as_paid ? 'manual' : 'upfront');
+              if (timing === 'upfront') return null;
+              return (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Euro className="h-3 w-3" />
+                  {timing === 'invoice_after_weeks' 
+                    ? t('paymentBadge.invoice_after_weeks', { count: settings?.invoice_delay_weeks || 2 })
+                    : t('paymentBadge.manual')}
+                </Badge>
+              );
+            })()}
             
             {showActions && (
               <DropdownMenu>

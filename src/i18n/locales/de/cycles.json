@@ -72,7 +72,18 @@
     "addCost": "Kosten hinzufügen",
     "costDescription": "Beschreibung",
     "costPrice": "Preis pro Stunde",
-    "sessions": "Stunden"
+    "sessions": "Stunden",
+    "paymentTiming": "Zahlung",
+    "paymentTimingHelp": "Wann soll die Zahlung für diesen Zyklus eingezogen werden?",
+    "paymentUpfront": "Vorauszahlung",
+    "paymentUpfrontHelp": "Spieler zahlt bei der Buchung (Online-Zahlung oder sofortige Rechnung)",
+    "paymentInvoiceAfter": "Rechnung nach",
+    "paymentInvoiceAfterHelp": "Eine Rechnung wird automatisch nach einer konfigurierbaren Anzahl von Wochen versendet",
+    "paymentManual": "Manuell (keine Rechnungstellung)",
+    "paymentManualHelp": "Du regelst die Zahlung selbst (Bargeld, Überweisung, etc.)",
+    "invoiceDelayWeeks": "Wochen nach Start",
+    "weeksLabel": "{{count}} Woche",
+    "weeksLabel_other": "{{count}} Wochen"
   },
   "actions": {
     "openEnrollment": "Anmeldung öffnen",
@@ -81,7 +92,14 @@
     "viewRequests": "Anfragen anzeigen",
     "archive": "Archivieren",
     "shareLink": "Anmeldelink teilen",
-    "linkCopied": "Anmeldelink kopiert!"
+    "linkCopied": "Anmeldelink kopiert!",
+    "copyLink": "Anmeldelink kopieren"
+  },
+  
+  "paymentBadge": {
+    "upfront": "Vorauszahlung",
+    "invoice_after_weeks": "Rechnung nach {{count}} Wo.",
+    "manual": "Manuelle Zahlung"
   },
   "stats": {
     "applications": "Bewerbungen",

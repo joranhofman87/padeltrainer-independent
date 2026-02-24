@@ -74,7 +74,18 @@
     "addCost": "Add cost",
     "costDescription": "Description",
     "costPrice": "Price per session",
-    "sessions": "sessions"
+    "sessions": "sessions",
+    "paymentTiming": "Payment",
+    "paymentTimingHelp": "When should payment be collected for this cycle?",
+    "paymentUpfront": "Pay upfront",
+    "paymentUpfrontHelp": "Player pays at booking time (online payment or immediate invoice)",
+    "paymentInvoiceAfter": "Invoice after",
+    "paymentInvoiceAfterHelp": "An invoice is automatically sent after a configurable number of weeks",
+    "paymentManual": "Manual (no invoicing)",
+    "paymentManualHelp": "You handle payment collection yourself (cash, bank transfer, etc.)",
+    "invoiceDelayWeeks": "weeks after start",
+    "weeksLabel": "{{count}} week",
+    "weeksLabel_other": "{{count}} weeks"
   },
   
   "actions": {
@@ -84,7 +95,14 @@
     "viewRequests": "View Requests",
     "archive": "Archive",
     "shareLink": "Share Registration Link",
-    "linkCopied": "Registration link copied!"
+    "linkCopied": "Registration link copied!",
+    "copyLink": "Copy Registration Link"
+  },
+  
+  "paymentBadge": {
+    "upfront": "Pay upfront",
+    "invoice_after_weeks": "Invoice after {{count}} wk",
+    "manual": "Manual payment"
   },
   
   "stats": {

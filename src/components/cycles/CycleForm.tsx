@@ -83,8 +83,14 @@ export default function CycleForm({
   const [allowSingleBooking, setAllowSingleBooking] = useState<boolean>(
     (cycle?.settings as any)?.allow_single_booking ?? false
   );
-  const [markAsPaid, setMarkAsPaid] = useState<boolean>(
-    (cycle?.settings as any)?.mark_as_paid ?? false
+  const [paymentTiming, setPaymentTiming] = useState<'upfront' | 'invoice_after_weeks' | 'manual'>(() => {
+    const settings = cycle?.settings as any;
+    if (settings?.payment_timing) return settings.payment_timing;
+    if (settings?.mark_as_paid) return 'manual';
+    return 'upfront';
+  });
+  const [invoiceDelayWeeks, setInvoiceDelayWeeks] = useState<number>(
+    (cycle?.settings as any)?.invoice_delay_weeks ?? 2
   );
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
@@ -173,7 +179,15 @@ export default function CycleForm({
         currency: cycle?.currency || 'EUR',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
-      setMarkAsPaid((cycle?.settings as any)?.mark_as_paid ?? false);
+      const settings = cycle?.settings as any;
+      if (settings?.payment_timing) {
+        setPaymentTiming(settings.payment_timing);
+      } else if (settings?.mark_as_paid) {
+        setPaymentTiming('manual');
+      } else {
+        setPaymentTiming('upfront');
+      }
+      setInvoiceDelayWeeks(settings?.invoice_delay_weeks ?? 2);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
     }
   }, [cycle, open]);
@@ -247,7 +261,9 @@ export default function CycleForm({
         start_time: values.start_time,
         end_time: values.end_time,
         allow_single_booking: allowSingleBooking,
-        mark_as_paid: markAsPaid,
+        mark_as_paid: paymentTiming === 'manual',
+        payment_timing: paymentTiming,
+        invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
         extra_costs: extraCosts.filter(ec => ec.description && ec.price > 0),
       };
 
@@ -764,23 +780,86 @@ export default function CycleForm({
                 />
               </div>
 
-              {/* Mark as paid toggle - only for cyclus */}
+              {/* Payment Timing selector */}
               {!isRegistration && (
-                <div className="flex items-start gap-3 rounded-lg border p-3">
-                  <Checkbox
-                    id="mark-as-paid"
-                    checked={markAsPaid}
-                    onCheckedChange={(checked) => setMarkAsPaid(!!checked)}
-                    className="mt-0.5"
-                  />
-                  <div className="space-y-0.5">
-                    <Label htmlFor="mark-as-paid" className="text-sm cursor-pointer flex items-center gap-2">
-                      <Euro className="h-4 w-4" />
-                      {t('trainer:calendar.markAsPaid')}
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t('trainer:calendar.markAsPaidHint')}
-                    </p>
+                <div className="space-y-3 rounded-lg border p-3">
+                  <Label className="text-sm font-medium">{t('form.paymentTiming')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.paymentTimingHelp')}</p>
+                  
+                  <div className="space-y-2">
+                    {/* Upfront */}
+                    <label className={cn(
+                      "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                      paymentTiming === 'upfront' && "border-primary bg-primary/5"
+                    )}>
+                      <input
+                        type="radio"
+                        name="payment_timing"
+                        value="upfront"
+                        checked={paymentTiming === 'upfront'}
+                        onChange={() => setPaymentTiming('upfront')}
+                        className="mt-1"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-sm font-medium">{t('form.paymentUpfront')}</span>
+                        <p className="text-xs text-muted-foreground">{t('form.paymentUpfrontHelp')}</p>
+                      </div>
+                    </label>
+                    
+                    {/* Invoice after X weeks */}
+                    <label className={cn(
+                      "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                      paymentTiming === 'invoice_after_weeks' && "border-primary bg-primary/5"
+                    )}>
+                      <input
+                        type="radio"
+                        name="payment_timing"
+                        value="invoice_after_weeks"
+                        checked={paymentTiming === 'invoice_after_weeks'}
+                        onChange={() => setPaymentTiming('invoice_after_weeks')}
+                        className="mt-1"
+                      />
+                      <div className="space-y-1.5 flex-1">
+                        <span className="text-sm font-medium">{t('form.paymentInvoiceAfter')}</span>
+                        <p className="text-xs text-muted-foreground">{t('form.paymentInvoiceAfterHelp')}</p>
+                        {paymentTiming === 'invoice_after_weeks' && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <Select value={String(invoiceDelayWeeks)} onValueChange={(v) => setInvoiceDelayWeeks(Number(v))}>
+                              <SelectTrigger className="w-20 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[1, 2, 3, 4].map(w => (
+                                  <SelectItem key={w} value={String(w)}>
+                                    {w}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-xs text-muted-foreground">{t('form.invoiceDelayWeeks')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    
+                    {/* Manual */}
+                    <label className={cn(
+                      "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                      paymentTiming === 'manual' && "border-primary bg-primary/5"
+                    )}>
+                      <input
+                        type="radio"
+                        name="payment_timing"
+                        value="manual"
+                        checked={paymentTiming === 'manual'}
+                        onChange={() => setPaymentTiming('manual')}
+                        className="mt-1"
+                      />
+                      <div className="space-y-0.5">
+                        <span className="text-sm font-medium">{t('form.paymentManual')}</span>
+                        <p className="text-xs text-muted-foreground">{t('form.paymentManualHelp')}</p>
+                      </div>
+                    </label>
                   </div>
                 </div>
               )}

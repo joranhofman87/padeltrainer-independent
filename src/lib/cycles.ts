@@ -67,6 +67,8 @@ export interface CycleSettings {
   allow_single_booking?: boolean;
   extra_costs?: ExtraCost[];
   mark_as_paid?: boolean;
+  payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';
+  invoice_delay_weeks?: number;
   [key: string]: unknown; // Allow for Json compatibility
 }
 

@@ -72,7 +72,18 @@
     "addCost": "Ajouter un coût",
     "costDescription": "Description",
     "costPrice": "Prix par séance",
-    "sessions": "séances"
+    "sessions": "séances",
+    "paymentTiming": "Paiement",
+    "paymentTimingHelp": "Quand le paiement doit-il être collecté pour ce cycle ?",
+    "paymentUpfront": "Paiement à l'avance",
+    "paymentUpfrontHelp": "Le joueur paie lors de la réservation (paiement en ligne ou facture immédiate)",
+    "paymentInvoiceAfter": "Facturer après",
+    "paymentInvoiceAfterHelp": "Une facture est automatiquement envoyée après un nombre configurable de semaines",
+    "paymentManual": "Manuel (pas de facturation)",
+    "paymentManualHelp": "Vous gérez le paiement vous-même (espèces, virement, etc.)",
+    "invoiceDelayWeeks": "semaines après le début",
+    "weeksLabel": "{{count}} semaine",
+    "weeksLabel_other": "{{count}} semaines"
   },
   "actions": {
     "openEnrollment": "Ouvrir les inscriptions",
@@ -81,7 +92,14 @@
     "viewRequests": "Voir les demandes",
     "archive": "Archiver",
     "shareLink": "Partager le lien d'inscription",
-    "linkCopied": "Lien d'inscription copié !"
+    "linkCopied": "Lien d'inscription copié !",
+    "copyLink": "Copier le lien d'inscription"
+  },
+  
+  "paymentBadge": {
+    "upfront": "Paiement à l'avance",
+    "invoice_after_weeks": "Facture après {{count}} sem.",
+    "manual": "Paiement manuel"
   },
   "stats": {
     "applications": "Candidatures",
