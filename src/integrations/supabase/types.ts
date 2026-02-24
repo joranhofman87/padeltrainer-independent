@@ -337,6 +337,7 @@ export type Database = {
           updated_at: string
           waiting_list_enabled: boolean
           website_url: string | null
+          welcome_message: string | null
         }
         Insert: {
           banner_url?: string | null
@@ -369,6 +370,7 @@ export type Database = {
           updated_at?: string
           waiting_list_enabled?: boolean
           website_url?: string | null
+          welcome_message?: string | null
         }
         Update: {
           banner_url?: string | null
@@ -401,6 +403,7 @@ export type Database = {
           updated_at?: string
           waiting_list_enabled?: boolean
           website_url?: string | null
+          welcome_message?: string | null
         }
         Relationships: []
       }
@@ -1276,6 +1279,7 @@ export type Database = {
           subscription_tier: string | null
           trial_ends_at: string | null
           updated_at: string
+          welcome_message: string | null
         }
         Insert: {
           banner_url?: string | null
@@ -1302,6 +1306,7 @@ export type Database = {
           subscription_tier?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          welcome_message?: string | null
         }
         Update: {
           banner_url?: string | null
@@ -1328,6 +1333,7 @@ export type Database = {
           subscription_tier?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          welcome_message?: string | null
         }
         Relationships: [
           {
@@ -3463,6 +3469,7 @@ export type Database = {
           video_url: string | null
           waiting_list_enabled: boolean
           website_url: string | null
+          welcome_message: string | null
         }
         Insert: {
           bic?: string | null
@@ -3518,6 +3525,7 @@ export type Database = {
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
+          welcome_message?: string | null
         }
         Update: {
           bic?: string | null
@@ -3573,6 +3581,7 @@ export type Database = {
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
+          welcome_message?: string | null
         }
         Relationships: []
       }

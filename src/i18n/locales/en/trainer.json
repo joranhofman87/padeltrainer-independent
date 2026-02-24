@@ -615,7 +615,11 @@
     "manualApprovalDescriptionOnline": "Review requests first, then players pay after approval.",
     "manualApprovalDescriptionInvoice": "Review and approve each request before confirmation.",
     "approvalEnabled": "Booking approval is now required",
-    "approvalDisabled": "Bookings are now auto-accepted"
+    "approvalDisabled": "Bookings are now auto-accepted",
+    "welcomeMessage": "Welcome Message",
+    "welcomeMessageDescription": "This message is shown to players after they book a session or join your waiting list. Great for sharing WhatsApp group links or preparation tips.",
+    "welcomeMessagePlaceholder": "e.g. Thanks for booking! Join our WhatsApp community: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Welcome message saved"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",

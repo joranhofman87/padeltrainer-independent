@@ -247,6 +247,12 @@
     "description": "Bedingungen, die Spieler akzeptieren müssen, bevor sie Stunden bei deinen Trainern buchen.",
     "saved": "AGB erfolgreich gespeichert"
   },
+  "welcomeMessage": {
+    "title": "Willkommensnachricht",
+    "description": "Diese Nachricht wird Spielern nach der Anmeldung zu einem Zyklus oder dem Eintrag auf die Warteliste angezeigt.",
+    "placeholder": "z.B. Danke für deine Anmeldung! Tritt unserer WhatsApp-Community bei: https://chat.whatsapp.com/...",
+    "saved": "Willkommensnachricht gespeichert"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "trainers": "Trainer",

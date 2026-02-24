@@ -247,6 +247,12 @@
     "description": "Terms players must accept before booking lessons with your trainers.",
     "saved": "Terms saved successfully"
   },
+  "welcomeMessage": {
+    "title": "Welcome Message",
+    "description": "This message is shown to players after they register for a cycle or join your waiting list.",
+    "placeholder": "e.g. Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/...",
+    "saved": "Welcome message saved"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "trainers": "Trainers",
