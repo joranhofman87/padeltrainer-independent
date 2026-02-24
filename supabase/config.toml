@@ -136,6 +136,12 @@ verify_jwt = false
 [functions.send-digest-emails]
 verify_jwt = false
 
+[functions.send-push]
+verify_jwt = false
+
+[functions.send-push-bulk]
+verify_jwt = false
+
 [functions.slack-notify]
 verify_jwt = false
 
