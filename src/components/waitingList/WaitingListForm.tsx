@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +32,7 @@ interface WaitingListFormProps {
   ownerId: string;
   ownerName: string;
   onSuccess?: () => void;
+  welcomeMessage?: string | null;
 }
 
 export default function WaitingListForm({
@@ -38,6 +40,7 @@ export default function WaitingListForm({
   ownerId,
   ownerName,
   onSuccess,
+  welcomeMessage,
 }: WaitingListFormProps) {
   const { t } = useTranslation('waitingList');
   const { profile } = useAuth();
@@ -154,12 +157,19 @@ export default function WaitingListForm({
   if (isSuccess) {
     return (
       <Card className="border-green-500/30 bg-green-500/5">
-        <CardContent className="text-center py-8">
+        <CardContent className="text-center py-8 space-y-4">
           <div className="mx-auto w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
             <Check className="h-6 w-6 text-green-600" />
           </div>
           <h3 className="text-lg font-semibold mb-1">{t('success.title')}</h3>
           <p className="text-sm text-muted-foreground">{t('success.message')}</p>
+          {welcomeMessage && (
+            <WelcomeMessageCard
+              message={welcomeMessage}
+              ownerName={ownerName}
+              labelKey={t('messageFrom', { name: ownerName })}
+            />
+          )}
         </CardContent>
       </Card>
     );

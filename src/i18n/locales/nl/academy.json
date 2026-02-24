@@ -244,6 +244,12 @@
     "description": "Voorwaarden die spelers moeten accepteren voor het boeken van lessen bij je trainers.",
     "saved": "Voorwaarden opgeslagen"
   },
+  "welcomeMessage": {
+    "title": "Welkomstbericht",
+    "description": "Dit bericht wordt getoond aan spelers nadat ze zich inschrijven voor een cyclus of op je wachtlijst komen.",
+    "placeholder": "bijv. Bedankt voor je inschrijving! Neem deel aan onze WhatsApp community: https://chat.whatsapp.com/...",
+    "saved": "Welkomstbericht opgeslagen"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "trainers": "Trainers",

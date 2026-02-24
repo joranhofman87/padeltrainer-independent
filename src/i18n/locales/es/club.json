@@ -261,7 +261,11 @@
   },
   "settings": {
     "title": "Configuración del club",
-    "description": "Gestiona la configuración y el equipo de tu club."
+    "description": "Gestiona la configuración y el equipo de tu club.",
+    "welcomeMessage": "Mensaje de bienvenida",
+    "welcomeMessageDescription": "Este mensaje se muestra a los jugadores después de unirse a tu lista de espera.",
+    "welcomeMessagePlaceholder": "p.ej. ¡Gracias por inscribirte! Únete a nuestra comunidad de WhatsApp: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Mensaje de bienvenida guardado"
   },
   "calendar": {
     "description": "Ver todos los horarios de entrenadores",

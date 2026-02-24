@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +22,7 @@ interface OwnerInfo {
   type: 'trainer' | 'club';
   name: string;
   avatar_url?: string;
+  welcomeMessage?: string | null;
 }
 
 export default function CycleRegistration() {
@@ -55,7 +57,7 @@ export default function CycleRegistration() {
         if (cycleData.owner_type === 'trainer') {
           const { data: trainerData } = await supabase
             .from('trainer_profiles')
-            .select('id, user_id')
+            .select('id, user_id, welcome_message')
             .eq('id', cycleData.owner_id)
             .single();
 
@@ -69,7 +71,8 @@ export default function CycleRegistration() {
             setOwner({
               type: 'trainer',
               name: profileData?.full_name || 'Trainer',
-              avatar_url: profileData?.avatar_url || undefined
+              avatar_url: profileData?.avatar_url || undefined,
+              welcomeMessage: trainerData.welcome_message,
             });
             setTrainers([{ id: trainerData.id, name: profileData?.full_name || 'Trainer' }]);
           }
@@ -228,6 +231,13 @@ export default function CycleRegistration() {
                 </div>
               </CardContent>
             </Card>
+            {owner?.welcomeMessage && (
+              <WelcomeMessageCard
+                message={owner.welcomeMessage}
+                ownerName={owner.name}
+                labelKey={t('common:messageFrom', { name: owner.name, defaultValue: `Message from ${owner.name}` })}
+              />
+            )}
             <Button onClick={() => navigate('/app/player')}>
               {t('application.success.backToProfile')}
             </Button>

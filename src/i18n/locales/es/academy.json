@@ -247,6 +247,12 @@
     "description": "Términos que los jugadores deben aceptar antes de reservar clases con tus entrenadores.",
     "saved": "Términos guardados correctamente"
   },
+  "welcomeMessage": {
+    "title": "Mensaje de bienvenida",
+    "description": "Este mensaje se muestra a los jugadores después de inscribirse en un ciclo o unirse a tu lista de espera.",
+    "placeholder": "p.ej. ¡Gracias por inscribirte! Únete a nuestra comunidad de WhatsApp: https://chat.whatsapp.com/...",
+    "saved": "Mensaje de bienvenida guardado"
+  },
   "nav": {
     "dashboard": "Panel",
     "trainers": "Entrenadores",

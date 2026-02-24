@@ -11,7 +11,8 @@ import {
   Loader2,
   FileText,
   UserPlus,
-  Trash2
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
 import { Globe } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -20,6 +21,7 @@ import LinkExtension from '@tiptap/extension-link';
 import UnderlineExtension from '@tiptap/extension-underline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +56,8 @@ export default function AcademySettings() {
   const [connectLoading, setConnectLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [savingTerms, setSavingTerms] = useState(false);
-
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [savingWelcome, setSavingWelcome] = useState(false);
   const termsEditor = useEditor({
     extensions: [
       StarterKit,
@@ -114,17 +117,20 @@ export default function AcademySettings() {
   // Load terms into editor when academy changes
   useEffect(() => {
     if (!termsEditor || !activeAcademy) return;
-    const loadTerms = async () => {
+    const loadTermsAndWelcome = async () => {
       const { data } = await supabase
         .from('academy_profiles')
-        .select('general_terms')
+        .select('general_terms, welcome_message')
         .eq('id', activeAcademy.id)
         .maybeSingle();
       if (data?.general_terms) {
         termsEditor.commands.setContent(data.general_terms as string);
       }
+      if (data?.welcome_message) {
+        setWelcomeMessage(data.welcome_message);
+      }
     };
-    loadTerms();
+    loadTermsAndWelcome();
   }, [activeAcademy, termsEditor]);
 
   const handleSaveTerms = async () => {
@@ -144,6 +150,23 @@ export default function AcademySettings() {
       toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
     } finally {
       setSavingTerms(false);
+    }
+  };
+
+  const handleSaveWelcomeMessage = async () => {
+    if (!activeAcademy) return;
+    setSavingWelcome(true);
+    try {
+      const { error } = await supabase
+        .from('academy_profiles')
+        .update({ welcome_message: welcomeMessage.trim() || null } as any)
+        .eq('id', activeAcademy.id);
+      if (error) throw error;
+      toast({ title: t('welcomeMessage.saved') });
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setSavingWelcome(false);
     }
   };
 
@@ -394,6 +417,36 @@ export default function AcademySettings() {
             <div className="flex justify-end">
               <Button onClick={handleSaveTerms} disabled={savingTerms}>
                 {savingTerms && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t('common.save', 'Save Changes')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Welcome Message */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">
+                {t("welcomeMessage.title")}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {t("welcomeMessage.description")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={welcomeMessage}
+              onChange={(e) => setWelcomeMessage(e.target.value)}
+              placeholder={t("welcomeMessage.placeholder")}
+              rows={4}
+              maxLength={1000}
+            />
+            <div className="flex justify-end">
+              <Button onClick={handleSaveWelcomeMessage} disabled={savingWelcome}>
+                {savingWelcome && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {t('common.save', 'Save Changes')}
               </Button>
             </div>

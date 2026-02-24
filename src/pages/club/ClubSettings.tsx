@@ -6,13 +6,15 @@ import {
   Crown, 
   UserPlus, 
   Loader2,
-  Globe
+  Globe,
+  MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -70,14 +72,22 @@ export default function ClubSettings() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [savingWelcome, setSavingWelcome] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       if (!activeClub) return;
       setLoading(true);
       try {
-        const managersData = await getClubManagers(activeClub.id);
+        const [managersData, clubData] = await Promise.all([
+          getClubManagers(activeClub.id),
+          supabase.from('club_profiles').select('welcome_message').eq('id', activeClub.id).maybeSingle(),
+        ]);
         setManagers(managersData as Manager[]);
+        if (clubData.data?.welcome_message) {
+          setWelcomeMessage(clubData.data.welcome_message);
+        }
       } finally {
         setLoading(false);
       }
@@ -134,6 +144,23 @@ export default function ClubSettings() {
   const getInitials = (name: string | null) => {
     if (!name) return "?";
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  };
+
+  const handleSaveWelcomeMessage = async () => {
+    if (!activeClub) return;
+    setSavingWelcome(true);
+    try {
+      const { error } = await supabase
+        .from('club_profiles')
+        .update({ welcome_message: welcomeMessage.trim() || null } as any)
+        .eq('id', activeClub.id);
+      if (error) throw error;
+      toast({ title: t('settings.welcomeMessageSaved') });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } finally {
+      setSavingWelcome(false);
+    }
   };
 
   if (loading) {
@@ -269,6 +296,32 @@ export default function ClubSettings() {
                 No managers found
               </p>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Welcome Message */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">{t("settings.welcomeMessage")}</CardTitle>
+          </div>
+          <CardDescription>{t("settings.welcomeMessageDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            value={welcomeMessage}
+            onChange={(e) => setWelcomeMessage(e.target.value)}
+            placeholder={t("settings.welcomeMessagePlaceholder")}
+            rows={4}
+            maxLength={1000}
+          />
+          <div className="flex justify-end">
+            <Button onClick={handleSaveWelcomeMessage} disabled={savingWelcome}>
+              {savingWelcome && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("common.save")}
+            </Button>
           </div>
         </CardContent>
       </Card>

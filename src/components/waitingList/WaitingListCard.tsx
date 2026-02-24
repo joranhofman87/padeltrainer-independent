@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import WaitingListForm from './WaitingListForm';
 import { OwnerType } from '@/lib/waitingList';
 import { getAppUrl } from '@/lib/domains';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabaseClient';
 
 interface WaitingListCardProps {
   ownerType: OwnerType;
@@ -31,6 +32,25 @@ export default function WaitingListCard({
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
+  const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchWelcomeMessage() {
+      let msg: string | null = null;
+      if (ownerType === 'trainer') {
+        const { data } = await supabase.from('trainer_profiles').select('welcome_message').eq('id', ownerId).maybeSingle();
+        msg = data?.welcome_message ?? null;
+      } else if (ownerType === 'academy') {
+        const { data } = await supabase.from('academy_profiles').select('welcome_message').eq('id', ownerId).maybeSingle();
+        msg = data?.welcome_message ?? null;
+      } else {
+        const { data } = await supabase.from('club_profiles').select('welcome_message').eq('location_id', ownerId).maybeSingle();
+        msg = data?.welcome_message ?? null;
+      }
+      if (msg) setWelcomeMessage(msg);
+    }
+    fetchWelcomeMessage();
+  }, [ownerType, ownerId]);
 
   const handleClick = () => {
     if (!user) {
@@ -64,6 +84,7 @@ export default function WaitingListCard({
               ownerType={ownerType}
               ownerId={ownerId}
               ownerName={ownerName}
+              welcomeMessage={welcomeMessage}
               onSuccess={() => setIsOpen(false)}
             />
           </DialogContent>

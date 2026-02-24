@@ -264,7 +264,11 @@
   },
   "settings": {
     "title": "Club Instellingen",
-    "description": "Beheer je clubinstellingen en team."
+    "description": "Beheer je clubinstellingen en team.",
+    "welcomeMessage": "Welkomstbericht",
+    "welcomeMessageDescription": "Dit bericht wordt getoond aan spelers nadat ze op je wachtlijst komen.",
+    "welcomeMessagePlaceholder": "bijv. Bedankt voor je aanmelding! Neem deel aan onze WhatsApp community: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Welkomstbericht opgeslagen"
   },
   "calendar": {
     "description": "Bekijk alle trainersroosters",
