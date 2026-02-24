@@ -1,46 +1,48 @@
 
-# Continue: Custom Welcome Message Feature
+# Academy-Level Players
 
-## What's already done
-- Database migration: `welcome_message` column added to `trainer_profiles`, `academy_profiles`, and `club_profiles`
-- Translation keys added for trainer namespace (all 5 languages)
-- Translation keys added for academy namespace (EN, DE only)
-- Translation keys added for club namespace (EN only)
-- Translation keys added for waitingList namespace (EN, NL only -- `messageFrom`)
+## Problem
+Currently, every player in the `guest_players` table **must** be assigned to a specific trainer (`trainer_id NOT NULL`). When an academy manager adds a player, they're forced to pick a trainer first. This doesn't make sense for academies who want to manage players at the organization level -- players belong to the academy, not necessarily to one trainer.
 
-## What still needs to be done
+## Solution
+Add an optional `academy_profile_id` column to `guest_players` and make `trainer_id` nullable. When an academy manager adds a player from the academy dashboard, the player is linked to the academy by default. A trainer can optionally be assigned, but it's not required.
 
-### 1. Missing translations
-- **Academy**: add `welcomeMessage` keys to NL, ES, FR
-- **Club**: add `welcomeMessage` keys to NL, DE, ES, FR
-- **WaitingList**: add `messageFrom` key to DE, ES, FR
+## What changes for users
 
-### 2. Settings pages (input side)
-Add a "Welcome Message" card with textarea + save button to:
-- **`src/pages/TrainerBookingSettings.tsx`** -- new Card below the approval card with a textarea, fetching/saving `welcome_message` from `trainer_profiles`
-- **`src/pages/academy/AcademySettings.tsx`** -- new Card after the General Terms card, fetching/saving `welcome_message` from `academy_profiles`
-- **`src/pages/club/ClubSettings.tsx`** -- new Card before the Language card, fetching/saving `welcome_message` from `club_profiles`
+**Academy managers:**
+- Click "Add Player" on the players page -- the player is added to the academy directly
+- The trainer selector becomes optional (they *can* assign a trainer, but don't have to)
+- Players without a trainer show up as "Academy" in the trainer column
 
-### 3. Confirmation screens (display side)
-Show the welcome message (when present) on success screens:
+**Trainers:**
+- No change -- trainers still add players to themselves as before
 
-- **`src/pages/BookingSuccess.tsx`** -- after payment is verified and trainer details are fetched, also fetch `welcome_message` from `trainer_profiles`. Display it in a styled card below the "What's next?" section with a "Message from [trainer name]" header. URLs in the message will be auto-linked.
+## Technical Details
 
-- **`src/components/waitingList/WaitingListForm.tsx`** -- accept an optional `welcomeMessage` and `ownerName` prop. In the success state, if `welcomeMessage` is present, show it in a card below the success checkmark with a "Message from [name]" header.
+### 1. Database Migration
+- Add `academy_profile_id` column (nullable FK to `academy_profiles`)
+- Make `trainer_id` nullable
+- Add a CHECK constraint: either `trainer_id` or `academy_profile_id` must be set (a player must belong to something)
+- Update the unique email index to work with the new structure (unique per trainer OR per academy)
+- Add RLS policies so academy managers can manage academy-level players (where `academy_profile_id` matches their academy)
+- Update existing academy RLS policies to also cover academy-level players (not just trainer-owned)
 
-- **`src/components/waitingList/WaitingListCard.tsx`** -- fetch `welcome_message` from the owner's profile table based on `ownerType`/`ownerId` and pass it down to `WaitingListForm`.
+### 2. AcademyPlayers page changes (`src/pages/academy/AcademyPlayers.tsx`)
+- Fetch players where `academy_profile_id` matches the active academy, in addition to trainer-owned players
+- The trainer selector in the header becomes a filter (not a prerequisite for adding)
+- When adding a player, pass `academyId` instead of requiring `trainerId`
 
-- **`src/pages/CycleRegistration.tsx`** -- when fetching owner info, also fetch `welcome_message`. On the success screen, show it in a styled card below the "What's next?" steps.
+### 3. AddPlayerDialog changes (`src/components/trainer/AddPlayerDialog.tsx`)
+- Accept an optional `academyId` prop alongside the existing `trainerId`
+- When `academyId` is provided, insert with `academy_profile_id` set and `trainer_id` as optional
+- Add an optional trainer dropdown when adding from academy context
+- Keep existing trainer-only behavior when used from trainer pages
 
-### 4. URL auto-linking utility
-Create a small helper that converts plain-text URLs in the welcome message into clickable `<a>` tags so WhatsApp links and similar are clickable without requiring the trainer to know HTML.
+### 4. ImportPlayersDialog changes (`src/components/trainer/ImportPlayersDialog.tsx`)
+- Same approach: accept optional `academyId`, insert academy-level players
 
-## Files to modify
-- 7 translation files (NL/ES/FR academy, NL/DE/ES/FR club, DE/ES/FR waitingList)
-- `src/pages/TrainerBookingSettings.tsx`
-- `src/pages/academy/AcademySettings.tsx`
-- `src/pages/club/ClubSettings.tsx`
-- `src/pages/BookingSuccess.tsx`
-- `src/components/waitingList/WaitingListForm.tsx`
-- `src/components/waitingList/WaitingListCard.tsx`
-- `src/pages/CycleRegistration.tsx`
+### Files to modify
+- **Database migration** (new file) -- add column, update constraints, update RLS
+- `src/pages/academy/AcademyPlayers.tsx` -- fetch academy-level players, make trainer optional
+- `src/components/trainer/AddPlayerDialog.tsx` -- support `academyId` prop
+- `src/components/trainer/ImportPlayersDialog.tsx` -- support `academyId` prop
