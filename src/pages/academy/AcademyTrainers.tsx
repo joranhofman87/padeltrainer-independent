@@ -251,7 +251,7 @@ export default function AcademyTrainers() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
-                     <TableHead>{t('common:locations', 'Locations')}</TableHead>
+                     <TableHead>{t('common:locations.title', 'Locations')}</TableHead>
                      <TableHead className="text-right">{t('trainers.hourlyRate', 'Rate')}</TableHead>
                      <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
                      <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
