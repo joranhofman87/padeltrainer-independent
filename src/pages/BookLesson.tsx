@@ -92,7 +92,7 @@ export default function BookLesson() {
   const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number }>>({});
+  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }>>({});
 
   useEffect(() => {
     if (!loading) {
@@ -257,7 +257,7 @@ export default function BookLesson() {
         }
       });
 
-      let cycleSettingsMap: Record<string, { min_group_size?: number }> = {};
+      let cycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }> = {};
       if (cyclusIds.length > 0) {
         const { data: cyclesData } = await supabase
           .from('cycles')
@@ -268,6 +268,9 @@ export default function BookLesson() {
             const settings = c.settings as Record<string, unknown> | null;
             cycleSettingsMap[c.id] = {
               min_group_size: (settings?.min_group_size as number) || undefined,
+              payment_timing: (settings?.payment_timing as string) || undefined,
+              invoice_delay_weeks: (settings?.invoice_delay_weeks as number) || undefined,
+              mark_as_paid: (settings?.mark_as_paid as boolean) || undefined,
             };
           }
         }
@@ -360,12 +363,17 @@ export default function BookLesson() {
         const requiresApproval = trainer.require_booking_approval;
         const useManualInvoicing = trainer.use_manual_invoicing;
         
+        // Determine payment timing from cycle settings
+        const cycleSettings = cycleSettingsMap[selectedCyclus.cyclus_id];
+        const paymentTiming = cycleSettings?.payment_timing || (cycleSettings?.mark_as_paid ? 'manual' : (useManualInvoicing ? 'manual' : 'upfront'));
+        
         const bookings = selectedCyclus.slots.map((slot) => ({
           player_id: profile.id,
           slot_id: slot.id,
           notes: notes || null,
-          status: requiresApproval ? 'pending_approval' : (useManualInvoicing ? 'confirmed' : 'pending'),
-          payment_status: 'pending',
+          status: requiresApproval ? 'pending_approval' : (paymentTiming !== 'upfront' ? 'confirmed' : 'pending'),
+          payment_status: paymentTiming === 'manual' ? 'pending' : 'pending',
+          paid_externally: paymentTiming === 'manual' ? true : undefined,
         }));
 
         const { data: insertedBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
@@ -389,8 +397,8 @@ export default function BookLesson() {
           console.error('Slack notification failed (non-fatal):', slackErr);
         }
 
-        // Auto-create invoice for manual invoicing cyclus bookings
-        if (useManualInvoicing && insertedBookings?.length) {
+        // Auto-create invoice for manual payment timing cyclus bookings
+        if (paymentTiming === 'manual' && insertedBookings?.length) {
           try {
             await supabase.functions.invoke('auto-create-invoice', {
               body: { bookingIds: insertedBookings.map(b => b.id) },
@@ -426,7 +434,8 @@ export default function BookLesson() {
             title: 'Request Sent!',
             description: `Your booking request for ${selectedCyclus.slots.length} sessions has been sent.`,
           });
-        } else if (useManualInvoicing) {
+        } else if (paymentTiming === 'manual' || paymentTiming === 'invoice_after_weeks') {
+          // Both manual and delayed invoice: confirm booking without immediate payment
           await supabase.functions.invoke('send-email', {
             body: {
               type: 'manual_booking_confirmation',
@@ -444,7 +453,7 @@ export default function BookLesson() {
           });
           setBooked(true);
         } else {
-          // Mollie payment flow for cyclus
+          // Mollie payment flow for cyclus (upfront)
           const paymentSetup = await hasValidPaymentSetup(
             trainerId!,
             trainer.id,

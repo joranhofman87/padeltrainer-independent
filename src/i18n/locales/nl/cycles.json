@@ -74,7 +74,18 @@
     "addCost": "Kosten toevoegen",
     "costDescription": "Omschrijving",
     "costPrice": "Prijs per sessie",
-    "sessions": "sessies"
+    "sessions": "sessies",
+    "paymentTiming": "Betaling",
+    "paymentTimingHelp": "Wanneer moet de betaling worden geïnd voor deze cyclus?",
+    "paymentUpfront": "Vooraf betalen",
+    "paymentUpfrontHelp": "Speler betaalt bij het boeken (online betaling of directe factuur)",
+    "paymentInvoiceAfter": "Factureren na",
+    "paymentInvoiceAfterHelp": "Een factuur wordt automatisch verstuurd na een instelbaar aantal weken",
+    "paymentManual": "Handmatig (geen facturering)",
+    "paymentManualHelp": "Je regelt de betaling zelf (contant, bankoverschrijving, etc.)",
+    "invoiceDelayWeeks": "weken na start",
+    "weeksLabel": "{{count}} week",
+    "weeksLabel_other": "{{count}} weken"
   },
   
   "actions": {
@@ -84,7 +95,14 @@
     "viewRequests": "Aanmeldingen Bekijken",
     "archive": "Archiveren",
     "shareLink": "Registratielink Delen",
-    "linkCopied": "Registratielink gekopieerd!"
+    "linkCopied": "Registratielink gekopieerd!",
+    "copyLink": "Registratielink kopiëren"
+  },
+  
+  "paymentBadge": {
+    "upfront": "Vooraf betalen",
+    "invoice_after_weeks": "Factuur na {{count}} wk",
+    "manual": "Handmatige betaling"
   },
   
   "stats": {
