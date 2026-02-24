@@ -612,7 +612,11 @@
     "manualApprovalDescriptionOnline": "Anfragen zuerst prüfen, dann zahlen Spieler nach Genehmigung.",
     "manualApprovalDescriptionInvoice": "Jede Anfrage vor der Bestätigung prüfen und genehmigen.",
     "approvalEnabled": "Buchungsgenehmigung ist jetzt erforderlich",
-    "approvalDisabled": "Buchungen werden jetzt automatisch akzeptiert"
+    "approvalDisabled": "Buchungen werden jetzt automatisch akzeptiert",
+    "welcomeMessage": "Willkommensnachricht",
+    "welcomeMessageDescription": "Diese Nachricht wird Spielern nach einer Buchung oder Wartelisteneintragung angezeigt. Ideal zum Teilen von WhatsApp-Gruppenlinks oder Vorbereitungstipps.",
+    "welcomeMessagePlaceholder": "z.B. Danke für deine Buchung! Tritt unserer WhatsApp-Community bei: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Willkommensnachricht gespeichert"
   },
   "noTrainersYet": "Noch keine Trainer in dieser Gegend verfügbar. Schau bald wieder vorbei!",
   "clearFilters": "Filter löschen",

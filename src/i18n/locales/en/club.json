@@ -264,7 +264,11 @@
   },
   "settings": {
     "title": "Club Settings",
-    "description": "Manage your club settings and team."
+    "description": "Manage your club settings and team.",
+    "welcomeMessage": "Welcome Message",
+    "welcomeMessageDescription": "This message is shown to players after they join your waiting list.",
+    "welcomeMessagePlaceholder": "e.g. Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Welcome message saved"
   },
   "calendar": {
     "description": "View all trainer schedules",

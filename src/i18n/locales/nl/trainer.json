@@ -615,7 +615,11 @@
     "manualApprovalDescriptionOnline": "Beoordeel verzoeken eerst, dan betalen spelers na goedkeuring.",
     "manualApprovalDescriptionInvoice": "Beoordeel en keur elk verzoek goed voor bevestiging.",
     "approvalEnabled": "Goedkeuring voor boekingen is nu vereist",
-    "approvalDisabled": "Boekingen worden nu automatisch geaccepteerd"
+    "approvalDisabled": "Boekingen worden nu automatisch geaccepteerd",
+    "welcomeMessage": "Welkomstbericht",
+    "welcomeMessageDescription": "Dit bericht wordt getoond aan spelers nadat ze een sessie boeken of zich op je wachtlijst zetten. Handig om WhatsApp-groeplinks of voorbereidingstips te delen.",
+    "welcomeMessagePlaceholder": "bijv. Bedankt voor je boeking! Doe mee met onze WhatsApp community: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Welkomstbericht opgeslagen"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. Kom binnenkort terug!",
   "clearFilters": "Filters wissen",

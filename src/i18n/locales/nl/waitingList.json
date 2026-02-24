@@ -22,6 +22,7 @@
     "submit": "Zet op wachtlijst",
     "submitting": "Bezig met toevoegen..."
   },
+  "messageFrom": "Bericht van {{name}}",
   "success": {
     "title": "Je staat op de lijst!",
     "message": "We nemen contact met je op zodra er plek is."

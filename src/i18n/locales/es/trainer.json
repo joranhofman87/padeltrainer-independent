@@ -612,7 +612,11 @@
     "manualApprovalDescriptionOnline": "Revisa las solicitudes primero, luego los jugadores pagan tras la aprobación.",
     "manualApprovalDescriptionInvoice": "Revisa y aprueba cada solicitud antes de confirmar.",
     "approvalEnabled": "Ahora se requiere aprobación para las reservas",
-    "approvalDisabled": "Las reservas se aceptan automáticamente"
+    "approvalDisabled": "Las reservas se aceptan automáticamente",
+    "welcomeMessage": "Mensaje de bienvenida",
+    "welcomeMessageDescription": "Este mensaje se muestra a los jugadores después de reservar una sesión o unirse a tu lista de espera. Ideal para compartir enlaces de grupos de WhatsApp o consejos de preparación.",
+    "welcomeMessagePlaceholder": "ej. ¡Gracias por reservar! Únete a nuestra comunidad de WhatsApp: https://chat.whatsapp.com/...",
+    "welcomeMessageSaved": "Mensaje de bienvenida guardado"
   },
   "noTrainersYet": "Aún no hay entrenadores disponibles en esta zona. ¡Vuelve pronto!",
   "clearFilters": "Borrar filtros",

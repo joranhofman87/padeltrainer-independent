@@ -22,6 +22,7 @@
     "submit": "Add to Waiting List",
     "submitting": "Adding..."
   },
+  "messageFrom": "Message from {{name}}",
   "success": {
     "title": "You're on the list!",
     "message": "We'll reach out when a spot becomes available."
