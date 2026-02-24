@@ -1,63 +1,46 @@
 
+# Continue: Custom Welcome Message Feature
 
-# Custom Welcome Message for Players
+## What's already done
+- Database migration: `welcome_message` column added to `trainer_profiles`, `academy_profiles`, and `club_profiles`
+- Translation keys added for trainer namespace (all 5 languages)
+- Translation keys added for academy namespace (EN, DE only)
+- Translation keys added for club namespace (EN only)
+- Translation keys added for waitingList namespace (EN, NL only -- `messageFrom`)
 
-## Overview
-When a player books a session, joins a waiting list, or registers for a cycle, they'll see a personalized message from the trainer, academy, or club. This lets owners share things like WhatsApp group links, preparation tips, or community invitations.
+## What still needs to be done
 
-## How it works
+### 1. Missing translations
+- **Academy**: add `welcomeMessage` keys to NL, ES, FR
+- **Club**: add `welcomeMessage` keys to NL, DE, ES, FR
+- **WaitingList**: add `messageFrom` key to DE, ES, FR
 
-**For trainers/academies/clubs (setting side):**
-- A new "Welcome Message" card appears in their settings page
-- They can write a short message (plain text with links) that players see after completing an action
-- Example: "Thanks for signing up! Join our WhatsApp community: https://chat.whatsapp.com/..."
+### 2. Settings pages (input side)
+Add a "Welcome Message" card with textarea + save button to:
+- **`src/pages/TrainerBookingSettings.tsx`** -- new Card below the approval card with a textarea, fetching/saving `welcome_message` from `trainer_profiles`
+- **`src/pages/academy/AcademySettings.tsx`** -- new Card after the General Terms card, fetching/saving `welcome_message` from `academy_profiles`
+- **`src/pages/club/ClubSettings.tsx`** -- new Card before the Language card, fetching/saving `welcome_message` from `club_profiles`
 
-**For players (display side):**
-- After a successful booking, waiting list signup, or cycle registration, the welcome message appears as a highlighted card on the confirmation screen
-- If no message is configured, nothing extra shows -- the existing flow stays the same
+### 3. Confirmation screens (display side)
+Show the welcome message (when present) on success screens:
 
-## Technical Details
+- **`src/pages/BookingSuccess.tsx`** -- after payment is verified and trainer details are fetched, also fetch `welcome_message` from `trainer_profiles`. Display it in a styled card below the "What's next?" section with a "Message from [trainer name]" header. URLs in the message will be auto-linked.
 
-### 1. Database Migration
-Add a `welcome_message` text column to three tables:
-- `trainer_profiles` -- shown after booking a lesson or joining a trainer's waiting list
-- `academy_profiles` -- shown after cycle registration or joining an academy's waiting list
-- `club_profiles` -- shown after joining a club's waiting list
+- **`src/components/waitingList/WaitingListForm.tsx`** -- accept an optional `welcomeMessage` and `ownerName` prop. In the success state, if `welcomeMessage` is present, show it in a card below the success checkmark with a "Message from [name]" header.
 
-All nullable, no default value needed.
+- **`src/components/waitingList/WaitingListCard.tsx`** -- fetch `welcome_message` from the owner's profile table based on `ownerType`/`ownerId` and pass it down to `WaitingListForm`.
 
-### 2. Settings Pages (input side)
-Add a "Welcome Message" card with a textarea to:
-- **`src/pages/TrainerBookingSettings.tsx`** -- natural fit alongside booking approval settings
-- **`src/pages/academy/AcademySettings.tsx`** -- alongside general terms
-- **`src/pages/club/ClubSettings.tsx`** -- alongside existing club settings
+- **`src/pages/CycleRegistration.tsx`** -- when fetching owner info, also fetch `welcome_message`. On the success screen, show it in a styled card below the "What's next?" steps.
 
-Each card will have a simple textarea and save button, following the existing patterns in those pages.
+### 4. URL auto-linking utility
+Create a small helper that converts plain-text URLs in the welcome message into clickable `<a>` tags so WhatsApp links and similar are clickable without requiring the trainer to know HTML.
 
-### 3. Confirmation Screens (display side)
-Show the welcome message (if present) on these success screens:
-- **`src/pages/BookingSuccess.tsx`** -- fetch from the trainer's profile after payment verification
-- **`src/components/waitingList/WaitingListForm.tsx`** -- show in the success state (pass message as prop from parent or fetch after submit)
-- **`src/pages/CycleRegistration.tsx`** -- show in the success state, fetched alongside cycle owner data
-
-The message will render in a styled card with a "Message from [name]" header, auto-linking any URLs.
-
-### 4. Translations
-Add translation keys for:
-- `welcomeMessage` (label)
-- `welcomeMessageDescription` (helper text)
-- `welcomeMessagePlaceholder` (textarea placeholder)
-- `messageFrom` (display header)
-
-Across all 5 languages (en, nl, de, es, fr).
-
-### Files to modify
-- `src/pages/TrainerBookingSettings.tsx` -- add welcome message textarea
-- `src/pages/academy/AcademySettings.tsx` -- add welcome message card
-- `src/pages/club/ClubSettings.tsx` -- add welcome message card
-- `src/pages/BookingSuccess.tsx` -- display message after successful booking
-- `src/components/waitingList/WaitingListForm.tsx` -- display message on success + accept message prop
-- `src/components/waitingList/WaitingListCard.tsx` -- pass welcome message to form
-- `src/pages/CycleRegistration.tsx` -- display message on registration success
-- Translation files for all 5 languages (trainer, academy, club, waitingList namespaces)
-
+## Files to modify
+- 7 translation files (NL/ES/FR academy, NL/DE/ES/FR club, DE/ES/FR waitingList)
+- `src/pages/TrainerBookingSettings.tsx`
+- `src/pages/academy/AcademySettings.tsx`
+- `src/pages/club/ClubSettings.tsx`
+- `src/pages/BookingSuccess.tsx`
+- `src/components/waitingList/WaitingListForm.tsx`
+- `src/components/waitingList/WaitingListCard.tsx`
+- `src/pages/CycleRegistration.tsx`
