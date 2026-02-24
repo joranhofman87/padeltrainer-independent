@@ -1,45 +1,54 @@
 
 
-# Fix Enrichment Loop: Track Failed Locations
+# In-App Notifications: Table, Realtime, and Edge Functions
 
-## Problem
-The enrichment cron job keeps retrying the same failing locations every 2 minutes because there's no way to mark a location as "failed". This wastes Firecrawl credits and blocks the remaining 1,452 locations.
-
-## Solution
-Add failure tracking columns to `locations`, update the edge function to mark failures and skip them, and give admins a "Retry failed" button.
+## Overview
+Create the notifications infrastructure: a `notifications` table with RLS and realtime, plus two edge functions for sending notifications programmatically.
 
 ## Changes
 
 ### 1. Database Migration
-Add two columns to the `locations` table:
-- `enrichment_failed_at` (timestamptz, nullable) -- timestamp of last failure
-- `enrichment_error_msg` (text, nullable) -- error reason for admin visibility
+Create the `notifications` table with the schema you specified:
+- `id` (uuid, primary key)
+- `user_id` (uuid, references auth.users, NOT NULL)
+- `title` (text, NOT NULL)
+- `body` (text, NOT NULL)
+- `data` (jsonb, nullable)
+- `read` (boolean, default false)
+- `created_at` (timestamptz, default now())
 
-### 2. Edge Function (`supabase/functions/enrich-clubs/index.ts`)
+RLS policies:
+- Users can SELECT their own notifications
+- Users can UPDATE their own notifications (mark as read)
+- Users can DELETE their own notifications
 
-**Query filter**: When in `fillMissingOnly` mode, also exclude locations where `enrichment_failed_at` is not null. This ensures failed locations are skipped permanently until manually retried.
+Enable realtime via `ALTER PUBLICATION supabase_realtime ADD TABLE notifications`.
 
-**On error**: After `processLocation` returns with `status: "error"`, update the location row:
-```
-enrichment_failed_at = now()
-enrichment_error_msg = result.error
-```
+### 2. Edge Function: `send-push`
+Creates a single notification for one user. Accepts:
+- `user_id`, `title`, `body`, `data` (optional)
 
-**On success**: Clear both fields (set to null) so that if a previously-failed location is retried and succeeds, it's cleaned up.
+Protected by JWT validation (service-role or authenticated admin/system calls).
 
-### 3. Admin UI (`src/components/admin/EnrichmentControls.tsx`)
+### 3. Edge Function: `send-push-bulk`
+Creates notifications for multiple users at once. Accepts an array of notification objects. Configured with `verify_jwt = false` in `config.toml` so it can be called from other backend functions, cron jobs, or webhooks without a user JWT. Will validate using the service role key internally.
 
-- Add a query to count locations where `enrichment_failed_at IS NOT NULL` -- show as "X failed" next to the existing "X missing" count
-- Add a "Retry failed" button that sets `enrichment_failed_at = null` and `enrichment_error_msg = null` for all failed locations, putting them back in the queue
-- The "missing" count query should also exclude failed locations (so it shows truly pending vs failed separately)
+### 4. Config update
+Add `verify_jwt = false` for `send-push-bulk` to `supabase/config.toml`.
 
-### 4. Admin Locations Table (`src/pages/admin/AdminLocations.tsx`)
+## Technical Details
 
-- Optionally show a small warning icon or red dot on locations that have `enrichment_failed_at` set, so admins can see which specific locations failed and what the error was (via tooltip on hover)
+### `send-push/index.ts`
+- Validates the JWT using `getClaims()`
+- Inserts a single row into `notifications` using a service-role client
+- Returns the created notification
 
-## Expected Outcome
-- Failed locations get marked and skipped on subsequent runs
-- The job moves on to process the remaining 1,400+ locations
-- Admins see a clear split: "X pending | Y failed"
-- Admins can manually clear failures with one click to retry them
+### `send-push-bulk/index.ts`
+- Validates using `SUPABASE_SERVICE_ROLE_KEY` header check (since JWT is disabled)
+- Accepts `{ notifications: [{ user_id, title, body, data? }] }`
+- Bulk-inserts into `notifications`
+- Returns count of inserted notifications
+
+### Pre-existing build errors
+The build errors shown (in `forward-invoice`, `mollie-subscription-webhook`, `reconcile-subscriptions`, `send-email`) are pre-existing and unrelated to this change. They will not be addressed in this task.
 
