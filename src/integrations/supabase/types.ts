@@ -1587,6 +1587,7 @@ export type Database = {
       }
       guest_players: {
         Row: {
+          academy_profile_id: string | null
           created_at: string
           email: string | null
           full_name: string
@@ -1598,10 +1599,11 @@ export type Database = {
           rating_system: string
           skill_rating: number | null
           source: string | null
-          trainer_id: string
+          trainer_id: string | null
           updated_at: string
         }
         Insert: {
+          academy_profile_id?: string | null
           created_at?: string
           email?: string | null
           full_name: string
@@ -1613,10 +1615,11 @@ export type Database = {
           rating_system?: string
           skill_rating?: number | null
           source?: string | null
-          trainer_id: string
+          trainer_id?: string | null
           updated_at?: string
         }
         Update: {
+          academy_profile_id?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
@@ -1628,10 +1631,31 @@ export type Database = {
           rating_system?: string
           skill_rating?: number | null
           source?: string | null
-          trainer_id?: string
+          trainer_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "guest_players_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "guest_players_linked_profile_id_fkey"
             columns: ["linked_profile_id"]
