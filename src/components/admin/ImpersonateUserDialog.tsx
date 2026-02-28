@@ -34,6 +34,8 @@ export function ImpersonateUserDialog({
 
   const handleImpersonate = async () => {
     setIsLoading(true);
+    // Open tab synchronously to avoid popup blocker
+    const newTab = window.open('about:blank', '_blank');
     try {
       const { data, error } = await supabase.functions.invoke("impersonate-user", {
         body: { target_user_id: targetUserId },
@@ -42,16 +44,21 @@ export function ImpersonateUserDialog({
       if (error) throw error;
 
       if (data?.url) {
+        if (newTab) {
+          newTab.location.href = data.url;
+        } else {
+          window.location.href = data.url;
+        }
         toast({
           title: "Magic link generated",
           description: "Opening login link in a new tab...",
         });
-        window.open(data.url, "_blank");
         onOpenChange(false);
       } else {
         throw new Error("No magic link URL returned");
       }
     } catch (error) {
+      newTab?.close();
       logger.error('Impersonation error', error as Error, { component: 'ImpersonateUserDialog', targetUserId });
       toast({
         title: "Impersonation failed",
