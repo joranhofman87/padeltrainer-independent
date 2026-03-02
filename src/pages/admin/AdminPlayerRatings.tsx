@@ -38,6 +38,8 @@ export default function AdminPlayerRatings() {
   const [search, setSearch] = useState("");
   const [editingCell, setEditingCell] = useState<{ profileId: string; month: string } | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editingKnltb, setEditingKnltb] = useState<string | null>(null);
+  const [knltbValue, setKnltbValue] = useState("");
 
   const months = [...getMonthColumns()].reverse();
 
@@ -121,6 +123,23 @@ export default function AdminPlayerRatings() {
     },
   });
 
+  const saveKnltbMutation = useMutation({
+    mutationFn: async ({ profileId, memberId }: { profileId: string; memberId: string | null }) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ rating_member_id: memberId })
+        .eq("id", profileId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-rating-players"] });
+      toast.success("KNLTB number updated");
+    },
+    onError: (err: Error) => {
+      toast.error("Failed to update KNLTB number: " + err.message);
+    },
+  });
+
   const handleCellClick = (profileId: string, month: Date) => {
     const mk = monthKey(month);
     const existing = ratingMap.get(profileId)?.get(mk);
@@ -149,6 +168,23 @@ export default function AdminPlayerRatings() {
     saveMutation.mutate({ profileId, month: monthDate, rating });
     setEditingCell(null);
   }, [editingCell, editValue, saveMutation]);
+
+  const handleKnltbClick = (profileId: string, currentValue: string | null) => {
+    setEditingKnltb(profileId);
+    setKnltbValue(currentValue || "");
+  };
+
+  const handleKnltbSave = useCallback(() => {
+    if (!editingKnltb) return;
+    const trimmed = knltbValue.trim();
+    saveKnltbMutation.mutate({ profileId: editingKnltb, memberId: trimmed || null });
+    setEditingKnltb(null);
+  }, [editingKnltb, knltbValue, saveKnltbMutation]);
+
+  const handleKnltbKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleKnltbSave();
+    if (e.key === "Escape") setEditingKnltb(null);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSave();
@@ -210,8 +246,25 @@ export default function AdminPlayerRatings() {
                     <TableCell className="sticky left-0 z-10 bg-background font-medium">
                       {player.full_name || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {player.rating_member_id || "—"}
+                    <TableCell className="text-muted-foreground p-1">
+                      {editingKnltb === player.id ? (
+                        <Input
+                          value={knltbValue}
+                          onChange={(e) => setKnltbValue(e.target.value)}
+                          onBlur={handleKnltbSave}
+                          onKeyDown={handleKnltbKeyDown}
+                          autoFocus
+                          className="h-8 w-28 text-center"
+                          placeholder="12345678"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleKnltbClick(player.id, player.rating_member_id)}
+                          className="w-full h-8 flex items-center justify-center rounded hover:bg-muted/50 transition-colors cursor-pointer text-sm"
+                        >
+                          {player.rating_member_id || "—"}
+                        </button>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono">
                       {player.skill_rating != null ? player.skill_rating.toFixed(1) : "—"}
