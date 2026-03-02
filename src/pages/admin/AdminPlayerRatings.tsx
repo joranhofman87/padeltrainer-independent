@@ -21,7 +21,7 @@ interface RatingEntry {
   scraped_at: string;
 }
 
-const START_DATE = new Date(2026, 0, 1);
+const START_DATE = new Date(2025, 0, 1);
 
 function getMonthColumns(): Date[] {
   const now = new Date();
