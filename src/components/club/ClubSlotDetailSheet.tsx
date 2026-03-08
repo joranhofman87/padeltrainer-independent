@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { formatSlotRating as formatSlotRatingDisplay } from "@/components/trainer/SlotRatingPicker";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
