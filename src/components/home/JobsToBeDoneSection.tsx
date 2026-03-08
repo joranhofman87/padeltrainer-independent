@@ -12,16 +12,16 @@ export function JobsToBeDoneSection() {
   const getPath = useLocalizedPathFn();
 
   const personas = [
-    { key: 'academy', icon: GraduationCap, bullets: 4 },
-    { key: 'trainer', icon: User, bullets: 4 },
-    { key: 'club', icon: Building2, bullets: 4 },
+    { key: 'academy', icon: GraduationCap, bullets: 4, featured: false },
+    { key: 'trainer', icon: User, bullets: 4, featured: true },
+    { key: 'club', icon: Building2, bullets: 4, featured: false },
   ];
 
   return (
     <section className="py-20 md:py-28 bg-muted/30">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.div
-          className="text-center mb-12 max-w-3xl mx-auto"
+          className="mb-12 max-w-2xl"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -43,10 +43,10 @@ export function JobsToBeDoneSection() {
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
             >
-              <Card className="h-full flex flex-col hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
+              <Card className={`h-full flex flex-col transition-shadow ${p.featured ? 'border-primary/40 shadow-lg' : 'hover:shadow-md'}`}>
                 <CardContent className="p-6 flex flex-col flex-1">
-                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                    <p.icon className="h-6 w-6 text-primary" />
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center mb-4 ${p.featured ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                    <p.icon className="h-5 w-5" />
                   </div>
                   <h3 className="text-lg font-semibold mb-1">{t(`homev2.jtbd.${p.key}_title`)}</h3>
                   <p className="text-sm text-muted-foreground mb-4">{t(`homev2.jtbd.${p.key}_subtitle`)}</p>
@@ -60,6 +60,7 @@ export function JobsToBeDoneSection() {
                   </ul>
                   <Button
                     className="w-full mt-auto"
+                    variant={p.featured ? 'default' : 'outline'}
                     onClick={() => navigate(getPath('/trainer/signup'))}
                   >
                     {t('homev2.jtbd.cta')}

@@ -1,4 +1,3 @@
-import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { CalendarCheck, ClipboardMinus, ShieldCheck, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -14,10 +13,10 @@ export function SolutionOverview() {
   ];
 
   return (
-    <section id="features" className="py-20 md:py-28">
+    <section id="features" className="py-20 md:py-28 bg-muted/30">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <motion.div
-          className="text-center mb-14"
+          className="mb-14 max-w-2xl"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -30,24 +29,23 @@ export function SolutionOverview() {
           </p>
         </motion.div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid sm:grid-cols-2 gap-x-8 gap-y-10">
           {values.map((v, i) => (
             <motion.div
               key={v.key}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
+              transition={{ delay: i * 0.08 }}
+              className="flex items-start gap-4"
             >
-              <Card className="h-full text-center hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
-                <CardContent className="p-6">
-                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <v.icon className="h-6 w-6 text-primary" />
-                  </div>
-                  <h3 className="font-semibold mb-2">{t(`homev2.solution.value_${v.key}_title`)}</h3>
-                  <p className="text-sm text-muted-foreground">{t(`homev2.solution.value_${v.key}_desc`)}</p>
-                </CardContent>
-              </Card>
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <v.icon className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">{t(`homev2.solution.value_${v.key}_title`)}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{t(`homev2.solution.value_${v.key}_desc`)}</p>
+              </div>
             </motion.div>
           ))}
         </div>
