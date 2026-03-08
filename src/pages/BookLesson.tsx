@@ -747,6 +747,7 @@ export default function BookLesson() {
     .toUpperCase() || 'T';
 
   return (
+    <FeatureErrorBoundary featureName="BookLesson" onRetry={() => window.location.reload()}>
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -1153,5 +1154,6 @@ export default function BookLesson() {
         </div>
       </main>
     </div>
+    </FeatureErrorBoundary>
   );
 }
