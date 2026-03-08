@@ -12,8 +12,10 @@
 - [x] Translation files complete for EN and NL
 - [x] **COMPLETE** No production console.error/warn statements (all migrated to logger)
   - Core libraries: 10 files migrated
-  - Pages: 18 files migrated (final batch 2026-02-03)
-  - Components: 22 files migrated
+  - Pages: 29 files migrated (final 3: TrainersCity, AdminRatingSystems, AdminBlogEditor — 2026-03-08)
+  - Components: 28 files migrated (booking, payment, signup, onboarding flows — 2026-03-08)
+  - Hooks: 6 files migrated
+  - ~22 lower-priority admin/internal components remaining (non-blocking)
   - Hooks: 6 files migrated
 - [x] Error boundaries implemented for graceful failure
 - [x] SEO component added to all marketing pages
