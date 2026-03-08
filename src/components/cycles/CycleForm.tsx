@@ -1171,6 +1171,7 @@ export default function CycleForm({
             </div>
             )}
 
+            {!isEvent && (
             <FormField
               control={form.control}
               name="lesson_types"
