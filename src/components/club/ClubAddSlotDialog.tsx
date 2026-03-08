@@ -280,6 +280,9 @@ interface BulkSlotConfig {
   durationMinutes: number;
   recurrenceWeeks: number;
   cyclusName: string;
+  ratingSystem: string | null;
+  minRating: number | null;
+  maxRating: number | null;
 }
 
 export function ClubBulkCreateSheet({
