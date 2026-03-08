@@ -789,6 +789,34 @@
     "nearbyCitiesSubtitle": "Finde Padel-Trainer in anderen Städten",
     "trainersCount": "{{count}} Trainer",
     "home": "Startseite",
-    "trainers": "Trainer"
+    "trainers": "Trainer",
+    "cities": "Städte",
+    "clubs": "Clubs",
+    "exploreOtherRegions": "Weitere Regionen erkunden"
+  },
+  "provincePage": {
+    "title": "Padel-Trainer in {{province}} | Finden & Buchen",
+    "description": "Finde {{count}} Padel-Trainer in {{cities}} Städten in {{province}}. Vergleiche Preise, lies Bewertungen und buche Stunden.",
+    "descriptionEmpty": "Erkunde Padel-Trainingsmöglichkeiten in {{province}}.",
+    "heading": "Padel-Trainer in {{province}}",
+    "subtitle": "Entdecke {{count}} Padel-Trainer in {{cities}} Städten in {{province}}. Finde den perfekten Trainer in deiner Nähe.",
+    "subtitleEmpty": "Erkunde Padel-Trainingsmöglichkeiten in {{province}}."
+  },
+  "seo": {
+    "home": {
+      "title": "Padel Trainer — Terminplanung, Buchungen & Zahlungen für Padel-Trainer",
+      "description": "Verwalte dein Padel-Coaching von einem Ort aus. Online-Buchung, sichere Zahlungen, Kalendersynchronisierung und weniger Ausfälle. Kostenlose Testphase, dann ab €9/Monat."
+    },
+    "location": {
+      "title": "{{name}} - Padel-Training in {{city}}",
+      "description": "Buche Padel-Stunden bei {{name}} in {{city}}. {{count}} zertifizierte Trainer verfügbar."
+    },
+    "academy": {
+      "title": "{{name}} - Padel-Akademie{{city}}",
+      "description": "{{name}} - Professionelle Padel-Akademie mit {{trainers}} zertifizierten Trainer{{trainerPlural}} an {{locations}} Standort{{locationPlural}}."
+    },
+    "trainer": {
+      "description": "Buche Padel-Stunden bei {{name}} in {{location}}. {{experience}}{{rate}}"
+    }
   }
 }

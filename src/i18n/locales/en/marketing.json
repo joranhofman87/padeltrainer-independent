@@ -789,6 +789,34 @@
     "nearbyCitiesSubtitle": "Find padel trainers in other cities",
     "trainersCount": "{{count}} trainers",
     "home": "Home",
-    "trainers": "Trainers"
+    "trainers": "Trainers",
+    "cities": "Cities",
+    "clubs": "Clubs",
+    "exploreOtherRegions": "Explore other regions"
+  },
+  "provincePage": {
+    "title": "Padel Trainers in {{province}} | Find & Book Lessons",
+    "description": "Find {{count}} padel trainers across {{cities}} cities in {{province}}. Compare rates, read reviews, and book lessons.",
+    "descriptionEmpty": "Explore padel training options across {{province}}.",
+    "heading": "Padel Trainers in {{province}}",
+    "subtitle": "Discover {{count}} padel trainers across {{cities}} cities in {{province}}. Find the perfect trainer near you.",
+    "subtitleEmpty": "Explore padel training options across {{province}}."
+  },
+  "seo": {
+    "home": {
+      "title": "Padel Trainer — Scheduling, Bookings & Payments for Padel Trainers",
+      "description": "Run your padel coaching business from one place. Online booking, secure payments, calendar sync, and fewer no-shows. Free trial, then from €9/month."
+    },
+    "location": {
+      "title": "{{name}} - Padel Training in {{city}}",
+      "description": "Book padel lessons at {{name}} in {{city}}. {{count}} certified trainers available."
+    },
+    "academy": {
+      "title": "{{name}} - Padel Academy{{city}}",
+      "description": "{{name}} - Professional padel training academy with {{trainers}} certified trainer{{trainerPlural}} at {{locations}} location{{locationPlural}}."
+    },
+    "trainer": {
+      "description": "Book padel lessons with {{name}} in {{location}}. {{experience}}{{rate}}"
+    }
   }
 }

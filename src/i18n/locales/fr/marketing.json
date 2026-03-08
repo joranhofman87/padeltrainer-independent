@@ -789,6 +789,34 @@
     "nearbyCitiesSubtitle": "Trouvez des entraîneurs de padel dans d'autres villes",
     "trainersCount": "{{count}} entraîneurs",
     "home": "Accueil",
-    "trainers": "Entraîneurs"
+    "trainers": "Entraîneurs",
+    "cities": "Villes",
+    "clubs": "Clubs",
+    "exploreOtherRegions": "Explorer d'autres régions"
+  },
+  "provincePage": {
+    "title": "Entraîneurs de Padel dans {{province}} | Trouvez & Réservez",
+    "description": "Trouvez {{count}} entraîneurs de padel dans {{cities}} villes de {{province}}. Comparez les tarifs, lisez les avis et réservez des cours.",
+    "descriptionEmpty": "Explorez les options d'entraînement de padel dans {{province}}.",
+    "heading": "Entraîneurs de Padel dans {{province}}",
+    "subtitle": "Découvrez {{count}} entraîneurs de padel dans {{cities}} villes de {{province}}. Trouvez l'entraîneur parfait près de chez vous.",
+    "subtitleEmpty": "Explorez les options d'entraînement de padel dans {{province}}."
+  },
+  "seo": {
+    "home": {
+      "title": "Padel Trainer — Planification, Réservations et Paiements pour Entraîneurs de Padel",
+      "description": "Gérez votre coaching de padel depuis un seul endroit. Réservation en ligne, paiements sécurisés, synchronisation du calendrier et moins d'absences. Essai gratuit, puis à partir de €9/mois."
+    },
+    "location": {
+      "title": "{{name}} - Entraînement de Padel à {{city}}",
+      "description": "Réservez des cours de padel à {{name}} à {{city}}. {{count}} entraîneurs certifiés disponibles."
+    },
+    "academy": {
+      "title": "{{name}} - Académie de Padel{{city}}",
+      "description": "{{name}} - Académie professionnelle de padel avec {{trainers}} entraîneur{{trainerPlural}} certifié{{trainerPlural}} dans {{locations}} lieu{{locationPlural}}."
+    },
+    "trainer": {
+      "description": "Réservez des cours de padel avec {{name}} à {{location}}. {{experience}}{{rate}}"
+    }
   }
 }

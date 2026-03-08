@@ -396,9 +396,9 @@ export default function TrainerProfile() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
-      { "@type": "ListItem", "position": 2, "name": "Trainers", "item": "https://padeltrainer.ai/en/trainers" },
-      ...(trainerCity ? [{ "@type": "ListItem", "position": 3, "name": trainerCity, "item": `https://padeltrainer.ai/en/trainers/${trainerCitySlug}` }] : []),
+      { "@type": "ListItem", "position": 1, "name": t('marketing:cityPage.home'), "item": `https://padeltrainer.ai/${currentLang}` },
+      { "@type": "ListItem", "position": 2, "name": t('marketing:cityPage.trainers'), "item": `https://padeltrainer.ai/${currentLang}/trainers` },
+      ...(trainerCity ? [{ "@type": "ListItem", "position": 3, "name": trainerCity, "item": `https://padeltrainer.ai/${currentLang}/trainers/${trainerCitySlug}` }] : []),
       { "@type": "ListItem", "position": trainerCity ? 4 : 3, "name": profile.full_name || 'Trainer' }
     ]
   };
@@ -407,7 +407,12 @@ export default function TrainerProfile() {
     <>
       <SEO
         title={profile.full_name || 'Padel Trainer'}
-        description={profile.bio || `Book padel lessons with ${profile.full_name || 'this trainer'} in ${profile.location || 'the Netherlands'}. ${trainer.experience_years ? `${trainer.experience_years} years of experience.` : ''} ${trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''}`}
+        description={profile.bio || t('marketing:seo.trainer.description', {
+          name: profile.full_name || 'this trainer',
+          location: profile.location || 'the Netherlands',
+          experience: trainer.experience_years ? `${trainer.experience_years} years of experience. ` : '',
+          rate: trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''
+        })}
         url={`/trainer/${trainerSlug}`}
         image={profile.avatar_url || undefined}
         structuredData={[structuredData, breadcrumbData]}

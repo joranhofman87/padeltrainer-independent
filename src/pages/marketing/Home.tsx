@@ -52,8 +52,8 @@ export default function Home() {
   return (
     <MarketingLayout>
       <SEO
-        title="Padel Trainer — Scheduling, Bookings & Payments for Padel Trainers"
-        description="Run your padel coaching business from one place. Online booking, secure payments, calendar sync, and fewer no-shows. Free trial, then from €9/month."
+        title={t('seo.home.title')}
+        description={t('seo.home.description')}
         url="/"
         structuredData={[websiteStructuredData, organizationStructuredData]}
       />
