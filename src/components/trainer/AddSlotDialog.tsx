@@ -43,6 +43,8 @@ import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
+import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
+import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
@@ -103,6 +105,7 @@ export function AddSlotDialog({
 }: AddSlotDialogProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
+  const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
 
   const [slotDate, setSlotDate] = useState<Date>(defaultDate || new Date());
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
@@ -292,6 +295,7 @@ export function AddSlotDialog({
               setSlotMinRating(vals.minRating);
               setSlotMaxRating(vals.maxRating);
             }}
+            fixedRatingSystem={trainerRatingSystem}
           />
 
           {/* Working As (Academy) */}
@@ -1209,6 +1213,7 @@ export function BulkCreateSheet({
                     maxRating={slot.maxRating}
                     onChange={(vals) => updateBulkSlot(index, vals)}
                     compact
+                    fixedRatingSystem={trainerRatingSystem}
                   />
 
                   {/* Cyclus Name */}
