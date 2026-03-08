@@ -1202,8 +1202,9 @@ export default function CycleForm({
                 </FormItem>
               )}
             />
+            )}
 
-            {ownerType === 'academy' && isRegistration && (
+            {!isEvent && (
               <FormField
                 control={form.control}
                 name="show_preferred_trainer"
