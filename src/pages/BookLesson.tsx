@@ -959,6 +959,18 @@ export default function BookLesson() {
                                 </span>
                               </div>
                             )}
+                            {slot.rating_system && (
+                              <Badge variant="outline" className="text-xs gap-1">
+                                {slot.rating_system.toUpperCase()}
+                                {slot.min_rating != null && slot.max_rating != null
+                                  ? ` ${slot.min_rating}–${slot.max_rating}`
+                                  : slot.min_rating != null
+                                  ? ` ≥${slot.min_rating}`
+                                  : slot.max_rating != null
+                                  ? ` ≤${slot.max_rating}`
+                                  : ''}
+                              </Badge>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
