@@ -5,14 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { trackEvent } from '@/lib/tracking';
 import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
-import { ChaosPainSection } from '@/components/home/ChaosPainSection';
-import { ImpactSection } from '@/components/home/ImpactSection';
 import { SolutionOverview } from '@/components/home/SolutionOverview';
-import { WhyPadelTrainerSection } from '@/components/home/WhyPadelTrainerSection';
 import { HowItWorksSection } from '@/components/home/HowItWorksSection';
 import { PadelRealitiesSection } from '@/components/home/PadelRealitiesSection';
 import { JobsToBeDoneSection } from '@/components/home/JobsToBeDoneSection';
-import { CriticalEventsSection } from '@/components/home/CriticalEventsSection';
 import { PricingPreview } from '@/components/home/PricingPreview';
 import { FAQSection } from '@/components/home/FAQSection';
 import { FinalCTASection } from '@/components/home/FinalCTASection';
@@ -62,14 +58,10 @@ export default function Home() {
       />
       <HeroSection />
       <SocialProofStrip />
-      <ChaosPainSection />
-      <ImpactSection />
-      <SolutionOverview />
-      <WhyPadelTrainerSection />
-      <HowItWorksSection />
       <PadelRealitiesSection />
+      <SolutionOverview />
+      <HowItWorksSection />
       <JobsToBeDoneSection />
-      <CriticalEventsSection />
       <PricingPreview />
       <FAQSection />
       <FinalCTASection />
