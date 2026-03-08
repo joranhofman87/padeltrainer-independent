@@ -187,6 +187,37 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
           <p className="text-xs text-muted-foreground">1–2 sentences is plenty</p>
         </div>
 
+        {/* Rating System */}
+        <div className="space-y-2">
+          <Label>Rating system *</Label>
+          <p className="text-xs text-muted-foreground">Which rating system do your players use? This will be shown throughout the app.</p>
+          <Select value={ratingSystem} onValueChange={setRatingSystem}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select rating system" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(
+                ratingSystems.reduce((acc, system) => {
+                  if (!acc[system.country]) acc[system.country] = [];
+                  acc[system.country].push(system);
+                  return acc;
+                }, {} as Record<string, RatingSystemConfig[]>)
+              ).map(([country, systems]) => (
+                <div key={country}>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    {COUNTRY_NAMES[country] || country}
+                  </div>
+                  {systems.map((system) => (
+                    <SelectItem key={system.code} value={system.code}>
+                      {system.name}
+                    </SelectItem>
+                  ))}
+                </div>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Training Locations */}
         <div className="space-y-2">
           <Label>Training locations <span className="text-muted-foreground text-xs">(optional)</span></Label>
