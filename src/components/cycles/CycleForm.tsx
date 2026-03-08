@@ -264,44 +264,58 @@ export default function CycleForm({
     setIsSubmitting(true);
     try {
       const settings: CycleSettings = {
-        lesson_types: values.lesson_types as CycleSettings['lesson_types'],
+        lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
         show_preferred_trainer: values.show_preferred_trainer,
-        max_group_size: values.max_group_size,
-        min_group_size: values.min_group_size,
+        max_group_size: isEvent ? undefined : values.max_group_size,
+        min_group_size: isEvent ? undefined : values.min_group_size,
         assigned_trainer_id: values.assigned_trainer_id || undefined,
         min_skill_rating: values.min_skill_rating ? Number(values.min_skill_rating) : undefined,
         max_skill_rating: values.max_skill_rating ? Number(values.max_skill_rating) : undefined,
         rating_system: values.rating_system || undefined,
         applicable_trainer_ids: values.applicable_trainer_ids,
-        start_time: values.start_time,
-        end_time: values.end_time,
-        allow_single_booking: allowSingleBooking,
-        mark_as_paid: paymentTiming === 'manual',
-        payment_timing: paymentTiming,
+        start_time: isEvent ? undefined : values.start_time,
+        end_time: isEvent ? undefined : values.end_time,
+        allow_single_booking: isEvent ? undefined : allowSingleBooking,
+        mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
+        payment_timing: isEvent ? undefined : paymentTiming,
         invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
-        extra_costs: extraCosts.filter(ec => ec.description && ec.price > 0),
+        extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
+        // Event-specific
+        payment_methods: isEvent ? eventPaymentMethod : undefined,
+        max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
       let cycleName = values.name;
-      if (!isRegistration) {
+      if (!isRegistration && !isEvent) {
         const dayName = format(values.start_date, 'EEEE');
         cycleName = `${dayName} ${values.start_time}–${values.end_time}`;
+      }
+
+      // Calculate end date
+      let endDate: string;
+      if (isEvent && values.end_date) {
+        endDate = format(values.end_date, 'yyyy-MM-dd');
+      } else if (isEvent) {
+        endDate = format(values.start_date, 'yyyy-MM-dd');
+      } else {
+        endDate = format(addWeeks(values.start_date, values.number_of_weeks || 10), 'yyyy-MM-dd');
       }
 
       const input: CycleInput = {
         owner_type: ownerType,
         owner_id: ownerId,
         name: cycleName,
+        description: isEvent ? values.description : undefined,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
-        end_date: format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd'),
+        end_date: endDate,
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
         type: formType,
         location_id: values.location_id || null,
-        price_per_session: isRegistration ? null : (values.price_per_session ? Number(values.price_per_session) : null),
-        total_price: isRegistration ? null : (values.total_price ? Number(values.total_price) : null),
+        price_per_session: (isRegistration || isEvent) ? null : (values.price_per_session ? Number(values.price_per_session) : null),
+        total_price: isEvent ? (values.total_price ? Number(values.total_price) : null) : (isRegistration ? null : (values.total_price ? Number(values.total_price) : null)),
         currency: values.currency,
       };
 
