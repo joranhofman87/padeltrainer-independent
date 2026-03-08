@@ -472,7 +472,7 @@ export default function TrainerProfile() {
             )
           }
         >
-          {/* Action Buttons */}
+          {/* Primary Actions */}
           <Button size="lg" className="w-full" onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}>
             <Calendar className="h-4 w-4 mr-2" />
             {t('common:bookLesson', 'Book Lesson')}
@@ -498,45 +498,48 @@ export default function TrainerProfile() {
               )}
             </Button>
           )}
-          <Button variant="outline" size="lg" className="w-full">
-            <Mail className="h-4 w-4 mr-2" />
-            {t('common:contact', 'Contact')}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="lg" className="w-full">
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    {t('trainer:profile.copied')}
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="h-4 w-4 mr-2" />
-                    {t('trainer:profile.shareProfile')}
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={handleCopyLink}>
-                <Copy className="h-4 w-4 mr-2" />
-                {t('trainer:profile.copyLink')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleShareWhatsApp}>
-                <MessageCircle className="h-4 w-4 mr-2" />
-                WhatsApp
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleShareTwitter}>
-                <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
-                Twitter / X
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleShareLinkedIn}>
-                <Linkedin className="h-4 w-4 mr-2" />
-                LinkedIn
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Secondary Actions - compact row */}
+          <div className="flex gap-2 w-full">
+            <Button variant="ghost" size="sm" className="flex-1 text-xs">
+              <Mail className="h-3.5 w-3.5 mr-1" />
+              {t('common:contact', 'Contact')}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex-1 text-xs">
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      {t('trainer:profile.copied')}
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-3.5 w-3.5 mr-1" />
+                      {t('trainer:profile.shareProfile')}
+                    </>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={handleCopyLink}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  {t('trainer:profile.copyLink')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareWhatsApp}>
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  WhatsApp
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareTwitter}>
+                  <span className="h-4 w-4 mr-2 flex items-center justify-center font-bold text-xs">𝕏</span>
+                  Twitter / X
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareLinkedIn}>
+                  <Linkedin className="h-4 w-4 mr-2" />
+                  LinkedIn
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </ProfileHeroCard>
 
         {/* Video Modal */}

@@ -97,13 +97,10 @@ export default function BookLesson() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean }>>({});
 
+  // Only redirect non-players away; allow anonymous users to browse slots
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate(`/app/signup/player?redirect=/app/book/${trainerId}`);
-      } else if (role !== 'player') {
-        navigate('/app/trainer');
-      }
+    if (!loading && user && role !== 'player') {
+      navigate('/app/trainer');
     }
   }, [user, role, loading, navigate]);
 
@@ -707,7 +704,7 @@ export default function BookLesson() {
             <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate('/app/player')}>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
               Browse Other Trainers
             </Button>
           </div>
@@ -738,8 +735,8 @@ export default function BookLesson() {
             <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
               View My Bookings
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate('/app/player')}>
-              Book Another Lesson
+            <Button variant="outline" className="w-full" onClick={() => navigate('/trainers')}>
+              Browse Other Trainers
             </Button>
           </div>
         </Card>
@@ -1024,14 +1021,24 @@ export default function BookLesson() {
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      onClick={handleBook}
-                      disabled={booking || (!!applicableTerms && !termsAccepted)}
-                    >
-                      {booking ? 'Booking...' : `Book Entire Cycle (${selectedCyclus.slots.length} sessions)`}
-                    </Button>
+                    {!user ? (
+                      <Button
+                        className="w-full"
+                        size="lg"
+                        onClick={() => navigate(`/app/signup/player?redirect=/app/book/${trainerId}`)}
+                      >
+                        Sign Up to Book
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        size="lg"
+                        onClick={handleBook}
+                        disabled={booking || (!!applicableTerms && !termsAccepted)}
+                      >
+                        {booking ? 'Booking...' : `Book Entire Cycle (${selectedCyclus.slots.length} sessions)`}
+                      </Button>
+                    )}
                   </>
                 ) : selectedSlot ? (
                   <>
@@ -1141,14 +1148,24 @@ export default function BookLesson() {
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      onClick={handleBook}
-                      disabled={booking || (!!applicableTerms && !termsAccepted)}
-                    >
-                      {booking ? 'Booking...' : 'Confirm Booking'}
-                    </Button>
+                    {!user ? (
+                      <Button
+                        className="w-full"
+                        size="lg"
+                        onClick={() => navigate(`/app/signup/player?redirect=/app/book/${trainerId}`)}
+                      >
+                        Sign Up to Book
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        size="lg"
+                        onClick={handleBook}
+                        disabled={booking || (!!applicableTerms && !termsAccepted)}
+                      >
+                        {booking ? 'Booking...' : 'Confirm Booking'}
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <p className="text-muted-foreground text-center py-8">

@@ -93,6 +93,7 @@ export default function Trainers() {
     verifiedOnly: searchParams.get('verified') === 'true',
     ratingSystem: searchParams.get('ratingSystem') || '',
     minTrainerRating: Number(searchParams.get('minTrainerRating')) || 0,
+    hasAvailability: searchParams.get('hasAvailability') === 'true',
   }), [searchParams]);
 
   // Parse current page from URL
@@ -201,6 +202,13 @@ export default function Trainers() {
       newParams.set('minTrainerRating', String(newFilters.minTrainerRating));
     } else {
       newParams.delete('minTrainerRating');
+    }
+
+    // Has availability
+    if (newFilters.hasAvailability) {
+      newParams.set('hasAvailability', 'true');
+    } else {
+      newParams.delete('hasAvailability');
     }
     
     // Reset to page 1 when filters change
@@ -356,6 +364,7 @@ export default function Trainers() {
     if (filters.verifiedOnly) count++;
     if (filters.ratingSystem) count++;
     if (filters.minTrainerRating > 0) count++;
+    if (filters.hasAvailability) count++;
     return count;
   }, [filters]);
 
@@ -414,9 +423,12 @@ export default function Trainers() {
       
       // Verified filter
       const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
+
+      // Availability filter
+      const matchesAvailability = !filters.hasAvailability || trainer.hasAvailability;
       
       return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
-             matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified;
+             matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified && matchesAvailability;
     });
 
     // Sort
@@ -711,9 +723,17 @@ export default function Trainers() {
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {trainer.hourly_rate && (
+                        <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
+                      )}
+                      {trainer.hasAvailability && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
+                          <CalendarCheck className="h-3 w-3" />
+                          Available
+                        </Badge>
+                      )}
+                    </div>
                     {trainer.experience_years && (
                       <span className="text-muted-foreground text-xs">
                         {trainer.experience_years}y exp
