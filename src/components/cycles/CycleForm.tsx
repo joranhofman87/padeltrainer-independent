@@ -803,8 +803,131 @@ export default function CycleForm({
 
 
 
+            {/* Event: Pricing + Payment Method */}
+            {isEvent && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="total_price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">{t('form.totalPrice')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="0.00"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">{t('form.currency', 'Currency')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CURRENCIES.map(currency => (
+                              <SelectItem key={currency} value={currency}>
+                                {currency}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Max Participants */}
+                <div>
+                  <Label className="text-xs">{t('form.maxParticipants', 'Max Participants')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={maxParticipants}
+                    onChange={(e) => setMaxParticipants(e.target.value ? Number(e.target.value) : '')}
+                    placeholder={t('form.unlimited', 'Unlimited')}
+                    className="mt-1"
+                  />
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t('form.paymentMethod', 'Payment Method')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.paymentMethodHelp', 'How should players pay for this event?')}</p>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'online' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="online"
+                      checked={eventPaymentMethod === 'online'}
+                      onChange={() => setEventPaymentMethod('online')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payOnline', 'Pay Online')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payOnlineHelp', 'Player pays via the platform when registering')}</p>
+                    </div>
+                  </label>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'cash' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="cash"
+                      checked={eventPaymentMethod === 'cash'}
+                      onChange={() => setEventPaymentMethod('cash')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payAtLocation', 'Pay at Location')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payAtLocationHelp', 'Player pays cash or pin on arrival')}</p>
+                    </div>
+                  </label>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'both' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="both"
+                      checked={eventPaymentMethod === 'both'}
+                      onChange={() => setEventPaymentMethod('both')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payBoth', 'Player Chooses')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payBothHelp', 'Player can choose to pay online or at the location')}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Pricing - only for cyclus */}
-            {!isRegistration && (
+            {!isRegistration && !isEvent && (
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
