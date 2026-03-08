@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { trackEvent } from '@/lib/tracking';
+import { getUtmParams } from '@/lib/utm';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
@@ -69,7 +70,7 @@ export default function PlayerSignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
-    trackEvent('signup_started', { role: 'player', method: 'email' });
+    trackEvent('signup_started', { role: 'player', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
     const { data, error } = await signUpWithEmail(email, password, fullName);
