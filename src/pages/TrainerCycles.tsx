@@ -28,6 +28,7 @@ export default function TrainerCycles() {
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
+  const [trainerRatingSystem, setTrainerRatingSystem] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
@@ -41,13 +42,14 @@ export default function TrainerCycles() {
 
       const { data } = await supabase
         .from('trainer_profiles')
-        .select('id, hourly_rate')
+        .select('id, hourly_rate, trainer_rating_system')
         .eq('user_id', user.id)
         .single();
 
       if (data) {
         setTrainerId(data.id);
         setTrainerHourlyRate(data.hourly_rate || undefined);
+        setTrainerRatingSystem(data.trainer_rating_system || null);
 
         // Fetch trainer locations
         const { data: trainerLocs } = await supabase
@@ -188,6 +190,7 @@ export default function TrainerCycles() {
             formType="registration"
             locations={locations}
             onSuccess={handleCycleCreated}
+            trainerRatingSystem={trainerRatingSystem}
           />
           <CycleForm
             open={showCreateEventDialog || (!!editingCycle && editingCycle.type === 'event')}
@@ -204,6 +207,7 @@ export default function TrainerCycles() {
             formType="event"
             locations={locations}
             onSuccess={handleCycleCreated}
+            trainerRatingSystem={trainerRatingSystem}
           />
         </>
       )}
