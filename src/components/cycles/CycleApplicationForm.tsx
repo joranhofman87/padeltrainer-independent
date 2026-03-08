@@ -618,6 +618,7 @@ export default function CycleApplicationForm({
             />
           </CardContent>
         </Card>
+        )}
 
         {/* Additional Info */}
         <Card>
