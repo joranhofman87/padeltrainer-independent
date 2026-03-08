@@ -540,7 +540,11 @@ export async function getClubTrainerSlots(clubProfileId: string, startDate: Date
       start_time,
       end_time,
       is_marked_full,
-      max_participants
+      max_participants,
+      cyclus_name,
+      rating_system,
+      min_rating,
+      max_rating
     `)
     .in('trainer_id', trainerIds)
     .eq('location_id', clubProfile.location_id)

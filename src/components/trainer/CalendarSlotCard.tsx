@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro, GraduationCap } from "lucide-react";
+import { formatSlotRating } from "./SlotRatingPicker";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
@@ -44,6 +45,9 @@ export interface SlotWithBookings {
   trainer_id?: string;
   trainer_name?: string;
   trainer_avatar?: string;
+  rating_system?: string | null;
+  min_rating?: number | null;
+  max_rating?: number | null;
 }
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
@@ -181,6 +185,12 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
           </span>
         </div>
       )}
+      {!compact && formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating) && (
+        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
+          <GraduationCap className="h-3 w-3" />
+          <span className="truncate">{formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating)}</span>
+        </div>
+      )}
     </div>
   );
 
@@ -229,6 +239,13 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="h-3.5 w-3.5" />
               <span>{slot.location_name}</span>
+            </div>
+          )}
+
+          {formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating) && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <GraduationCap className="h-3.5 w-3.5" />
+              <span>{formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating)}</span>
             </div>
           )}
 

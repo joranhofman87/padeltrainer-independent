@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, UserPlus } from "lucide-react";
+import { SlotRatingPicker } from "@/components/trainer/SlotRatingPicker";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -81,6 +82,9 @@ export function ClubAddSlotDialog({
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
   const [isSaving, setIsSaving] = useState(false);
+  const [slotRatingSystem, setSlotRatingSystem] = useState<string | null>(null);
+  const [slotMinRating, setSlotMinRating] = useState<number | null>(null);
+  const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -113,6 +117,9 @@ export function ClubAddSlotDialog({
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         location_id: clubLocationId || null,
+        rating_system: slotRatingSystem,
+        min_rating: slotMinRating,
+        max_rating: slotMaxRating,
       });
 
       if (error) throw error;
@@ -228,6 +235,18 @@ export function ClubAddSlotDialog({
             </Select>
           </div>
 
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={slotRatingSystem}
+            minRating={slotMinRating}
+            maxRating={slotMaxRating}
+            onChange={(vals) => {
+              setSlotRatingSystem(vals.ratingSystem);
+              setSlotMinRating(vals.minRating);
+              setSlotMaxRating(vals.maxRating);
+            }}
+          />
+
           <Button
             onClick={handleAddSingleSlot}
             disabled={isSaving || !selectedTrainerId}
@@ -261,6 +280,9 @@ interface BulkSlotConfig {
   durationMinutes: number;
   recurrenceWeeks: number;
   cyclusName: string;
+  ratingSystem: string | null;
+  minRating: number | null;
+  maxRating: number | null;
 }
 
 export function ClubBulkCreateSheet({
@@ -312,7 +334,10 @@ export function ClubBulkCreateSheet({
           startTime: newStartTime,
           durationMinutes: defaultDuration,
           recurrenceWeeks: defaultWeeks,
-        cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+          cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+          ratingSystem: null,
+          minRating: null,
+          maxRating: null,
         },
       ]);
     }
@@ -331,6 +356,9 @@ export function ClubBulkCreateSheet({
         durationMinutes: defaultDuration,
         recurrenceWeeks: defaultWeeks,
         cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+        ratingSystem: null,
+        minRating: null,
+        maxRating: null,
       },
     ]);
   };
@@ -369,6 +397,9 @@ export function ClubBulkCreateSheet({
         cyclus_id: string | null;
         cyclus_name: string | null;
         location_id: string | null;
+        rating_system: string | null;
+        min_rating: number | null;
+        max_rating: number | null;
       }[] = [];
 
       for (const config of bulkSlots) {
@@ -389,6 +420,9 @@ export function ClubBulkCreateSheet({
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             location_id: clubLocationId || null,
+            rating_system: config.ratingSystem,
+            min_rating: config.minRating,
+            max_rating: config.maxRating,
           });
         }
       }
@@ -578,6 +612,15 @@ export function ClubBulkCreateSheet({
                       className="h-8"
                     />
                   </div>
+
+                  {/* Rating Level */}
+                  <SlotRatingPicker
+                    ratingSystem={slot.ratingSystem}
+                    minRating={slot.minRating}
+                    maxRating={slot.maxRating}
+                    onChange={(vals) => updateBulkSlot(index, vals)}
+                    compact
+                  />
 
                   <p className="text-xs text-muted-foreground">
                     {tTrainer("calendar.recurringSummary", {

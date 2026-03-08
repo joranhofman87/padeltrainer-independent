@@ -684,8 +684,11 @@ export type Database = {
           is_recurring: boolean
           location_id: string | null
           max_participants: number | null
+          max_rating: number | null
           min_participants: number | null
+          min_rating: number | null
           price_per_session: number | null
+          rating_system: string | null
           recurrence_rule: string | null
           start_time: string
           total_price: number | null
@@ -707,8 +710,11 @@ export type Database = {
           is_recurring?: boolean
           location_id?: string | null
           max_participants?: number | null
+          max_rating?: number | null
           min_participants?: number | null
+          min_rating?: number | null
           price_per_session?: number | null
+          rating_system?: string | null
           recurrence_rule?: string | null
           start_time: string
           total_price?: number | null
@@ -730,8 +736,11 @@ export type Database = {
           is_recurring?: boolean
           location_id?: string | null
           max_participants?: number | null
+          max_rating?: number | null
           min_participants?: number | null
+          min_rating?: number | null
           price_per_session?: number | null
+          rating_system?: string | null
           recurrence_rule?: string | null
           start_time?: string
           total_price?: number | null

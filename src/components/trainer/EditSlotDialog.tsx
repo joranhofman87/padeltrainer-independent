@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
+import { SlotRatingPicker } from "./SlotRatingPicker";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,9 @@ export function EditSlotDialog({
   const [cyclusName, setCyclusName] = useState("");
   const [applyToCyclus, setApplyToCyclus] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [ratingSystem, setRatingSystem] = useState<string | null>(null);
+  const [minRating, setMinRating] = useState<number | null>(null);
+  const [maxRating, setMaxRating] = useState<number | null>(null);
 
   useEffect(() => {
     if (slot && open) {
@@ -71,6 +75,9 @@ export function EditSlotDialog({
       
       setCyclusName(slot.cyclus_name || "");
       setApplyToCyclus(false);
+      setRatingSystem((slot as any).rating_system || null);
+      setMinRating((slot as any).min_rating != null ? Number((slot as any).min_rating) : null);
+      setMaxRating((slot as any).max_rating != null ? Number((slot as any).max_rating) : null);
     }
   }, [slot, open]);
 
@@ -129,6 +136,9 @@ export function EditSlotDialog({
                 start_time: csStart.toISOString(),
                 end_time: csEnd.toISOString(),
                 cyclus_name: cyclusName || null,
+                rating_system: ratingSystem,
+                min_rating: minRating,
+                max_rating: maxRating,
               })
               .eq("id", cs.id);
           }
@@ -146,6 +156,9 @@ export function EditSlotDialog({
             start_time: startDateTime.toISOString(),
             end_time: endDateTime.toISOString(),
             cyclus_name: cyclusName || null,
+            rating_system: ratingSystem,
+            min_rating: minRating,
+            max_rating: maxRating,
           })
           .eq("id", slot.id);
 
@@ -256,6 +269,17 @@ export function EditSlotDialog({
             </div>
           </div>
 
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={ratingSystem}
+            minRating={minRating}
+            maxRating={maxRating}
+            onChange={(vals) => {
+              setRatingSystem(vals.ratingSystem);
+              setMinRating(vals.minRating);
+              setMaxRating(vals.maxRating);
+            }}
+          />
 
           {/* Cyclus Name */}
           {slot.cyclus_id && (

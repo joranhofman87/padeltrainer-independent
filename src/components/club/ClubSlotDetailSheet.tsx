@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { formatSlotRating as formatSlotRatingDisplay } from "@/components/trainer/SlotRatingPicker";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
@@ -220,6 +221,11 @@ export function ClubSlotDetailSheet({
             {slot.is_marked_full && (
               <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30">
                 {t("calendar.private", "Private")}
+              </Badge>
+            )}
+            {(slot as any).rating_system && (
+              <Badge variant="outline" className="gap-1">
+                {formatSlotRatingDisplay((slot as any).rating_system, (slot as any).min_rating, (slot as any).max_rating)}
               </Badge>
             )}
           </div>

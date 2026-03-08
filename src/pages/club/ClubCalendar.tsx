@@ -40,6 +40,9 @@ interface ClubSlot {
   trainer_avatar: string | null;
   active_bookings: number;
   pending_bookings: number;
+  rating_system?: string | null;
+  min_rating?: number | null;
+  max_rating?: number | null;
 }
 
 interface Trainer {
@@ -161,6 +164,9 @@ export default function ClubCalendar() {
       trainer_id: slot.trainer_id,
       trainer_name: slot.trainer_name,
       trainer_avatar: slot.trainer_avatar,
+      rating_system: slot.rating_system || null,
+      min_rating: slot.min_rating != null ? Number(slot.min_rating) : null,
+      max_rating: slot.max_rating != null ? Number(slot.max_rating) : null,
     }));
   }, [filteredSlots]);
 

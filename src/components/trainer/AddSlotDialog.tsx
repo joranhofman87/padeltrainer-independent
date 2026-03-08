@@ -41,6 +41,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
+import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -63,7 +64,9 @@ interface BulkSlotConfig {
   isMarkedFull: boolean;
   academyProfileId: string | null;
   trainerId: string | null;
-  trainingLevel: string | null;
+  ratingSystem: string | null;
+  minRating: number | null;
+  maxRating: number | null;
   pricePerSession: number | null;
   totalPrice: number | null;
   allowSingleBooking: boolean;
@@ -107,6 +110,9 @@ export function AddSlotDialog({
   const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
   const [slotLocationId, setSlotLocationId] = useState<string | null>(null);
   const [slotAcademyId, setSlotAcademyId] = useState<string | null>(null);
+  const [slotRatingSystem, setSlotRatingSystem] = useState<string | null>(null);
+  const [slotMinRating, setSlotMinRating] = useState<number | null>(null);
+  const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -146,6 +152,9 @@ export function AddSlotDialog({
         court_type: slotCourtType,
         location_id: slotLocationId,
         academy_profile_id: slotAcademyId,
+        rating_system: slotRatingSystem,
+        min_rating: slotMinRating,
+        max_rating: slotMaxRating,
       });
 
       if (error) throw error;
@@ -272,6 +281,18 @@ export function AddSlotDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={slotRatingSystem}
+            minRating={slotMinRating}
+            maxRating={slotMaxRating}
+            onChange={(vals) => {
+              setSlotRatingSystem(vals.ratingSystem);
+              setSlotMinRating(vals.minRating);
+              setSlotMaxRating(vals.maxRating);
+            }}
+          />
 
           {/* Working As (Academy) */}
           {trainerAcademy && trainerAcademy.id && (
@@ -456,7 +477,9 @@ export function BulkCreateSheet({
       isMarkedFull: false,
       academyProfileId: null,
       trainerId: tId,
-      trainingLevel: null,
+      ratingSystem: null,
+      minRating: null,
+      maxRating: null,
       pricePerSession: pricing.pricePerSession,
       totalPrice: pricing.totalPrice,
       allowSingleBooking: false,
@@ -514,7 +537,9 @@ export function BulkCreateSheet({
           isMarkedFull: false,
           academyProfileId: lastSlot.academyProfileId,
           trainerId: lastSlot.trainerId,
-          trainingLevel: lastSlot.trainingLevel,
+          ratingSystem: lastSlot.ratingSystem,
+          minRating: lastSlot.minRating,
+          maxRating: lastSlot.maxRating,
           pricePerSession: pricing.pricePerSession,
           totalPrice: pricing.totalPrice,
           allowSingleBooking: lastSlot.allowSingleBooking,
@@ -596,6 +621,9 @@ export function BulkCreateSheet({
         is_marked_full: boolean;
         academy_profile_id: string | null;
         training_level: string | null;
+        rating_system: string | null;
+        min_rating: number | null;
+        max_rating: number | null;
         price_per_session: number | null;
         total_price: number | null;
         allow_single_booking: boolean;
@@ -660,7 +688,10 @@ export function BulkCreateSheet({
             location_id: config.locationId,
             is_marked_full: config.isMarkedFull,
             academy_profile_id: config.academyProfileId,
-            training_level: config.trainingLevel,
+            training_level: null,
+            rating_system: config.ratingSystem,
+            min_rating: config.minRating,
+            max_rating: config.maxRating,
             price_per_session: config.pricePerSession,
             total_price: config.totalPrice,
             allow_single_booking: config.allowSingleBooking,
@@ -1171,26 +1202,14 @@ export function BulkCreateSheet({
                     </Select>
                   </div>
 
-                  {/* Training Level (optional) */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">{t("calendar.trainingLevel", "Training Level")}</Label>
-                    <Select
-                      value={slot.trainingLevel || "any"}
-                      onValueChange={(v) =>
-                        updateBulkSlot(index, { trainingLevel: v === "any" ? null : v })
-                      }
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">{t("calendar.anyLevel", "Any level")}</SelectItem>
-                        <SelectItem value="beginner">{t("calendar.beginner", "Beginner")}</SelectItem>
-                        <SelectItem value="intermediate">{t("calendar.intermediate", "Intermediate")}</SelectItem>
-                        <SelectItem value="advanced">{t("calendar.advanced", "Advanced")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Rating Level (optional) */}
+                  <SlotRatingPicker
+                    ratingSystem={slot.ratingSystem}
+                    minRating={slot.minRating}
+                    maxRating={slot.maxRating}
+                    onChange={(vals) => updateBulkSlot(index, vals)}
+                    compact
+                  />
 
                   {/* Cyclus Name */}
                   <div className="space-y-1">

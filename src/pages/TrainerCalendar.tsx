@@ -163,6 +163,9 @@ export default function TrainerCalendar() {
           cyclus_name,
           is_marked_full,
           location_id,
+          rating_system,
+          min_rating,
+          max_rating,
           locations:location_id (
             name
           )
@@ -251,6 +254,9 @@ export default function TrainerCalendar() {
             booked_players: counts.players,
             is_marked_full: slot.is_marked_full || false,
             location_name: location?.name || null,
+            rating_system: (slot as any).rating_system || null,
+            min_rating: (slot as any).min_rating != null ? Number((slot as any).min_rating) : null,
+            max_rating: (slot as any).max_rating != null ? Number((slot as any).max_rating) : null,
           };
         }
       );
