@@ -32,6 +32,7 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
   useEffect(() => {
     if (user) loadExistingData();
+    getRatingSystems().then(setRatingSystems);
   }, [user]);
 
   const loadExistingData = async () => {
