@@ -31,7 +31,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { SlidersHorizontal, X, Star, MapPin, Check, ChevronsUpDown, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import { SlidersHorizontal, X, Star, MapPin, Check, ChevronsUpDown, ChevronDown, ChevronUp, RotateCcw, CalendarCheck } from 'lucide-react';
 import { Location } from '@/lib/locations';
 import { cn } from '@/lib/utils';
 
@@ -379,7 +379,7 @@ export function TrainerFilters({
                 htmlFor="hasAvailability"
                 className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1"
               >
-                <CalendarCheck className="h-3.5 w-3.5 text-green-600" />
+                <CalendarCheck className="h-3.5 w-3.5 text-primary" />
                 Available
               </label>
             </div>
