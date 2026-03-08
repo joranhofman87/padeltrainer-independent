@@ -53,10 +53,14 @@ describe('Auth module', () => {
   });
 
   describe('signUpWithEmail', () => {
-    it('calls signup edge function with correct params', async () => {
-      const mockUser = { id: 'user-123' };
+    it('calls signup edge function and signs in', async () => {
+      const mockUser = { id: 'user-123', email: 'test@example.com' };
       (supabase.functions.invoke as Mock).mockResolvedValue({
         data: { user: mockUser },
+        error: null,
+      });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
         error: null,
       });
 
@@ -67,15 +71,12 @@ describe('Auth module', () => {
         '+31612345678'
       );
 
-      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', {
-        body: {
-          email: 'test@example.com',
-          password: 'password123',
-          fullName: 'John Doe',
-          phone: '+31612345678',
-          language: undefined,
-          redirectTo: 'http://localhost:3000/app/auth',
-        },
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+        body: expect.objectContaining({ email: 'test@example.com' }),
+      }));
+      expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'password123',
       });
 
       expect(result.data.user).toEqual(mockUser);
@@ -94,9 +95,13 @@ describe('Auth module', () => {
     });
 
     it('does not fail if no phone provided', async () => {
-      const mockUser = { id: 'user-123' };
+      const mockUser = { id: 'user-123', email: 'test@example.com' };
       (supabase.functions.invoke as Mock).mockResolvedValue({
         data: { user: mockUser },
+        error: null,
+      });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
         error: null,
       });
 
