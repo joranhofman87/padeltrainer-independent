@@ -84,6 +84,10 @@ export default function CycleApplicationForm({
   const [cycleTerms, setCycleTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cash'>('online');
+  
+  const isEvent = cycle.type === 'event';
+  const eventPaymentMethods = (cycle.settings as any)?.payment_methods as EventPaymentMethod | undefined;
   
   // Load rating systems
   useEffect(() => {
