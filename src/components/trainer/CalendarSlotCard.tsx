@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro } from "lucide-react";
+import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro, GraduationCap } from "lucide-react";
+import { formatSlotRating } from "./SlotRatingPicker";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
@@ -44,6 +45,9 @@ export interface SlotWithBookings {
   trainer_id?: string;
   trainer_name?: string;
   trainer_avatar?: string;
+  rating_system?: string | null;
+  min_rating?: number | null;
+  max_rating?: number | null;
 }
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
