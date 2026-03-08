@@ -242,6 +242,13 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
             </div>
           )}
 
+          {formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating) && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <GraduationCap className="h-3.5 w-3.5" />
+              <span>{formatSlotRating(slot.rating_system, slot.min_rating, slot.max_rating)}</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 flex-wrap">
             <div
               className={cn(
