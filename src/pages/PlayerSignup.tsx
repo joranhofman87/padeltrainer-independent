@@ -124,7 +124,7 @@ export default function PlayerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
-    trackEvent('signup_started', { role: 'player', method: 'google' });
+    trackEvent('signup_started', { role: 'player', method: 'google', ...getUtmParams() });
     localStorage.setItem('pendingRole', 'player');
     // Store redirect URL if present
     const redirectUrl = searchParams.get('redirect');
