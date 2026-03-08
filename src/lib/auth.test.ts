@@ -13,7 +13,20 @@ vi.mock('@/lib/supabaseClient', () => ({
       updateUser: vi.fn(),
     },
     from: vi.fn(),
+    functions: {
+      invoke: vi.fn(),
+    },
   },
+}));
+
+// Mock domains module
+vi.mock('@/lib/domains', () => ({
+  getAuthRedirectUrl: vi.fn((path: string) => `http://localhost:3000${path}`),
+}));
+
+// Mock logger
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
 import { supabase } from '@/lib/supabaseClient';
