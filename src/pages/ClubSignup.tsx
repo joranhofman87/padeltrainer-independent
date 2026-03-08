@@ -16,6 +16,8 @@ import { VerificationPending } from '@/components/auth/VerificationPending';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import { trackEvent } from '@/lib/tracking';
+import { getUtmParams } from '@/lib/utm';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -73,6 +75,7 @@ export default function ClubSignup() {
     if (!validateForm()) return;
     if (isSuspicious()) return;
     
+    trackEvent('signup_started', { role: 'club', method: 'email', ...getUtmParams() });
     setIsLoading(true);
 
     const { data, error } = await signUpWithEmail(email, password, fullName);
@@ -85,6 +88,7 @@ export default function ClubSignup() {
         variant: 'destructive',
       });
     } else if (data?.session) {
+      trackEvent('signup_completed', { role: 'club', method: 'email' });
       localStorage.setItem('pendingRole', 'club');
       // Save language preference (non-blocking)
       if (data.user?.id) {
@@ -99,6 +103,7 @@ export default function ClubSignup() {
       });
       navigate('/app/onboarding/club');
     } else {
+      trackEvent('signup_completed', { role: 'club', method: 'email' });
       localStorage.setItem('pendingRole', 'club');
       supabase.functions.invoke('slack-notify', {
         body: { event: 'new_signup', data: { name: fullName, email, role: 'Club' } },

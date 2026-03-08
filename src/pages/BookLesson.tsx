@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { logger } from '@/lib/logger';
+import { trackEvent } from '@/lib/tracking';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -108,6 +109,7 @@ export default function BookLesson() {
 
   useEffect(() => {
     if (trainerId) {
+      trackEvent('booking_page_viewed', { trainer_id: trainerId });
       fetchData();
     }
   }, [trainerId]);
@@ -358,6 +360,11 @@ export default function BookLesson() {
     }
 
     setBooking(true);
+    trackEvent('booking_payment_initiated', {
+      trainer_id: trainer.id,
+      type: selectedCyclus ? 'cycle' : 'single',
+      slot_id: selectedSlot?.id ?? selectedCyclus?.cyclus_id ?? undefined,
+    });
 
     try {
       // Handle cyclus bundle booking

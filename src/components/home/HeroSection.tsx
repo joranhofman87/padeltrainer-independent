@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Play, Calendar, CreditCard, Bell, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
+import { trackEvent } from '@/lib/tracking';
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -49,7 +50,7 @@ export function HeroSection() {
 
             <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row gap-3 mb-4">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
-                <Link to={getAppUrl('/signup/trainer')}>
+                <Link to={getAppUrl('/signup/trainer')} onClick={() => trackEvent('cta_clicked', { location: 'hero' })}>
                   {t('homev2.cta.startTrial')}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
