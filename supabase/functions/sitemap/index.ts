@@ -187,19 +187,36 @@ Deno.serve(async (req) => {
     // Fetch published blog articles for sitemap
     const { data: blogArticles } = await supabase
       .from('articles')
-      .select('slug, locale, published_at, updated_at')
+      .select('slug, locale, canonical_id, published_at, updated_at')
       .eq('status', 'published');
 
     if (blogArticles) {
+      // Group articles by canonical_id to generate hreflang links between translations
+      const articlesByCanonical = new Map<string, typeof blogArticles>();
       for (const article of blogArticles) {
-        const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
-        const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
-        xml += '  <url>\n';
-        xml += `    <loc>${articleUrl}</loc>\n`;
-        xml += `    <lastmod>${lastmod}</lastmod>\n`;
-        xml += `    <changefreq>weekly</changefreq>\n`;
-        xml += `    <priority>0.7</priority>\n`;
-        xml += '  </url>\n';
+        const group = articlesByCanonical.get(article.canonical_id) || [];
+        group.push(article);
+        articlesByCanonical.set(article.canonical_id, group);
+      }
+
+      for (const [, group] of articlesByCanonical) {
+        for (const article of group) {
+          const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
+          const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
+          xml += '  <url>\n';
+          xml += `    <loc>${articleUrl}</loc>\n`;
+          xml += `    <lastmod>${lastmod}</lastmod>\n`;
+          xml += `    <changefreq>weekly</changefreq>\n`;
+          xml += `    <priority>0.7</priority>\n`;
+          // Add hreflang links to all translations of this article
+          for (const alt of group) {
+            xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${alt.slug}"/>\n`;
+          }
+          // x-default points to Dutch version if available, otherwise first
+          const nlVersion = group.find(a => a.locale === 'nl') || group[0];
+          xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${nlVersion.slug}"/>\n`;
+          xml += '  </url>\n';
+        }
       }
     }
 
