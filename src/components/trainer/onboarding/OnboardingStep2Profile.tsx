@@ -3,10 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
+import { getRatingSystems, type RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -23,11 +25,14 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
   const [phone, setPhone] = useState('');
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [locations, setLocations] = useState<TrainerLocationSelection[]>([]);
+  const [ratingSystem, setRatingSystem] = useState('knltb');
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (user) loadExistingData();
+    getRatingSystems().then(setRatingSystems);
   }, [user]);
 
   const loadExistingData = async () => {
@@ -46,12 +51,15 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('id, specializations')
+        .select('id, specializations, trainer_rating_system')
         .eq('user_id', user!.id)
         .maybeSingle();
 
       if (trainerProfile) {
         setSpecializations(trainerProfile.specializations || []);
+        if (trainerProfile.trainer_rating_system) {
+          setRatingSystem(trainerProfile.trainer_rating_system);
+        }
 
         // Load existing locations
         const { data: trainerLocations } = await supabase
@@ -100,10 +108,10 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
       if (!trainerProfile) throw new Error('Trainer profile not found');
 
-      // Update specializations
+      // Update specializations and rating system
       const { error: specError } = await supabase
         .from('trainer_profiles')
-        .update({ specializations })
+        .update({ specializations, trainer_rating_system: ratingSystem })
         .eq('id', trainerProfile.id);
 
       if (specError) throw specError;
@@ -177,6 +185,37 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
             rows={3}
           />
           <p className="text-xs text-muted-foreground">1–2 sentences is plenty</p>
+        </div>
+
+        {/* Rating System */}
+        <div className="space-y-2">
+          <Label>Rating system *</Label>
+          <p className="text-xs text-muted-foreground">Which rating system do your players use? This will be shown throughout the app.</p>
+          <Select value={ratingSystem} onValueChange={setRatingSystem}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select rating system" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(
+                ratingSystems.reduce((acc, system) => {
+                  if (!acc[system.country]) acc[system.country] = [];
+                  acc[system.country].push(system);
+                  return acc;
+                }, {} as Record<string, RatingSystemConfig[]>)
+              ).map(([country, systems]) => (
+                <div key={country}>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    {COUNTRY_NAMES[country] || country}
+                  </div>
+                  {systems.map((system) => (
+                    <SelectItem key={system.code} value={system.code}>
+                      {system.name}
+                    </SelectItem>
+                  ))}
+                </div>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Training Locations */}

@@ -63,6 +63,8 @@ interface CycleFormProps {
   trainerHourlyRate?: number;
   /** Whether this is a registration (interest collection), cyclus (calendar slot), or event */
   formType?: 'registration' | 'cyclus' | 'event';
+  /** When set, locks the rating system selector to this value */
+  trainerRatingSystem?: string | null;
 }
 
 export default function CycleForm({
@@ -77,6 +79,7 @@ export default function CycleForm({
   trainerLocationMap = {},
   trainerHourlyRate,
   formType = 'cyclus',
+  trainerRatingSystem: fixedRatingSystem,
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,6 +112,13 @@ export default function CycleForm({
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
   }, []);
+
+  // Sync fixed rating system into form
+  useEffect(() => {
+    if (fixedRatingSystem) {
+      form.setValue('rating_system', fixedRatingSystem);
+    }
+  }, [fixedRatingSystem]);
 
   const formSchema = z.object({
     name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
@@ -733,30 +743,39 @@ export default function CycleForm({
             {/* Skill Level Requirement */}
             <div className="space-y-3 rounded-lg border p-3">
               <FormLabel className="text-sm font-medium">{t('form.levelRequirement', 'Level Requirement')}</FormLabel>
-              <FormField
-                control={form.control}
-                name="rating_system"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs">{t('form.ratingSystem', 'Rating System')}</FormLabel>
-                    <Select value={field.value || 'knltb'} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {ratingSystems.map(rs => (
-                          <SelectItem key={rs.code} value={rs.code}>
-                            {rs.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {fixedRatingSystem ? (
+                <div className="space-y-1">
+                  <FormLabel className="text-xs">{t('form.ratingSystem', 'Rating System')}</FormLabel>
+                  <p className="text-sm text-muted-foreground">
+                    {ratingSystems.find(rs => rs.code === fixedRatingSystem)?.name || fixedRatingSystem}
+                  </p>
+                </div>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="rating_system"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">{t('form.ratingSystem', 'Rating System')}</FormLabel>
+                      <Select value={field.value || 'knltb'} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {ratingSystems.map(rs => (
+                            <SelectItem key={rs.code} value={rs.code}>
+                              {rs.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <FormField
                   control={form.control}

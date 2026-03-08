@@ -17,6 +17,8 @@ interface SlotRatingPickerProps {
   maxRating: number | null;
   onChange: (values: { ratingSystem: string | null; minRating: number | null; maxRating: number | null }) => void;
   compact?: boolean;
+  /** When set, locks to this rating system and hides the system dropdown */
+  fixedRatingSystem?: string | null;
 }
 
 export function SlotRatingPicker({
@@ -25,6 +27,7 @@ export function SlotRatingPicker({
   maxRating,
   onChange,
   compact = false,
+  fixedRatingSystem,
 }: SlotRatingPickerProps) {
   const { t } = useTranslation("trainer");
   const [systems, setSystems] = useState<RatingSystemConfig[]>([]);
@@ -33,7 +36,16 @@ export function SlotRatingPicker({
     getRatingSystems().then(setSystems);
   }, []);
 
-  const selectedSystem = systems.find((s) => s.code === ratingSystem) || null;
+  // If fixed system is set, use it as the active system
+  const effectiveSystem = fixedRatingSystem || ratingSystem;
+  const selectedSystem = systems.find((s) => s.code === effectiveSystem) || null;
+
+  // When fixed system is set and differs from current, sync it
+  useEffect(() => {
+    if (fixedRatingSystem && ratingSystem !== fixedRatingSystem) {
+      onChange({ ratingSystem: fixedRatingSystem, minRating, maxRating });
+    }
+  }, [fixedRatingSystem]);
 
   const handleSystemChange = (value: string) => {
     if (value === "none") {
@@ -45,12 +57,12 @@ export function SlotRatingPicker({
 
   const handleMinChange = (value: string) => {
     const num = value === "" ? null : parseFloat(value);
-    onChange({ ratingSystem, minRating: num, maxRating });
+    onChange({ ratingSystem: effectiveSystem, minRating: num, maxRating });
   };
 
   const handleMaxChange = (value: string) => {
     const num = value === "" ? null : parseFloat(value);
-    onChange({ ratingSystem, minRating, maxRating: num });
+    onChange({ ratingSystem: effectiveSystem, minRating, maxRating: num });
   };
 
   const labelClass = compact ? "text-xs" : undefined;
@@ -58,22 +70,33 @@ export function SlotRatingPicker({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
-        <Label className={labelClass}>{t("calendar.ratingSystem", "Rating System")}</Label>
-        <Select value={ratingSystem || "none"} onValueChange={handleSystemChange}>
-          <SelectTrigger className={inputClass}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">{t("calendar.anyLevel", "Any level")}</SelectItem>
-            {systems.map((s) => (
-              <SelectItem key={s.code} value={s.code}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Only show system dropdown if no fixed system */}
+      {!fixedRatingSystem && (
+        <div className="space-y-1">
+          <Label className={labelClass}>{t("calendar.ratingSystem", "Rating System")}</Label>
+          <Select value={ratingSystem || "none"} onValueChange={handleSystemChange}>
+            <SelectTrigger className={inputClass}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t("calendar.anyLevel", "Any level")}</SelectItem>
+              {systems.map((s) => (
+                <SelectItem key={s.code} value={s.code}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Show fixed system label when locked */}
+      {fixedRatingSystem && selectedSystem && (
+        <div className="space-y-1">
+          <Label className={labelClass}>{t("calendar.ratingSystem", "Rating System")}</Label>
+          <p className="text-sm text-muted-foreground">{selectedSystem.name}</p>
+        </div>
+      )}
 
       {selectedSystem && (
         <div className="grid grid-cols-2 gap-2">

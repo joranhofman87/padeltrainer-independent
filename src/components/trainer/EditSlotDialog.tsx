@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
 import { SlotRatingPicker } from "./SlotRatingPicker";
+import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function EditSlotDialog({
   onSlotUpdated,
 }: EditSlotDialogProps) {
   const { t } = useTranslation("trainer");
+  const { trainerRatingSystem } = useTrainerRatingSystem(slot?.trainer_id || undefined);
   const { toast } = useToast();
 
   const [date, setDate] = useState<Date | undefined>();
@@ -279,6 +281,7 @@ export function EditSlotDialog({
               setMinRating(vals.minRating);
               setMaxRating(vals.maxRating);
             }}
+            fixedRatingSystem={trainerRatingSystem}
           />
 
           {/* Cyclus Name */}
