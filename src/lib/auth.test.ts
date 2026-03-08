@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import type { UserRole, UserProfile, TrainerProfile } from './auth';
 
 // Mock the supabase client
-vi.mock('@/integrations/supabase/client', () => ({
+vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     auth: {
       signUp: vi.fn(),
