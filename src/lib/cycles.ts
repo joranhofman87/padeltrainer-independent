@@ -15,7 +15,7 @@ export interface Cycle {
   enrollment_deadline: string | null;
   settings: CycleSettings;
   status: 'draft' | 'open' | 'closed' | 'archived';
-  type: 'registration' | 'cyclus';
+  type: 'registration' | 'cyclus' | 'event';
   location_id: string | null;
   price_per_session: number | null;
   total_price: number | null;
@@ -50,6 +50,8 @@ export interface ExtraCost {
   price: number;
 }
 
+export type EventPaymentMethod = 'online' | 'cash' | 'both';
+
 export interface CycleSettings {
   lesson_types?: ('private' | 'duo' | 'group' | 'kids')[];
   show_preferred_trainer?: boolean;
@@ -69,6 +71,10 @@ export interface CycleSettings {
   mark_as_paid?: boolean;
   payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';
   invoice_delay_weeks?: number;
+  // Event-specific settings
+  payment_methods?: EventPaymentMethod;
+  event_dates?: string[];
+  max_participants?: number;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
@@ -178,7 +184,7 @@ export interface CycleInput {
   enrollment_deadline?: string;
   settings?: CycleSettings;
   status?: 'draft' | 'open' | 'closed' | 'archived';
-  type?: 'registration' | 'cyclus';
+  type?: 'registration' | 'cyclus' | 'event';
   location_id?: string | null;
   price_per_session?: number | null;
   total_price?: number | null;

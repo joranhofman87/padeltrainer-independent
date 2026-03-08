@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
@@ -30,8 +30,9 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { submitIntakeRequest, type Cycle, type TimeWindow } from '@/lib/cycles';
+import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod } from '@/lib/cycles';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface TrainerOption {
   id: string;
@@ -83,6 +84,10 @@ export default function CycleApplicationForm({
   const [cycleTerms, setCycleTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cash'>('online');
+  
+  const isEvent = cycle.type === 'event';
+  const eventPaymentMethods = (cycle.settings as any)?.payment_methods as EventPaymentMethod | undefined;
   
   // Load rating systems
   useEffect(() => {
@@ -118,12 +123,14 @@ export default function CycleApplicationForm({
     end: z.string(),
   });
 
-  const availabilitySchema = z.record(
-    z.string(),
-    z.array(timeBlockSchema)
-  ).refine(val => Object.keys(val).length > 0, {
-    message: t('application.form.noAvailability'),
-  });
+  const availabilitySchema = isEvent 
+    ? z.record(z.string(), z.array(timeBlockSchema)).optional().default({})
+    : z.record(
+        z.string(),
+        z.array(timeBlockSchema)
+      ).refine(val => Object.keys(val).length > 0, {
+        message: t('application.form.noAvailability'),
+      });
 
   const formSchema = z.object({
     full_name: z.string().min(2),
@@ -131,7 +138,7 @@ export default function CycleApplicationForm({
     phone: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
-    lesson_types: z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
+    lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     availability: availabilitySchema,
@@ -354,7 +361,74 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Preferences */}
+        {/* Event Payment Method Selection */}
+        {isEvent && eventPaymentMethods === 'both' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.paymentMethod', 'Payment Method')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t('application.form.choosePayment', 'How would you like to pay?')}</p>
+              <label className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                selectedPaymentMethod === 'online' && "border-primary bg-primary/5"
+              )}>
+                <input
+                  type="radio"
+                  name="player_payment"
+                  value="online"
+                  checked={selectedPaymentMethod === 'online'}
+                  onChange={() => setSelectedPaymentMethod('online')}
+                  className="mt-1"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <CreditCard className="h-4 w-4" />
+                    {t('application.form.payOnline', 'Pay Online')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('application.form.payOnlineDesc', 'Pay securely via the platform')}</p>
+                </div>
+              </label>
+              <label className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                selectedPaymentMethod === 'cash' && "border-primary bg-primary/5"
+              )}>
+                <input
+                  type="radio"
+                  name="player_payment"
+                  value="cash"
+                  checked={selectedPaymentMethod === 'cash'}
+                  onChange={() => setSelectedPaymentMethod('cash')}
+                  className="mt-1"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <Banknote className="h-4 w-4" />
+                    {t('application.form.payAtLocation', 'Pay at Location')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('application.form.payAtLocationDesc', 'Pay cash or pin on arrival')}</p>
+                </div>
+              </label>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Event price display */}
+        {isEvent && cycle.total_price && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{t('application.form.eventPrice', 'Price')}</span>
+                <span className="text-lg font-semibold">
+                  {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Preferences - hide for events */}
+        {!isEvent && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">{t('application.form.preferences')}</CardTitle>
@@ -515,8 +589,10 @@ export default function CycleApplicationForm({
             )}
           </CardContent>
         </Card>
+        )}
 
-        {/* Availability */}
+        {/* Availability - hide for events */}
+        {!isEvent && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">{t('application.form.availability')}</CardTitle>
@@ -542,6 +618,7 @@ export default function CycleApplicationForm({
             />
           </CardContent>
         </Card>
+        )}
 
         {/* Additional Info */}
         <Card>

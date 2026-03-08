@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
 import { CalendarIcon, Loader2, Plus, Trash2, Euro } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -41,7 +42,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost } from '@/lib/cycles';
+import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod } from '@/lib/cycles';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
@@ -60,8 +61,8 @@ interface CycleFormProps {
   trainerLocationMap?: Record<string, string[]>;
   /** Hourly rate for trainer-owned cycles (not using trainers array) */
   trainerHourlyRate?: number;
-  /** Whether this is a registration (interest collection) or cyclus (calendar slot) */
-  formType?: 'registration' | 'cyclus';
+  /** Whether this is a registration (interest collection), cyclus (calendar slot), or event */
+  formType?: 'registration' | 'cyclus' | 'event';
 }
 
 export default function CycleForm({
@@ -95,21 +96,30 @@ export default function CycleForm({
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
   );
+  const [eventPaymentMethod, setEventPaymentMethod] = useState<EventPaymentMethod>(
+    (cycle?.settings as any)?.payment_methods ?? 'online'
+  );
+  const [maxParticipants, setMaxParticipants] = useState<number | ''>(
+    (cycle?.settings as any)?.max_participants ?? ''
+  );
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
+  const isEvent = formType === 'event';
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
   }, []);
 
   const formSchema = z.object({
-    name: isRegistration ? z.string().min(2) : z.string().optional().default(''),
+    name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
+    description: z.string().optional().default(''),
     start_date: z.date(),
-    number_of_weeks: z.coerce.number().min(1).max(52),
+    end_date: isEvent ? z.date().optional() : z.date().optional(),
+    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52),
     start_time: z.string().default('09:00'),
     end_time: z.string().default('10:00'),
     enrollment_deadline: z.date().optional(),
-    lesson_types: z.array(z.string()).min(1),
+    lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     min_group_size: z.coerce.number().min(1).max(20).optional(),
@@ -133,12 +143,14 @@ export default function CycleForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: cycle?.name || '',
+      description: cycle?.description || '',
       start_date: cycle ? new Date(cycle.start_date) : new Date(),
+      end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
       number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
       start_time: (cycle?.settings as any)?.start_time || '09:00',
       end_time: (cycle?.settings as any)?.end_time || '10:00',
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
-      lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
+      lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group']),
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
@@ -159,12 +171,14 @@ export default function CycleForm({
     if (open) {
       form.reset({
         name: cycle?.name || '',
+        description: cycle?.description || '',
         start_date: cycle ? new Date(cycle.start_date) : new Date(),
+        end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
         number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
         start_time: (cycle?.settings as any)?.start_time || '09:00',
         end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
-        lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
+        lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group']),
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
         max_group_size: cycle?.settings?.max_group_size || 4,
         min_group_size: cycle?.settings?.min_group_size || 1,
@@ -189,6 +203,8 @@ export default function CycleForm({
       }
       setInvoiceDelayWeeks(settings?.invoice_delay_weeks ?? 2);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
+      setEventPaymentMethod((cycle?.settings as any)?.payment_methods ?? 'online');
+      setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
     }
   }, [cycle, open]);
 
@@ -249,44 +265,58 @@ export default function CycleForm({
     setIsSubmitting(true);
     try {
       const settings: CycleSettings = {
-        lesson_types: values.lesson_types as CycleSettings['lesson_types'],
+        lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
         show_preferred_trainer: values.show_preferred_trainer,
-        max_group_size: values.max_group_size,
-        min_group_size: values.min_group_size,
+        max_group_size: isEvent ? undefined : values.max_group_size,
+        min_group_size: isEvent ? undefined : values.min_group_size,
         assigned_trainer_id: values.assigned_trainer_id || undefined,
         min_skill_rating: values.min_skill_rating ? Number(values.min_skill_rating) : undefined,
         max_skill_rating: values.max_skill_rating ? Number(values.max_skill_rating) : undefined,
         rating_system: values.rating_system || undefined,
         applicable_trainer_ids: values.applicable_trainer_ids,
-        start_time: values.start_time,
-        end_time: values.end_time,
-        allow_single_booking: allowSingleBooking,
-        mark_as_paid: paymentTiming === 'manual',
-        payment_timing: paymentTiming,
+        start_time: isEvent ? undefined : values.start_time,
+        end_time: isEvent ? undefined : values.end_time,
+        allow_single_booking: isEvent ? undefined : allowSingleBooking,
+        mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
+        payment_timing: isEvent ? undefined : paymentTiming,
         invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
-        extra_costs: extraCosts.filter(ec => ec.description && ec.price > 0),
+        extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
+        // Event-specific
+        payment_methods: isEvent ? eventPaymentMethod : undefined,
+        max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
       let cycleName = values.name;
-      if (!isRegistration) {
+      if (!isRegistration && !isEvent) {
         const dayName = format(values.start_date, 'EEEE');
         cycleName = `${dayName} ${values.start_time}–${values.end_time}`;
+      }
+
+      // Calculate end date
+      let endDate: string;
+      if (isEvent && values.end_date) {
+        endDate = format(values.end_date, 'yyyy-MM-dd');
+      } else if (isEvent) {
+        endDate = format(values.start_date, 'yyyy-MM-dd');
+      } else {
+        endDate = format(addWeeks(values.start_date, values.number_of_weeks || 10), 'yyyy-MM-dd');
       }
 
       const input: CycleInput = {
         owner_type: ownerType,
         owner_id: ownerId,
         name: cycleName,
+        description: isEvent ? values.description : undefined,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
-        end_date: format(addWeeks(values.start_date, values.number_of_weeks), 'yyyy-MM-dd'),
+        end_date: endDate,
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
         settings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
         type: formType,
         location_id: values.location_id || null,
-        price_per_session: isRegistration ? null : (values.price_per_session ? Number(values.price_per_session) : null),
-        total_price: isRegistration ? null : (values.total_price ? Number(values.total_price) : null),
+        price_per_session: (isRegistration || isEvent) ? null : (values.price_per_session ? Number(values.price_per_session) : null),
+        total_price: isEvent ? (values.total_price ? Number(values.total_price) : null) : (isRegistration ? null : (values.total_price ? Number(values.total_price) : null)),
         currency: values.currency,
       };
 
@@ -315,16 +345,18 @@ export default function CycleForm({
         <DialogHeader>
           <DialogTitle>
             {isEdit 
-              ? t('editCycle') 
-              : isRegistration 
-                ? t('createRegistration', 'Create Registration')
-                : t('createCycle')}
+              ? isEvent ? t('editEvent', 'Edit Event') : t('editCycle')
+              : isEvent
+                ? t('createEvent', 'Create Event')
+                : isRegistration 
+                  ? t('createRegistration', 'Create Registration')
+                  : t('createCycle')}
           </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
-            {isRegistration && (
+            {(isRegistration || isEvent) && (
               <FormField
                 control={form.control}
                 name="name"
@@ -339,69 +371,163 @@ export default function CycleForm({
                 )}
               />
             )}
-
-            <div className="grid grid-cols-2 gap-4">
+            {/* Event description */}
+            {isEvent && (
               <FormField
                 control={form.control}
-                name="start_date"
+                name="description"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>{t('form.startDate')}</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                  <FormItem>
+                    <FormLabel>{t('form.description', 'Description')}</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} rows={3} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            )}
 
-              <FormField
-                control={form.control}
-                name="number_of_weeks"
-                render={({ field }) => {
-                  const startDate = form.watch('start_date');
-                  const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
-                  return (
+            {isEvent ? (
+              /* Event: start date + end date */
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="start_date"
+                  render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={1} max={52} {...field} />
-                      </FormControl>
-                      {computedEnd && (
-                        <p className="text-xs text-muted-foreground">
-                          {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
-                        </p>
-                      )}
+                      <FormLabel>{t('form.startDate')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                       <FormMessage />
                     </FormItem>
-                  );
-                }}
-              />
-            </div>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="end_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : t('form.sameAsStart', 'Same as start')}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormDescription className="text-xs">
+                        {t('form.endDateHelp', 'Leave empty for a single-day event')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ) : (
+              /* Registration / Cyclus: start date + number of weeks */
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="start_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.startDate')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="number_of_weeks"
+                  render={({ field }) => {
+                    const startDate = form.watch('start_date');
+                    const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={52} {...field} />
+                        </FormControl>
+                        {computedEnd && (
+                          <p className="text-xs text-muted-foreground">
+                            {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
+            )}
 
             {/* Timeframe - only for cyclus */}
-            {!isRegistration && (
+            {!isRegistration && !isEvent && (
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -677,8 +803,131 @@ export default function CycleForm({
 
 
 
+            {/* Event: Pricing + Payment Method */}
+            {isEvent && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="total_price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">{t('form.totalPrice')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="0.00"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">{t('form.currency', 'Currency')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CURRENCIES.map(currency => (
+                              <SelectItem key={currency} value={currency}>
+                                {currency}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Max Participants */}
+                <div>
+                  <Label className="text-xs">{t('form.maxParticipants', 'Max Participants')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={maxParticipants}
+                    onChange={(e) => setMaxParticipants(e.target.value ? Number(e.target.value) : '')}
+                    placeholder={t('form.unlimited', 'Unlimited')}
+                    className="mt-1"
+                  />
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t('form.paymentMethod', 'Payment Method')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.paymentMethodHelp', 'How should players pay for this event?')}</p>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'online' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="online"
+                      checked={eventPaymentMethod === 'online'}
+                      onChange={() => setEventPaymentMethod('online')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payOnline', 'Pay Online')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payOnlineHelp', 'Player pays via the platform when registering')}</p>
+                    </div>
+                  </label>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'cash' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="cash"
+                      checked={eventPaymentMethod === 'cash'}
+                      onChange={() => setEventPaymentMethod('cash')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payAtLocation', 'Pay at Location')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payAtLocationHelp', 'Player pays cash or pin on arrival')}</p>
+                    </div>
+                  </label>
+                  
+                  <label className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    eventPaymentMethod === 'both' && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="event_payment"
+                      value="both"
+                      checked={eventPaymentMethod === 'both'}
+                      onChange={() => setEventPaymentMethod('both')}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{t('form.payBoth', 'Player Chooses')}</span>
+                      <p className="text-xs text-muted-foreground">{t('form.payBothHelp', 'Player can choose to pay online or at the location')}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Pricing - only for cyclus */}
-            {!isRegistration && (
+            {!isRegistration && !isEvent && (
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <FormLabel className="text-sm font-medium">{t('form.pricing')}</FormLabel>
@@ -922,6 +1171,7 @@ export default function CycleForm({
             </div>
             )}
 
+            {!isEvent && (
             <FormField
               control={form.control}
               name="lesson_types"
@@ -952,6 +1202,7 @@ export default function CycleForm({
                 </FormItem>
               )}
             />
+            )}
 
             {ownerType === 'academy' && isRegistration && (
               <FormField
@@ -976,6 +1227,7 @@ export default function CycleForm({
               />
             )}
 
+            {!isEvent && (
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -1007,6 +1259,7 @@ export default function CycleForm({
                 )}
               />
             </div>
+            )}
 
 
             <DialogFooter className="gap-2 sm:gap-0">
