@@ -113,6 +113,13 @@ export default function CycleForm({
     getRatingSystems().then(setRatingSystems);
   }, []);
 
+  // Sync fixed rating system into form
+  useEffect(() => {
+    if (fixedRatingSystem) {
+      form.setValue('rating_system', fixedRatingSystem);
+    }
+  }, [fixedRatingSystem]);
+
   const formSchema = z.object({
     name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
     description: z.string().optional().default(''),
