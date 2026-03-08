@@ -113,7 +113,7 @@ export default function TrainerSignup() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     // Store role preference before OAuth redirect
-    trackEvent('signup_started', { role: 'trainer', method: 'google' });
+    trackEvent('signup_started', { role: 'trainer', method: 'google', ...getUtmParams() });
     localStorage.setItem('pendingRole', 'trainer');
     // Store redirect URL if present
     const redirectUrl = searchParams.get('redirect');
