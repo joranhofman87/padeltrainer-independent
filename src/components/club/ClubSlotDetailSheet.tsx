@@ -222,6 +222,11 @@ export function ClubSlotDetailSheet({
                 {t("calendar.private", "Private")}
               </Badge>
             )}
+            {(slot as any).rating_system && (
+              <Badge variant="outline" className="gap-1">
+                {formatSlotRatingDisplay((slot as any).rating_system, (slot as any).min_rating, (slot as any).max_rating)}
+              </Badge>
+            )}
           </div>
 
           {/* Bookings List */}
