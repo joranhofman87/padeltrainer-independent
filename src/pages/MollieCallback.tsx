@@ -4,6 +4,7 @@ import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { trackEvent } from '@/lib/tracking';
+import { logger } from '@/lib/logger';
 
 type CallbackStatus = 'processing' | 'success' | 'error';
 
@@ -40,7 +41,9 @@ export default function MollieCallback() {
 
     if (callbackStatus === 'error') {
       setStatus('error');
-      setErrorMessage(message || 'Something went wrong while connecting your Mollie account.');
+      const msg = message || 'Something went wrong while connecting your Mollie account.';
+      logger.error('Mollie connection failed', new Error(msg), { component: 'MollieCallback', entity: entity || 'unknown' });
+      setErrorMessage(msg);
       return;
     }
 

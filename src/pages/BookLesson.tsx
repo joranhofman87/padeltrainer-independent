@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { logger } from '@/lib/logger';
+import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -329,7 +331,7 @@ export default function BookLesson() {
         const { terms } = await getApplicableTerms(trainerData.id);
         setApplicableTerms(terms);
       } catch (e) {
-        console.error('Error fetching terms:', e);
+        logger.error('Error fetching terms', e as Error, { component: 'BookLesson' });
       } finally {
         setTermsLoading(false);
       }
@@ -394,7 +396,7 @@ export default function BookLesson() {
             },
           });
         } catch (slackErr) {
-          console.error('Slack notification failed (non-fatal):', slackErr);
+          logger.warn('Slack notification failed (non-fatal)', { component: 'BookLesson' });
         }
 
         // Auto-create invoice for manual payment timing cyclus bookings
@@ -653,7 +655,7 @@ export default function BookLesson() {
         }
       }
     } catch (error: any) {
-      console.error('Booking error:', error);
+      logger.error('Booking failed', error instanceof Error ? error : new Error(error?.message || 'Unknown booking error'), { component: 'BookLesson', action: 'handleBooking' });
       toast({
         title: 'Booking Failed',
         description: error.message || 'Could not complete booking',
