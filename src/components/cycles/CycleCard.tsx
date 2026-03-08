@@ -15,6 +15,9 @@ import {
   FileText,
   Link2,
   Euro,
+  PartyPopper,
+  Banknote,
+  CreditCard,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -118,12 +121,31 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
           </div>
           
           <div className="flex items-center gap-2 flex-wrap">
+            {cycle.type === 'event' && (
+              <Badge variant="outline" className="text-xs gap-1 bg-purple-500/10 text-purple-600 border-purple-500/20">
+                <PartyPopper className="h-3 w-3" />
+                {t('type.event', 'Event')}
+              </Badge>
+            )}
             <Badge variant="outline" className={getStatusColor(cycle.status)}>
               {t(`status.${cycle.status}`)}
             </Badge>
             
-            {/* Payment timing badge */}
-            {(() => {
+            {/* Payment method badge for events */}
+            {cycle.type === 'event' && (() => {
+              const pm = (cycle.settings as any)?.payment_methods;
+              if (!pm) return null;
+              return (
+                <Badge variant="outline" className="text-xs gap-1">
+                  {pm === 'online' && <><CreditCard className="h-3 w-3" />{t('paymentBadge.online', 'Online')}</>}
+                  {pm === 'cash' && <><Banknote className="h-3 w-3" />{t('paymentBadge.cash', 'Cash')}</>}
+                  {pm === 'both' && <><CreditCard className="h-3 w-3" />{t('paymentBadge.both', 'Online / Cash')}</>}
+                </Badge>
+              );
+            })()}
+            
+            {/* Payment timing badge for non-events */}
+            {cycle.type !== 'event' && (() => {
               const settings = cycle.settings as any;
               const timing = settings?.payment_timing || (settings?.mark_as_paid ? 'manual' : 'upfront');
               if (timing === 'upfront') return null;
