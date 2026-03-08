@@ -531,7 +531,7 @@ function getRecurringConfig(type: string) {
 }
 
 async function handleFailedPayment(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   metadata: Record<string, unknown>,
   status: string,
   paymentId: string
@@ -551,7 +551,7 @@ async function handleFailedPayment(
       await supabase
         .from(fpConfig.table)
         .update({ subscription_status: "past_due", last_processed_payment_id: paymentId })
-        .eq("id", metadata[fpConfig.profileField]);
+        .eq("id", metadata[fpConfig.profileField] as string);
     }
     return;
   }
@@ -582,7 +582,7 @@ async function handleFailedPayment(
 }
 
 async function logSubscriptionPayment(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   payment: Record<string, unknown>,
   metadata: Record<string, unknown>,
   profileType?: string,
@@ -622,7 +622,7 @@ async function logSubscriptionPayment(
 }
 
 async function sendSlackNotification(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   trainerProfileId: string,
   _table: string,
   planId: string,
