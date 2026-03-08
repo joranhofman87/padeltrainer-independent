@@ -609,6 +609,9 @@ export function BulkCreateSheet({
         is_marked_full: boolean;
         academy_profile_id: string | null;
         training_level: string | null;
+        rating_system: string | null;
+        min_rating: number | null;
+        max_rating: number | null;
         price_per_session: number | null;
         total_price: number | null;
         allow_single_booking: boolean;
@@ -1187,26 +1190,14 @@ export function BulkCreateSheet({
                     </Select>
                   </div>
 
-                  {/* Training Level (optional) */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">{t("calendar.trainingLevel", "Training Level")}</Label>
-                    <Select
-                      value={slot.trainingLevel || "any"}
-                      onValueChange={(v) =>
-                        updateBulkSlot(index, { trainingLevel: v === "any" ? null : v })
-                      }
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">{t("calendar.anyLevel", "Any level")}</SelectItem>
-                        <SelectItem value="beginner">{t("calendar.beginner", "Beginner")}</SelectItem>
-                        <SelectItem value="intermediate">{t("calendar.intermediate", "Intermediate")}</SelectItem>
-                        <SelectItem value="advanced">{t("calendar.advanced", "Advanced")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Rating Level (optional) */}
+                  <SlotRatingPicker
+                    ratingSystem={slot.ratingSystem}
+                    minRating={slot.minRating}
+                    maxRating={slot.maxRating}
+                    onChange={(vals) => updateBulkSlot(index, vals)}
+                    compact
+                  />
 
                   {/* Cyclus Name */}
                   <div className="space-y-1">
