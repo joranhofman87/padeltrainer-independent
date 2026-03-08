@@ -24,7 +24,7 @@ export function BannerAnalytics({ banners, placements }: Props) {
     queryFn: async () => {
       let query = supabase
         .from("banner_events")
-        .select("banner_id, event_type, created_at, placement_id")
+        .select("banner_id, event_type, created_at, placement_id, session_id")
         .gte("created_at", sinceDate);
 
       if (selectedBannerId !== "all") {

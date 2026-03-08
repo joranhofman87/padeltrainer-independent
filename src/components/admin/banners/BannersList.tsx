@@ -97,7 +97,7 @@ export function BannersList({ banners, locations, placements }: Props) {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData & { id?: string }) => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: data.name,
         image_url: data.image_url,
         link_url: data.link_url || null,
@@ -108,7 +108,7 @@ export function BannersList({ banners, locations, placements }: Props) {
         end_date: data.end_date || null,
         sponsor_name: data.sponsor_name || null,
         sponsor_logo_url: data.sponsor_logo_url || null,
-        budget_type: data.budget_type,
+        budget_type: data.budget_type as "unlimited" | "impression_cap" | "click_cap",
         budget_cap: data.budget_cap ? parseInt(data.budget_cap) : null,
       };
 
@@ -118,7 +118,7 @@ export function BannersList({ banners, locations, placements }: Props) {
         const { error } = await supabase.from("partner_banners").update(payload).eq("id", data.id);
         if (error) throw error;
       } else {
-        const { data: inserted, error } = await supabase.from("partner_banners").insert(payload).select("id").single();
+        const { data: inserted, error } = await supabase.from("partner_banners").insert(payload as any).select("id").single();
         if (error) throw error;
         bannerId = inserted.id;
       }
