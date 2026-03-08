@@ -54,6 +54,7 @@ export interface TrainerFiltersState {
   verifiedOnly: boolean;
   ratingSystem: string;
   minTrainerRating: number;
+  hasAvailability: boolean;
 }
 
 interface TrainerFiltersProps {
@@ -76,6 +77,7 @@ const DEFAULT_FILTERS: TrainerFiltersState = {
   verifiedOnly: false,
   ratingSystem: '',
   minTrainerRating: 0,
+  hasAvailability: false,
 };
 
 export function TrainerFilters({
@@ -362,6 +364,24 @@ export function TrainerFilters({
                   </Select>
                 )}
               </div>
+            </div>
+
+            {/* Has Availability Toggle */}
+            <div className="flex items-center space-x-2 self-end pb-0.5">
+              <Checkbox
+                id="hasAvailability"
+                checked={filters.hasAvailability}
+                onCheckedChange={(checked) => 
+                  onChange({ ...filters, hasAvailability: checked === true })
+                }
+              />
+              <label
+                htmlFor="hasAvailability"
+                className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1"
+              >
+                <CalendarCheck className="h-3.5 w-3.5 text-green-600" />
+                Available
+              </label>
             </div>
 
             {/* More Filters Toggle */}
