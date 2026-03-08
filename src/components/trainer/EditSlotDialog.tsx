@@ -269,6 +269,17 @@ export function EditSlotDialog({
             </div>
           </div>
 
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={ratingSystem}
+            minRating={minRating}
+            maxRating={maxRating}
+            onChange={(vals) => {
+              setRatingSystem(vals.ratingSystem);
+              setMinRating(vals.minRating);
+              setMaxRating(vals.maxRating);
+            }}
+          />
 
           {/* Cyclus Name */}
           {slot.cyclus_id && (
