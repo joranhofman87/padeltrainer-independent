@@ -108,10 +108,10 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
       if (!trainerProfile) throw new Error('Trainer profile not found');
 
-      // Update specializations
+      // Update specializations and rating system
       const { error: specError } = await supabase
         .from('trainer_profiles')
-        .update({ specializations })
+        .update({ specializations, trainer_rating_system: ratingSystem })
         .eq('id', trainerProfile.id);
 
       if (specError) throw specError;
