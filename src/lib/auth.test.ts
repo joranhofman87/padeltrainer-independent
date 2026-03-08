@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import type { UserRole, UserProfile, TrainerProfile } from './auth';
 
 // Mock the supabase client
-vi.mock('@/integrations/supabase/client', () => ({
+vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     auth: {
       signUp: vi.fn(),
@@ -13,7 +13,20 @@ vi.mock('@/integrations/supabase/client', () => ({
       updateUser: vi.fn(),
     },
     from: vi.fn(),
+    functions: {
+      invoke: vi.fn(),
+    },
   },
+}));
+
+// Mock domains module
+vi.mock('@/lib/domains', () => ({
+  getAuthRedirectUrl: vi.fn((path: string) => `http://localhost:3000${path}`),
+}));
+
+// Mock logger
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
 import { supabase } from '@/lib/supabaseClient';
@@ -40,19 +53,16 @@ describe('Auth module', () => {
   });
 
   describe('signUpWithEmail', () => {
-    it('calls supabase.auth.signUp with correct params', async () => {
-      const mockUser = { id: 'user-123' };
-      (supabase.auth.signUp as Mock).mockResolvedValue({
+    it('calls signup edge function and signs in', async () => {
+      const mockUser = { id: 'user-123', email: 'test@example.com' };
+      (supabase.functions.invoke as Mock).mockResolvedValue({
         data: { user: mockUser },
         error: null,
       });
-
-      const mockFrom = vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-        }),
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
+        error: null,
       });
-      (supabase.from as Mock).mockImplementation(mockFrom);
 
       const result = await signUpWithEmail(
         'test@example.com',
@@ -61,50 +71,44 @@ describe('Auth module', () => {
         '+31612345678'
       );
 
-      expect(supabase.auth.signUp).toHaveBeenCalledWith({
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('signup-user', expect.objectContaining({
+        body: expect.objectContaining({ email: 'test@example.com' }),
+      }));
+      expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
         email: 'test@example.com',
         password: 'password123',
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            full_name: 'John Doe',
-            phone: '+31612345678',
-          },
-        },
       });
 
       expect(result.data.user).toEqual(mockUser);
       expect(result.error).toBeNull();
     });
 
-    it('updates profile with phone after signup', async () => {
-      const mockUser = { id: 'user-123' };
-      (supabase.auth.signUp as Mock).mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
+    it('returns error when signup function fails', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: null,
+        error: { message: 'Signup failed' },
       });
 
-      const mockEq = vi.fn().mockResolvedValue({ data: null, error: null });
-      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
-      (supabase.from as Mock).mockReturnValue({ update: mockUpdate });
+      const result = await signUpWithEmail('test@example.com', 'password123', 'John Doe');
 
-      await signUpWithEmail('test@example.com', 'password123', 'John Doe', '+31612345678');
-
-      expect(supabase.from).toHaveBeenCalledWith('profiles');
-      expect(mockUpdate).toHaveBeenCalledWith({ phone: '+31612345678' });
-      expect(mockEq).toHaveBeenCalledWith('user_id', 'user-123');
+      expect(result.error).toBeTruthy();
     });
 
-    it('does not update profile if no phone provided', async () => {
-      const mockUser = { id: 'user-123' };
-      (supabase.auth.signUp as Mock).mockResolvedValue({
+    it('does not fail if no phone provided', async () => {
+      const mockUser = { id: 'user-123', email: 'test@example.com' };
+      (supabase.functions.invoke as Mock).mockResolvedValue({
         data: { user: mockUser },
         error: null,
       });
+      (supabase.auth.signInWithPassword as Mock).mockResolvedValue({
+        data: { user: mockUser, session: { access_token: 'tok' } },
+        error: null,
+      });
 
-      await signUpWithEmail('test@example.com', 'password123', 'John Doe');
+      const result = await signUpWithEmail('test@example.com', 'password123', 'John Doe');
 
-      expect(supabase.from).not.toHaveBeenCalled();
+      expect(supabase.functions.invoke).toHaveBeenCalled();
+      expect(result.data.user).toEqual(mockUser);
     });
   });
 
@@ -282,7 +286,7 @@ describe('Auth module', () => {
       expect(supabase.from).toHaveBeenCalledWith('user_roles');
       expect(mockInsert).toHaveBeenCalledWith({ user_id: 'user-123', role: 'trainer' });
       expect(supabase.from).toHaveBeenCalledWith('trainer_profiles');
-      expect(mockTrainerInsert).toHaveBeenCalledWith({ user_id: 'user-123' });
+      expect(mockTrainerInsert).toHaveBeenCalledWith(expect.objectContaining({ user_id: 'user-123' }));
     });
 
     it('does not create trainer profile for player role', async () => {
@@ -341,18 +345,21 @@ describe('Auth module', () => {
   });
 
   describe('sendPasswordResetEmail', () => {
-    it('calls supabase.auth.resetPasswordForEmail with redirect', async () => {
-      (supabase.auth.resetPasswordForEmail as Mock).mockResolvedValue({
-        data: {},
+    it('calls send-auth-email edge function with correct params', async () => {
+      (supabase.functions.invoke as Mock).mockResolvedValue({
+        data: { success: true },
         error: null,
       });
 
       await sendPasswordResetEmail('test@example.com');
 
-      expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith(
-        'test@example.com',
-        { redirectTo: `${window.location.origin}/reset-password` }
-      );
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('send-auth-email', {
+        body: {
+          type: 'password_reset',
+          email: 'test@example.com',
+          redirectTo: 'http://localhost:3000/app/reset-password',
+        },
+      });
     });
   });
 
