@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, CalendarDays } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import CycleForm from '@/components/cycles/CycleForm';
@@ -26,6 +26,7 @@ export default function AcademyCycles() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
   const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
@@ -109,6 +110,7 @@ export default function AcademyCycles() {
 
   const handleCycleCreated = () => {
     setShowCreateDialog(false);
+    setShowCreateEventDialog(false);
     setEditingCycle(null);
     fetchCycles();
   };
@@ -145,10 +147,16 @@ export default function AcademyCycles() {
             {t('noRegistrationsDescription', 'Create registrations to collect player interest')}
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t('createRegistration', 'Create Registration')}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t('createRegistration', 'Create Registration')}
+          </Button>
+          <Button variant="outline" onClick={() => setShowCreateEventDialog(true)}>
+            <PartyPopper className="mr-2 h-4 w-4" />
+            {t('createEvent', 'Create Event')}
+          </Button>
+        </div>
       </div>
 
       {/* Cycles Table or Empty State */}
@@ -179,23 +187,42 @@ export default function AcademyCycles() {
 
       {/* Create/Edit Dialog */}
       {activeAcademy && (
-        <CycleForm
-          open={showCreateDialog || !!editingCycle}
-          onOpenChange={(open) => {
-            if (!open) {
-              setShowCreateDialog(false);
-              setEditingCycle(null);
-            }
-          }}
-          cycle={editingCycle && editingCycle.id ? editingCycle : undefined}
-          ownerType="academy"
-          ownerId={activeAcademy.id}
-          onSuccess={handleCycleCreated}
-          formType="registration"
-          trainers={trainers}
-          locations={locations}
-          trainerLocationMap={trainerLocationMap}
-        />
+        <>
+          <CycleForm
+            open={showCreateDialog || (!!editingCycle && editingCycle.type !== 'event')}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowCreateDialog(false);
+                setEditingCycle(null);
+              }
+            }}
+            cycle={editingCycle && editingCycle.id && editingCycle.type !== 'event' ? editingCycle : undefined}
+            ownerType="academy"
+            ownerId={activeAcademy.id}
+            onSuccess={handleCycleCreated}
+            formType="registration"
+            trainers={trainers}
+            locations={locations}
+            trainerLocationMap={trainerLocationMap}
+          />
+          <CycleForm
+            open={showCreateEventDialog || (!!editingCycle && editingCycle.type === 'event')}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowCreateEventDialog(false);
+                setEditingCycle(null);
+              }
+            }}
+            cycle={editingCycle?.type === 'event' ? editingCycle : undefined}
+            ownerType="academy"
+            ownerId={activeAcademy.id}
+            onSuccess={handleCycleCreated}
+            formType="event"
+            trainers={trainers}
+            locations={locations}
+            trainerLocationMap={trainerLocationMap}
+          />
+        </>
       )}
     </div>
   );

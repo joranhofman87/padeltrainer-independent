@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Plus, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import CycleForm from '@/components/cycles/CycleForm';
@@ -29,6 +29,7 @@ export default function TrainerCycles() {
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [trainerHourlyRate, setTrainerHourlyRate] = useState<number | undefined>();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
   const [locations, setLocations] = useState<LocationData[]>([]);
 
@@ -96,6 +97,7 @@ export default function TrainerCycles() {
 
   const handleCycleCreated = () => {
     setShowCreateDialog(false);
+    setShowCreateEventDialog(false);
     setEditingCycle(null);
     fetchCycles();
   };
@@ -128,10 +130,16 @@ export default function TrainerCycles() {
               </p>
             </div>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('createRegistration', 'Create Registration')}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('createRegistration', 'Create Registration')}
+            </Button>
+            <Button variant="outline" onClick={() => setShowCreateEventDialog(true)}>
+              <PartyPopper className="mr-2 h-4 w-4" />
+              {t('createEvent', 'Create Event')}
+            </Button>
+          </div>
         </div>
 
         {/* Cycles Grid */}
@@ -164,22 +172,40 @@ export default function TrainerCycles() {
 
       {/* Create/Edit Dialog */}
       {trainerId && (
-        <CycleForm
-          open={showCreateDialog || !!editingCycle}
-          onOpenChange={(open) => {
-            if (!open) {
-              setShowCreateDialog(false);
-              setEditingCycle(null);
-            }
-          }}
-          cycle={editingCycle || undefined}
-          ownerType="trainer"
-          ownerId={trainerId}
-          trainerHourlyRate={trainerHourlyRate}
-          formType="registration"
-          locations={locations}
-          onSuccess={handleCycleCreated}
-        />
+        <>
+          <CycleForm
+            open={showCreateDialog || (!!editingCycle && editingCycle.type !== 'event')}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowCreateDialog(false);
+                setEditingCycle(null);
+              }
+            }}
+            cycle={editingCycle && editingCycle.type !== 'event' ? editingCycle : undefined}
+            ownerType="trainer"
+            ownerId={trainerId}
+            trainerHourlyRate={trainerHourlyRate}
+            formType="registration"
+            locations={locations}
+            onSuccess={handleCycleCreated}
+          />
+          <CycleForm
+            open={showCreateEventDialog || (!!editingCycle && editingCycle.type === 'event')}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowCreateEventDialog(false);
+                setEditingCycle(null);
+              }
+            }}
+            cycle={editingCycle?.type === 'event' ? editingCycle : undefined}
+            ownerType="trainer"
+            ownerId={trainerId}
+            trainerHourlyRate={trainerHourlyRate}
+            formType="event"
+            locations={locations}
+            onSuccess={handleCycleCreated}
+          />
+        </>
       )}
     </div>
   );
