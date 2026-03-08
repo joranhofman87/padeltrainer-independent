@@ -174,6 +174,18 @@ Deno.serve(async (req) => {
       xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
     }
 
+    // Province/region landing pages
+    const provinceSlugs = [
+      'noord-holland', 'zuid-holland', 'noord-brabant', 'gelderland', 'utrecht',
+      'overijssel', 'limburg', 'friesland', 'groningen', 'drenthe', 'flevoland', 'zeeland',
+      'antwerpen', 'vlaams-brabant', 'oost-vlaanderen', 'west-vlaanderen',
+      'cataluna', 'comunidad-de-madrid', 'comunidad-valenciana', 'andalucia',
+      'nordrhein-westfalen', 'bayern', 'baden-wurttemberg'
+    ];
+    for (const provinceSlug of provinceSlugs) {
+      xml += generateUrlEntry(`/trainers/region/${provinceSlug}`, today, 'weekly', '0.7');
+    }
+
     // Add academy profile pages (for each language)
     if (academies) {
       for (const academy of academies) {
