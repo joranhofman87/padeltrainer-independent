@@ -1204,7 +1204,7 @@ export default function CycleForm({
             />
             )}
 
-            {!isEvent && (
+            {ownerType === 'academy' && isRegistration && (
               <FormField
                 control={form.control}
                 name="show_preferred_trainer"
@@ -1227,6 +1227,7 @@ export default function CycleForm({
               />
             )}
 
+            {!isEvent && (
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -1258,6 +1259,7 @@ export default function CycleForm({
                 )}
               />
             </div>
+            )}
 
 
             <DialogFooter className="gap-2 sm:gap-0">
