@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { RatingSystemConfig, COUNTRY_NAMES, clearRatingSystemsCache } from "@/lib/ratingSystems";
+import { logger } from '@/lib/logger';
 
 interface RatingSystemFormData {
   code: string;
@@ -115,7 +116,7 @@ export default function AdminRatingSystems() {
       if (error) throw error;
       setRatingSystems(data as RatingSystemConfig[]);
     } catch (error: any) {
-      console.error("Error fetching rating systems:", error);
+      logger.error("Error fetching rating systems", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
         description: t("ratingSystems.failedToLoad"),
@@ -203,7 +204,7 @@ export default function AdminRatingSystems() {
       setDialogOpen(false);
       fetchRatingSystems();
     } catch (error: any) {
-      console.error("Error saving rating system:", error);
+      logger.error("Error saving rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
         description: error.message || t("common:toasts.errorDescription"),
@@ -234,7 +235,7 @@ export default function AdminRatingSystems() {
         }),
       });
     } catch (error: any) {
-      console.error("Error toggling rating system:", error);
+      logger.error("Error toggling rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
         description: error.message,
@@ -269,7 +270,7 @@ export default function AdminRatingSystems() {
         description: t("ratingSystems.deletedDesc", { name: systemToDelete.name }),
       });
     } catch (error: any) {
-      console.error("Error deleting rating system:", error);
+      logger.error("Error deleting rating system", error instanceof Error ? error : new Error(String(error)), { component: 'AdminRatingSystems' });
       toast({
         title: t("common:toasts.errorTitle"),
         description: error.message,
