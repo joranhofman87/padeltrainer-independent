@@ -63,6 +63,8 @@ interface CycleFormProps {
   trainerHourlyRate?: number;
   /** Whether this is a registration (interest collection), cyclus (calendar slot), or event */
   formType?: 'registration' | 'cyclus' | 'event';
+  /** When set, locks the rating system selector to this value */
+  trainerRatingSystem?: string | null;
 }
 
 export default function CycleForm({
@@ -77,6 +79,7 @@ export default function CycleForm({
   trainerLocationMap = {},
   trainerHourlyRate,
   formType = 'cyclus',
+  trainerRatingSystem: fixedRatingSystem,
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
