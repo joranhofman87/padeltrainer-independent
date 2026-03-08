@@ -195,13 +195,13 @@ export default function AcademyPublicProfile() {
         {
           "@type": "ListItem",
           "position": 1,
-          "name": currentLang === 'en' ? "Home" : "Home",
+          "name": t('common:navigation.home'),
           "item": `${MARKETING_DOMAIN}/${currentLang}`
         },
         {
           "@type": "ListItem",
           "position": 2,
-          "name": currentLang === 'en' ? "Academies" : "Academies",
+          "name": t('common:academies', 'Academies'),
           "item": `${MARKETING_DOMAIN}/${currentLang}/academies`
         },
         {
