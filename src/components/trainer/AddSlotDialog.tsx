@@ -44,7 +44,6 @@ import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
 import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
-import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   const hours = Math.floor(i / 2);
