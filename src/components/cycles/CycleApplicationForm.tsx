@@ -589,8 +589,10 @@ export default function CycleApplicationForm({
             )}
           </CardContent>
         </Card>
+        )}
 
-        {/* Availability */}
+        {/* Availability - hide for events */}
+        {!isEvent && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">{t('application.form.availability')}</CardTitle>
