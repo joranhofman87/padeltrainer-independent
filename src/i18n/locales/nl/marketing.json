@@ -789,6 +789,34 @@
     "nearbyCitiesSubtitle": "Vind padeltrainers in andere steden",
     "trainersCount": "{{count}} trainers",
     "home": "Home",
-    "trainers": "Trainers"
+    "trainers": "Trainers",
+    "cities": "Steden",
+    "clubs": "Clubs",
+    "exploreOtherRegions": "Verken andere regio's"
+  },
+  "provincePage": {
+    "title": "Padeltrainers in {{province}} | Vind & Boek Lessen",
+    "description": "Vind {{count}} padeltrainers in {{cities}} steden in {{province}}. Vergelijk tarieven, lees reviews en boek lessen.",
+    "descriptionEmpty": "Verken padeltrainingsmogelijkheden in {{province}}.",
+    "heading": "Padeltrainers in {{province}}",
+    "subtitle": "Ontdek {{count}} padeltrainers in {{cities}} steden in {{province}}. Vind de perfecte trainer bij jou in de buurt.",
+    "subtitleEmpty": "Verken padeltrainingsmogelijkheden in {{province}}."
+  },
+  "seo": {
+    "home": {
+      "title": "Padel Trainer — Planning, Boekingen & Betalingen voor Padeltrainers",
+      "description": "Beheer je padelcoaching vanuit één plek. Online boeken, veilige betalingen, agendakoppeling en minder no-shows. Gratis proefperiode, daarna vanaf €9/maand."
+    },
+    "location": {
+      "title": "{{name}} - Padeltraining in {{city}}",
+      "description": "Boek padellessen bij {{name}} in {{city}}. {{count}} gecertificeerde trainers beschikbaar."
+    },
+    "academy": {
+      "title": "{{name}} - Padelacademie{{city}}",
+      "description": "{{name}} - Professionele padelacademie met {{trainers}} gecertificeerde trainer{{trainerPlural}} op {{locations}} locatie{{locationPlural}}."
+    },
+    "trainer": {
+      "description": "Boek padellessen bij {{name}} in {{location}}. {{experience}}{{rate}}"
+    }
   }
 }
