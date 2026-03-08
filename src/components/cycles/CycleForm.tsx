@@ -170,12 +170,14 @@ export default function CycleForm({
     if (open) {
       form.reset({
         name: cycle?.name || '',
+        description: cycle?.description || '',
         start_date: cycle ? new Date(cycle.start_date) : new Date(),
+        end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
         number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
         start_time: (cycle?.settings as any)?.start_time || '09:00',
         end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
-        lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
+        lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group']),
         show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
         max_group_size: cycle?.settings?.max_group_size || 4,
         min_group_size: cycle?.settings?.min_group_size || 1,
@@ -200,6 +202,8 @@ export default function CycleForm({
       }
       setInvoiceDelayWeeks(settings?.invoice_delay_weeks ?? 2);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
+      setEventPaymentMethod((cycle?.settings as any)?.payment_methods ?? 'online');
+      setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
     }
   }, [cycle, open]);
 
