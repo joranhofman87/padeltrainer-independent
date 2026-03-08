@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
+import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus, PartyPopper, CreditCard, Banknote } from 'lucide-react';
 import { getAppUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -139,7 +139,15 @@ export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesP
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h4 className="font-medium">{cycle.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium">{cycle.name}</h4>
+                      {cycle.type === 'event' && (
+                        <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+                          <PartyPopper className="h-3 w-3 mr-1" />
+                          {t('type.event', 'Event')}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
@@ -151,6 +159,22 @@ export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesP
                           {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
                         </span>
                       )}
+                      {cycle.type === 'event' && cycle.total_price && (
+                        <span className="font-medium text-foreground">
+                          {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
+                        </span>
+                      )}
+                      {cycle.type === 'event' && (() => {
+                        const pm = (cycle.settings as any)?.payment_methods;
+                        if (!pm) return null;
+                        return (
+                          <span className="flex items-center gap-1">
+                            {pm === 'online' && <><CreditCard className="h-4 w-4" />{t('paymentBadge.online', 'Pay Online')}</>}
+                            {pm === 'cash' && <><Banknote className="h-4 w-4" />{t('paymentBadge.cash', 'Pay at Location')}</>}
+                            {pm === 'both' && <><CreditCard className="h-4 w-4" />{t('paymentBadge.both', 'Online or at Location')}</>}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {cycle.description && (
                       <div className="text-sm text-muted-foreground mt-2 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
