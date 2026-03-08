@@ -65,8 +65,8 @@ export default function TrainersProvince() {
     {
       "@context": "https://schema.org",
       "@type": "ItemList",
-      "name": `Padel Trainers in ${provinceData.name}`,
-      "description": `Find padel trainers across ${citiesData.length} cities in ${provinceData.name}.`,
+      "name": t('provincePage.heading', { province: provinceData.name }),
+      "description": t('provincePage.description', { count: totalTrainers, cities: citiesData.length, province: provinceData.name }),
       "numberOfItems": citiesData.length,
       "itemListElement": citiesData.slice(0, 20).map((city, index) => ({
         "@type": "ListItem",
@@ -92,8 +92,11 @@ export default function TrainersProvince() {
   return (
     <MarketingLayout>
       <SEO
-        title={`Padel Trainers in ${provinceData.name} | Find & Book Lessons`}
-        description={`Find ${totalTrainers} padel trainers across ${citiesData.length} cities in ${provinceData.name}. Compare rates, read reviews, and book lessons.`}
+        title={t('provincePage.title', { province: provinceData.name })}
+        description={totalTrainers > 0
+          ? t('provincePage.description', { count: totalTrainers, cities: citiesData.length, province: provinceData.name })
+          : t('provincePage.descriptionEmpty', { province: provinceData.name })
+        }
         url={`/trainers/region/${provinceData.slug}`}
         structuredData={structuredData}
       />
@@ -115,12 +118,12 @@ export default function TrainersProvince() {
         {/* Hero */}
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold mb-3">
-            Padel Trainers in {provinceData.name}
+            {t('provincePage.heading', { province: provinceData.name })}
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
             {totalTrainers > 0
-              ? `Discover ${totalTrainers} padel trainers across ${citiesData.length} cities in ${provinceData.name}. Find the perfect trainer near you.`
-              : `Explore padel training options across ${provinceData.name}.`
+              ? t('provincePage.subtitle', { count: totalTrainers, cities: citiesData.length, province: provinceData.name })
+              : t('provincePage.subtitleEmpty', { province: provinceData.name })
             }
           </p>
         </div>
@@ -136,13 +139,13 @@ export default function TrainersProvince() {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-primary">{citiesData.length}</div>
-              <div className="text-sm text-muted-foreground">Cities</div>
+              <div className="text-sm text-muted-foreground">{t('cityPage.cities')}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-primary">{totalLocations}</div>
-              <div className="text-sm text-muted-foreground">Clubs</div>
+              <div className="text-sm text-muted-foreground">{t('cityPage.clubs')}</div>
             </CardContent>
           </Card>
         </div>
@@ -173,7 +176,7 @@ export default function TrainersProvince() {
                         <Users className="h-3 w-3" />
                         {city.trainerCount} {city.trainerCount !== 1 ? t('cityPage.trainers').toLowerCase() : 'trainer'}
                       </span>
-                      <span>{city.locationCount} club{city.locationCount !== 1 ? 's' : ''}</span>
+                      <span>{city.locationCount} {city.locationCount !== 1 ? t('cityPage.clubs').toLowerCase() : 'club'}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -189,7 +192,7 @@ export default function TrainersProvince() {
               <Globe className="h-6 w-6" />
               {t('cityPage.nearbyCitiesTitle')}
             </h2>
-            <p className="text-muted-foreground mb-6">Explore other regions</p>
+            <p className="text-muted-foreground mb-6">{t('cityPage.exploreOtherRegions')}</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {relatedProvinces.map(p => (
                 <LocalizedLink
@@ -198,7 +201,7 @@ export default function TrainersProvince() {
                   className="block p-4 rounded-lg border bg-card hover:border-primary/50 hover:shadow-md transition-all"
                 >
                   <div className="font-medium text-foreground">{p.name}</div>
-                  <Badge variant="outline" className="mt-1 text-xs">{p.cities.length} cities</Badge>
+                  <Badge variant="outline" className="mt-1 text-xs">{p.cities.length} {t('cityPage.cities').toLowerCase()}</Badge>
                 </LocalizedLink>
               ))}
             </div>
