@@ -397,6 +397,9 @@ export function ClubBulkCreateSheet({
         cyclus_id: string | null;
         cyclus_name: string | null;
         location_id: string | null;
+        rating_system: string | null;
+        min_rating: number | null;
+        max_rating: number | null;
       }[] = [];
 
       for (const config of bulkSlots) {
@@ -417,6 +420,9 @@ export function ClubBulkCreateSheet({
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             location_id: clubLocationId || null,
+            rating_system: config.ratingSystem,
+            min_rating: config.minRating,
+            max_rating: config.maxRating,
           });
         }
       }
@@ -606,6 +612,15 @@ export function ClubBulkCreateSheet({
                       className="h-8"
                     />
                   </div>
+
+                  {/* Rating Level */}
+                  <SlotRatingPicker
+                    ratingSystem={slot.ratingSystem}
+                    minRating={slot.minRating}
+                    maxRating={slot.maxRating}
+                    onChange={(vals) => updateBulkSlot(index, vals)}
+                    compact
+                  />
 
                   <p className="text-xs text-muted-foreground">
                     {tTrainer("calendar.recurringSummary", {
