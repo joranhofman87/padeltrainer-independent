@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost } from '@/lib/cycles';
+import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod } from '@/lib/cycles';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
@@ -60,8 +60,8 @@ interface CycleFormProps {
   trainerLocationMap?: Record<string, string[]>;
   /** Hourly rate for trainer-owned cycles (not using trainers array) */
   trainerHourlyRate?: number;
-  /** Whether this is a registration (interest collection) or cyclus (calendar slot) */
-  formType?: 'registration' | 'cyclus';
+  /** Whether this is a registration (interest collection), cyclus (calendar slot), or event */
+  formType?: 'registration' | 'cyclus' | 'event';
 }
 
 export default function CycleForm({
@@ -95,21 +95,30 @@ export default function CycleForm({
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>(
     (cycle?.settings as any)?.extra_costs ?? []
   );
+  const [eventPaymentMethod, setEventPaymentMethod] = useState<EventPaymentMethod>(
+    (cycle?.settings as any)?.payment_methods ?? 'online'
+  );
+  const [maxParticipants, setMaxParticipants] = useState<number | ''>(
+    (cycle?.settings as any)?.max_participants ?? ''
+  );
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
+  const isEvent = formType === 'event';
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
   }, []);
 
   const formSchema = z.object({
-    name: isRegistration ? z.string().min(2) : z.string().optional().default(''),
+    name: (isRegistration || isEvent) ? z.string().min(2) : z.string().optional().default(''),
+    description: z.string().optional().default(''),
     start_date: z.date(),
-    number_of_weeks: z.coerce.number().min(1).max(52),
+    end_date: isEvent ? z.date().optional() : z.date().optional(),
+    number_of_weeks: isEvent ? z.coerce.number().optional().default(1) : z.coerce.number().min(1).max(52),
     start_time: z.string().default('09:00'),
     end_time: z.string().default('10:00'),
     enrollment_deadline: z.date().optional(),
-    lesson_types: z.array(z.string()).min(1),
+    lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1),
     show_preferred_trainer: z.boolean(),
     max_group_size: z.coerce.number().min(2).max(20).optional(),
     min_group_size: z.coerce.number().min(1).max(20).optional(),
@@ -133,12 +142,14 @@ export default function CycleForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: cycle?.name || '',
+      description: cycle?.description || '',
       start_date: cycle ? new Date(cycle.start_date) : new Date(),
+      end_date: cycle?.end_date ? new Date(cycle.end_date) : undefined,
       number_of_weeks: cycle ? Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date)))) : 10,
       start_time: (cycle?.settings as any)?.start_time || '09:00',
       end_time: (cycle?.settings as any)?.end_time || '10:00',
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
-      lesson_types: cycle?.settings?.lesson_types || ['private', 'duo', 'group'],
+      lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group']),
       show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
