@@ -51,12 +51,15 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('id, specializations')
+        .select('id, specializations, trainer_rating_system')
         .eq('user_id', user!.id)
         .maybeSingle();
 
       if (trainerProfile) {
         setSpecializations(trainerProfile.specializations || []);
+        if (trainerProfile.trainer_rating_system) {
+          setRatingSystem(trainerProfile.trainer_rating_system);
+        }
 
         // Load existing locations
         const { data: trainerLocations } = await supabase
