@@ -792,6 +792,141 @@ export type Database = {
           },
         ]
       }
+      banner_events: {
+        Row: {
+          banner_id: string
+          created_at: string
+          event_type: Database["public"]["Enums"]["banner_event_type"]
+          id: string
+          ip_hash: string | null
+          page_url: string | null
+          placement_id: string | null
+          referrer: string | null
+          session_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          banner_id: string
+          created_at?: string
+          event_type: Database["public"]["Enums"]["banner_event_type"]
+          id?: string
+          ip_hash?: string | null
+          page_url?: string | null
+          placement_id?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          banner_id?: string
+          created_at?: string
+          event_type?: Database["public"]["Enums"]["banner_event_type"]
+          id?: string
+          ip_hash?: string | null
+          page_url?: string | null
+          placement_id?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "banner_events_banner_id_fkey"
+            columns: ["banner_id"]
+            isOneToOne: false
+            referencedRelation: "partner_banners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "banner_events_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "banner_placements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      banner_placement_assignments: {
+        Row: {
+          banner_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          placement_id: string
+          priority: number
+          weight: number
+        }
+        Insert: {
+          banner_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          placement_id: string
+          priority?: number
+          weight?: number
+        }
+        Update: {
+          banner_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          placement_id?: string
+          priority?: number
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "banner_placement_assignments_banner_id_fkey"
+            columns: ["banner_id"]
+            isOneToOne: false
+            referencedRelation: "partner_banners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "banner_placement_assignments_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "banner_placements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      banner_placements: {
+        Row: {
+          created_at: string
+          description: string | null
+          height: number | null
+          id: string
+          label: string
+          rotation_interval_seconds: number
+          slug: string
+          width: number | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          height?: number | null
+          id?: string
+          label: string
+          rotation_interval_seconds?: number
+          slug: string
+          width?: number | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          height?: number | null
+          id?: string
+          label?: string
+          rotation_interval_seconds?: number
+          slug?: string
+          width?: number | null
+        }
+        Relationships: []
+      }
       bookings: {
         Row: {
           court_type: string | null
@@ -2428,11 +2563,14 @@ export type Database = {
       }
       partner_banners: {
         Row: {
+          budget_cap: number | null
+          budget_type: Database["public"]["Enums"]["banner_budget_type"]
           click_count: number
           club_profile_id: string | null
           created_at: string
           display_order: number
           end_date: string | null
+          format: Database["public"]["Enums"]["banner_format"]
           id: string
           image_url: string
           impression_count: number
@@ -2440,15 +2578,20 @@ export type Database = {
           link_url: string | null
           location_id: string | null
           name: string
+          sponsor_logo_url: string | null
+          sponsor_name: string | null
           start_date: string | null
           updated_at: string
         }
         Insert: {
+          budget_cap?: number | null
+          budget_type?: Database["public"]["Enums"]["banner_budget_type"]
           click_count?: number
           club_profile_id?: string | null
           created_at?: string
           display_order?: number
           end_date?: string | null
+          format?: Database["public"]["Enums"]["banner_format"]
           id?: string
           image_url: string
           impression_count?: number
@@ -2456,15 +2599,20 @@ export type Database = {
           link_url?: string | null
           location_id?: string | null
           name: string
+          sponsor_logo_url?: string | null
+          sponsor_name?: string | null
           start_date?: string | null
           updated_at?: string
         }
         Update: {
+          budget_cap?: number | null
+          budget_type?: Database["public"]["Enums"]["banner_budget_type"]
           click_count?: number
           club_profile_id?: string | null
           created_at?: string
           display_order?: number
           end_date?: string | null
+          format?: Database["public"]["Enums"]["banner_format"]
           id?: string
           image_url?: string
           impression_count?: number
@@ -2472,6 +2620,8 @@ export type Database = {
           link_url?: string | null
           location_id?: string | null
           name?: string
+          sponsor_logo_url?: string | null
+          sponsor_name?: string | null
           start_date?: string | null
           updated_at?: string
         }
@@ -4448,6 +4598,9 @@ export type Database = {
         | "club_manager"
         | "club"
         | "academy"
+      banner_budget_type: "unlimited" | "impression_cap" | "click_cap"
+      banner_event_type: "impression" | "click"
+      banner_format: "image" | "html"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4583,6 +4736,9 @@ export const Constants = {
         "club",
         "academy",
       ],
+      banner_budget_type: ["unlimited", "impression_cap", "click_cap"],
+      banner_event_type: ["impression", "click"],
+      banner_format: ["image", "html"],
     },
   },
 } as const

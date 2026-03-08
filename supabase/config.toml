@@ -168,3 +168,6 @@ verify_jwt = false
 
 [functions.reditus-referral-webhook]
 verify_jwt = false
+
+[functions.track-banner-event]
+verify_jwt = false

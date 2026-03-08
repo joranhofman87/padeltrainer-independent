@@ -13,6 +13,7 @@ import { PricingPreview } from '@/components/home/PricingPreview';
 import { FAQSection } from '@/components/home/FAQSection';
 import { FinalCTASection } from '@/components/home/FinalCTASection';
 import { HomeFeaturedSections } from '@/components/home/HomeFeaturedSections';
+import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
 
 export default function Home() {
   const { t } = useTranslation('marketing');
@@ -65,6 +66,9 @@ export default function Home() {
       <PricingPreview />
       <FAQSection />
       <FinalCTASection />
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <SponsorBanner placementSlug="marketing-homepage" />
+      </div>
       <HomeFeaturedSections />
     </MarketingLayout>
   );
