@@ -334,7 +334,10 @@ export function ClubBulkCreateSheet({
           startTime: newStartTime,
           durationMinutes: defaultDuration,
           recurrenceWeeks: defaultWeeks,
-        cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+          cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+          ratingSystem: null,
+          minRating: null,
+          maxRating: null,
         },
       ]);
     }
@@ -353,6 +356,9 @@ export function ClubBulkCreateSheet({
         durationMinutes: defaultDuration,
         recurrenceWeeks: defaultWeeks,
         cyclusName: generateCyclusName(trainerId, newStartDate, newStartTime, null),
+        ratingSystem: null,
+        minRating: null,
+        maxRating: null,
       },
     ]);
   };
