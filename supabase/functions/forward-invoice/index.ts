@@ -86,7 +86,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const emails = trainerProfile.invoice_forward_emails;
+    const emails = trainerProfile?.invoice_forward_emails;
     if (!emails || emails.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: "No forwarding emails configured" }),
@@ -95,7 +95,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Generate a fresh signed URL for the invoice
-    const fileName = `${trainerProfile.user_id}/${invoice.invoice_number}.html`;
+    const fileName = `${trainerProfile!.user_id}/${invoice.invoice_number}.html`;
     const { data: signedUrl } = await supabase.storage
       .from("invoices")
       .createSignedUrl(fileName, 604800); // 7 days
@@ -125,7 +125,7 @@ const handler = async (req: Request): Promise<Response> => {
             <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Status:</td><td>${invoice.status === "paid" ? "✅ Betaald" : invoice.status}</td></tr>
           </table>
           ${pdfLink ? `<p style="margin-top:20px;"><a href="${pdfLink}" style="background:#f45d25;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">Download Factuur</a></p>` : ""}
-          <p style="margin-top:24px;font-size:12px;color:#9ca3af;">Verzonden via PadelTrainer.ai namens ${trainerProfile.business_name || "je trainer"}</p>
+          <p style="margin-top:24px;font-size:12px;color:#9ca3af;">Verzonden via PadelTrainer.ai namens ${trainerProfile!.business_name || "je trainer"}</p>
           </div>
         `,
       })

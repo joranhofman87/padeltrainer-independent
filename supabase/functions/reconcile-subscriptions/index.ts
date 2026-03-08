@@ -26,7 +26,7 @@ interface ProfileRow {
 
 async function reconcileProfiles(
   mollieApiKey: string,
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   table: string,
   profileType: string,
 ) {
