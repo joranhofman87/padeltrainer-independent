@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, UserPlus } from "lucide-react";
+import { SlotRatingPicker } from "@/components/trainer/SlotRatingPicker";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -81,6 +82,9 @@ export function ClubAddSlotDialog({
   const [slotTime, setSlotTime] = useState(defaultTime || "09:00");
   const [slotDuration, setSlotDuration] = useState(defaultDuration);
   const [isSaving, setIsSaving] = useState(false);
+  const [slotRatingSystem, setSlotRatingSystem] = useState<string | null>(null);
+  const [slotMinRating, setSlotMinRating] = useState<number | null>(null);
+  const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -113,6 +117,9 @@ export function ClubAddSlotDialog({
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         location_id: clubLocationId || null,
+        rating_system: slotRatingSystem,
+        min_rating: slotMinRating,
+        max_rating: slotMaxRating,
       });
 
       if (error) throw error;
