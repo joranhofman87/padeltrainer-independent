@@ -4,6 +4,7 @@ import { format, parseISO } from "date-fns";
 import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2, Info } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -105,7 +106,7 @@ export function EditBookingDialog({
       if (error) throw error;
       setPlayers(data as GuestPlayer[]);
     } catch (error) {
-      console.error("Error fetching players:", error);
+      logger.error("Error fetching players", error as Error, { component: 'EditBookingDialog' });
     } finally {
       setIsFetching(false);
     }
@@ -149,7 +150,7 @@ export function EditBookingDialog({
       onBookingUpdated();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error updating booking:", error);
+      logger.error("Error updating booking", error as Error, { component: 'EditBookingDialog' });
       toast({
         title: t("common:error"),
         description: error.message,
@@ -180,7 +181,7 @@ export function EditBookingDialog({
       onBookingUpdated();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error deleting booking:", error);
+      logger.error("Error deleting booking", error as Error, { component: 'EditBookingDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

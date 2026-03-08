@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 import {
   FileText,
   Download,
@@ -77,7 +78,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       .order('invoice_date', { ascending: false });
 
     if (error) {
-      console.error('Error fetching player invoices:', error);
+      logger.error('Error fetching player invoices', error as unknown as Error, { component: 'PlayerInvoicesTab' });
       toast({ title: 'Fout', description: 'Kon facturen niet laden', variant: 'destructive' });
     } else {
       const now = new Date();
@@ -100,7 +101,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     });
 
     if (error || !data?.html) {
-      console.error('Generate invoice error:', error, data);
+      logger.error('Generate invoice error', error as unknown as Error, { component: 'PlayerInvoicesTab' });
       toast({ title: 'Fout', description: 'Kon factuur niet genereren', variant: 'destructive' });
       setDownloadLoading(null);
       return;
