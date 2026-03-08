@@ -123,12 +123,14 @@ export default function CycleApplicationForm({
     end: z.string(),
   });
 
-  const availabilitySchema = z.record(
-    z.string(),
-    z.array(timeBlockSchema)
-  ).refine(val => Object.keys(val).length > 0, {
-    message: t('application.form.noAvailability'),
-  });
+  const availabilitySchema = isEvent 
+    ? z.record(z.string(), z.array(timeBlockSchema)).optional().default({})
+    : z.record(
+        z.string(),
+        z.array(timeBlockSchema)
+      ).refine(val => Object.keys(val).length > 0, {
+        message: t('application.form.noAvailability'),
+      });
 
   const formSchema = z.object({
     full_name: z.string().min(2),
@@ -136,7 +138,7 @@ export default function CycleApplicationForm({
     phone: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
-    lesson_types: z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
+    lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     availability: availabilitySchema,
