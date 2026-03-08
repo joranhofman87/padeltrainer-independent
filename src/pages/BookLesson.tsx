@@ -46,6 +46,9 @@ interface SlotWithDetails {
     city: string;
     street_address: string | null;
   } | null;
+  rating_system?: string | null;
+  min_rating?: number | null;
+  max_rating?: number | null;
 }
 
 interface CyclusBundle {
@@ -178,6 +181,9 @@ export default function BookLesson() {
         max_participants,
         allow_single_booking,
         location_id,
+        rating_system,
+        min_rating,
+        max_rating,
         locations:location_id(id, name, city, street_address)
       `)
       .eq('trainer_id', trainerData.id)
