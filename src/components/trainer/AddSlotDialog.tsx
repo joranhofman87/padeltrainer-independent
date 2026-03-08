@@ -371,6 +371,7 @@ export function BulkCreateSheet({
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
+  const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
 
   const [bulkSlots, setBulkSlots] = useState<BulkSlotConfig[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
