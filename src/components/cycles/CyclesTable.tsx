@@ -295,7 +295,14 @@ export default function CyclesTable({
               filteredCycles.map((cycle) => (
                 <TableRow key={cycle.id} className="cursor-pointer" onClick={() => onEdit(cycle)}>
                   <TableCell>
-                    <div className="font-medium">{cycle.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{cycle.name}</span>
+                      {cycle.type === 'event' && (
+                        <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+                          {t('type.event', 'Event')}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-sm text-muted-foreground md:hidden">
                       {cycle.location?.name || '-'}
                     </div>
