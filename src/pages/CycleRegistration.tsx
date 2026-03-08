@@ -17,6 +17,7 @@ import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
+import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 
 interface OwnerInfo {
   type: 'trainer' | 'club';
@@ -248,6 +249,7 @@ export default function CycleRegistration() {
   }
 
   return (
+    <FeatureErrorBoundary featureName="CycleRegistration" onRetry={() => window.location.reload()}>
     <MarketingLayout>
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto">
@@ -353,5 +355,6 @@ export default function CycleRegistration() {
         </div>
       </div>
     </MarketingLayout>
+    </FeatureErrorBoundary>
   );
 }

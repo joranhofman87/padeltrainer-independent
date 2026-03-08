@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { sendPasswordResetEmail } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Mail, CheckCircle } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 export default function ForgotPassword() {
   const [isLoading, setIsLoading] = useState(false);
@@ -23,6 +24,7 @@ export default function ForgotPassword() {
     const { error } = await sendPasswordResetEmail(email);
 
     if (error) {
+      logger.error('Password reset email failed', error, { component: 'ForgotPassword' });
       toast({
         title: t('signIn.error', 'Error'),
         description: error.message,

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { trackEvent } from '@/lib/tracking';
+import { logger } from '@/lib/logger';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -40,7 +41,7 @@ export default function Auth() {
         refresh_token: refreshToken,
       }).then(({ error }) => {
         if (error) {
-          console.error('Failed to set session from magic link:', error);
+          logger.error('Failed to set session from magic link', error, { component: 'Auth', action: 'magic_link' });
           toast({
             title: t('signIn.error', 'Login failed'),
             description: t('verification.linkExpired', 'The login link may have expired. Please try again.'),
@@ -146,6 +147,7 @@ export default function Auth() {
     const { error } = await signInWithEmail(email, password);
 
     if (error) {
+      logger.error('Sign in failed', error, { component: 'Auth', action: 'signIn' });
       toast({
         title: t('signIn.error', 'Error'),
         description: error.message,

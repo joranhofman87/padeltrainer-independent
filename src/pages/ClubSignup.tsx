@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { useHoneypot } from '@/hooks/useHoneypot';
+import { logger } from '@/lib/logger';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -76,6 +77,7 @@ export default function ClubSignup() {
     const { data, error } = await signUpWithEmail(email, password, fullName);
 
     if (error) {
+      logger.error('Club signup failed', error, { component: 'ClubSignup', action: 'signUp' });
       toast({
         title: t('signUp.error', 'Error'),
         description: error.message,

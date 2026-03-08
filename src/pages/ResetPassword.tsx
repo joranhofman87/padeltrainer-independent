@@ -9,6 +9,7 @@ import { updatePassword } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export default function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +69,7 @@ export default function ResetPassword() {
     const { error } = await updatePassword(password);
 
     if (error) {
+      logger.error('Password update failed', error, { component: 'ResetPassword' });
       toast({
         title: t('signIn.error', 'Error'),
         description: error.message,
