@@ -344,16 +344,18 @@ export default function CycleForm({
         <DialogHeader>
           <DialogTitle>
             {isEdit 
-              ? t('editCycle') 
-              : isRegistration 
-                ? t('createRegistration', 'Create Registration')
-                : t('createCycle')}
+              ? isEvent ? t('editEvent', 'Edit Event') : t('editCycle')
+              : isEvent
+                ? t('createEvent', 'Create Event')
+                : isRegistration 
+                  ? t('createRegistration', 'Create Registration')
+                  : t('createCycle')}
           </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
-            {isRegistration && (
+            {(isRegistration || isEvent) && (
               <FormField
                 control={form.control}
                 name="name"
