@@ -282,6 +282,18 @@ export function AddSlotDialog({
             </Select>
           </div>
 
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={slotRatingSystem}
+            minRating={slotMinRating}
+            maxRating={slotMaxRating}
+            onChange={(vals) => {
+              setSlotRatingSystem(vals.ratingSystem);
+              setSlotMinRating(vals.minRating);
+              setSlotMaxRating(vals.maxRating);
+            }}
+          />
+
           {/* Working As (Academy) */}
           {trainerAcademy && trainerAcademy.id && (
             <div className="space-y-2">
