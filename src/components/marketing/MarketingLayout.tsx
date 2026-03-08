@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
@@ -11,6 +12,7 @@ import { useLocalizedPath } from '@/hooks/useLocalizedPath';
 import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/Logo';
+import { captureUtmParams } from '@/lib/utm';
 
 const getDashboardPath = (role?: string | null) => {
   switch (role) {
@@ -31,6 +33,11 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const { t } = useTranslation('marketing');
   const { user, role } = useAuth();
   const dashboardUrl = getAppUrl(getDashboardPath(role));
+
+  // Capture UTM params from URL on marketing page load
+  useEffect(() => {
+    captureUtmParams();
+  }, []);
   
   // Get localized paths
   const homePath = useLocalizedPath('/');

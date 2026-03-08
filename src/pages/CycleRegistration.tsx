@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { trackEvent } from '@/lib/tracking';
 import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
@@ -39,6 +40,12 @@ export default function CycleRegistration() {
   const [hasApplied, setHasApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    if (cycleId) {
+      trackEvent('cycle_registration_viewed', { cycle_id: cycleId });
+    }
+  }, [cycleId]);
 
   useEffect(() => {
     const fetchData = async () => {

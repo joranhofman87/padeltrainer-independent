@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
+import { trackEvent } from '@/lib/tracking';
 import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
 import { ChaosPainSection } from '@/components/home/ChaosPainSection';
@@ -18,6 +20,10 @@ import { HomeFeaturedSections } from '@/components/home/HomeFeaturedSections';
 
 export default function Home() {
   const { t } = useTranslation('marketing');
+
+  useEffect(() => {
+    trackEvent('home_page_viewed');
+  }, []);
 
   const websiteStructuredData = {
     "@context": "https://schema.org",
