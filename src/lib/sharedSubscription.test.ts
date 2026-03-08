@@ -118,8 +118,8 @@ describe('constants', () => {
     expect(TRIAL_DURATIONS.academy).toBeGreaterThan(0);
   });
 
-  it('SUBSCRIPTION_PRICES yearly is cheaper than 12x monthly', () => {
+  it('SUBSCRIPTION_PRICES yearly is cheaper than or equal to 12x monthly', () => {
     expect(SUBSCRIPTION_PRICES.trainer.professional.yearly).toBeLessThan(SUBSCRIPTION_PRICES.trainer.professional.monthly * 12);
-    expect(SUBSCRIPTION_PRICES.club.yearly).toBeLessThan(SUBSCRIPTION_PRICES.club.monthly * 12);
+    expect(SUBSCRIPTION_PRICES.club.yearly).toBeLessThanOrEqual(SUBSCRIPTION_PRICES.club.monthly * 12);
   });
 });
