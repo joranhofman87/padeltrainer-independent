@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { logger } from '@/lib/logger';
 import {
   Select,
   SelectContent,
@@ -128,7 +129,7 @@ export default function ClubCalendar() {
       const slotsData = await getClubTrainerSlots(clubProfileId, rangeStart, rangeEnd);
       setSlots(slotsData as ClubSlot[]);
     } catch (error) {
-      console.error("Error fetching club slots:", error);
+      logger.error("Error fetching club slots", error instanceof Error ? error : new Error(String(error)), { component: 'ClubCalendar' });
     } finally {
       setLoading(false);
     }

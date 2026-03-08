@@ -13,6 +13,7 @@ import { format, isAfter } from 'date-fns';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { logger } from '@/lib/logger';
 
 interface FollowedTrainer {
   id: string;
@@ -130,7 +131,7 @@ export default function PlayerDashboard() {
       // Fetch open slots from followed trainers
       fetchFollowedTrainerSlots(trainerIds, trainers, profileMap);
     } catch (error) {
-      console.error('Error fetching followed trainers:', error);
+      logger.error('Error fetching followed trainers', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
       setFollowingLoading(false);
       setSlotsLoading(false);
     }
@@ -215,7 +216,7 @@ export default function PlayerDashboard() {
       enrichedSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
       setFollowedTrainerSlots(enrichedSlots.slice(0, 10));
     } catch (error) {
-      console.error('Error fetching followed trainer slots:', error);
+      logger.error('Error fetching followed trainer slots', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
     } finally {
       setSlotsLoading(false);
     }
@@ -251,7 +252,7 @@ export default function PlayerDashboard() {
 
       setPlayerClubs(clubs);
     } catch (error) {
-      console.error('Error fetching player clubs:', error);
+      logger.error('Error fetching player clubs', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
     } finally {
       setClubsLoading(false);
     }
@@ -324,7 +325,7 @@ export default function PlayerDashboard() {
         setUpcomingBookings(upcomingFormatted);
       }
     } catch (error) {
-      console.error('Error fetching player data:', error);
+      logger.error('Error fetching player data', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
     } finally {
       setStatsLoading(false);
     }

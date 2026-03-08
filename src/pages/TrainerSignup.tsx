@@ -149,6 +149,7 @@ export default function TrainerSignup() {
   }
 
   return (
+    <FeatureErrorBoundary featureName="TrainerSignup" onRetry={() => window.location.reload()}>
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -285,5 +286,6 @@ export default function TrainerSignup() {
         </CardContent>
       </Card>
     </div>
+    </FeatureErrorBoundary>
   );
 }

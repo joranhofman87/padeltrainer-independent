@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { updateClubProfile } from '@/lib/club';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export default function ClubProfile() {
   const { t } = useTranslation('club');
@@ -189,7 +190,7 @@ export default function ClubProfile() {
         description: t(`profile.${type}Updated`),
       });
     } catch (error: any) {
-      console.error(`${type} upload error:`, error);
+      logger.error(`${type} upload error`, error instanceof Error ? error : new Error(String(error)), { component: 'ClubProfile' });
       toast({
         title: t('common:error'),
         description: error.message || `Failed to upload ${type}`,
@@ -235,7 +236,7 @@ export default function ClubProfile() {
         .eq('id', activeClub.location_id);
 
       if (locationError) {
-        console.error('Error updating courts:', locationError);
+        logger.error('Error updating courts', new Error(locationError.message), { component: 'ClubProfile' });
       }
 
       toast({

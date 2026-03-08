@@ -105,7 +105,7 @@ export default function TrainerSettings() {
             },
           });
         } catch (slackErr) {
-          console.error('Slack notification failed (non-fatal):', slackErr);
+          logger.warn('Slack notification failed (non-fatal)', { component: 'TrainerSettings' });
         }
       }
 

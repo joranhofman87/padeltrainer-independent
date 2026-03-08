@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
+import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -169,7 +170,7 @@ export default function AdminAcademies() {
       });
       invalidateAcademies();
     } catch (error) {
-      console.error("Bulk verify error:", error);
+      logger.error("Bulk verify error", error instanceof Error ? error : new Error(String(error)), { component: 'AdminAcademies' });
       toast({
         title: "Verification failed",
         description: error instanceof Error ? error.message : "Unknown error",
@@ -250,7 +251,7 @@ export default function AdminAcademies() {
       invalidateAcademies();
       setDeletingAcademy(null);
     } catch (error) {
-      console.error("Delete academy error:", error);
+      logger.error("Delete academy error", error instanceof Error ? error : new Error(String(error)), { component: 'AdminAcademies' });
       toast({
         title: "Delete failed",
         description: error instanceof Error ? error.message : "Unknown error",

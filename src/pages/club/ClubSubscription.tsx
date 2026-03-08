@@ -17,6 +17,7 @@ import {
 } from "@/lib/clubSubscription";
 import { getUserClubProfiles, type ClubProfile } from "@/lib/club";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 import { 
   CheckCircle2, 
   Clock, 
@@ -61,7 +62,7 @@ export default function ClubSubscription() {
           setActiveClub(userClubs[0]);
         }
       } catch (error) {
-        console.error("Error loading clubs:", error);
+        logger.error("Error loading clubs", error instanceof Error ? error : new Error(String(error)), { component: 'ClubSubscription' });
       } finally {
         setLoading(false);
       }
@@ -78,7 +79,7 @@ export default function ClubSubscription() {
         const sub = await checkClubSubscription(activeClub.id);
         setSubscription(sub);
       } catch (error) {
-        console.error("Error loading subscription:", error);
+        logger.error("Error loading subscription", error instanceof Error ? error : new Error(String(error)), { component: 'ClubSubscription' });
       }
     }
     

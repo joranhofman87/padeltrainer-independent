@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SEO } from '@/components/SEO';
+import { logger } from '@/lib/logger';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getLocationBySlug, getTrainersAtLocation, getClubProfileByLocationId, type Location } from '@/lib/locations';
 import { LocationCard } from '@/components/locations/LocationCard';
@@ -216,7 +217,7 @@ export default function LocationDetail() {
           setSimilarLogos(logos);
         }
       } catch (error) {
-        console.error('Error fetching location:', error);
+        logger.error('Error fetching location', error instanceof Error ? error : new Error(String(error)), { component: 'LocationDetail' });
       } finally {
         setLoading(false);
       }

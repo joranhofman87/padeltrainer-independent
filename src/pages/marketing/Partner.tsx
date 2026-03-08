@@ -10,6 +10,7 @@ import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { logger } from '@/lib/logger';
 import {
   Form,
   FormControl,
@@ -92,7 +93,7 @@ export default function Partner() {
         description: t('partner.successMessage'),
       });
     } catch (error) {
-      console.error('Error sending partner inquiry:', error);
+      logger.error('Error sending partner inquiry', error instanceof Error ? error : new Error(String(error)), { component: 'Partner' });
       toast({
         title: t('partner.errorTitle'),
         description: t('partner.errorMessage'),

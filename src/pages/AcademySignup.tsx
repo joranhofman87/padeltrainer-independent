@@ -143,6 +143,7 @@ export default function AcademySignup() {
   ];
 
   return (
+    <FeatureErrorBoundary featureName="AcademySignup" onRetry={() => window.location.reload()}>
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -284,5 +285,6 @@ export default function AcademySignup() {
         </CardContent>
       </Card>
     </div>
+    </FeatureErrorBoundary>
   );
 }

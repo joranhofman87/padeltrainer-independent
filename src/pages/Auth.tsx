@@ -12,6 +12,7 @@ import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { trackEvent } from '@/lib/tracking';
 import { logger } from '@/lib/logger';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -184,6 +185,7 @@ export default function Auth() {
   }
 
   return (
+    <FeatureErrorBoundary featureName="Auth" onRetry={() => window.location.reload()}>
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -294,5 +296,6 @@ export default function Auth() {
         </CardContent>
       </Card>
     </div>
+    </FeatureErrorBoundary>
   );
 }

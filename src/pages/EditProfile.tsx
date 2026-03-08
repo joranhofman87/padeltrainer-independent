@@ -23,6 +23,7 @@ import { CertificationsPicker } from '@/components/trainer/CertificationsPicker'
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
 import { isValidVideoUrl, getVideoThumbnail } from '@/lib/videoEmbed';
+import { logger } from '@/lib/logger';
 import { VideoManager } from '@/components/profiles/VideoManager';
 import { canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy } from '@/lib/academy';
@@ -115,7 +116,7 @@ export default function EditProfile() {
         const systems = await getRatingSystems();
         setRatingSystems(systems);
       } catch (error) {
-        console.error('Error fetching rating systems:', error);
+        logger.error('Error fetching rating systems', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
       } finally {
         setLoadingRatingSystems(false);
       }
@@ -177,7 +178,7 @@ export default function EditProfile() {
         isPrimary: loc.is_primary,
       })));
     } catch (error) {
-      console.error('Error fetching trainer locations:', error);
+      logger.error('Error fetching trainer locations', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
     } finally {
       setLoadingLocations(false);
     }
@@ -192,7 +193,7 @@ export default function EditProfile() {
       const preferred = playerLocations.find(pl => pl.is_preferred);
       setPreferredLocationId(preferred?.location_id);
     } catch (error) {
-      console.error('Error fetching player locations:', error);
+      logger.error('Error fetching player locations', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
     } finally {
       setLoadingLocations(false);
     }
@@ -331,7 +332,7 @@ export default function EditProfile() {
         description: 'Your profile picture has been updated.',
       });
     } catch (error: any) {
-      console.error('Avatar upload error:', error);
+      logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
       toast({
         title: 'Upload failed',
         description: error.message || 'Failed to upload avatar',

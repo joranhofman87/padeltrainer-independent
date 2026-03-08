@@ -14,6 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
+import { logger } from '@/lib/logger';
 import {
   Popover,
   PopoverContent,
@@ -93,7 +94,7 @@ export default function Locations() {
           setFeaturedLocationIds(featuredIds);
         }
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'Locations' });
       } finally {
         setLoading(false);
       }

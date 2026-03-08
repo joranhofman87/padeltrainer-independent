@@ -13,6 +13,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPublicAcademies, type AcademyProfile } from '@/lib/academy';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { FeaturedSection, FeaturedBadge, shuffleArray } from '@/components/featured/FeaturedSection';
+import { logger } from '@/lib/logger';
 
 const MAX_FEATURED = 8;
 
@@ -33,7 +34,7 @@ export default function Academies() {
       const data = await getPublicAcademies();
       setAcademies(data);
     } catch (error) {
-      console.error('Error fetching academies:', error);
+      logger.error('Error fetching academies', error instanceof Error ? error : new Error(String(error)), { component: 'Academies' });
       setError('Failed to load academies. Please try again.');
     } finally {
       setLoading(false);
