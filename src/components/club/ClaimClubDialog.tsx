@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { logger } from '@/lib/logger';
 
 import {
   Dialog,
@@ -78,7 +79,7 @@ export function ClaimClubDialog({
 
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error claiming club:', error);
+      logger.error('Error claiming club', error as Error, { component: 'ClaimClubDialog' });
       toast({
         title: t('claim.error'),
         description: error.message || t('claim.errorDescription'),

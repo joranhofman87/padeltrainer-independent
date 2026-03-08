@@ -4,6 +4,7 @@ import { format, addDays, differenceInMinutes } from "date-fns";
 import { Loader2, Calendar, Clock, MapPin, Euro, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -106,7 +107,7 @@ export function QuickBookDialog({
         setHourlyRate(data.hourly_rate);
       }
     } catch (error) {
-      console.error("Error fetching hourly rate:", error);
+      logger.error("Error fetching hourly rate", error as Error, { component: 'QuickBookDialog' });
     }
   };
 
@@ -188,7 +189,7 @@ export function QuickBookDialog({
 
       setSlots(available);
     } catch (error) {
-      console.error("Error fetching slots:", error);
+      logger.error("Error fetching slots", error as Error, { component: 'QuickBookDialog' });
     } finally {
       setIsFetching(false);
     }
@@ -245,7 +246,7 @@ export function QuickBookDialog({
       onBookingCreated();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error creating booking:", error);
+      logger.error("Error creating booking", error as Error, { component: 'QuickBookDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

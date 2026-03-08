@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Save, Globe, Loader2, ImageIcon, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 const LOCALES = ['en', 'nl', 'es', 'de', 'fr'];
 
@@ -161,7 +162,7 @@ export default function AdminBlogEditor() {
             supabase.functions.invoke('generate-blog-cover', {
               body: { canonical_id: form.canonical_id, all_locales: true },
             }).then(({ error }) => {
-              if (error) console.error('Batch cover generation failed:', error);
+              if (error) logger.error('Batch cover generation failed', error instanceof Error ? error : new Error(String(error)), { component: 'AdminBlogEditor' });
               else {
                 toast.success('Cover images generated for all translations');
                 queryClient.invalidateQueries({ queryKey: ['admin-article-translations'] });

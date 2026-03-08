@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -278,7 +279,7 @@ export default function AddIntakeRequestDialog({
       setDayAvailability({});
       onSuccess();
     } catch (error: any) {
-      console.error('Error creating intake request:', error);
+      logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });
       toast.error(error.message || 'Failed to add registration');
     } finally {
       setIsSubmitting(false);

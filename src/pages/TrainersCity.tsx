@@ -25,6 +25,7 @@ import { LocationCard } from '@/components/locations/LocationCard';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
+import { logger } from '@/lib/logger';
 
 interface TrainerWithProfile {
   id: string;
@@ -127,7 +128,7 @@ export default function TrainersCity() {
       .eq('is_public', true);
 
     if (trainerError) {
-      console.error('Error fetching trainers:', trainerError);
+      logger.error('Error fetching trainers', trainerError as unknown as Error, { component: 'TrainersCity', action: 'fetchTrainers' });
       setLoading(false);
       return;
     }
@@ -151,7 +152,7 @@ export default function TrainersCity() {
       .in('user_id', userIds);
 
     if (profilesError) {
-      console.error('Error fetching profiles:', profilesError);
+      logger.error('Error fetching profiles', profilesError as unknown as Error, { component: 'TrainersCity', action: 'fetchProfiles' });
       setLoading(false);
       return;
     }

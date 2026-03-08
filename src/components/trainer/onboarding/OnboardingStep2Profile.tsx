@@ -9,6 +9,7 @@ import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/lo
 import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
 import { Phone } from 'lucide-react';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 interface OnboardingStep2ProfileProps {
   onNext: () => void;
@@ -67,7 +68,7 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
         }
       }
     } catch (e) {
-      console.error('Failed to load profile data:', e);
+      logger.error('Failed to load profile data', e as Error, { component: 'OnboardingStep2Profile' });
     } finally {
       setLoading(false);
     }
@@ -129,7 +130,7 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
 
       onNext();
     } catch (error: any) {
-      console.error('Error saving profile:', error);
+      logger.error('Error saving profile', error as Error, { component: 'OnboardingStep2Profile' });
       toast.error('Failed to save profile. Please try again.');
     } finally {
       setSaving(false);
