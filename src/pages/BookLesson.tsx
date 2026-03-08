@@ -406,7 +406,7 @@ export default function BookLesson() {
               body: { bookingIds: insertedBookings.map(b => b.id) },
             });
           } catch (invoiceErr) {
-            console.error('Auto-create invoice failed (non-fatal):', invoiceErr);
+            logger.error('Auto-create invoice failed (non-fatal)', invoiceErr as Error, { component: 'BookLesson', action: 'auto-invoice-cyclus' });
           }
         }
 
