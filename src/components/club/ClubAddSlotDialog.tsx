@@ -235,6 +235,18 @@ export function ClubAddSlotDialog({
             </Select>
           </div>
 
+          {/* Rating Level */}
+          <SlotRatingPicker
+            ratingSystem={slotRatingSystem}
+            minRating={slotMinRating}
+            maxRating={slotMaxRating}
+            onChange={(vals) => {
+              setSlotRatingSystem(vals.ratingSystem);
+              setSlotMinRating(vals.minRating);
+              setSlotMaxRating(vals.maxRating);
+            }}
+          />
+
           <Button
             onClick={handleAddSingleSlot}
             disabled={isSaving || !selectedTrainerId}
