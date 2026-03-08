@@ -3839,19 +3839,16 @@ export type Database = {
           academy_profile_id: string | null
           charges_enabled: boolean | null
           is_connected: boolean | null
-          onboarding_complete: boolean | null
         }
         Insert: {
           academy_profile_id?: string | null
           charges_enabled?: boolean | null
           is_connected?: never
-          onboarding_complete?: boolean | null
         }
         Update: {
           academy_profile_id?: string | null
           charges_enabled?: boolean | null
           is_connected?: never
-          onboarding_complete?: boolean | null
         }
         Relationships: [
           {
@@ -4224,19 +4221,16 @@ export type Database = {
         Row: {
           charges_enabled: boolean | null
           is_connected: boolean | null
-          onboarding_complete: boolean | null
           trainer_id: string | null
         }
         Insert: {
           charges_enabled?: boolean | null
           is_connected?: never
-          onboarding_complete?: boolean | null
           trainer_id?: string | null
         }
         Update: {
           charges_enabled?: boolean | null
           is_connected?: never
-          onboarding_complete?: boolean | null
           trainer_id?: string | null
         }
         Relationships: [
