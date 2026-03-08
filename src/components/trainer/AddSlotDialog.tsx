@@ -41,6 +41,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
+import { SlotRatingPicker } from "./SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
@@ -63,7 +64,9 @@ interface BulkSlotConfig {
   isMarkedFull: boolean;
   academyProfileId: string | null;
   trainerId: string | null;
-  trainingLevel: string | null;
+  ratingSystem: string | null;
+  minRating: number | null;
+  maxRating: number | null;
   pricePerSession: number | null;
   totalPrice: number | null;
   allowSingleBooking: boolean;
@@ -107,6 +110,9 @@ export function AddSlotDialog({
   const [slotCourtType, setSlotCourtType] = useState<'indoor' | 'outdoor' | null>(null);
   const [slotLocationId, setSlotLocationId] = useState<string | null>(null);
   const [slotAcademyId, setSlotAcademyId] = useState<string | null>(null);
+  const [slotRatingSystem, setSlotRatingSystem] = useState<string | null>(null);
+  const [slotMinRating, setSlotMinRating] = useState<number | null>(null);
+  const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -146,6 +152,9 @@ export function AddSlotDialog({
         court_type: slotCourtType,
         location_id: slotLocationId,
         academy_profile_id: slotAcademyId,
+        rating_system: slotRatingSystem,
+        min_rating: slotMinRating,
+        max_rating: slotMaxRating,
       });
 
       if (error) throw error;
