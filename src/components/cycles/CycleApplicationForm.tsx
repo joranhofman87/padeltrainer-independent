@@ -361,7 +361,74 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Preferences */}
+        {/* Event Payment Method Selection */}
+        {isEvent && eventPaymentMethods === 'both' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.paymentMethod', 'Payment Method')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t('application.form.choosePayment', 'How would you like to pay?')}</p>
+              <label className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                selectedPaymentMethod === 'online' && "border-primary bg-primary/5"
+              )}>
+                <input
+                  type="radio"
+                  name="player_payment"
+                  value="online"
+                  checked={selectedPaymentMethod === 'online'}
+                  onChange={() => setSelectedPaymentMethod('online')}
+                  className="mt-1"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <CreditCard className="h-4 w-4" />
+                    {t('application.form.payOnline', 'Pay Online')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('application.form.payOnlineDesc', 'Pay securely via the platform')}</p>
+                </div>
+              </label>
+              <label className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                selectedPaymentMethod === 'cash' && "border-primary bg-primary/5"
+              )}>
+                <input
+                  type="radio"
+                  name="player_payment"
+                  value="cash"
+                  checked={selectedPaymentMethod === 'cash'}
+                  onChange={() => setSelectedPaymentMethod('cash')}
+                  className="mt-1"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <Banknote className="h-4 w-4" />
+                    {t('application.form.payAtLocation', 'Pay at Location')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('application.form.payAtLocationDesc', 'Pay cash or pin on arrival')}</p>
+                </div>
+              </label>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Event price display */}
+        {isEvent && cycle.total_price && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{t('application.form.eventPrice', 'Price')}</span>
+                <span className="text-lg font-semibold">
+                  {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Preferences - hide for events */}
+        {!isEvent && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">{t('application.form.preferences')}</CardTitle>
