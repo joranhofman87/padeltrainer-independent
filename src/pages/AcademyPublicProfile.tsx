@@ -267,12 +267,17 @@ export default function AcademyPublicProfile() {
   return (
     <>
       <SEO
-        title={`${academy.name} - Padel Academy${locations[0]?.location?.city ? ` in ${locations[0].location.city}` : ''}`}
-        description={
-          currentLang === 'en'
-            ? `${academy.name} - Professional padel training academy with ${trainers.length} certified trainer${trainers.length !== 1 ? 's' : ''} at ${locations.length} location${locations.length !== 1 ? 's' : ''} in the Netherlands.`
-            : academy.description || `${academy.name} - Professionele padel academie met ${trainers.length} trainer${trainers.length !== 1 ? 's' : ''} op ${locations.length} locatie${locations.length !== 1 ? 's' : ''}.`
-        }
+        title={t('marketing:seo.academy.title', { 
+          name: academy.name, 
+          city: locations[0]?.location?.city ? ` in ${locations[0].location.city}` : '' 
+        })}
+        description={t('marketing:seo.academy.description', {
+          name: academy.name,
+          trainers: trainers.length,
+          trainerPlural: trainers.length !== 1 ? 's' : '',
+          locations: locations.length,
+          locationPlural: locations.length !== 1 ? 's' : ''
+        })}
         url={`/academies/${slug}`}
         image={academy.logo_url || academy.banner_url || undefined}
         structuredData={structuredData}

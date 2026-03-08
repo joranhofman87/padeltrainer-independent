@@ -285,8 +285,8 @@ export default function LocationDetail() {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
-        { "@type": "ListItem", "position": 2, "name": "Locations", "item": "https://padeltrainer.ai/en/locations" },
+        { "@type": "ListItem", "position": 1, "name": t('common:navigation.home'), "item": `https://padeltrainer.ai/${currentLang}` },
+        { "@type": "ListItem", "position": 2, "name": t('common:locations.title'), "item": `https://padeltrainer.ai/${currentLang}/locations` },
         { "@type": "ListItem", "position": 3, "name": location.name }
       ]
     };
@@ -349,7 +349,7 @@ export default function LocationDetail() {
 
   const seoDescription = displayDescription
     ? displayDescription.slice(0, 155)
-    : `Book padel lessons at ${location.name} in ${location.city}. ${trainers.length} certified trainers available.`;
+    : t('marketing:seo.location.description', { name: location.name, city: location.city, count: trainers.length });
 
   const breadcrumbs = [
     { label: t('common:navigation.home'), path: '/' },
@@ -362,7 +362,7 @@ export default function LocationDetail() {
   return (
     <>
       <SEO
-        title={`${location.name} - Padel Training in ${location.city}`}
+        title={t('marketing:seo.location.title', { name: location.name, city: location.city })}
         description={seoDescription}
         url={`/locations/${location.slug}`}
         type="place"
