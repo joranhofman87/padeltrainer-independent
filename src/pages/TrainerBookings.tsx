@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -117,7 +118,7 @@ export default function TrainerBookings() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching bookings:', error);
+      logger.error('Error fetching bookings', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerBookings' });
       toast({
         title: 'Error',
         description: 'Failed to load bookings',

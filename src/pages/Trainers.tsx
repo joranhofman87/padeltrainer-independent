@@ -18,6 +18,7 @@ import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { SEO } from '@/components/SEO';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { logger } from '@/lib/logger';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { getPopularCities, type CityWithTrainerCount } from '@/lib/cities';
 import { Location } from '@/lib/locations';
@@ -240,7 +241,7 @@ export default function Trainers() {
         .eq('is_public', true);
       
       if (trainerError) {
-        console.error('Error fetching trainers:', trainerError);
+        logger.error('Error fetching trainers', new Error(trainerError.message), { component: 'Trainers' });
         return;
       }
 
@@ -263,7 +264,7 @@ export default function Trainers() {
         .in('user_id', userIds);
 
       if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
+        logger.error('Error fetching profiles', new Error(profilesError.message), { component: 'Trainers' });
       }
 
       // Fetch trainer locations (which clubs they teach at)
@@ -277,7 +278,7 @@ export default function Trainers() {
         .in('trainer_id', trainerIds);
 
       if (tlError) {
-        console.error('Error fetching trainer locations:', tlError);
+        logger.error('Error fetching trainer locations', new Error(tlError.message), { component: 'Trainers' });
       }
 
       // Build a map of trainer_id -> location_ids
@@ -338,7 +339,7 @@ export default function Trainers() {
       const uniqueCerts = [...new Set(certs)].sort();
       setAllCertifications(uniqueCerts);
     } catch (err) {
-      console.error('Unexpected error fetching trainers:', err);
+      logger.error('Unexpected error fetching trainers', err instanceof Error ? err : new Error(String(err)), { component: 'Trainers' });
     } finally {
       setLoading(false);
     }

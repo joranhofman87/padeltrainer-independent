@@ -10,6 +10,7 @@ import { ArrowLeft, Plus, CalendarDays } from 'lucide-react';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import CycleCard from '@/components/cycles/CycleCard';
 import CycleForm from '@/components/cycles/CycleForm';
+import { logger } from '@/lib/logger';
 
 interface LocationData {
   id: string;
@@ -78,7 +79,7 @@ export default function TrainerCycles() {
       const data = await getCycles('trainer', trainerId);
       setCycles(data);
     } catch (error: any) {
-      console.error('Error fetching cycles:', error);
+      logger.error('Error fetching cycles', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCycles' });
       toast({
         title: t('common:error'),
         description: error.message,

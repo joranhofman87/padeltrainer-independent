@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { logger } from '@/lib/logger';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,7 +95,7 @@ export default function ClubPlayers() {
         const playersData = await getClubPlayers(clubId);
         setPlayers(playersData);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        logger.error('Error fetching data', error instanceof Error ? error : new Error(String(error)), { component: 'ClubPlayers' });
       } finally {
         setLoading(false);
       }
@@ -164,7 +165,7 @@ export default function ClubPlayers() {
       }
       setShowDialog(false);
     } catch (error) {
-      console.error('Error saving player:', error);
+      logger.error('Error saving player', error instanceof Error ? error : new Error(String(error)), { component: 'ClubPlayers' });
       toast({
         title: t('common:error'),
         description: 'Failed to save player',
@@ -185,7 +186,7 @@ export default function ClubPlayers() {
         toast({ title: 'Player removed' });
       }
     } catch (error) {
-      console.error('Error deleting player:', error);
+      logger.error('Error deleting player', error instanceof Error ? error : new Error(String(error)), { component: 'ClubPlayers' });
     } finally {
       setShowDeleteDialog(false);
       setDeletingPlayer(null);

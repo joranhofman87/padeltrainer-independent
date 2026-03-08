@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { getInvitationByToken, respondToTrainerInvitation } from '@/lib/club';
 import { sendEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
 
 export default function ClubTrainerInvitation() {
   const { t } = useTranslation('club');
@@ -101,7 +102,7 @@ export default function ClubTrainerInvitation() {
       // Redirect to trainer dashboard
       navigate('/app/trainer');
     } catch (error) {
-      console.error('Error responding to invitation:', error);
+      logger.error('Error responding to invitation', error instanceof Error ? error : new Error(String(error)), { component: 'ClubTrainerInvitation' });
       toast({
         title: 'Error',
         description: 'Failed to respond to invitation',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { logger } from '@/lib/logger';
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
@@ -194,7 +195,7 @@ export default function TrainerPlayers() {
 
         setRegisteredPlayers(regPlayers);
       } catch (error: any) {
-        console.error("Error fetching players:", error);
+        logger.error("Error fetching players", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerPlayers' });
         toast({
           title: t("common:error"),
           description: error.message,
@@ -276,7 +277,7 @@ export default function TrainerPlayers() {
         description: t("players.playerDeletedDescription"),
       });
     } catch (error: any) {
-      console.error("Error deleting player:", error);
+      logger.error("Error deleting player", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerPlayers' });
       toast({
         title: t("common:error"),
         description: error.message,

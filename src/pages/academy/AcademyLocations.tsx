@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { logger } from '@/lib/logger';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +53,7 @@ export default function AcademyLocations() {
       const data = await getAcademyLocationsWithDetails(activeAcademy.id);
       setLocations(data);
     } catch (error) {
-      console.error('Error fetching locations:', error);
+      logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyLocations' });
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export default function AcademyLocations() {
         }
         setClubLocationMap(map);
       } catch (error) {
-        console.error('Error fetching club profiles:', error);
+        logger.error('Error fetching club profiles', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyLocations' });
       }
     };
     fetchClubProfiles();

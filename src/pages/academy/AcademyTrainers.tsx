@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { logger } from '@/lib/logger';
 import {
   Table,
   TableBody,
@@ -85,7 +86,7 @@ export default function AcademyTrainers() {
         setCanAddSelf(selfCheck);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      logger.error('Error fetching data', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainers' });
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,7 @@ import { VerificationPending } from '@/components/auth/VerificationPending';
 import { trackEvent } from '@/lib/tracking';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -160,6 +161,7 @@ export default function PlayerSignup() {
   }
 
   return (
+    <FeatureErrorBoundary featureName="PlayerSignup" onRetry={() => window.location.reload()}>
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -296,5 +298,6 @@ export default function PlayerSignup() {
         </CardContent>
       </Card>
     </div>
+    </FeatureErrorBoundary>
   );
 }

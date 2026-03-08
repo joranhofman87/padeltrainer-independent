@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { logger } from '@/lib/logger';
 import { useTranslation } from "react-i18next";
 import {
   format,
@@ -111,7 +112,7 @@ export default function TrainerCalendar() {
 
       // Lessons table removed - no cleanup needed
     } catch (error) {
-      console.error("Error fetching trainer data:", error);
+      logger.error("Error fetching trainer data", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCalendar' });
     }
   };
 
@@ -256,7 +257,7 @@ export default function TrainerCalendar() {
 
       setSlots(transformedSlots);
     } catch (error) {
-      console.error("Error fetching calendar slots:", error);
+      logger.error("Error fetching calendar slots", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCalendar' });
     } finally {
       setLoading(false);
     }
@@ -375,7 +376,7 @@ export default function TrainerCalendar() {
       });
       setEditBookingOpen(true);
     } catch (error) {
-      console.error("Error fetching booking:", error);
+      logger.error("Error fetching booking", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCalendar' });
     }
   };
 
@@ -419,7 +420,7 @@ export default function TrainerCalendar() {
       }
       fetchSlots();
     } catch (error) {
-      console.error("Error toggling marked full:", error);
+      logger.error("Error toggling marked full", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCalendar' });
     }
   };
 

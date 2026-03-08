@@ -274,7 +274,7 @@ export default function TrainerDashboard() {
         profileViews: profileViews || 0,
       });
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      logger.error('Error fetching stats', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerDashboard' });
     } finally {
       setStatsLoading(false);
     }

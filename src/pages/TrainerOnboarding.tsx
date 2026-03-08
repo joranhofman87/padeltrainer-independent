@@ -10,6 +10,7 @@ import { OnboardingStep3Schedule } from '@/components/trainer/onboarding/Onboard
 import { OnboardingStep4Done } from '@/components/trainer/onboarding/OnboardingStep4Done';
 import { trackOnboardingEvent } from '@/lib/onboardingTracking';
 import { Logo } from '@/components/Logo';
+import { logger } from '@/lib/logger';
 
 const TOTAL_STEPS = 4;
 
@@ -82,7 +83,7 @@ export default function TrainerOnboarding() {
         trackOnboardingEvent('onboarding_started');
       }
     } catch (e) {
-      console.error('Error initializing onboarding:', e);
+      logger.error('Error initializing onboarding', e instanceof Error ? e : new Error(String(e)), { component: 'TrainerOnboarding' });
     } finally {
       setInitializing(false);
     }

@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Bell, Mail, Calendar, Star, Users, CreditCard, Clock, UserPlus } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 type Frequency = 'instant' | 'daily' | 'weekly' | 'off';
 
@@ -195,7 +196,7 @@ export default function NotificationSettings() {
         }));
       }
     } catch (error: any) {
-      console.error('Error fetching preferences:', error);
+      logger.error('Error fetching preferences', error instanceof Error ? error : new Error(String(error)), { component: 'NotificationSettings' });
     } finally {
       setDataLoading(false);
     }
