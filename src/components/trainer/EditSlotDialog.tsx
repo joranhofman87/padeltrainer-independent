@@ -136,6 +136,9 @@ export function EditSlotDialog({
                 start_time: csStart.toISOString(),
                 end_time: csEnd.toISOString(),
                 cyclus_name: cyclusName || null,
+                rating_system: ratingSystem,
+                min_rating: minRating,
+                max_rating: maxRating,
               })
               .eq("id", cs.id);
           }
@@ -153,6 +156,9 @@ export function EditSlotDialog({
             start_time: startDateTime.toISOString(),
             end_time: endDateTime.toISOString(),
             cyclus_name: cyclusName || null,
+            rating_system: ratingSystem,
+            min_rating: minRating,
+            max_rating: maxRating,
           })
           .eq("id", slot.id);
 
