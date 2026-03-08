@@ -370,69 +370,163 @@ export default function CycleForm({
                 )}
               />
             )}
-
-            <div className="grid grid-cols-2 gap-4">
+            {/* Event description */}
+            {isEvent && (
               <FormField
                 control={form.control}
-                name="start_date"
+                name="description"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>{t('form.startDate')}</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                  <FormItem>
+                    <FormLabel>{t('form.description', 'Description')}</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} rows={3} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            )}
 
-              <FormField
-                control={form.control}
-                name="number_of_weeks"
-                render={({ field }) => {
-                  const startDate = form.watch('start_date');
-                  const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
-                  return (
+            {isEvent ? (
+              /* Event: start date + end date */
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="start_date"
+                  render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={1} max={52} {...field} />
-                      </FormControl>
-                      {computedEnd && (
-                        <p className="text-xs text-muted-foreground">
-                          {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
-                        </p>
-                      )}
+                      <FormLabel>{t('form.startDate')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                       <FormMessage />
                     </FormItem>
-                  );
-                }}
-              />
-            </div>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="end_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : t('form.sameAsStart', 'Same as start')}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormDescription className="text-xs">
+                        {t('form.endDateHelp', 'Leave empty for a single-day event')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ) : (
+              /* Registration / Cyclus: start date + number of weeks */
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="start_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>{t('form.startDate')}</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full pl-3 text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="number_of_weeks"
+                  render={({ field }) => {
+                    const startDate = form.watch('start_date');
+                    const computedEnd = startDate && field.value ? addWeeks(startDate, field.value) : null;
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={52} {...field} />
+                        </FormControl>
+                        {computedEnd && (
+                          <p className="text-xs text-muted-foreground">
+                            {t('form.endsOn', { date: format(computedEnd, 'PPP') })}
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
+            )}
 
             {/* Timeframe - only for cyclus */}
-            {!isRegistration && (
+            {!isRegistration && !isEvent && (
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
