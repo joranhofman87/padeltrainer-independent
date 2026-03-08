@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
+import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Search, MapPin, Star, ArrowLeft, TrendingUp, Building2, ChevronRight, HelpCircle } from 'lucide-react';
+import { Search, MapPin, Star, TrendingUp, Building2, ChevronRight, HelpCircle, Globe } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
 import { getTrainerAverageRating } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
@@ -26,6 +26,7 @@ import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { logger } from '@/lib/logger';
+import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
 
 interface TrainerWithProfile {
   id: string;
@@ -57,22 +58,25 @@ export default function TrainersCity() {
   const [academies, setAcademies] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [trainerCounts, setTrainerCounts] = useState<Record<string, number>>({});
   const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
+  const [nearbyCities, setNearbyCities] = useState<CityWithTrainerCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('rating');
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { t } = useTranslation('common');
+  const { t } = useTranslation('marketing');
   const localizePath = useLocalizedPathFn();
+  const currentLang = useCurrentLanguage();
 
-  // Format city name for display (capitalize first letter of each word)
   const displayCity = useMemo(() => {
     if (!city) return '';
-    return city
+    return decodeURIComponent(city)
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
   }, [city]);
+
+  const plural = (count: number) => count !== 1 ? 's' : '';
 
   useEffect(() => {
     if (city) {
@@ -83,11 +87,11 @@ export default function TrainersCity() {
   const fetchData = async () => {
     setLoading(true);
 
-    // Fetch locations in this city, trainer counts, and claimed IDs in parallel
-    const [allLocations, allTrainerCounts, allClaimedIds] = await Promise.all([
+    const [allLocations, allTrainerCounts, allClaimedIds, allCities] = await Promise.all([
       getActiveLocations(),
       getLocationTrainerCounts(),
-      getClaimedLocationIds()
+      getClaimedLocationIds(),
+      getCitiesWithTrainers(),
     ]);
     
     const cityLocations = allLocations.filter(
@@ -96,6 +100,13 @@ export default function TrainersCity() {
     setLocations(cityLocations);
     setTrainerCounts(allTrainerCounts);
     setClaimedLocationIds(allClaimedIds);
+
+    // Nearby cities: exclude current city, take top 8 by trainer count
+    const currentSlug = city?.toLowerCase();
+    const nearby = allCities
+      .filter(c => c.slug !== currentSlug && c.trainerCount > 0)
+      .slice(0, 8);
+    setNearbyCities(nearby);
 
     // Fetch academies linked to locations in this city
     if (cityLocations.length > 0) {
@@ -133,18 +144,15 @@ export default function TrainersCity() {
       return;
     }
 
-    // Check which trainers are in paid academies
     const allTrainerIds = allPublicTrainers.map(t => t.id);
     const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
 
-    // Filter: subscription_status='active' OR trial_ends_at > now() OR in paid academy
     const trainerProfiles = allPublicTrainers.filter(t =>
       t.subscription_status === 'active' ||
       (t.trial_ends_at && t.trial_ends_at > now) ||
       paidAcademyTrainerIds.has(t.id)
     );
 
-    // Fetch profiles
     const userIds = trainerProfiles.map(t => t.user_id);
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles_public')
@@ -157,7 +165,6 @@ export default function TrainersCity() {
       return;
     }
 
-    // Fetch trainer_locations to see who teaches at locations in this city
     const locationIds = cityLocations.map(l => l.id);
     const { data: trainerLocationLinks } = await supabase
       .from('trainer_locations')
@@ -166,7 +173,6 @@ export default function TrainersCity() {
 
     const trainerIdsAtLocations = new Set(trainerLocationLinks?.map(tl => tl.trainer_id) || []);
 
-    // Filter trainers: either linked to a location in this city OR profile.location matches
     const cityTrainerProfiles = trainerProfiles.filter(trainer => {
       const profile = profiles?.find(p => p.user_id === trainer.user_id);
       const profileLocationMatches = profile?.location?.toLowerCase().includes(displayCity.toLowerCase());
@@ -174,7 +180,6 @@ export default function TrainersCity() {
       return profileLocationMatches || linkedToLocation;
     });
 
-    // Fetch ratings
     const trainersWithRatings = await Promise.all(
       cityTrainerProfiles.map(async (trainer) => {
         const { average, count } = await getTrainerAverageRating(trainer.id);
@@ -224,12 +229,15 @@ export default function TrainersCity() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
+  const minRate = trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30;
+  const maxRate = trainers.length > 0 ? Math.max(...trainers.map(t => t.hourly_rate || 50)) : 50;
+
   // SEO structured data
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    "name": `Padel Trainers in ${displayCity}`,
-    "description": `Find ${trainers.length} certified padel trainers in ${displayCity}. Compare rates, read reviews, and book lessons.`,
+    "name": t('cityPage.heroTitle', { city: displayCity }),
+    "description": t('cityPage.description', { city: displayCity, count: trainers.length, minRate }),
     "numberOfItems": filteredAndSortedTrainers.length,
     "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
@@ -249,34 +257,34 @@ export default function TrainersCity() {
 
   const faqQuestions = [
     {
-      question: `How much do padel lessons cost in ${displayCity}?`,
+      question: t('cityPage.faq1q', { city: displayCity }),
       answer: trainers.length > 0
-        ? `Padel lessons in ${displayCity} typically range from €${Math.min(...trainers.map(t => t.hourly_rate || 50))} to €${Math.max(...trainers.map(t => t.hourly_rate || 50))} per hour. Prices vary based on trainer experience, certifications, and lesson type.`
-        : `Padel lesson prices in ${displayCity} vary based on trainer experience and qualifications. Contact trainers directly for current rates.`
+        ? t('cityPage.faq1aWithData', { city: displayCity, min: minRate, max: maxRate })
+        : t('cityPage.faq1aNoData', { city: displayCity })
     },
     {
-      question: `What padel clubs are in ${displayCity}?`,
+      question: t('cityPage.faq2q', { city: displayCity }),
       answer: locations.length > 0
-        ? `There are ${locations.length} padel club${locations.length !== 1 ? 's' : ''} in ${displayCity}, including ${locations.slice(0, 4).map(l => l.name).join(', ')}${locations.length > 4 ? ` and ${locations.length - 4} more` : ''}. Each club offers courts where you can take lessons with local trainers.`
-        : `We're still adding padel clubs in ${displayCity} to our directory. Check back soon or explore nearby cities for available clubs.`
+        ? t('cityPage.faq2aWithData', { city: displayCity, count: locations.length, plural: plural(locations.length), clubs: locations.slice(0, 4).map(l => l.name).join(', ') })
+        : t('cityPage.faq2aNoData', { city: displayCity })
     },
     {
-      question: `Are there any padel academies in ${displayCity}?`,
+      question: t('cityPage.faq3q', { city: displayCity }),
       answer: academies.length > 0
-        ? `Yes! ${displayCity} has ${academies.length} padel ${academies.length === 1 ? 'academy' : 'academies'}: ${academies.map(a => a.name).join(', ')}. Academies offer structured training programs, group lessons, and coaching cycles for all levels.`
-        : `There are currently no registered padel academies in ${displayCity}. However, individual trainers in ${displayCity} offer professional coaching and structured lessons.`
+        ? t('cityPage.faq3aWithData', { city: displayCity, count: academies.length, academyWord: academies.length === 1 ? t('cityPage.academy') : t('cityPage.academies_word'), academies: academies.map(a => a.name).join(', ') })
+        : t('cityPage.faq3aNoData', { city: displayCity })
     },
     {
-      question: `How do I find a padel trainer near me in ${displayCity}?`,
-      answer: `Browse our directory of ${trainers.length} certified padel trainers in ${displayCity}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.`
+      question: t('cityPage.faq4q', { city: displayCity }),
+      answer: t('cityPage.faq4a', { city: displayCity, count: trainers.length })
     },
     {
-      question: `What level do I need to be to take padel lessons in ${displayCity}?`,
-      answer: `Padel lessons in ${displayCity} are available for all levels — from complete beginners to advanced competitive players. Most trainers offer customized sessions based on your current skill level and goals.`
+      question: t('cityPage.faq5q', { city: displayCity }),
+      answer: t('cityPage.faq5a', { city: displayCity })
     },
     {
-      question: `How do I book a padel lesson in ${displayCity}?`,
-      answer: `Simply browse the trainers listed above, view their profiles with ratings and availability, and book a lesson directly through PadelTrainer.ai. You can filter by price, experience, and specialization to find the perfect match.`
+      question: t('cityPage.faq6q', { city: displayCity }),
+      answer: t('cityPage.faq6a', { city: displayCity })
     }
   ];
 
@@ -297,25 +305,17 @@ export default function TrainersCity() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://padeltrainer.ai" },
-      { "@type": "ListItem", "position": 2, "name": "Trainers", "item": "https://padeltrainer.ai/en/trainers" },
+      { "@type": "ListItem", "position": 1, "name": t('cityPage.home'), "item": `https://padeltrainer.ai/${currentLang}` },
+      { "@type": "ListItem", "position": 2, "name": t('cityPage.trainers'), "item": `https://padeltrainer.ai/${currentLang}/trainers` },
       { "@type": "ListItem", "position": 3, "name": displayCity }
     ]
   };
 
-  // Compute nearby cities from locations data
-  const nearbyCities = useMemo(() => {
-    const allCities = new Map<string, number>();
-    // We need all locations, not just filtered. Use a broader approach.
-    // For now, derive from available location data
-    return allCities;
-  }, []);
-
   return (
     <MarketingLayout>
       <SEO
-        title={`Padel Trainers in ${displayCity} | Find & Book Lessons`}
-        description={`Find ${trainers.length} certified padel trainers in ${displayCity}. Compare rates from €${trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30}/hour, read reviews, and book your first lesson today.`}
+        title={t('cityPage.title', { city: displayCity })}
+        description={t('cityPage.description', { city: displayCity, count: trainers.length, minRate })}
         url={`/trainers/${city}`}
         image="https://padeltrainer.ai/og-trainers.png"
         structuredData={[structuredData, faqStructuredData, breadcrumbData]}
@@ -325,9 +325,9 @@ export default function TrainersCity() {
       <div className="border-b bg-muted/30">
         <div className="container mx-auto px-4 py-3">
           <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-            <LocalizedLink to="/" className="hover:text-primary transition-colors">Home</LocalizedLink>
+            <LocalizedLink to="/" className="hover:text-primary transition-colors">{t('cityPage.home')}</LocalizedLink>
             <ChevronRight className="h-4 w-4" />
-            <LocalizedLink to="/trainers" className="hover:text-primary transition-colors">Trainers</LocalizedLink>
+            <LocalizedLink to="/trainers" className="hover:text-primary transition-colors">{t('cityPage.trainers')}</LocalizedLink>
             <ChevronRight className="h-4 w-4" />
             <span className="text-foreground font-medium">{displayCity}</span>
           </nav>
@@ -338,12 +338,12 @@ export default function TrainersCity() {
         {/* Hero Section */}
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold mb-3">
-            Padel Trainers in {displayCity}
+            {t('cityPage.heroTitle', { city: displayCity })}
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
             {trainers.length > 0
-              ? `Discover ${trainers.length} certified padel trainer${trainers.length !== 1 ? 's' : ''} in ${displayCity}. Compare rates, read reviews, and book lessons that match your skill level.`
-              : `Looking for padel trainers in ${displayCity}? Check back soon or explore nearby cities.`
+              ? t('cityPage.heroSubtitle', { city: displayCity, count: trainers.length, plural: plural(trainers.length) })
+              : t('cityPage.heroSubtitleEmpty', { city: displayCity })
             }
           </p>
         </div>
@@ -353,7 +353,7 @@ export default function TrainersCity() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search trainers by name, specialty..."
+              placeholder={t('cityPage.searchPlaceholder')}
               className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -365,16 +365,16 @@ export default function TrainersCity() {
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="rating">Top Rated</SelectItem>
-              <SelectItem value="price-low">Price: Low to High</SelectItem>
-              <SelectItem value="price-high">Price: High to Low</SelectItem>
-              <SelectItem value="experience">Most Experienced</SelectItem>
+              <SelectItem value="rating">{t('cityPage.sortTopRated')}</SelectItem>
+              <SelectItem value="price-low">{t('cityPage.sortPriceLow')}</SelectItem>
+              <SelectItem value="price-high">{t('cityPage.sortPriceHigh')}</SelectItem>
+              <SelectItem value="experience">{t('cityPage.sortExperience')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <p className="text-sm text-muted-foreground mb-6">
-          {filteredAndSortedTrainers.length} trainer{filteredAndSortedTrainers.length !== 1 ? 's' : ''} found in {displayCity}
+          {t('cityPage.trainersFound', { city: displayCity, count: filteredAndSortedTrainers.length, plural: plural(filteredAndSortedTrainers.length) })}
         </p>
 
         {/* Trainers Grid */}
@@ -385,13 +385,13 @@ export default function TrainersCity() {
         ) : filteredAndSortedTrainers.length === 0 ? (
           <Card className="text-center py-12">
             <CardContent>
-              <p className="text-muted-foreground mb-4">No trainers found in {displayCity}</p>
+              <p className="text-muted-foreground mb-4">{t('cityPage.noTrainersFound', { city: displayCity })}</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button variant="outline" asChild>
-                  <LocalizedLink to="/trainers">View All Trainers</LocalizedLink>
+                  <LocalizedLink to="/trainers">{t('cityPage.viewAllTrainers')}</LocalizedLink>
                 </Button>
                 <Button asChild>
-                  <Link to="/app/signup/trainer">Become a Trainer</Link>
+                  <Link to="/app/signup/trainer">{t('cityPage.becomeTrainer')}</Link>
                 </Button>
               </div>
             </CardContent>
@@ -419,7 +419,7 @@ export default function TrainersCity() {
                         </CardTitle>
                         {trainer.is_verified && (
                           <Badge variant="secondary" className="shrink-0">
-                            Verified
+                            {t('cityPage.verified')}
                           </Badge>
                         )}
                         <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
@@ -437,7 +437,7 @@ export default function TrainersCity() {
                           <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                           <span className="font-medium">{trainer.averageRating.toFixed(1)}</span>
                           <span className="text-sm text-muted-foreground">
-                            ({trainer.reviewCount} review{trainer.reviewCount !== 1 ? 's' : ''})
+                            ({trainer.reviewCount} {trainer.reviewCount !== 1 ? t('cityPage.reviews') : t('cityPage.review')})
                           </span>
                         </div>
                       )}
@@ -454,7 +454,7 @@ export default function TrainersCity() {
                   <div className="flex items-center justify-between text-sm">
                     {trainer.hourly_rate && (
                       <span className="font-semibold text-primary">
-                        €{trainer.hourly_rate}/hour
+                        €{trainer.hourly_rate}{t('cityPage.perHour')}
                       </span>
                     )}
                     <div className="flex items-center gap-3 text-muted-foreground">
@@ -465,7 +465,7 @@ export default function TrainersCity() {
                       )}
                       {trainer.experience_years && (
                         <span>
-                          {trainer.experience_years}y exp.
+                          {trainer.experience_years}{t('cityPage.yearsExp')}
                         </span>
                       )}
                     </div>
@@ -496,10 +496,10 @@ export default function TrainersCity() {
           <section className="mt-12">
             <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
               <Building2 className="h-6 w-6" />
-              Padel Clubs in {displayCity}
+              {t('cityPage.clubsTitle', { city: displayCity })}
             </h2>
             <p className="text-muted-foreground mb-6">
-              {locations.length} padel club{locations.length !== 1 ? 's' : ''} in {displayCity}
+              {t('cityPage.clubsCount', { city: displayCity, count: locations.length, plural: plural(locations.length) })}
             </p>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {locations.map(location => (
@@ -518,28 +518,24 @@ export default function TrainersCity() {
         <section className="mt-12">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">About Padel Training in {displayCity}</CardTitle>
+              <CardTitle className="text-2xl">{t('cityPage.aboutTitle', { city: displayCity })}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-muted-foreground">
-              <p>
-                Whether you're a beginner looking to learn the basics or an experienced player wanting to refine your technique,
-                finding the right padel trainer in {displayCity} is essential for your development. Our certified trainers offer
-                personalized coaching tailored to your skill level and goals.
-              </p>
+              <p>{t('cityPage.aboutIntro', { city: displayCity })}</p>
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">What to Expect from Padel Lessons</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-2">{t('cityPage.expectTitle')}</h3>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Technical training covering serves, volleys, and defensive play</li>
-                  <li>Tactical strategies for singles and doubles matches</li>
-                  <li>Physical conditioning specific to padel</li>
-                  <li>Match play analysis and improvement tips</li>
+                  <li>{t('cityPage.expect1')}</li>
+                  <li>{t('cityPage.expect2')}</li>
+                  <li>{t('cityPage.expect3')}</li>
+                  <li>{t('cityPage.expect4')}</li>
                 </ul>
               </div>
               {locations.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">Popular Padel Clubs in {displayCity}</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">{t('cityPage.popularClubsTitle', { city: displayCity })}</h3>
                   <p>
-                    {displayCity} is home to {locations.length} padel {locations.length === 1 ? 'club' : 'clubs'} where you can take lessons and practice:{' '}
+                    {t('cityPage.popularClubsIntro', { city: displayCity, count: locations.length, plural: plural(locations.length) })}{' '}
                     {locations.slice(0, 3).map((l, i) => (
                       <span key={l.id}>
                         {i > 0 && ', '}
@@ -547,13 +543,13 @@ export default function TrainersCity() {
                         <LocalizedLink to={`/locations/${l.slug}`} className="text-primary hover:underline">{l.name}</LocalizedLink>
                       </span>
                     ))}
-                    {locations.length > 3 && ` and ${locations.length - 3} more`}.
+                    {locations.length > 3 && ` ${t('cityPage.andMore', { count: locations.length - 3 })}`}.
                   </p>
                 </div>
               )}
               {academies.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">Padel Academies in {displayCity}</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">{t('cityPage.academiesTitle', { city: displayCity })}</h3>
                   <p>
                     {academies.map((a, i) => (
                       <span key={a.id}>
@@ -562,7 +558,7 @@ export default function TrainersCity() {
                         <LocalizedLink to={`/academies/${a.slug}`} className="text-primary hover:underline">{a.name}</LocalizedLink>
                       </span>
                     ))}
-                    {' '}offer structured training programs in {displayCity}.
+                    {' '}{t('cityPage.academiesOffer', { city: displayCity })}
                   </p>
                 </div>
               )}
@@ -575,7 +571,7 @@ export default function TrainersCity() {
           <section className="mt-12">
             <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
               <HelpCircle className="h-6 w-6" />
-              Frequently Asked Questions
+              {t('cityPage.faqTitle')}
             </h2>
             <Accordion type="single" collapsible className="w-full">
               {faqQuestions.map((faq, index) => (
@@ -591,13 +587,29 @@ export default function TrainersCity() {
         )}
 
         {/* Nearby Cities Section */}
-        {(() => {
-          // Derive other cities from locations data (excluding current city)
-          const otherCityMap = new Map<string, string>();
-          // We need all locations for this - use the fetched data
-          // Since we only have cityLocations, we'll show a link back to all trainers
-          return null;
-        })()}
+        {nearbyCities.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-semibold mb-2 flex items-center gap-2">
+              <Globe className="h-6 w-6" />
+              {t('cityPage.nearbyCitiesTitle')}
+            </h2>
+            <p className="text-muted-foreground mb-6">{t('cityPage.nearbyCitiesSubtitle')}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {nearbyCities.map(nearbyCity => (
+                <LocalizedLink
+                  key={nearbyCity.slug}
+                  to={`/trainers/${nearbyCity.slug}`}
+                  className="block p-4 rounded-lg border bg-card hover:border-primary/50 hover:shadow-md transition-all"
+                >
+                  <div className="font-medium text-foreground">{nearbyCity.city}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {t('cityPage.trainersCount', { count: nearbyCity.trainerCount })}
+                  </div>
+                </LocalizedLink>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </MarketingLayout>
   );

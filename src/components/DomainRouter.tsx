@@ -32,6 +32,7 @@ const Terms = lazy(() => import('@/pages/marketing/Terms'));
 const Partner = lazy(() => import('@/pages/marketing/Partner'));
 const Trainers = lazy(() => import('@/pages/Trainers'));
 const TrainersCity = lazy(() => import('@/pages/TrainersCity'));
+const TrainersProvince = lazy(() => import('@/pages/TrainersProvince'));
 const TrainerProfile = lazy(() => import('@/pages/TrainerProfile'));
 const Locations = lazy(() => import('@/pages/Locations'));
 const LocationDetail = lazy(() => import('@/pages/LocationDetail'));
@@ -289,6 +290,7 @@ export function DomainRouter() {
           <Route path="terms" element={<Terms />} />
           <Route path="partner" element={<Partner />} />
           <Route path="trainers" element={<Trainers />} />
+          <Route path="trainers/region/:province" element={<TrainersProvince />} />
           <Route path="trainers/:city" element={<TrainersCity />} />
           <Route path="trainer/:trainerId" element={<TrainerProfile />} />
           <Route path="locations" element={<Locations />} />
