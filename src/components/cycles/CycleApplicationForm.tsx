@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
@@ -30,8 +30,9 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { submitIntakeRequest, type Cycle, type TimeWindow } from '@/lib/cycles';
+import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod } from '@/lib/cycles';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface TrainerOption {
   id: string;
