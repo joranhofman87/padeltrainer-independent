@@ -116,6 +116,7 @@ export default function ClubSignup() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
+    trackEvent('signup_started', { role: 'club', method: 'google', ...getUtmParams() });
     // Store role preference before OAuth redirect
     localStorage.setItem('pendingRole', 'club');
     

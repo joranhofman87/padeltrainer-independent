@@ -9,4 +9,4 @@ Sitemap: https://padeltrainer.ai/sitemap.xml
 
 # LLM context files for AI crawlers
 # See: https://padeltrainer.ai/llms.txt
-# Full entity catalog: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt
+# Full entity catalog: https://padeltrainer.ai/llms-full.txt

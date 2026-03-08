@@ -250,6 +250,7 @@ export default function Pricing() {
                           className="w-full" 
                           variant={plan.is_highlighted ? 'default' : 'outline'}
                           asChild
+                          onClick={() => trackEvent('pricing_plan_selected', { plan: plan.tier, billing_cycle: billingCycle })}
                         >
                           <Link to="/app/auth">{t(`pricing.trainers.plans.${plan.tier}.cta`)}</Link>
                         </Button>
