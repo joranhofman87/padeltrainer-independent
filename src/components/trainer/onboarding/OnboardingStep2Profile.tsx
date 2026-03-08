@@ -25,6 +25,8 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
   const [phone, setPhone] = useState('');
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [locations, setLocations] = useState<TrainerLocationSelection[]>([]);
+  const [ratingSystem, setRatingSystem] = useState('knltb');
+  const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
