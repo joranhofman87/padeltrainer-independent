@@ -142,6 +142,22 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
+      // Fetch current email from profiles to avoid sending to stale addresses
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("user_id", queueItem.user_id)
+        .single();
+
+      if (profile?.email && profile.email !== queueItem.email) {
+        console.log(`Email changed for user ${queueItem.user_id}: ${queueItem.email} → ${profile.email}`);
+        queueItem.email = profile.email;
+        await supabase
+          .from("onboarding_email_queue")
+          .update({ email: profile.email })
+          .eq("id", queueItem.id);
+      }
+
       const variableData = {
         user_name: queueItem.user_name,
         user_email: queueItem.email,
