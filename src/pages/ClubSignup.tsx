@@ -15,6 +15,7 @@ import { PasswordStrengthIndicator } from '@/components/ui/password-strength';
 import { VerificationPending } from '@/components/auth/VerificationPending';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
+import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Name must be at least 2 characters'),
