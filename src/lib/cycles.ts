@@ -4,6 +4,11 @@ import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
 
 // Types
+export interface PriceTableRow {
+  label: string;
+  price: number;
+}
+
 export interface Cycle {
   id: string;
   owner_type: 'trainer' | 'club' | 'academy';
@@ -20,6 +25,8 @@ export interface Cycle {
   price_per_session: number | null;
   total_price: number | null;
   currency: string;
+  terms: string | null;
+  price_table: PriceTableRow[] | null;
   created_at: string;
   updated_at: string;
   // Joined data (optional)
