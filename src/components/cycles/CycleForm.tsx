@@ -454,6 +454,7 @@ export default function CycleForm({
               />
             )}
 
+            {isEvent ? (
               /* Event: start date + end date */
               <div className="grid grid-cols-2 gap-4">
                 <FormField
