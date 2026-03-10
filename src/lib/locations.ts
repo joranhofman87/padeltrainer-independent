@@ -51,7 +51,35 @@ export interface PlayerLocation {
   created_at: string;
 }
 
-// Fetch all active locations - handles >1000 rows
+// Lightweight location summary for listing pages (homepage, featured sections)
+export interface LocationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  city: string;
+  country: string;
+  logo_url: string | null;
+  indoor_courts: number | null;
+  outdoor_courts: number | null;
+}
+
+export async function getActiveLocationsSummary(): Promise<LocationSummary[]> {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('id, name, slug, city, country, logo_url, indoor_courts, outdoor_courts')
+    .eq('is_active', true)
+    .order('city', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    logger.error('Error fetching location summaries', undefined, { error });
+    throw error;
+  }
+
+  return data || [];
+}
+
+// Fetch all active locations (full data) - handles >1000 rows
 export async function getActiveLocations(): Promise<Location[]> {
   const allLocations: Location[] = [];
   const pageSize = 1000;
