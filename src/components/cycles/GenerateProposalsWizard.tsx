@@ -111,30 +111,39 @@ export function GenerateProposalsWizard({
     let trainers: TrainerOption[] = [];
 
     if (ownerType === 'academy') {
-      const { data } = await supabase
+      // First get academy trainer links
+      const { data: atData, error: atError } = await supabase
         .from('academy_trainers')
-        .select(`
-          trainer_profile_id,
-          trainer_profiles:trainer_profile_id (
-            id,
-            preferred_min_rating,
-            preferred_max_rating,
-            profiles:user_id (full_name)
-          )
-        `)
+        .select('trainer_profile_id')
         .eq('academy_profile_id', ownerId)
         .eq('status', 'active');
 
-      trainers = (data || []).map((at: any) => {
-        const tp = at.trainer_profiles;
-        const profile = Array.isArray(tp?.profiles) ? tp.profiles[0] : tp?.profiles;
-        return {
-          id: tp?.id || at.trainer_profile_id,
-          name: profile?.full_name || 'Unknown',
-          preferredMinRating: tp?.preferred_min_rating ?? null,
-          preferredMaxRating: tp?.preferred_max_rating ?? null,
-        };
-      });
+      if (atError) {
+        console.error('Error fetching academy trainers:', atError);
+      }
+
+      const trainerProfileIds = (atData || []).map(at => at.trainer_profile_id);
+
+      if (trainerProfileIds.length > 0) {
+        const { data: tpData, error: tpError } = await supabase
+          .from('trainer_profiles')
+          .select('id, preferred_min_rating, preferred_max_rating, profiles:user_id (full_name)')
+          .in('id', trainerProfileIds);
+
+        if (tpError) {
+          console.error('Error fetching trainer profiles:', tpError);
+        }
+
+        trainers = (tpData || []).map((tp: any) => {
+          const profile = Array.isArray(tp.profiles) ? tp.profiles[0] : tp.profiles;
+          return {
+            id: tp.id,
+            name: profile?.full_name || 'Unknown',
+            preferredMinRating: tp.preferred_min_rating ?? null,
+            preferredMaxRating: tp.preferred_max_rating ?? null,
+          };
+        });
+      }
     } else {
       // Trainer owner — just the trainer themselves
       const { data } = await supabase
@@ -144,10 +153,10 @@ export function GenerateProposalsWizard({
         .single();
 
       if (data) {
-        const profile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+        const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
         trainers = [{
           id: data.id,
-          name: (profile as any)?.full_name || 'Unknown',
+          name: profile?.full_name || 'Unknown',
           preferredMinRating: data.preferred_min_rating,
           preferredMaxRating: data.preferred_max_rating,
         }];
