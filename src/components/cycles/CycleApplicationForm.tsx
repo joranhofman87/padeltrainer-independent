@@ -144,6 +144,7 @@ export default function CycleApplicationForm({
     lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
+    group_notes: z.string().optional(),
     availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
     location_id: z.string().optional(),
@@ -171,6 +172,7 @@ export default function CycleApplicationForm({
       preferred_trainer_id: '',
       location_id: '',
       notes: '',
+      group_notes: '',
       consent: false,
     },
   });
@@ -227,7 +229,7 @@ export default function CycleApplicationForm({
             sessionsPerWeek: values.sessions_per_week,
             preferredTrainerIds: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
             locationId: values.location_id || null,
-            notes: values.notes,
+            notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
           },
         });
@@ -251,7 +253,7 @@ export default function CycleApplicationForm({
           sessions_per_week: values.sessions_per_week,
           preferred_trainer_ids: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
           location_id: values.location_id || undefined,
-          notes: values.notes,
+          notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
         });
 
@@ -597,6 +599,24 @@ export default function CycleApplicationForm({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="group_notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.groupNotes')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder={t('application.form.groupNotesPlaceholder')}
+                      className="min-h-[80px]"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
