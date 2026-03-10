@@ -614,9 +614,9 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
   return toIntakeRequest(data);
 }
 
-// Auto-follow the cycle owner (trainer or club)
+// Auto-follow the cycle owner (trainer, club, or academy)
 async function autoFollowOwner(
-  ownerType: 'trainer' | 'club',
+  ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
   playerId: string
 ): Promise<void> {
@@ -629,7 +629,7 @@ async function autoFollowOwner(
           trainer_id: ownerId,
           notify_new_availability: true,
         }, { onConflict: 'player_id,trainer_id' });
-    } else {
+    } else if (ownerType === 'club') {
       await supabase
         .from('club_followers')
         .upsert({
@@ -637,6 +637,14 @@ async function autoFollowOwner(
           club_profile_id: ownerId,
           notify_new_availability: true,
         }, { onConflict: 'player_id,club_profile_id' });
+    } else if (ownerType === 'academy') {
+      await supabase
+        .from('academy_followers')
+        .upsert({
+          player_id: playerId,
+          academy_profile_id: ownerId,
+          notify_new_availability: true,
+        }, { onConflict: 'player_id,academy_profile_id' });
     }
   } catch (error) {
     logger.warn('Auto-follow failed (non-blocking)', { error });
@@ -645,7 +653,7 @@ async function autoFollowOwner(
 
 // Add player to student list as a prospect
 async function addToStudentList(
-  ownerType: 'trainer' | 'club',
+  ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
   input: IntakeRequestInput
 ): Promise<void> {
@@ -667,7 +675,7 @@ async function addToStudentList(
           onConflict: 'trainer_id,email',
           ignoreDuplicates: false 
         });
-    } else {
+    } else if (ownerType === 'club') {
       await supabase
         .from('club_players')
         .upsert({
@@ -682,6 +690,23 @@ async function addToStudentList(
           has_trained: false,
         }, { 
           onConflict: 'club_profile_id,email',
+          ignoreDuplicates: false 
+        });
+    } else if (ownerType === 'academy') {
+      await supabase
+        .from('guest_players')
+        .upsert({
+          academy_profile_id: ownerId,
+          full_name: input.full_name,
+          email: input.email || null,
+          phone: input.phone || null,
+          skill_rating: input.rating || null,
+          rating_system: input.rating_system || 'knltb',
+          linked_profile_id: input.player_id,
+          source: 'cycle_registration',
+          has_trained: false,
+        }, { 
+          onConflict: 'academy_profile_id,email',
           ignoreDuplicates: false 
         });
     }
