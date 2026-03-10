@@ -439,16 +439,20 @@ export default function TrainerProfile() {
                 <div className="flex gap-2 shrink-0">
                   <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/profile')}>Edit profile</Button>
                   <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>Add availability</Button>
-                  <Button size="sm" onClick={async () => {
-                    const { error } = await supabase
-                      .from('trainer_profiles')
-                      .update({ is_public: true })
-                      .eq('user_id', user.id);
-                    if (!error) {
-                      toast.success('Profile published!');
-                      fetchTrainerProfile();
-                    }
-                  }}>Publish profile</Button>
+                  {subscription && canBeVisible(subscription) ? (
+                    <Button size="sm" onClick={async () => {
+                      const { error } = await supabase
+                        .from('trainer_profiles')
+                        .update({ is_public: true })
+                        .eq('user_id', user.id);
+                      if (!error) {
+                        toast.success('Profile published!');
+                        fetchTrainerProfile();
+                      }
+                    }}>Publish profile</Button>
+                  ) : (
+                    <Button size="sm" onClick={() => navigate('/trainer/subscription')}>Upgrade to publish</Button>
+                  )}
                 </div>
               </div>
             </AlertDescription>
