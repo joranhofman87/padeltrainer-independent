@@ -177,7 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
-        if (session?.user) {
+        if (session?.user && lastFetchedRef.current !== session.user.id) {
+          lastFetchedRef.current = session.user.id;
           // Race fetchUserData against a 5-second deadline so a hanging
           // DB query can't block the entire app from rendering
           await Promise.race([
