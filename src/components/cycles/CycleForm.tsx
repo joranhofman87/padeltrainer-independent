@@ -321,7 +321,7 @@ export default function CycleForm({
         owner_type: ownerType,
         owner_id: ownerId,
         name: cycleName,
-        description: isEvent ? values.description : undefined,
+        description: (isEvent || isRegistration) ? values.description : undefined,
         start_date: format(values.start_date, 'yyyy-MM-dd'),
         end_date: endDate,
         enrollment_deadline: values.enrollment_deadline?.toISOString(),
@@ -332,6 +332,10 @@ export default function CycleForm({
         price_per_session: (isRegistration || isEvent) ? null : (values.price_per_session ? Number(values.price_per_session) : null),
         total_price: isEvent ? (values.total_price ? Number(values.total_price) : null) : (isRegistration ? null : (values.total_price ? Number(values.total_price) : null)),
         currency: values.currency,
+        terms: terms || null,
+        price_table: priceTable.filter(pt => pt.label && pt.price > 0).length > 0
+          ? priceTable.filter(pt => pt.label && pt.price > 0)
+          : null,
       };
 
       let result: Cycle;
