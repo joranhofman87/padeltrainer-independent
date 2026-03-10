@@ -193,8 +193,6 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                         />
                       )
                     )}
-                      )
-                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>

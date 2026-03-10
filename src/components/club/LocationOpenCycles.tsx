@@ -248,8 +248,6 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                         />
                       )
                     )}
-                      )
-                    )}
                   </CardContent>
                 </CollapsibleContent>
               </Collapsible>
