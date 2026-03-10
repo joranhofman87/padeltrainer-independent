@@ -93,7 +93,7 @@ export default function CycleRegistration() {
 
           if (academyData) {
             setOwner({
-              type: 'club',
+              type: 'academy',
               name: academyData.name,
               avatar_url: academyData.logo_url || undefined,
               welcomeMessage: academyData.welcome_message,
