@@ -428,7 +428,11 @@
     "marketplaceVisibility": "Visibilité sur le marketplace",
     "visibleHelper": "Visible — les joueurs peuvent vous trouver et demander des cours",
     "hiddenHelper": "Masqué — vous n'apparaissez pas dans la recherche et les joueurs ne peuvent pas réserver",
-    "visibilitySafety": "Vous pouvez désactiver ceci à tout moment."
+    "visibilitySafety": "Vous pouvez désactiver ceci à tout moment.",
+    "trialNoVisibility": "Passez à un plan payant pour apparaître sur le marketplace.",
+    "viewMarketplace": "Voir le marketplace",
+    "previewProfile": "Aperçu de votre profil",
+    "upgrade": "Mettre à niveau"
   },
   "terms": {
     "title": "Conditions générales",
