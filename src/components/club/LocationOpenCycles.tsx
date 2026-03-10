@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { getLocationCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { supabase } from '@/lib/supabaseClient';
 
 interface LocationOpenCyclesProps {
   locationId: string;
@@ -24,6 +25,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
   
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [appliedCycles, setAppliedCycles] = useState<Set<string>>(new Set());
+  const [academySlugs, setAcademySlugs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
@@ -33,6 +35,20 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
       try {
         const cyclesData = await getLocationCycles(locationId);
         setCycles(cyclesData);
+
+        // Fetch academy slugs for academy-owned cycles
+        const academyOwnerIds = [...new Set(cyclesData.filter(c => c.owner_type === 'academy').map(c => c.owner_id))];
+        if (academyOwnerIds.length > 0) {
+          const { data: academies } = await supabase
+            .from('academy_profiles')
+            .select('id, slug')
+            .in('id', academyOwnerIds);
+          if (academies) {
+            const slugMap: Record<string, string> = {};
+            academies.forEach(a => { slugMap[a.id] = a.slug; });
+            setAcademySlugs(slugMap);
+          }
+        }
 
         if (user && cyclesData.length > 0) {
           const appliedSet = new Set<string>();
@@ -58,9 +74,11 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
 
   const getRegisterPath = (cycle: Cycle) => {
     const currentLang = lang || i18n.language;
-    // Club-owned cycles go to club registration page, others to generic
     if (cycle.owner_type === 'club' && clubSlug) {
       return getMarketingPath(`clubs/${clubSlug}/register/${cycle.id}`, currentLang);
+    }
+    if (cycle.owner_type === 'academy' && academySlugs[cycle.owner_id]) {
+      return getMarketingPath(`academies/${academySlugs[cycle.owner_id]}/register/${cycle.id}`, currentLang);
     }
     return getMarketingPath(`register/${cycle.id}`, currentLang);
   };
