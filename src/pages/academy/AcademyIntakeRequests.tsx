@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, CheckCheck, UserPlus } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Sparkles, CheckCheck, UserPlus, List, CalendarDays } from 'lucide-react';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
