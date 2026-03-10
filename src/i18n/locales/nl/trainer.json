@@ -423,6 +423,8 @@
     "playerModeDescription": "Toegang tot het spelerdashboard om lessen te boeken bij andere trainers",
     "playerModeEnabled": "Spelersmodus ingeschakeld — je hebt nu toegang tot het spelerdashboard",
     "playerModeDisabled": "Spelersmodus uitgeschakeld",
+    "startAcademy": "Start een Academy",
+    "startAcademyDescription": "Maak je eigen academy aan om trainers, spelers en locaties te beheren",
     "marketplaceVisibility": "Marktplaats zichtbaarheid",
     "visibleHelper": "Zichtbaar — spelers kunnen je vinden en lessen aanvragen",
     "hiddenHelper": "Verborgen — je verschijnt niet in de zoekresultaten",

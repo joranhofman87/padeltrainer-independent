@@ -423,6 +423,8 @@
     "playerModeDescription": "Zugang zum Spieler-Dashboard, um Stunden bei anderen Trainern zu buchen",
     "playerModeEnabled": "Spielermodus aktiviert — du hast jetzt Zugang zum Spieler-Dashboard",
     "playerModeDisabled": "Spielermodus deaktiviert",
+    "startAcademy": "Eine Academy gründen",
+    "startAcademyDescription": "Erstelle deine eigene Academy, um Trainer, Spieler und Standorte zu verwalten",
     "marketplaceVisibility": "Marketplace-Sichtbarkeit",
     "visibleHelper": "Sichtbar — Spieler können dich finden und Stunden anfragen",
     "hiddenHelper": "Verborgen — du erscheinst nicht in der Suche",
