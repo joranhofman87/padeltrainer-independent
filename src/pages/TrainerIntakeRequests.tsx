@@ -9,11 +9,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ArrowLeft, Sparkles, CheckCheck, UserPlus, List, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCheck, UserPlus, List, CalendarDays, RotateCcw } from 'lucide-react';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
   generateProposals,
+  resetProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
 } from '@/lib/cycles';
@@ -22,6 +23,7 @@ import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
 export default function TrainerIntakeRequests() {
@@ -42,6 +44,8 @@ export default function TrainerIntakeRequests() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [viewMode, setViewMode] = useState<string>('list');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -123,6 +127,21 @@ export default function TrainerIntakeRequests() {
     }
   };
 
+  const handleResetProposals = async () => {
+    if (selectedCycleId === 'all') return;
+    setIsResetting(true);
+    try {
+      const result = await resetProposals(selectedCycleId);
+      toast.success(t('proposals.resetSuccess', { count: result.reset, defaultValue: `Reset ${result.reset} proposals` }));
+      setShowResetConfirm(false);
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
   const newCount = requests.filter(r => r.status === 'new').length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
@@ -173,6 +192,12 @@ export default function TrainerIntakeRequests() {
               <UserPlus className="mr-2 h-4 w-4" />
               {t('intakeRequests.addManual')}
             </Button>
+            {proposedCount > 0 && (
+              <Button variant="outline" onClick={() => setShowResetConfirm(true)} disabled={isResetting}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {t('proposals.reset', { defaultValue: 'Reset proposals' })}
+              </Button>
+            )}
             {proposedCount > 0 && (
               <Button variant="outline">
                 <CheckCheck className="mr-2 h-4 w-4" />
@@ -269,6 +294,24 @@ export default function TrainerIntakeRequests() {
           fetchData();
         }}
       />
+
+      {/* Reset Proposals Confirmation */}
+      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('proposals.resetTitle', { defaultValue: 'Reset all proposals?' })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('proposals.resetDescription', { defaultValue: 'This will remove all generated proposals and set the registrations back to "new". You can then regenerate proposals with different settings.' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetProposals} disabled={isResetting}>
+              {isResetting ? t('proposals.resetting', { defaultValue: 'Resetting...' }) : t('proposals.resetConfirm', { defaultValue: 'Reset proposals' })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
