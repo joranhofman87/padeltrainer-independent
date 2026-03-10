@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { getLocationCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { supabase } from '@/lib/supabaseClient';
 
 interface LocationOpenCyclesProps {
   locationId: string;
