@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAcademyManager, setIsAcademyManager] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastFetchedRef = useRef<string | null>(null);
 
   const fetchUserData = async (userId: string) => {
     try {
