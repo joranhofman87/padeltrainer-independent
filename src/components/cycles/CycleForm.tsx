@@ -206,6 +206,7 @@ export default function CycleForm({
         price_per_session: cycle?.price_per_session ?? '',
         total_price: cycle?.total_price ?? '',
         currency: cycle?.currency || 'EUR',
+        success_message: (cycle?.settings as any)?.success_message || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       const settings = cycle?.settings as any;

@@ -82,6 +82,8 @@ export interface CycleSettings {
   payment_methods?: EventPaymentMethod;
   event_dates?: string[];
   max_participants?: number;
+  // Custom success message shown after registration
+  success_message?: string;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
