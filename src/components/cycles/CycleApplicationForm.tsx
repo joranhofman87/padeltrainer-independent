@@ -196,26 +196,9 @@ export default function CycleApplicationForm({
       });
 
       if (isGuest) {
-        // Guest flow: signup then submit via edge function
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: values.email,
-          password: values.password!,
-          options: {
-            data: {
-              full_name: values.full_name,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        if (!signUpData.user) throw new Error('Signup failed');
-
-        // Wait for profile trigger
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // Submit intake via edge function (uses service role, bypasses RLS)
+        // Guest flow: edge function handles account creation + intake
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {
-            userId: signUpData.user.id,
             email: values.email,
             fullName: values.full_name,
             phone: values.phone,
