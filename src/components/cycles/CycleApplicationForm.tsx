@@ -534,20 +534,18 @@ export default function CycleApplicationForm({
                         field.onChange(updated);
                       };
                       return (
-                        <div
+                        <label
                           key={type}
                           className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                          onClick={toggle}
                         >
                           <Checkbox
                             checked={isChecked}
-                            tabIndex={-1}
-                            className="pointer-events-none"
+                            onCheckedChange={toggle}
                           />
                           <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
                             {t(`application.form.lessonTypes.${type}`)}
                           </span>
-                        </div>
+                        </label>
                       );
                     })}
                   </div>
