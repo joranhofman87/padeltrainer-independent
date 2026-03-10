@@ -604,6 +604,24 @@ export default function CycleApplicationForm({
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="group_notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.groupNotes')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder={t('application.form.groupNotesPlaceholder')}
+                      className="min-h-[80px]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {showTrainerPreference && (
               <FormField
                 control={form.control}
