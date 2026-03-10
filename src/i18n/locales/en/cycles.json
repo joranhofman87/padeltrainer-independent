@@ -195,6 +195,12 @@
       "consent": "I agree to be contacted regarding my application and consent to the processing of my data.",
       "consentRequired": "You must agree to continue",
       
+      "createAccount": "Create Your Account",
+      "createAccountHelp": "Choose a password to create your account. This lets you track your application and manage your bookings.",
+      "password": "Password",
+      "passwordPlaceholder": "Create a password",
+      "passwordMin": "Password must be at least 6 characters",
+
       "submit": "Submit Application",
       "submitting": "Submitting..."
     },
