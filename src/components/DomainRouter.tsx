@@ -59,6 +59,7 @@ const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const TrainerOnboarding = lazy(() => import('@/pages/TrainerOnboarding'));
 const AcademySignup = lazy(() => import('@/pages/AcademySignup'));
 const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
+const SignupRolePicker = lazy(() => import('@/pages/SignupRolePicker'));
 
 // Player pages
 const PlayerDashboard = lazy(() => import('@/pages/PlayerDashboard'));
