@@ -64,6 +64,7 @@ export default function CyclesTable({
   onEdit,
   onDuplicate,
   onDeleted,
+  ownerType,
 }: CyclesTableProps) {
   const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
