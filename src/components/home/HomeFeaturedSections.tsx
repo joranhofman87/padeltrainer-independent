@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
-import { Star, MapPin, CheckCircle, Users, ArrowRight, Building2, Home, Sun } from 'lucide-react';
+import { Star, MapPin, CheckCircle, ArrowRight, Building2, Home, Sun } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabaseClient';
 import { getPublicAcademies, type AcademyProfile } from '@/lib/academy';
-import { getActiveLocations, getClaimedLocationIds, type Location } from '@/lib/locations';
+import { getActiveLocationsSummary, getClaimedLocationIds, type LocationSummary } from '@/lib/locations';
 import { getBatchTrainerRatings } from '@/lib/reviews';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { shuffleArray } from '@/components/featured/FeaturedSection';
+import { useQuery } from '@tanstack/react-query';
 
 const MAX_FEATURED = 8;
 
@@ -34,122 +34,108 @@ interface TrainerWithProfile {
   reviewCount: number;
 }
 
+async function fetchFeaturedData() {
+  // Fetch all base data in parallel
+  const [trainersResult, academiesData, locationsData, claimedData, clubProfilesResult] = await Promise.all([
+    supabase
+      .from('trainer_profiles_safe')
+      .select('id, user_id, slug, hourly_rate, experience_years, is_verified, subscription_status')
+      .eq('is_public', true)
+      .eq('subscription_status', 'active'),
+    getPublicAcademies(),
+    getActiveLocationsSummary(),
+    getClaimedLocationIds(),
+    supabase
+      .from('club_profiles_public')
+      .select('location_id, logo_url, subscription_status'),
+  ]);
+
+  let trainers: TrainerWithProfile[] = [];
+
+  // Process trainers — fetch profiles + ratings in parallel
+  if (trainersResult.data && trainersResult.data.length > 0) {
+    const userIds = trainersResult.data.map(t => t.user_id);
+    const trainerIds = trainersResult.data.map(t => t.id);
+
+    const [profilesResult, ratingsMap] = await Promise.all([
+      supabase
+        .from('profiles_public')
+        .select('user_id, full_name, avatar_url, location')
+        .in('user_id', userIds),
+      getBatchTrainerRatings(trainerIds),
+    ]);
+
+    trainers = trainersResult.data.map(trainer => {
+      const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
+      return {
+        ...trainer,
+        profile: profilesResult.data?.find(p => p.user_id === trainer.user_id) || null,
+        averageRating: ratings.average,
+        reviewCount: ratings.count,
+      };
+    });
+  }
+
+  // Process club logos and featured status
+  const clubLogos: Record<string, string> = {};
+  const featuredLocationIds = new Set<string>();
+
+  if (clubProfilesResult.data) {
+    clubProfilesResult.data.forEach(cp => {
+      if (cp.location_id && cp.logo_url) {
+        clubLogos[cp.location_id] = cp.logo_url;
+      }
+      if (cp.location_id && cp.subscription_status === 'active') {
+        featuredLocationIds.add(cp.location_id);
+      }
+    });
+  }
+
+  // Add logos from locations table for unclaimed locations
+  locationsData.forEach(loc => {
+    if (loc.logo_url && !clubLogos[loc.id]) {
+      clubLogos[loc.id] = loc.logo_url;
+    }
+  });
+
+  return { trainers, academies: academiesData, locations: locationsData, claimedIds: claimedData, clubLogos, featuredLocationIds };
+}
+
 export function HomeFeaturedSections() {
   const { t } = useTranslation('common');
   const localizePath = useLocalizedPathFn();
   const navigate = useNavigate();
-  
-  const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
-  const [academies, setAcademies] = useState<Partial<AcademyProfile>[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
-  const [featuredLocationIds, setFeaturedLocationIds] = useState<Set<string>>(new Set());
-  const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const now = new Date().toISOString();
-        
-        // Fetch all data in parallel
-        const [trainersResult, academiesData, locationsData, claimedData] = await Promise.all([
-          supabase
-            .from('trainer_profiles_safe')
-            .select('id, user_id, slug, hourly_rate, experience_years, is_verified, subscription_status')
-            .eq('is_public', true)
-            .eq('subscription_status', 'active'),
-          getPublicAcademies(),
-          getActiveLocations(),
-          getClaimedLocationIds(),
-        ]);
+  const { data, isLoading } = useQuery({
+    queryKey: ['home-featured-sections'],
+    queryFn: fetchFeaturedData,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+  });
 
-        // Process trainers
-        if (trainersResult.data) {
-          const userIds = trainersResult.data.map(t => t.user_id);
-          const trainerIds = trainersResult.data.map(t => t.id);
-          
-          const [profilesResult, ratingsMap] = await Promise.all([
-            supabase
-              .from('profiles_public')
-              .select('user_id, full_name, avatar_url, location')
-              .in('user_id', userIds),
-            getBatchTrainerRatings(trainerIds),
-          ]);
-
-          const trainersWithProfiles = trainersResult.data.map(trainer => {
-            const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
-            return {
-              ...trainer,
-              profile: profilesResult.data?.find(p => p.user_id === trainer.user_id) || null,
-              averageRating: ratings.average,
-              reviewCount: ratings.count,
-            };
-          });
-          
-          setTrainers(trainersWithProfiles);
-        }
-
-        setAcademies(academiesData);
-        setLocations(locationsData);
-        setClaimedIds(claimedData);
-
-        // Fetch club profiles for logos and featured status
-        const { data: clubProfiles } = await supabase
-          .from('club_profiles_public')
-          .select('location_id, logo_url, subscription_status');
-
-        if (clubProfiles) {
-          const logosMap: Record<string, string> = {};
-          const featuredIds = new Set<string>();
-          clubProfiles.forEach(cp => {
-            if (cp.location_id && cp.logo_url) {
-              logosMap[cp.location_id] = cp.logo_url;
-            }
-            if (cp.location_id && cp.subscription_status === 'active') {
-              featuredIds.add(cp.location_id);
-            }
-          });
-          // Add logos from locations table for unclaimed locations
-          locationsData.forEach(loc => {
-            if (loc.logo_url && !logosMap[loc.id]) {
-              logosMap[loc.id] = loc.logo_url;
-            }
-          });
-          setClubLogos(logosMap);
-          setFeaturedLocationIds(featuredIds);
-        }
-      } catch (error) {
-        console.error('Error fetching featured data:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    fetchData();
-  }, []);
-
-  // Featured items (shuffled and limited)
   const featuredTrainers = useMemo(() => {
-    return shuffleArray(trainers).slice(0, MAX_FEATURED);
-  }, [trainers]);
+    if (!data?.trainers) return [];
+    return shuffleArray(data.trainers).slice(0, MAX_FEATURED);
+  }, [data?.trainers]);
 
   const featuredAcademies = useMemo(() => {
-    const featured = academies.filter(a => a.subscription_status === 'active');
+    if (!data?.academies) return [];
+    const featured = data.academies.filter(a => a.subscription_status === 'active');
     return shuffleArray(featured).slice(0, MAX_FEATURED);
-  }, [academies]);
+  }, [data?.academies]);
 
   const featuredLocations = useMemo(() => {
-    const featured = locations.filter(loc => featuredLocationIds.has(loc.id));
+    if (!data?.locations || !data?.featuredLocationIds) return [];
+    const featured = data.locations.filter(loc => data.featuredLocationIds.has(loc.id));
     return shuffleArray(featured).slice(0, MAX_FEATURED);
-  }, [locations, featuredLocationIds]);
+  }, [data?.locations, data?.featuredLocationIds]);
 
   const getInitials = (name: string | null) => {
     if (!name) return '?';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <>
         <FeaturedSectionSkeleton />
@@ -159,7 +145,6 @@ export function HomeFeaturedSections() {
     );
   }
 
-  // Don't render if no featured items
   if (featuredTrainers.length === 0 && featuredAcademies.length === 0 && featuredLocations.length === 0) {
     return null;
   }
@@ -170,12 +155,7 @@ export function HomeFeaturedSections() {
       {featuredTrainers.length > 0 && (
         <section className="py-16 md:py-20">
           <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="flex items-center justify-between mb-8"
-            >
+            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Star className="h-5 w-5 text-primary fill-primary/30" />
@@ -191,17 +171,15 @@ export function HomeFeaturedSections() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-            </motion.div>
+            </div>
 
             <div className="overflow-x-auto pb-4 -mx-4 px-4">
               <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
                 {featuredTrainers.map((trainer, index) => (
-                  <motion.div
+                  <div
                     key={trainer.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.05 }}
+                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
@@ -210,7 +188,7 @@ export function HomeFeaturedSections() {
                       <CardHeader className="pb-3">
                         <div className="flex items-start gap-3">
                           <Avatar className="h-12 w-12">
-                            <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                            <AvatarImage src={trainer.profile?.avatar_url || undefined} loading="lazy" />
                             <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
@@ -251,7 +229,7 @@ export function HomeFeaturedSections() {
                         </div>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -272,12 +250,7 @@ export function HomeFeaturedSections() {
       {featuredAcademies.length > 0 && (
         <section className="py-16 md:py-20 bg-accent/30">
           <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="flex items-center justify-between mb-8"
-            >
+            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Building2 className="h-5 w-5 text-primary" />
@@ -293,17 +266,15 @@ export function HomeFeaturedSections() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-            </motion.div>
+            </div>
 
             <div className="overflow-x-auto pb-4 -mx-4 px-4">
               <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
                 {featuredAcademies.map((academy, index) => (
-                  <motion.div
+                  <div
                     key={academy.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.05 }}
+                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full"
@@ -312,7 +283,7 @@ export function HomeFeaturedSections() {
                       <CardContent className="pt-6">
                         <div className="flex items-start gap-3">
                           <Avatar className="h-12 w-12 rounded-lg">
-                            <AvatarImage src={academy.logo_url || ''} className="object-contain" />
+                            <AvatarImage src={academy.logo_url || ''} className="object-contain" loading="lazy" />
                             <AvatarFallback className="rounded-lg">{getInitials(academy.name || '')}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
@@ -331,7 +302,7 @@ export function HomeFeaturedSections() {
                         </div>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -352,12 +323,7 @@ export function HomeFeaturedSections() {
       {featuredLocations.length > 0 && (
         <section className="py-16 md:py-20">
           <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="flex items-center justify-between mb-8"
-            >
+            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <MapPin className="h-5 w-5 text-primary" />
@@ -373,17 +339,15 @@ export function HomeFeaturedSections() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-            </motion.div>
+            </div>
 
             <div className="overflow-x-auto pb-4 -mx-4 px-4">
               <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
                 {featuredLocations.map((location, index) => (
-                  <motion.div
+                  <div
                     key={location.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.05 }}
+                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                   >
                     <Card
                       className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full relative"
@@ -394,9 +358,9 @@ export function HomeFeaturedSections() {
                       </div>
                       <CardHeader className="pb-2">
                         <div className="flex items-start gap-3">
-                          {(claimedIds.has(location.id) || clubLogos[location.id]) && (
+                          {(data?.claimedIds.has(location.id) || data?.clubLogos[location.id]) && (
                             <Avatar className="h-10 w-10 shrink-0">
-                              <AvatarImage src={clubLogos[location.id] || undefined} className="object-contain" />
+                              <AvatarImage src={data?.clubLogos[location.id] || undefined} className="object-contain" loading="lazy" />
                               <AvatarFallback className="bg-primary/10 text-primary text-xs">
                                 {getInitials(location.name)}
                               </AvatarFallback>
@@ -426,7 +390,7 @@ export function HomeFeaturedSections() {
                         </div>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             </div>

@@ -2,18 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-import enCommon from './locales/en/common.json';
-import enMarketing from './locales/en/marketing.json';
-import enAuth from './locales/en/auth.json';
-import enPlayer from './locales/en/player.json';
-import enTrainer from './locales/en/trainer.json';
-import enClub from './locales/en/club.json';
-import enCycles from './locales/en/cycles.json';
-import enAdmin from './locales/en/admin.json';
-import enAcademy from './locales/en/academy.json';
-import enWaitingList from './locales/en/waitingList.json';
-import enNotifications from './locales/en/notifications.json';
-
+// Only import the default/fallback language eagerly
 import nlCommon from './locales/nl/common.json';
 import nlMarketing from './locales/nl/marketing.json';
 import nlAuth from './locales/nl/auth.json';
@@ -26,55 +15,155 @@ import nlAcademy from './locales/nl/academy.json';
 import nlWaitingList from './locales/nl/waitingList.json';
 import nlNotifications from './locales/nl/notifications.json';
 
-import esCommon from './locales/es/common.json';
-import esMarketing from './locales/es/marketing.json';
-import esAuth from './locales/es/auth.json';
-import esPlayer from './locales/es/player.json';
-import esTrainer from './locales/es/trainer.json';
-import esClub from './locales/es/club.json';
-import esCycles from './locales/es/cycles.json';
-import esAdmin from './locales/es/admin.json';
-import esAcademy from './locales/es/academy.json';
-import esWaitingList from './locales/es/waitingList.json';
-import esNotifications from './locales/es/notifications.json';
+const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'] as const;
+const NAMESPACES = ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList'] as const;
 
-import deCommon from './locales/de/common.json';
-import deMarketing from './locales/de/marketing.json';
-import deAuth from './locales/de/auth.json';
-import dePlayer from './locales/de/player.json';
-import deTrainer from './locales/de/trainer.json';
-import deClub from './locales/de/club.json';
-import deCycles from './locales/de/cycles.json';
-import deAdmin from './locales/de/admin.json';
-import deAcademy from './locales/de/academy.json';
-import deWaitingList from './locales/de/waitingList.json';
-import deNotifications from './locales/de/notifications.json';
-
-import frCommon from './locales/fr/common.json';
-import frMarketing from './locales/fr/marketing.json';
-import frAuth from './locales/fr/auth.json';
-import frPlayer from './locales/fr/player.json';
-import frTrainer from './locales/fr/trainer.json';
-import frClub from './locales/fr/club.json';
-import frCycles from './locales/fr/cycles.json';
-import frAdmin from './locales/fr/admin.json';
-import frAcademy from './locales/fr/academy.json';
-import frWaitingList from './locales/fr/waitingList.json';
-import frNotifications from './locales/fr/notifications.json';
-
-const resources = {
-  en: {
-    common: { ...enCommon, ...enNotifications },
-    marketing: enMarketing,
-    auth: enAuth,
-    player: enPlayer,
-    trainer: enTrainer,
-    club: enClub,
-    cycles: enCycles,
-    admin: enAdmin,
-    academy: enAcademy,
-    waitingList: enWaitingList,
+// Lazy loaders for non-default languages
+const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
+  en: async () => {
+    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications] = await Promise.all([
+      import('./locales/en/common.json'),
+      import('./locales/en/marketing.json'),
+      import('./locales/en/auth.json'),
+      import('./locales/en/player.json'),
+      import('./locales/en/trainer.json'),
+      import('./locales/en/club.json'),
+      import('./locales/en/cycles.json'),
+      import('./locales/en/admin.json'),
+      import('./locales/en/academy.json'),
+      import('./locales/en/waitingList.json'),
+      import('./locales/en/notifications.json'),
+    ]);
+    return {
+      common: { ...common.default, ...notifications.default },
+      marketing: marketing.default,
+      auth: auth.default,
+      player: player.default,
+      trainer: trainer.default,
+      club: club.default,
+      cycles: cycles.default,
+      admin: admin.default,
+      academy: academy.default,
+      waitingList: waitingList.default,
+    };
   },
+  es: async () => {
+    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications] = await Promise.all([
+      import('./locales/es/common.json'),
+      import('./locales/es/marketing.json'),
+      import('./locales/es/auth.json'),
+      import('./locales/es/player.json'),
+      import('./locales/es/trainer.json'),
+      import('./locales/es/club.json'),
+      import('./locales/es/cycles.json'),
+      import('./locales/es/admin.json'),
+      import('./locales/es/academy.json'),
+      import('./locales/es/waitingList.json'),
+      import('./locales/es/notifications.json'),
+    ]);
+    return {
+      common: { ...common.default, ...notifications.default },
+      marketing: marketing.default,
+      auth: auth.default,
+      player: player.default,
+      trainer: trainer.default,
+      club: club.default,
+      cycles: cycles.default,
+      admin: admin.default,
+      academy: academy.default,
+      waitingList: waitingList.default,
+    };
+  },
+  de: async () => {
+    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications] = await Promise.all([
+      import('./locales/de/common.json'),
+      import('./locales/de/marketing.json'),
+      import('./locales/de/auth.json'),
+      import('./locales/de/player.json'),
+      import('./locales/de/trainer.json'),
+      import('./locales/de/club.json'),
+      import('./locales/de/cycles.json'),
+      import('./locales/de/admin.json'),
+      import('./locales/de/academy.json'),
+      import('./locales/de/waitingList.json'),
+      import('./locales/de/notifications.json'),
+    ]);
+    return {
+      common: { ...common.default, ...notifications.default },
+      marketing: marketing.default,
+      auth: auth.default,
+      player: player.default,
+      trainer: trainer.default,
+      club: club.default,
+      cycles: cycles.default,
+      admin: admin.default,
+      academy: academy.default,
+      waitingList: waitingList.default,
+    };
+  },
+  fr: async () => {
+    const [common, marketing, auth, player, trainer, club, cycles, admin, academy, waitingList, notifications] = await Promise.all([
+      import('./locales/fr/common.json'),
+      import('./locales/fr/marketing.json'),
+      import('./locales/fr/auth.json'),
+      import('./locales/fr/player.json'),
+      import('./locales/fr/trainer.json'),
+      import('./locales/fr/club.json'),
+      import('./locales/fr/cycles.json'),
+      import('./locales/fr/admin.json'),
+      import('./locales/fr/academy.json'),
+      import('./locales/fr/waitingList.json'),
+      import('./locales/fr/notifications.json'),
+    ]);
+    return {
+      common: { ...common.default, ...notifications.default },
+      marketing: marketing.default,
+      auth: auth.default,
+      player: player.default,
+      trainer: trainer.default,
+      club: club.default,
+      cycles: cycles.default,
+      admin: admin.default,
+      academy: academy.default,
+      waitingList: waitingList.default,
+    };
+  },
+};
+
+// Track which languages have been loaded
+const loadedLanguages = new Set<string>(['nl']);
+
+async function loadLanguage(lng: string): Promise<void> {
+  if (loadedLanguages.has(lng) || !lazyLoaders[lng]) return;
+  
+  const bundles = await lazyLoaders[lng]();
+  Object.entries(bundles).forEach(([ns, resources]) => {
+    i18n.addResourceBundle(lng, ns, resources, true, true);
+  });
+  loadedLanguages.add(lng);
+}
+
+// Detect initial language before init
+const detectLanguage = (): string => {
+  // Check path first
+  const pathMatch = window.location.pathname.match(/^\/(en|nl|es|de|fr)\b/);
+  if (pathMatch) return pathMatch[1];
+  
+  // Check localStorage
+  const stored = localStorage.getItem('i18nextLng');
+  if (stored && SUPPORTED_LANGS.includes(stored as any)) return stored;
+  
+  // Check navigator
+  const navLang = navigator.language?.split('-')[0];
+  if (navLang && SUPPORTED_LANGS.includes(navLang as any)) return navLang;
+  
+  return 'nl';
+};
+
+const initialLang = detectLanguage();
+
+// Only include NL resources eagerly; load detected language async if different
+const resources = {
   nl: {
     common: { ...nlCommon, ...nlNotifications },
     marketing: nlMarketing,
@@ -87,42 +176,6 @@ const resources = {
     academy: nlAcademy,
     waitingList: nlWaitingList,
   },
-  es: {
-    common: { ...esCommon, ...esNotifications },
-    marketing: esMarketing,
-    auth: esAuth,
-    player: esPlayer,
-    trainer: esTrainer,
-    club: esClub,
-    cycles: esCycles,
-    admin: esAdmin,
-    academy: esAcademy,
-    waitingList: esWaitingList,
-  },
-  de: {
-    common: { ...deCommon, ...deNotifications },
-    marketing: deMarketing,
-    auth: deAuth,
-    player: dePlayer,
-    trainer: deTrainer,
-    club: deClub,
-    cycles: deCycles,
-    admin: deAdmin,
-    academy: deAcademy,
-    waitingList: deWaitingList,
-  },
-  fr: {
-    common: { ...frCommon, ...frNotifications },
-    marketing: frMarketing,
-    auth: frAuth,
-    player: frPlayer,
-    trainer: frTrainer,
-    club: frClub,
-    cycles: frCycles,
-    admin: frAdmin,
-    academy: frAcademy,
-    waitingList: frWaitingList,
-  },
 };
 
 i18n
@@ -132,7 +185,7 @@ i18n
     resources,
     fallbackLng: 'nl',
     defaultNS: 'common',
-    ns: ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList'],
+    ns: [...NAMESPACES],
     detection: {
       order: ['path', 'localStorage', 'navigator'],
       lookupFromPathIndex: 0,
@@ -143,8 +196,19 @@ i18n
     },
   });
 
+// Load initial language if not NL
+if (initialLang !== 'nl') {
+  loadLanguage(initialLang).then(() => {
+    if (i18n.language !== initialLang) {
+      i18n.changeLanguage(initialLang);
+    }
+  });
+}
+
+// Auto-load language bundles on language change
 i18n.on('languageChanged', (lng) => {
   document.documentElement.lang = lng;
+  loadLanguage(lng);
 });
 
 export default i18n;
