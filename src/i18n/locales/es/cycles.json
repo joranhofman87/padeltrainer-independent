@@ -66,6 +66,7 @@
     "currency": "Moneda",
     "pricingHelp": "Establece precio por sesión o un precio de paquete fijo",
     "save": "Guardar ciclo",
+    "saveRegistration": "Guardar inscripción",
     "saveAndOpen": "Guardar y abrir inscripción",
     "allowSingleBooking": "Permitir reserva de clase individual",
     "allowSingleBookingHelp": "Cuando está desactivado, los jugadores deben reservar el ciclo completo",
