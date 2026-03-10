@@ -381,9 +381,9 @@ export default function CycleForm({
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('form.name')}</FormLabel>
+                    <FormLabel>{isRegistration ? t('form.registrationName', 'Registration Name') : t('form.name')}</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder={t('form.namePlaceholder')} />
+                      <Input {...field} placeholder={isRegistration ? t('form.registrationNamePlaceholder', 'e.g., Spring Registration 2026') : t('form.namePlaceholder')} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
