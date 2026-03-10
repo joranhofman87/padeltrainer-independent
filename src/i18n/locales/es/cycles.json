@@ -25,6 +25,8 @@
     "closed": "Cerrado",
     "archived": "Archivado"
   },
+  "editRegistration": "Editar inscripción",
+  "deleteRegistration": "Eliminar inscripción",
   "form": {
     "name": "Nombre del ciclo",
     "namePlaceholder": "ej. Ciclo de primavera 2026",
@@ -64,6 +66,7 @@
     "currency": "Moneda",
     "pricingHelp": "Establece precio por sesión o un precio de paquete fijo",
     "save": "Guardar ciclo",
+    "saveRegistration": "Guardar inscripción",
     "saveAndOpen": "Guardar y abrir inscripción",
     "allowSingleBooking": "Permitir reserva de clase individual",
     "allowSingleBookingHelp": "Cuando está desactivado, los jugadores deben reservar el ciclo completo",
@@ -83,7 +86,13 @@
     "paymentManualHelp": "Gestionas el cobro tú mismo (efectivo, transferencia, etc.)",
     "invoiceDelayWeeks": "semanas después del inicio",
     "weeksLabel": "{{count}} semana",
-    "weeksLabel_other": "{{count}} semanas"
+    "weeksLabel_other": "{{count}} semanas",
+    "registrationName": "Nombre de inscripción",
+    "registrationNamePlaceholder": "ej. Inscripción primavera 2026",
+    "registrationDescriptionPlaceholder": "Describe esta inscripción...",
+    "registrationDescriptionHelp": "Visible para los jugadores antes de inscribirse",
+    "registrationAssignedTrainerHelp": "El entrenador que dará las clases para esta inscripción",
+    "registrationApplicableTrainersHelp": "Qué entrenadores pueden ser asignados a esta inscripción"
   },
   "actions": {
     "openEnrollment": "Abrir inscripción",

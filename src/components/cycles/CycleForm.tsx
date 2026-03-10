@@ -364,7 +364,7 @@ export default function CycleForm({
         <DialogHeader>
           <DialogTitle>
             {isEdit 
-              ? isEvent ? t('editEvent', 'Edit Event') : t('editCycle')
+              ? isEvent ? t('editEvent', 'Edit Event') : isRegistration ? t('editRegistration', 'Edit Registration') : t('editCycle')
               : isEvent
                 ? t('createEvent', 'Create Event')
                 : isRegistration 
@@ -381,9 +381,9 @@ export default function CycleForm({
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('form.name')}</FormLabel>
+                    <FormLabel>{isRegistration ? t('form.registrationName', 'Registration Name') : t('form.name')}</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder={t('form.namePlaceholder')} />
+                      <Input {...field} placeholder={isRegistration ? t('form.registrationNamePlaceholder', 'e.g., Spring Registration 2026') : t('form.namePlaceholder')} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -706,7 +706,7 @@ export default function CycleForm({
                         </SelectContent>
                       </Select>
                       <FormDescription className="text-xs">
-                        {t('form.assignedTrainerHelp', 'The trainer who will give the lessons in this cycle')}
+                        {isRegistration ? t('form.registrationAssignedTrainerHelp', 'The trainer who will give the lessons for this registration') : t('form.assignedTrainerHelp', 'The trainer who will give the lessons in this cycle')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -732,7 +732,7 @@ export default function CycleForm({
                     <FormItem>
                       <FormLabel>{t('form.applicableTrainers')}</FormLabel>
                       <FormDescription className="text-xs">
-                        {t('form.applicableTrainersHelp')}
+                        {isRegistration ? t('form.registrationApplicableTrainersHelp') : t('form.applicableTrainersHelp')}
                       </FormDescription>
                       {filteredTrainers.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-2">
@@ -1389,7 +1389,7 @@ export default function CycleForm({
                 {t('common:cancel', 'Cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('form.save')}
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isRegistration ? t('form.saveRegistration', 'Save Registration') : t('form.save')}
               </Button>
               {!isEdit && (
                 <Button

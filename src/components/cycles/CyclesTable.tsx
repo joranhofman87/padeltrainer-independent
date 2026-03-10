@@ -99,7 +99,7 @@ export default function CyclesTable({
   };
 
   const handleDelete = async (cycle: Cycle) => {
-    if (!confirm(t('deleteCycle') + '?')) return;
+    if (!confirm((cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')) + '?')) return;
     try {
       await deleteCycle(cycle.id);
       toast.success(t('common:deleted', 'Deleted'));
@@ -268,7 +268,7 @@ export default function CyclesTable({
           <TableHeader>
             <TableRow>
               <TableHead>
-                <SortableHeader field="name">{t('form.name')}</SortableHeader>
+                <SortableHeader field="name">{t('form.registrationName', 'Name')}</SortableHeader>
               </TableHead>
               <TableHead className="hidden md:table-cell">
                 <SortableHeader field="location">{t('common:location', 'Location')}</SortableHeader>
@@ -342,7 +342,7 @@ export default function CyclesTable({
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onEdit(cycle)}>
                           <Edit className="h-4 w-4 mr-2" />
-                          {t('editCycle')}
+                          {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleViewRequests(cycle)}>
                           <Users className="h-4 w-4 mr-2" />
@@ -378,7 +378,7 @@ export default function CyclesTable({
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash className="h-4 w-4 mr-2" />
-                          {t('deleteCycle')}
+                          {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

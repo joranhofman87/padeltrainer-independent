@@ -27,6 +27,8 @@
     "archived": "Gearchiveerd"
   },
   
+  "editRegistration": "Inschrijving Bewerken",
+  "deleteRegistration": "Inschrijving Verwijderen",
   "form": {
     "name": "Cyclus Naam",
     "namePlaceholder": "bijv. Voorjaarscyclus 2026",
@@ -66,6 +68,7 @@
     "currency": "Valuta",
     "pricingHelp": "Stel een prijs per les of een vast pakketprijs in",
     "save": "Cyclus Opslaan",
+    "saveRegistration": "Inschrijving Opslaan",
     "saveAndOpen": "Opslaan & Inschrijving Openen",
     "allowSingleBooking": "Individuele les boeking toestaan",
     "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
@@ -85,7 +88,13 @@
     "paymentManualHelp": "Je regelt de betaling zelf (contant, bankoverschrijving, etc.)",
     "invoiceDelayWeeks": "weken na start",
     "weeksLabel": "{{count}} week",
-    "weeksLabel_other": "{{count}} weken"
+    "weeksLabel_other": "{{count}} weken",
+    "registrationName": "Inschrijvingsnaam",
+    "registrationNamePlaceholder": "bijv. Voorjaarsinschrijving 2026",
+    "registrationDescriptionPlaceholder": "Beschrijf deze inschrijving...",
+    "registrationDescriptionHelp": "Zichtbaar voor spelers voordat ze zich aanmelden",
+    "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
+    "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving"
   },
   
   "actions": {

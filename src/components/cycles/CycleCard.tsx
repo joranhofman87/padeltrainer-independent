@@ -88,11 +88,12 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this cycle?')) return;
+    const isRegistration = cycle.type === 'registration';
+    if (!confirm(isRegistration ? t('deleteRegistration', 'Delete this registration?') : t('deleteCycle') + '?')) return;
     
     try {
       await deleteCycle(cycle.id);
-      toast.success('Cycle deleted');
+      toast.success(isRegistration ? t('common:deleted', 'Deleted') : 'Cycle deleted');
       onDeleted?.();
     } catch (error: any) {
       toast.error(error.message);
@@ -169,7 +170,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onEdit?.(cycle)}>
                     <Edit className="mr-2 h-4 w-4" />
-                    {t('editCycle')}
+                    {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem onClick={() => navigate(`${getBasePath()}/intake-requests?cycle=${cycle.id}`)}>
@@ -217,7 +218,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     className="text-destructive focus:text-destructive"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    {t('deleteCycle')}
+                    {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
