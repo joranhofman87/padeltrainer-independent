@@ -374,7 +374,7 @@ export default function TrainerSettings() {
           <div className="max-w-4xl mb-8">
             <Card
               className="cursor-pointer hover:shadow-lg transition-shadow hover:border-emerald-500/50"
-              onClick={() => navigate('/app/onboarding/academy')}
+              onClick={() => navigate('/app/academy/onboarding')}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
