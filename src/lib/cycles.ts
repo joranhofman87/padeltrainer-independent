@@ -285,7 +285,7 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
   return (data || []).map(toCycle);
 }
 
-// Fetch all open cycles for a location (from trainers + academies at that location)
+// Fetch all open cycles for a location (from trainers, academies, and clubs at that location)
 export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
   // Get trainers at this location
   const { data: trainerLocations } = await supabase
@@ -303,8 +303,16 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
     .eq('is_active', true);
   
   const academyIds = academyLocations?.map(a => a.academy_profile_id) || [];
+
+  // Get club at this location
+  const { data: clubProfiles } = await supabase
+    .from('club_profiles')
+    .select('id')
+    .eq('location_id', locationId);
+
+  const clubIds = clubProfiles?.map(c => c.id) || [];
   
-  // Fetch cycles from both
+  // Fetch cycles from all owner types
   const allCycles: Cycle[] = [];
   
   if (trainerIds.length > 0) {
@@ -325,6 +333,16 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .in('owner_id', academyIds)
       .eq('status', 'open');
     if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
+  }
+
+  if (clubIds.length > 0) {
+    const { data: clubCycles } = await supabase
+      .from('cycles')
+      .select('*')
+      .eq('owner_type', 'club')
+      .in('owner_id', clubIds)
+      .eq('status', 'open');
+    if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
   }
   
   return allCycles.sort((a, b) => 
