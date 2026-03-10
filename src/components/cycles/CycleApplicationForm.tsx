@@ -355,12 +355,31 @@ export default function CycleApplicationForm({
                 <FormItem>
                   <FormLabel>{t('application.form.email')}</FormLabel>
                   <FormControl>
-                    <Input {...field} type="email" disabled />
+                    <Input {...field} type="email" disabled={!isGuest} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {isGuest && (
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('application.form.passwordHelp', 'An account will be created so you can track your application')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
