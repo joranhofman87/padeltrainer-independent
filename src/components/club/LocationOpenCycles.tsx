@@ -74,9 +74,11 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
 
   const getRegisterPath = (cycle: Cycle) => {
     const currentLang = lang || i18n.language;
-    // Club-owned cycles go to club registration page, others to generic
     if (cycle.owner_type === 'club' && clubSlug) {
       return getMarketingPath(`clubs/${clubSlug}/register/${cycle.id}`, currentLang);
+    }
+    if (cycle.owner_type === 'academy' && academySlugs[cycle.owner_id]) {
+      return getMarketingPath(`academies/${academySlugs[cycle.owner_id]}/register/${cycle.id}`, currentLang);
     }
     return getMarketingPath(`register/${cycle.id}`, currentLang);
   };
