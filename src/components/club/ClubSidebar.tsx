@@ -188,10 +188,12 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={cn(isExpired && "relative")}>
+        {isExpired && (
+          <div className="absolute inset-0 z-10" />
+        )}
         <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
               {/* Dashboard */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>

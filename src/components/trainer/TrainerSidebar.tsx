@@ -230,7 +230,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
           <div className="absolute inset-0 z-10" />
         )}
         <SidebarGroup>
-          <SidebarGroupContent>
+          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
             <SidebarMenu>
               {/* My Profile */}
               <SidebarMenuItem>
