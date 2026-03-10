@@ -66,6 +66,7 @@
     "currency": "Währung",
     "pricingHelp": "Setze entweder einen Preis pro Stunde oder einen festen Paketpreis",
     "save": "Zyklus speichern",
+    "saveRegistration": "Anmeldung speichern",
     "saveAndOpen": "Speichern & Anmeldung öffnen",
     "allowSingleBooking": "Einzelstundenbuchung erlauben",
     "allowSingleBookingHelp": "Wenn deaktiviert, müssen Spieler den gesamten Zyklus buchen",
