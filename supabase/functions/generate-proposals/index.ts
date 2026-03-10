@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { cycleId, weights: inputWeights, ratingSpread }: RequestBody = await req.json();
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria }: RequestBody = await req.json();
 
     if (!cycleId) {
       return new Response(
@@ -376,6 +376,73 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Parse additional criteria using AI if provided
+    let aiRules: { type: string; condition: string; value: any }[] = [];
+    if (additionalCriteria && additionalCriteria.trim()) {
+      try {
+        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+        if (LOVABLE_API_KEY) {
+          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "system",
+                  content: `You parse scheduling criteria into structured rules. Return JSON array of rules. Each rule has: type (one of: "min_participants", "max_participants", "time_restriction", "lesson_type_restriction"), condition (e.g. "evening", "daytime", "kids"), value (number or string). Example input: "kids lessons only during the day, evening always 4 players" => [{"type":"time_restriction","condition":"kids","value":"06:00-18:00"},{"type":"min_participants","condition":"evening","value":4}]`
+                },
+                { role: "user", content: additionalCriteria }
+              ],
+              tools: [{
+                type: "function",
+                function: {
+                  name: "parse_rules",
+                  description: "Parse scheduling criteria into structured rules",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      rules: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            type: { type: "string" },
+                            condition: { type: "string" },
+                            value: {}
+                          },
+                          required: ["type", "condition", "value"]
+                        }
+                      }
+                    },
+                    required: ["rules"]
+                  }
+                }
+              }],
+              tool_choice: { type: "function", function: { name: "parse_rules" } }
+            }),
+          });
+
+          if (aiResponse.ok) {
+            const aiData = await aiResponse.json();
+            const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall?.function?.arguments) {
+              const parsed = JSON.parse(toolCall.function.arguments);
+              aiRules = parsed.rules || [];
+              console.log("AI parsed rules:", JSON.stringify(aiRules));
+            }
+          } else {
+            console.warn("AI criteria parsing failed, ignoring:", aiResponse.status);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to parse additional criteria:", e);
+      }
+    }
+
     // Fetch intake requests with status 'new'
     const { data: requests, error: requestsError } = await supabase
       .from("intake_requests")
@@ -393,8 +460,87 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get trainer IDs to include (from cycle settings or owner)
-    const trainerIds: string[] = cycle.settings?.applicable_trainer_ids || [];
+    // Determine the effective start date for slot generation
+    const effectiveStartDate = startDate || cycle.start_date;
+
+    // If trainerAvailability is provided, auto-create availability slots
+    let slotsCreated = 0;
+    if (trainerAvailability && trainerAvailability.length > 0) {
+      // Update trainer profiles with provided rating ranges
+      for (const ta of trainerAvailability) {
+        if (ta.minRating !== null || ta.maxRating !== null) {
+          await supabase
+            .from("trainer_profiles")
+            .update({
+              preferred_min_rating: ta.minRating,
+              preferred_max_rating: ta.maxRating,
+            })
+            .eq("id", ta.trainerId);
+        }
+      }
+
+      // Generate slots from trainer availability windows
+      const cycleEndDate = new Date(cycle.end_date);
+      const slotsToInsert: any[] = [];
+
+      for (const ta of trainerAvailability) {
+        for (const window of ta.windows) {
+          // Generate weekly recurring slots from startDate to cycle end
+          const dayIndex = WEEKDAYS.indexOf(window.day.toLowerCase());
+          if (dayIndex === -1) continue;
+
+          let current = new Date(effectiveStartDate);
+          // Find the first occurrence of this day
+          while (current.getDay() !== dayIndex) {
+            current.setDate(current.getDate() + 1);
+          }
+
+          while (current <= cycleEndDate) {
+            const startDateTime = new Date(current);
+            const [startH, startM] = window.start.split(":").map(Number);
+            startDateTime.setHours(startH, startM, 0, 0);
+
+            const endDateTime = new Date(current);
+            const [endH, endM] = window.end.split(":").map(Number);
+            endDateTime.setHours(endH, endM, 0, 0);
+
+            slotsToInsert.push({
+              trainer_id: ta.trainerId,
+              start_time: startDateTime.toISOString(),
+              end_time: endDateTime.toISOString(),
+              is_marked_full: false,
+              is_public: false,
+              is_recurring: false,
+              cyclus_id: cycleId,
+              max_participants: cycle.settings?.max_group_size || 4,
+              min_participants: cycle.settings?.min_group_size || null,
+              academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+              location_id: cycle.location_id || null,
+            });
+
+            current.setDate(current.getDate() + 7);
+          }
+        }
+      }
+
+      if (slotsToInsert.length > 0) {
+        const { error: slotInsertError } = await supabase
+          .from("availability_slots")
+          .insert(slotsToInsert);
+
+        if (slotInsertError) {
+          console.error("Error creating slots:", slotInsertError);
+          throw new Error("Failed to create availability slots: " + slotInsertError.message);
+        }
+        slotsCreated = slotsToInsert.length;
+        console.log(`Created ${slotsCreated} availability slots from wizard config`);
+      }
+    }
+
+    // Get trainer IDs to include (from wizard config, cycle settings, or owner)
+    const trainerIds: string[] = trainerAvailability?.map(ta => ta.trainerId) 
+      || cycle.settings?.applicable_trainer_ids 
+      || [];
     if (cycle.owner_type === "trainer" && !trainerIds.includes(cycle.owner_id)) {
       trainerIds.push(cycle.owner_id);
     }
@@ -403,7 +549,7 @@ Deno.serve(async (req) => {
     let slotsQuery = supabase
       .from("availability_slots")
       .select("*, max_participants")
-      .gte("start_time", cycle.start_date)
+      .gte("start_time", effectiveStartDate)
       .lte("start_time", cycle.end_date)
       .eq("is_marked_full", false);
 
