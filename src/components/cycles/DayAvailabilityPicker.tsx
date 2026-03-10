@@ -13,16 +13,14 @@ import {
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
-// Generate time options from 06:00 to 22:30 in 30-minute increments
+// Generate time options from 06:00 to 00:00 (midnight) in 30-minute increments
 const TIME_OPTIONS: string[] = [];
-for (let hour = 6; hour <= 22; hour++) {
+for (let hour = 6; hour <= 23; hour++) {
   TIME_OPTIONS.push(`${hour.toString().padStart(2, '0')}:00`);
-  if (hour < 22 || (hour === 22 && TIME_OPTIONS.length === 0)) {
-    TIME_OPTIONS.push(`${hour.toString().padStart(2, '0')}:30`);
-  }
+  TIME_OPTIONS.push(`${hour.toString().padStart(2, '0')}:30`);
 }
-// Add 22:30 and 23:00 as end time options
-TIME_OPTIONS.push('22:30', '23:00');
+// Add midnight as end time option
+TIME_OPTIONS.push('00:00');
 
 export interface TimeBlock {
   start: string;
