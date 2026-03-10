@@ -132,8 +132,8 @@ export default function Academies() {
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
-                      <Avatar className="h-16 w-16 rounded-lg">
-                        <AvatarImage src={academy.logo_url || ''} />
+                      <Avatar className="h-16 w-16 rounded-lg bg-muted">
+                        <AvatarImage src={academy.logo_url || ''} className="object-cover" />
                         <AvatarFallback className="rounded-lg text-lg">{getInitials(academy.name || "")}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
