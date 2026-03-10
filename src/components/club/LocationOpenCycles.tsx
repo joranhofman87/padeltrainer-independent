@@ -36,6 +36,20 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
         const cyclesData = await getLocationCycles(locationId);
         setCycles(cyclesData);
 
+        // Fetch academy slugs for academy-owned cycles
+        const academyOwnerIds = [...new Set(cyclesData.filter(c => c.owner_type === 'academy').map(c => c.owner_id))];
+        if (academyOwnerIds.length > 0) {
+          const { data: academies } = await supabase
+            .from('academy_profiles')
+            .select('id, slug')
+            .in('id', academyOwnerIds);
+          if (academies) {
+            const slugMap: Record<string, string> = {};
+            academies.forEach(a => { slugMap[a.id] = a.slug; });
+            setAcademySlugs(slugMap);
+          }
+        }
+
         if (user && cyclesData.length > 0) {
           const appliedSet = new Set<string>();
           for (const cycle of cyclesData) {
