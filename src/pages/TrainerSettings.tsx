@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe } from 'lucide-react';
+import { ArrowLeft, Crown, User, CalendarSync, Bell, ClipboardCheck, Eye, EyeOff, AlertTriangle, FileText, Gamepad2, Building2, Globe, GraduationCap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
@@ -345,6 +345,28 @@ export default function TrainerSettings() {
             </CardHeader>
           </Card>
         </div>
+
+        {/* Start an Academy */}
+        {!hasAcademy && (
+          <div className="max-w-4xl mb-8">
+            <Card
+              className="cursor-pointer hover:shadow-lg transition-shadow hover:border-emerald-500/50"
+              onClick={() => navigate('/app/onboarding/academy')}
+            >
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/10">
+                    <GraduationCap className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">{t('settings.startAcademy')}</CardTitle>
+                    <CardDescription>{t('settings.startAcademyDescription')}</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-4 max-w-4xl">
           {settingsItems.map((item) => (

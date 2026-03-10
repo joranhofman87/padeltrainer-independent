@@ -423,6 +423,8 @@
     "playerModeDescription": "Accédez au tableau de bord joueur pour réserver des cours avec d'autres entraîneurs",
     "playerModeEnabled": "Mode joueur activé — vous pouvez maintenant accéder au tableau de bord joueur",
     "playerModeDisabled": "Mode joueur désactivé",
+    "startAcademy": "Créer une Académie",
+    "startAcademyDescription": "Créez votre propre académie pour gérer entraîneurs, joueurs et lieux",
     "marketplaceVisibility": "Visibilité sur le marketplace",
     "visibleHelper": "Visible — les joueurs peuvent vous trouver et demander des cours",
     "hiddenHelper": "Masqué — vous n'apparaissez pas dans la recherche et les joueurs ne peuvent pas réserver",

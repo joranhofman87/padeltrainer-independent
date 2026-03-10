@@ -423,6 +423,8 @@
     "playerModeDescription": "Accede al panel de jugador para reservar clases con otros entrenadores",
     "playerModeEnabled": "Modo jugador activado — ahora puedes acceder al panel de jugador",
     "playerModeDisabled": "Modo jugador desactivado",
+    "startAcademy": "Crear una Academia",
+    "startAcademyDescription": "Crea tu propia academia para gestionar entrenadores, jugadores y ubicaciones",
     "marketplaceVisibility": "Visibilidad en el marketplace",
     "visibleHelper": "Visible — los jugadores pueden encontrarte y solicitar clases",
     "hiddenHelper": "Oculto — no aparecerás en las búsquedas",

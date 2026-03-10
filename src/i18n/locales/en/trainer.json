@@ -423,6 +423,8 @@
     "playerModeDescription": "Access the player dashboard to book lessons with other trainers",
     "playerModeEnabled": "Player mode enabled — you can now access the player dashboard",
     "playerModeDisabled": "Player mode disabled",
+    "startAcademy": "Start an Academy",
+    "startAcademyDescription": "Create your own academy to manage trainers, players, and locations",
     "marketplaceVisibility": "Marketplace visibility",
     "visibleHelper": "Visible — players can find you and request lessons",
     "hiddenHelper": "Hidden — you won't appear in search and players can't book you",
