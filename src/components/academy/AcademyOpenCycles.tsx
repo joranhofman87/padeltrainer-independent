@@ -18,22 +18,14 @@ interface AcademyOpenCyclesProps {
   academySlug: string;
 }
 
-interface TrainerOption {
-  id: string;
-  name: string;
-}
-
 export function AcademyOpenCycles({ academyId, academyName, academySlug }: AcademyOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { lang } = useParams<{ lang: string }>();
   
   const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [trainers, setTrainers] = useState<TrainerOption[]>([]);
-  const [expandedCycleId, setExpandedCycleId] = useState<string | null>(null);
   const [appliedCycles, setAppliedCycles] = useState<Set<string>>(new Set());
-  const [successCycleId, setSuccessCycleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
