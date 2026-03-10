@@ -161,6 +161,7 @@ export default function CycleApplicationForm({
       full_name: playerName || '',
       email: playerEmail || '',
       phone: playerPhone || '',
+      password: '',
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_types: ['group'] as typeof LESSON_TYPES[number][],
