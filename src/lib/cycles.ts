@@ -388,6 +388,8 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   if (updates.price_per_session !== undefined) updateData.price_per_session = updates.price_per_session;
   if (updates.total_price !== undefined) updateData.total_price = updates.total_price;
   if (updates.currency !== undefined) updateData.currency = updates.currency;
+  if (updates.terms !== undefined) updateData.terms = updates.terms;
+  if (updates.price_table !== undefined) updateData.price_table = updates.price_table as Json;
   
   const { data, error } = await supabase
     .from('cycles')
