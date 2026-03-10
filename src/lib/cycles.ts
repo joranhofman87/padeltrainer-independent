@@ -901,12 +901,31 @@ export async function getIntakeRequestCounts(cycleId: string): Promise<Record<st
 }
 
 // Generate proposals using the edge function with configurable weights
+export interface TrainerAvailabilityInput {
+  trainerId: string;
+  trainerName: string;
+  windows: { day: string; start: string; end: string }[];
+  minRating: number | null;
+  maxRating: number | null;
+}
+
 export async function generateProposals(
   cycleId: string,
-  weights?: ScoringWeights
+  weights?: ScoringWeights,
+  options?: {
+    startDate?: string;
+    trainerAvailability?: TrainerAvailabilityInput[];
+    additionalCriteria?: string;
+  }
 ): Promise<{ generated: number; skipped: number; errors?: string[] }> {
   const { data, error } = await supabase.functions.invoke('generate-proposals', {
-    body: { cycleId, weights }
+    body: {
+      cycleId,
+      weights,
+      startDate: options?.startDate,
+      trainerAvailability: options?.trainerAvailability,
+      additionalCriteria: options?.additionalCriteria,
+    }
   });
 
   if (error) throw error;
