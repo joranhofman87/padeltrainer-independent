@@ -145,6 +145,7 @@ export default function CycleForm({
     price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
     total_price: z.coerce.number().min(0).optional().or(z.literal('')),
     currency: z.string().default('EUR'),
+    success_message: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
@@ -176,6 +177,7 @@ export default function CycleForm({
       price_per_session: cycle?.price_per_session ?? '',
       total_price: cycle?.total_price ?? '',
       currency: cycle?.currency || 'EUR',
+      success_message: (cycle?.settings as any)?.success_message || '',
     },
   });
 
@@ -204,6 +206,7 @@ export default function CycleForm({
         price_per_session: cycle?.price_per_session ?? '',
         total_price: cycle?.total_price ?? '',
         currency: cycle?.currency || 'EUR',
+        success_message: (cycle?.settings as any)?.success_message || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       const settings = cycle?.settings as any;
@@ -299,6 +302,7 @@ export default function CycleForm({
         // Event-specific
         payment_methods: isEvent ? eventPaymentMethod : undefined,
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
+        success_message: values.success_message?.trim() || undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -419,6 +423,30 @@ export default function CycleForm({
                     </FormControl>
                     <FormDescription className="text-xs">
                       {t('form.registrationDescriptionHelp', 'Visible to players before they apply')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Success message - shown after player submits */}
+            {(isRegistration || isEvent) && (
+              <FormField
+                control={form.control}
+                name="success_message"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.successMessage', 'Success Message')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder={t('form.successMessagePlaceholder', 'e.g. Thanks for signing up! We will contact you within 2 days.')}
+                        rows={3}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.successMessageHelp', 'Custom message shown to players after they submit the form. Leave empty for the default message.')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

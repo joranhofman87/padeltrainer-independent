@@ -290,20 +290,28 @@ export default function CycleApplicationForm({
           <div className="text-center space-y-4">
             <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
             <h3 className="text-xl font-semibold">{t('application.success.title')}</h3>
-            <p className="text-muted-foreground">
-              {isGuest 
-                ? t('application.success.guestMessage', 'Your application has been submitted! Please check your email to verify your account.')
-                : t('application.success.message')}
-            </p>
-            
-            <div className="text-left mt-6 p-4 bg-muted rounded-lg">
-              <h4 className="font-medium mb-2">{t('application.success.whatNext')}</h4>
-              <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                <li>{t('application.success.step1')}</li>
-                <li>{t('application.success.step2')}</li>
-                <li>{t('application.success.step3')}</li>
-              </ol>
-            </div>
+            {(cycle.settings as any)?.success_message ? (
+              <p className="text-muted-foreground whitespace-pre-line">
+                {(cycle.settings as any).success_message}
+              </p>
+            ) : (
+              <>
+                <p className="text-muted-foreground">
+                  {isGuest 
+                    ? t('application.success.guestMessage', 'Your application has been submitted! Please check your email to verify your account.')
+                    : t('application.success.message')}
+                </p>
+                
+                <div className="text-left mt-6 p-4 bg-muted rounded-lg">
+                  <h4 className="font-medium mb-2">{t('application.success.whatNext')}</h4>
+                  <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                    <li>{t('application.success.step1')}</li>
+                    <li>{t('application.success.step2')}</li>
+                    <li>{t('application.success.step3')}</li>
+                  </ol>
+                </div>
+              </>
+            )}
 
             {onCancel && (
               <Button variant="outline" onClick={onCancel} className="mt-4">
