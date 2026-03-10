@@ -38,10 +38,10 @@ export function TrainerSetupChecklist({
   }
   
   const steps = [
-    { key: 'profileComplete', label: 'Complete your profile essentials', route: '/trainer/profile', complete: setupStatus.profileComplete },
-    { key: 'hasAvailability', label: 'Add 3 more time slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
-    { key: 'hasPlayers', label: 'Add your existing players', route: '/trainer/players', complete: setupStatus.hasPlayers },
+    { key: 'hasAvailability', label: 'Add your first time slots', route: '/trainer/calendar', complete: setupStatus.hasAvailability },
     { key: 'paymentsComplete', label: paymentLabel, subLabel: paymentSubLabel, route: '/trainer/earnings', complete: setupStatus.paymentsComplete, isAcademyManaged: academyInfo?.isAcademyTrainer && academyInfo?.academyChargesEnabled },
+    { key: 'profileComplete', label: 'Complete your profile details', route: '/trainer/profile', complete: setupStatus.profileComplete },
+    { key: 'hasPlayers', label: 'Add your existing players', route: '/trainer/players', complete: setupStatus.hasPlayers },
     { key: 'isPublished', label: 'Publish your profile', route: '/trainer/settings', complete: setupStatus.isPublished },
   ];
 
