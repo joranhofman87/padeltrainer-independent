@@ -253,7 +253,7 @@ export default function CycleApplicationForm({
           sessions_per_week: values.sessions_per_week,
           preferred_trainer_ids: values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
           location_id: values.location_id || undefined,
-          notes: values.notes,
+          notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
         });
 
