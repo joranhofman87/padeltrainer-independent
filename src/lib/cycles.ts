@@ -205,6 +205,7 @@ function toCycle(row: any): Cycle {
   return {
     ...row,
     settings: (row.settings || {}) as CycleSettings,
+    price_table: (row.price_table || null) as PriceTableRow[] | null,
   };
 }
 
