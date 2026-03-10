@@ -271,7 +271,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
           {/* Cycle hero section */}
           <div className="mb-6 space-y-3">
-            <h1 className="text-3xl font-bold">{cycle.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">{cycle.name}</h1>
 
             {/* Prominent location */}
             {cycleLocation && (
