@@ -723,15 +723,15 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Create Account - shown at the end for guest users */}
+        {/* Email - shown at the end for guest users */}
         {isGuest && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">{t('application.form.createAccount', 'Create Your Account')}</CardTitle>
+              <CardTitle className="text-lg">{t('application.form.yourEmail', 'Your Email')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                {t('application.form.createAccountHelp', 'Choose a password to create your account. This lets you track your application and manage your bookings.')}
+                {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
               </p>
               <FormField
                 control={form.control}
@@ -742,22 +742,6 @@ export default function CycleApplicationForm({
                     <FormControl>
                       <Input {...field} type="email" />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      {t('application.form.passwordMin', 'Password must be at least 6 characters')}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
