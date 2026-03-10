@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_locations_is_active ON public.locations (is_active) WHERE is_active = true;
