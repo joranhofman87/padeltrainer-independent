@@ -97,7 +97,7 @@ export default function TrainerLayout() {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-        <TrainerSidebar />
+        <TrainerSidebar isExpired={!!(isSubscriptionExpired && !hasAcademy)} />
         <main className="flex-1 overflow-auto">
           {/* Mobile header */}
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 lg:hidden">
@@ -112,21 +112,6 @@ export default function TrainerLayout() {
       
       
       <ReferralWidget />
-
-      {/* Subscription Paywall Overlay */}
-      {!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy && (
-        <SubscriptionOverlay
-          roleName="trainer"
-          subscriptionPath="/app/trainer/subscription"
-          pricing={{
-            monthly: SUBSCRIPTION_TIERS.professional.monthlyPrice,
-            yearly: SUBSCRIPTION_TIERS.professional.yearlyPrice,
-          }}
-          features={subscriptionFeatures}
-          trialDaysRemaining={trialDaysRemaining}
-          isTrialExpired={isSubscriptionExpired}
-        />
-      )}
     </SidebarProvider>
   );
 }

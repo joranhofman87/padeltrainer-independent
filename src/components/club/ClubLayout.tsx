@@ -254,20 +254,6 @@ export default function ClubLayout() {
         
         <ReferralWidget />
 
-        {/* Subscription Paywall Overlay */}
-        {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
-          <SubscriptionOverlay
-            roleName="club"
-            subscriptionPath="/app/club/subscription"
-            pricing={{
-              monthly: CLUB_SUBSCRIPTION.monthlyPrice,
-              yearly: CLUB_SUBSCRIPTION.yearlyPrice,
-            }}
-            features={subscriptionFeatures}
-            trialDaysRemaining={trialDaysRemaining}
-            isTrialExpired={isSubscriptionExpired}
-          />
-        )}
       </SidebarProvider>
     </ClubContext.Provider>
   );
