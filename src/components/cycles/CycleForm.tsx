@@ -1389,7 +1389,7 @@ export default function CycleForm({
                 {t('common:cancel', 'Cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('form.save')}
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isRegistration ? t('form.saveRegistration', 'Save Registration') : t('form.save')}
               </Button>
               {!isEdit && (
                 <Button
