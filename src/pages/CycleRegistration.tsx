@@ -330,64 +330,62 @@ export default function CycleRegistration() {
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto">
           {/* Cycle Header */}
-          <div className="mb-8">
-            {/* Owner info */}
-            <div className="flex items-center gap-3 mb-4">
-              {owner && (
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={owner.avatar_url} />
-                  <AvatarFallback>
-                    {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
-                <p className="font-semibold text-lg">{owner?.name}</p>
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-4">
+              {/* Owner info */}
+              <div className="flex items-center gap-3">
+                {owner?.logo_url && (
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={owner.logo_url} alt={owner.name} />
+                    <AvatarFallback>
+                      {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
+                  <p className="font-semibold text-lg">{owner?.name}</p>
+                </div>
               </div>
-            </div>
 
-            <h1 className="text-3xl font-bold mb-3">{cycle.name}</h1>
-            
-            {/* Meta info */}
-            <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span>
-                  {format(new Date(cycle.start_date), 'MMM d')} - {format(new Date(cycle.end_date), 'MMM d, yyyy')}
-                </span>
-              </div>
-              {cycle.enrollment_deadline && (
+              <h1 className="text-3xl font-bold">{cycle.name}</h1>
+              
+              {/* Meta info */}
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
+                  <Calendar className="h-4 w-4" />
                   <span>
-                    {t('application.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'MMM d, yyyy')}
+                    {format(new Date(cycle.start_date), 'MMM d')} - {format(new Date(cycle.end_date), 'MMM d, yyyy')}
                   </span>
                 </div>
-              )}
-              {cycleLocation && (
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>{cycleLocation.name}, {cycleLocation.city}</span>
-                </div>
-              )}
-              <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
-                {t(`status.${cycle.status}`)}
-              </Badge>
-            </div>
+                {cycle.enrollment_deadline && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span>
+                      {t('application.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'MMM d, yyyy')}
+                    </span>
+                  </div>
+                )}
+                {cycleLocation && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span>{cycleLocation.name}, {cycleLocation.city}</span>
+                  </div>
+                )}
+                <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
+                  {t(`status.${cycle.status}`)}
+                </Badge>
+              </div>
 
-            {/* Description */}
-            {cycle.description && (
-              <div className="text-muted-foreground prose dark:prose-invert max-w-none mb-6" dangerouslySetInnerHTML={{ __html: cycle.description }} />
-            )}
+              {/* Description */}
+              {cycle.description && (
+                <div className="text-muted-foreground prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
+              )}
 
-            {/* Price table */}
-            {priceTable && priceTable.length > 0 && (
-              <Card className="mb-6">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{t('application.pricing', 'Pricing')}</CardTitle>
-                </CardHeader>
-                <CardContent>
+              {/* Price table */}
+              {priceTable && priceTable.length > 0 && (
+                <div className="border-t border-border pt-4">
+                  <h3 className="text-base font-semibold mb-2">{t('application.pricing', 'Pricing')}</h3>
                   <div className="space-y-2">
                     {priceTable.map((tier, idx) => (
                       <div key={idx} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
@@ -398,10 +396,10 @@ export default function CycleRegistration() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Status Alerts */}
           {hasApplied && (
