@@ -48,7 +48,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
             const slugMap: Record<string, string> = {};
             academies.forEach(a => { slugMap[a.id] = a.slug; });
             setAcademySlugs(slugMap);
-        }
+          }
 
         // Fetch academy slugs for trainer-owned cycles via academy_trainers
         const trainerOwnerIds = [...new Set(cyclesData.filter(c => c.owner_type === 'trainer').map(c => c.owner_id))];
