@@ -180,7 +180,7 @@ export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesP
                     {cycle.description && (
                       <div className="text-sm text-muted-foreground mt-2 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
                     )}
-                  </div>
+                    <CycleDetailDisplay cycle={cycle} />
                   
                   <div className="flex items-center gap-2">
                     {hasApplied && (
