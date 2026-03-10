@@ -164,7 +164,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                         </AlertDescription>
                       </Alert>
                     ) : (
-                      user && profile && (
+                      user && profile ? (
                         <CycleApplicationForm
                           cycle={cycle}
                           playerId={profile.id}
@@ -178,6 +178,21 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                           onSuccess={() => handleSuccess(cycle.id)}
                           onCancel={() => setExpandedCycleId(null)}
                         />
+                      ) : (
+                        <CycleApplicationForm
+                          cycle={cycle}
+                          playerId=""
+                          playerUserId=""
+                          playerName=""
+                          playerEmail=""
+                          playerPhone=""
+                          isGuest
+                          trainers={[{ id: trainerId, name: trainerName }]}
+                          onSuccess={() => handleSuccess(cycle.id)}
+                          onCancel={() => setExpandedCycleId(null)}
+                        />
+                      )
+                    )}
                       )
                     )}
                   </div>

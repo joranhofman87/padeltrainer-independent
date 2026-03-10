@@ -219,7 +219,7 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                         </AlertDescription>
                       </Alert>
                     ) : (
-                      user && profile && (
+                      user && profile ? (
                         <CycleApplicationForm
                           cycle={cycle}
                           playerId={profile.id}
@@ -233,6 +233,21 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                           onSuccess={() => handleSuccess(cycle.id)}
                           onCancel={() => setExpandedCycleId(null)}
                         />
+                      ) : (
+                        <CycleApplicationForm
+                          cycle={cycle}
+                          playerId=""
+                          playerUserId=""
+                          playerName=""
+                          playerEmail=""
+                          playerPhone=""
+                          isGuest
+                          trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
+                          onSuccess={() => handleSuccess(cycle.id)}
+                          onCancel={() => setExpandedCycleId(null)}
+                        />
+                      )
+                    )}
                       )
                     )}
                   </CardContent>
