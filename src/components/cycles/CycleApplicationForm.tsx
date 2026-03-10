@@ -138,7 +138,7 @@ export default function CycleApplicationForm({
     full_name: z.string().min(2),
     email: z.string().email(),
     phone: z.string().optional(),
-    password: isGuest ? z.string().min(6, t('application.form.passwordMin', 'Password must be at least 6 characters')) : z.string().optional(),
+    password: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
