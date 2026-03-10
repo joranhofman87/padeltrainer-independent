@@ -145,6 +145,7 @@ export default function CycleForm({
     price_per_session: z.coerce.number().min(0).optional().or(z.literal('')),
     total_price: z.coerce.number().min(0).optional().or(z.literal('')),
     currency: z.string().default('EUR'),
+    success_message: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
