@@ -430,7 +430,30 @@ export default function CycleForm({
               />
             )}
 
-            {isEvent ? (
+            {/* Success message - shown after player submits */}
+            {(isRegistration || isEvent) && (
+              <FormField
+                control={form.control}
+                name="success_message"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.successMessage', 'Success Message')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder={t('form.successMessagePlaceholder', 'e.g. Thanks for signing up! We will contact you within 2 days.')}
+                        rows={3}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.successMessageHelp', 'Custom message shown to players after they submit the form. Leave empty for the default message.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
               /* Event: start date + end date */
               <div className="grid grid-cols-2 gap-4">
                 <FormField
