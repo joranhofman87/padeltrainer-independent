@@ -230,6 +230,7 @@ export default function ClubLayout() {
           <ClubSidebar 
             club={activeClub}
             onClubChange={handleClubChange}
+            isExpired={!!isSubscriptionExpired}
           />
           <SidebarInset className="flex-1">
             {/* Mobile Header */}
