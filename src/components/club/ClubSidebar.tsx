@@ -62,9 +62,10 @@ interface ClubWithLocation extends ClubProfile {
 interface ClubSidebarProps {
   club: ClubWithLocation | null;
   onClubChange?: (club: ClubWithLocation) => void;
+  isExpired?: boolean;
 }
 
-export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
+export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSidebarProps) {
   const { t, i18n } = useTranslation("club");
   const navigate = useNavigate();
   const location = useLocation();
