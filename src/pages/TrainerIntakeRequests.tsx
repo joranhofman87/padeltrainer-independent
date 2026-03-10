@@ -15,12 +15,10 @@ import {
   generateProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
-  type ScoringWeights
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
-import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
-import { GenerateProposalsGuard } from '@/components/cycles/GenerateProposalsGuard';
+import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import { logger } from '@/lib/logger';
 
@@ -38,28 +36,20 @@ export default function TrainerIntakeRequests() {
   const [selectedCycleId, setSelectedCycleId] = useState<string>(searchParams.get('cycle') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
-  const [showGuardDialog, setShowGuardDialog] = useState(false);
-  const [showWeightsDialog, setShowWeightsDialog] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-
-  // Auth is now handled by TrainerLayout
 
   useEffect(() => {
     const fetchTrainerId = async () => {
       if (!user) return;
-
       const { data } = await supabase
         .from('trainer_profiles')
         .select('id')
         .eq('user_id', user.id)
         .single();
-
-      if (data) {
-        setTrainerId(data.id);
-      }
+      if (data) setTrainerId(data.id);
     };
-
     if (user) fetchTrainerId();
   }, [user]);
 
@@ -88,17 +78,12 @@ export default function TrainerIntakeRequests() {
 
   useEffect(() => {
     let filtered = requests;
-
-    // Filter by cycle
     if (selectedCycleId !== 'all') {
       filtered = filtered.filter(r => r.cycle_id === selectedCycleId);
     }
-
-    // Filter by status
     if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
-
     setFilteredRequests(filtered);
   }, [requests, selectedCycleId, statusFilter]);
 
@@ -112,7 +97,7 @@ export default function TrainerIntakeRequests() {
     setSearchParams(searchParams);
   };
 
-  const handleGenerateProposals = async (weights: ScoringWeights, saveAsDefault: boolean) => {
+  const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
     if (selectedCycleId === 'all') {
       toast.error('Please select a specific cycle first');
       return;
@@ -120,9 +105,13 @@ export default function TrainerIntakeRequests() {
 
     setIsGenerating(true);
     try {
-      const result = await generateProposals(selectedCycleId, weights);
+      const result = await generateProposals(selectedCycleId, config.weights, {
+        startDate: config.startDate,
+        trainerAvailability: config.trainerAvailability,
+        additionalCriteria: config.additionalCriteria,
+      });
       toast.success(t('proposals.generated', { count: result.generated }));
-      setShowWeightsDialog(false);
+      setShowWizard(false);
       fetchData();
     } catch (error: any) {
       toast.error(error.message);
@@ -131,12 +120,7 @@ export default function TrainerIntakeRequests() {
     }
   };
 
-  const getSelectedCycleWeights = (): ScoringWeights | undefined => {
-    if (selectedCycleId === 'all') return undefined;
-    const cycle = cycles.find(c => c.id === selectedCycleId);
-    return cycle?.settings?.scoring_weights;
-  };
-
+  const selectedCycle = cycles.find(c => c.id === selectedCycleId);
   const newCount = requests.filter(r => r.status === 'new').length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
 
@@ -151,86 +135,86 @@ export default function TrainerIntakeRequests() {
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/cycles')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold">{t('intakeRequests.title')}</h1>
-              <p className="text-muted-foreground hidden sm:block">
-                {t('intakeRequests.noRequestsDescription').replace('Aanmeldingen verschijnen hier wanneer spelers zich aanmelden', 'View and manage player applications for your training cycles')}
-              </p>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex gap-2 items-center">
-              <Select value={selectedCycleId} onValueChange={handleCycleChange}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select cycle" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
-                  {cycles.map(cycle => (
-                    <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowAddDialog(true)}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                {t('intakeRequests.addManual')}
-              </Button>
-              {proposedCount > 0 && (
-                <Button variant="outline">
-                  <CheckCheck className="mr-2 h-4 w-4" />
-                  {t('proposals.approveAll')}
-                </Button>
-              )}
-              <Button 
-                onClick={() => setShowGuardDialog(true)}
-                disabled={selectedCycleId === 'all' || newCount === 0}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {t('proposals.generateAll')}
-              </Button>
-            </div>
+      {/* Header */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/app/trainer/cycles')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold">{t('intakeRequests.title')}</h1>
+            <p className="text-muted-foreground hidden sm:block">
+              {t('intakeRequests.noRequestsDescription')}
+            </p>
           </div>
         </div>
 
-        {/* Status Filter Tabs */}
-        <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-          <TabsList>
-            <TabsTrigger value="all">
-              {t('intakeRequests.filters.all')} ({requests.length})
-            </TabsTrigger>
-            <TabsTrigger value="new">
-              {t('intakeRequests.filters.new')} ({newCount})
-            </TabsTrigger>
-            <TabsTrigger value="proposed">
-              {t('intakeRequests.filters.proposed')} ({proposedCount})
-            </TabsTrigger>
-            <TabsTrigger value="confirmed">
-              {t('intakeRequests.filters.confirmed')}
-            </TabsTrigger>
-            <TabsTrigger value="waitlist">
-              {t('intakeRequests.filters.waitlist')}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Controls */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex gap-2 items-center">
+            <Select value={selectedCycleId} onValueChange={handleCycleChange}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select cycle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
+                {cycles.map(cycle => (
+                  <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Requests Table */}
-        <IntakeRequestsTable
-          requests={filteredRequests}
-          onRowClick={setSelectedRequest}
-          emptyMessage={t('intakeRequests.noRequests')}
-          emptyDescription={t('intakeRequests.noRequestsDescription')}
-        />
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowAddDialog(true)}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              {t('intakeRequests.addManual')}
+            </Button>
+            {proposedCount > 0 && (
+              <Button variant="outline">
+                <CheckCheck className="mr-2 h-4 w-4" />
+                {t('proposals.approveAll')}
+              </Button>
+            )}
+            <Button 
+              onClick={() => setShowWizard(true)}
+              disabled={selectedCycleId === 'all' || newCount === 0}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              {t('proposals.generateAll')}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Filter Tabs */}
+      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+        <TabsList>
+          <TabsTrigger value="all">
+            {t('intakeRequests.filters.all')} ({requests.length})
+          </TabsTrigger>
+          <TabsTrigger value="new">
+            {t('intakeRequests.filters.new')} ({newCount})
+          </TabsTrigger>
+          <TabsTrigger value="proposed">
+            {t('intakeRequests.filters.proposed')} ({proposedCount})
+          </TabsTrigger>
+          <TabsTrigger value="confirmed">
+            {t('intakeRequests.filters.confirmed')}
+          </TabsTrigger>
+          <TabsTrigger value="waitlist">
+            {t('intakeRequests.filters.waitlist')}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Requests Table */}
+      <IntakeRequestsTable
+        requests={filteredRequests}
+        onRowClick={setSelectedRequest}
+        emptyMessage={t('intakeRequests.noRequests')}
+        emptyDescription={t('intakeRequests.noRequestsDescription')}
+      />
 
       {/* Detail Sheet */}
       <IntakeRequestDetailSheet
@@ -240,25 +224,18 @@ export default function TrainerIntakeRequests() {
         onStatusChange={fetchData}
       />
 
-      {/* Guard Dialog */}
-      <GenerateProposalsGuard
-        open={showGuardDialog}
-        onOpenChange={setShowGuardDialog}
-        calendarPath="/app/trainer/calendar"
-        onContinue={() => {
-          setShowGuardDialog(false);
-          setShowWeightsDialog(true);
-        }}
-      />
-
-      {/* Scoring Weights Dialog */}
-      <ScoringWeightsDialog
-        open={showWeightsDialog}
-        onOpenChange={setShowWeightsDialog}
-        defaultWeights={getSelectedCycleWeights()}
-        onGenerate={handleGenerateProposals}
-        isGenerating={isGenerating}
-      />
+      {/* Generate Proposals Wizard */}
+      {selectedCycle && trainerId && (
+        <GenerateProposalsWizard
+          open={showWizard}
+          onOpenChange={setShowWizard}
+          cycle={selectedCycle}
+          onGenerate={handleGenerateProposals}
+          isGenerating={isGenerating}
+          ownerType="trainer"
+          ownerId={trainerId}
+        />
+      )}
 
       {/* Add Registration Dialog */}
       <AddIntakeRequestDialog

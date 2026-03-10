@@ -13,12 +13,10 @@ import {
   generateProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
-  type ScoringWeights
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
-import { ScoringWeightsDialog } from '@/components/cycles/ScoringWeightsDialog';
-import { GenerateProposalsGuard } from '@/components/cycles/GenerateProposalsGuard';
+import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { logger } from '@/lib/logger';
@@ -35,8 +33,7 @@ export default function AcademyIntakeRequests() {
   const [selectedCycleId, setSelectedCycleId] = useState<string>(searchParams.get('cycle') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<IntakeRequestWithProposal | null>(null);
-  const [showGuardDialog, setShowGuardDialog] = useState(false);
-  const [showWeightsDialog, setShowWeightsDialog] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
 
@@ -84,7 +81,7 @@ export default function AcademyIntakeRequests() {
     setSearchParams(searchParams);
   };
 
-  const handleGenerateProposals = async (weights: ScoringWeights, saveAsDefault: boolean) => {
+  const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
     if (selectedCycleId === 'all') {
       toast.error('Please select a specific cycle first');
       return;
@@ -92,9 +89,13 @@ export default function AcademyIntakeRequests() {
 
     setIsGenerating(true);
     try {
-      const result = await generateProposals(selectedCycleId, weights);
+      const result = await generateProposals(selectedCycleId, config.weights, {
+        startDate: config.startDate,
+        trainerAvailability: config.trainerAvailability,
+        additionalCriteria: config.additionalCriteria,
+      });
       toast.success(t('proposals.generated', { count: result.generated }));
-      setShowWeightsDialog(false);
+      setShowWizard(false);
       fetchData();
     } catch (error: any) {
       toast.error(error.message);
@@ -103,12 +104,7 @@ export default function AcademyIntakeRequests() {
     }
   };
 
-  const getSelectedCycleWeights = (): ScoringWeights | undefined => {
-    if (selectedCycleId === 'all') return undefined;
-    const cycle = cycles.find(c => c.id === selectedCycleId);
-    return cycle?.settings?.scoring_weights;
-  };
-
+  const selectedCycle = cycles.find(c => c.id === selectedCycleId);
   const newCount = requests.filter(r => r.status === 'new').length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
 
@@ -160,7 +156,7 @@ export default function AcademyIntakeRequests() {
               </Button>
             )}
             <Button 
-              onClick={() => setShowGuardDialog(true)}
+              onClick={() => setShowWizard(true)}
               disabled={selectedCycleId === 'all' || newCount === 0}
             >
               <Sparkles className="mr-2 h-4 w-4" />
@@ -207,25 +203,18 @@ export default function AcademyIntakeRequests() {
         onStatusChange={fetchData}
       />
 
-      {/* Guard Dialog */}
-      <GenerateProposalsGuard
-        open={showGuardDialog}
-        onOpenChange={setShowGuardDialog}
-        calendarPath="/app/academy/calendar"
-        onContinue={() => {
-          setShowGuardDialog(false);
-          setShowWeightsDialog(true);
-        }}
-      />
-
-      {/* Scoring Weights Dialog */}
-      <ScoringWeightsDialog
-        open={showWeightsDialog}
-        onOpenChange={setShowWeightsDialog}
-        defaultWeights={getSelectedCycleWeights()}
-        onGenerate={handleGenerateProposals}
-        isGenerating={isGenerating}
-      />
+      {/* Generate Proposals Wizard */}
+      {selectedCycle && (
+        <GenerateProposalsWizard
+          open={showWizard}
+          onOpenChange={setShowWizard}
+          cycle={selectedCycle}
+          onGenerate={handleGenerateProposals}
+          isGenerating={isGenerating}
+          ownerType="academy"
+          ownerId={activeAcademy!.id}
+        />
+      )}
 
       {/* Add Registration Dialog */}
       <AddIntakeRequestDialog
