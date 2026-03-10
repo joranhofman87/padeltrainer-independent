@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Clock, PartyPopper, CreditCard, Banknote, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, PartyPopper, CreditCard, Banknote, ExternalLink, Info } from 'lucide-react';
 import { getMarketingPath } from '@/lib/domains';
-import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +55,10 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
 
   const isDeadlinePassed = (cycle: Cycle) => {
     return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
+  };
+
+  const getRegisterPath = (cycleId: string) => {
+    return getMarketingPath(`academies/${academySlug}/register/${cycleId}`, lang || i18n.language);
   };
 
   if (loading) {
@@ -142,10 +145,6 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
                       );
                     })()}
                   </div>
-                  {cycle.description && (
-                    <div className="text-sm text-muted-foreground mt-2 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
-                  )}
-                  <CycleDetailDisplay cycle={cycle} />
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -159,11 +158,19 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
                       {t('application.deadlinePassed', 'Deadline passed')}
                     </Badge>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(getRegisterPath(cycle.id))}
+                  >
+                    <Info className="h-4 w-4 mr-1" />
+                    {t('registration.moreInfo', 'More info')}
+                  </Button>
                   {canApply && (
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => navigate(getMarketingPath(`academies/${academySlug}/register/${cycle.id}`, lang || i18n.language))}
+                      onClick={() => navigate(getRegisterPath(cycle.id))}
                     >
                       {t('application.apply', 'Apply')} <ExternalLink className="h-4 w-4 ml-1" />
                     </Button>
