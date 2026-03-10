@@ -40,6 +40,7 @@ const Academies = lazy(() => import('@/pages/Academies'));
 const AcademyPublicProfile = lazy(() => import('@/pages/AcademyPublicProfile'));
 const BookLesson = lazy(() => import('@/pages/BookLesson'));
 const CycleRegistration = lazy(() => import('@/pages/CycleRegistration'));
+const BrandedCycleRegistration = lazy(() => import('@/pages/BrandedCycleRegistration'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
