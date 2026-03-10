@@ -75,6 +75,7 @@ export default function CycleApplicationForm({
   playerRatingSystem = 'knltb',
   trainers = [],
   locations = [],
+  isGuest = false,
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
