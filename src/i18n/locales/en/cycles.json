@@ -88,7 +88,13 @@
     "paymentManualHelp": "You handle payment collection yourself (cash, bank transfer, etc.)",
     "invoiceDelayWeeks": "weeks after start",
     "weeksLabel": "{{count}} week",
-    "weeksLabel_other": "{{count}} weeks"
+    "weeksLabel_other": "{{count}} weeks",
+    "registrationName": "Registration Name",
+    "registrationNamePlaceholder": "e.g., Spring Registration 2026",
+    "registrationDescriptionPlaceholder": "Describe this registration...",
+    "registrationDescriptionHelp": "Visible to players before they apply",
+    "registrationAssignedTrainerHelp": "The trainer who will give the lessons for this registration",
+    "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration"
   },
   
   "actions": {
