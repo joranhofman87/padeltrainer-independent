@@ -12,7 +12,7 @@ import { ClubSidebar } from '@/components/club/ClubSidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkClubSubscription, 
