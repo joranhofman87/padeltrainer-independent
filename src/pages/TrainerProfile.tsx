@@ -33,6 +33,7 @@ import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { getTrainerAcademy, isTrainerInPaidAcademy, type AcademyProfile } from '@/lib/academy';
+import { canBeVisible } from '@/lib/subscription';
 import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
