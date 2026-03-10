@@ -1,12 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { getMarketingPath } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
 import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
@@ -15,6 +13,7 @@ import { MyWaitingListEntries } from '@/components/waitingList';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
 import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+import { useQuery } from '@tanstack/react-query';
 
 interface FollowedTrainer {
   id: string;
@@ -53,284 +52,221 @@ interface PlayerClub {
   logoUrl: string | null;
 }
 
-export default function PlayerDashboard() {
-  const { profile, loading } = useAuth();
-  const navigate = useNavigate();
-  const { toast } = useToast();
+// --- Query functions ---
 
-  const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [followedTrainers, setFollowedTrainers] = useState<FollowedTrainer[]>([]);
-  const [followingLoading, setFollowingLoading] = useState(true);
-  const [followedTrainerSlots, setFollowedTrainerSlots] = useState<FollowedTrainerSlot[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(true);
-  const [playerClubs, setPlayerClubs] = useState<PlayerClub[]>([]);
-  const [clubsLoading, setClubsLoading] = useState(true);
+async function fetchPlayerBookings(profileId: string): Promise<UpcomingBooking[]> {
+  const now = new Date();
+  const { data: bookings } = await supabase
+    .from('bookings')
+    .select(`
+      id, status,
+      availability_slots(start_time, trainer_id, cyclus_name, location_id, locations(name))
+    `)
+    .eq('player_id', profileId)
+    .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    if (profile?.id) {
-      fetchPlayerData();
-      fetchFollowedTrainers();
-      fetchPlayerClubs();
-    }
-  }, [profile?.id]);
+  if (!bookings) return [];
 
-  const fetchFollowedTrainers = async () => {
-    if (!profile?.id) return;
-    setFollowingLoading(true);
-    try {
-      const { data: follows } = await supabase
-        .from('trainer_followers')
-        .select('id, trainer_id')
-        .eq('player_id', profile.id)
-        .limit(10);
+  const active = bookings.filter(b => ['confirmed', 'pending', 'pending_approval'].includes(b.status));
+  const upcoming = active.filter(b => {
+    const slot = b.availability_slots as any;
+    return slot?.start_time && isAfter(new Date(slot.start_time), now);
+  });
 
-      if (!follows || follows.length === 0) {
-        setFollowedTrainers([]);
-        setFollowingLoading(false);
-        setSlotsLoading(false);
-        return;
-      }
+  const upcomingSlice = upcoming.slice(0, 10);
+  const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
 
-      const trainerIds = follows.map(f => f.trainer_id);
-      const { data: trainers } = await supabase
-        .from('trainer_profiles')
-        .select('id, user_id, slug')
-        .in('id', trainerIds);
-
-      if (!trainers) {
-        setFollowedTrainers([]);
-        setFollowingLoading(false);
-        setSlotsLoading(false);
-        return;
-      }
-
+  let trainerNameMap = new Map<string, string>();
+  if (trainerIds.length > 0) {
+    const { data: trainers } = await supabase
+      .from('trainer_profiles')
+      .select('id, user_id')
+      .in('id', trainerIds);
+    if (trainers && trainers.length > 0) {
       const userIds = trainers.map(t => t.user_id);
       const { data: profiles } = await supabase
         .from('profiles_public')
-        .select('user_id, full_name, avatar_url')
+        .select('user_id, full_name')
         .in('user_id', userIds);
-
-      const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
-      const trainerMap = new Map(trainers.map(t => [t.id, t]));
-
-      const enriched: FollowedTrainer[] = follows.map(f => {
-        const trainer = trainerMap.get(f.trainer_id);
-        const p = trainer ? profileMap.get(trainer.user_id) : null;
-        return {
-          id: f.id,
-          trainer_id: trainer?.id || '',
-          trainer_slug: trainer?.slug || null,
-          full_name: p?.full_name || null,
-          avatar_url: p?.avatar_url || null,
-        };
+      const pMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+      trainers.forEach(t => {
+        trainerNameMap.set(t.id, pMap.get(t.user_id) || 'Trainer');
       });
-
-      setFollowedTrainers(enriched);
-      setFollowingLoading(false);
-
-      // Fetch open slots from followed trainers
-      fetchFollowedTrainerSlots(trainerIds, trainers, profileMap);
-    } catch (error) {
-      logger.error('Error fetching followed trainers', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
-      setFollowingLoading(false);
-      setSlotsLoading(false);
     }
-  };
+  }
 
-  const fetchFollowedTrainerSlots = async (
-    trainerIds: string[],
-    trainers: { id: string; user_id: string; slug: string | null }[],
-    profileMap: Map<string, { user_id: string; full_name: string | null; avatar_url: string | null }>
-  ) => {
-    setSlotsLoading(true);
-    try {
-      const now = new Date().toISOString();
-      const { data: slots } = await supabase
-        .from('availability_slots')
-        .select('id, cyclus_name, cyclus_id, allow_single_booking, trainer_id, start_time, location_id, locations(name)')
-        .in('trainer_id', trainerIds)
-        .eq('is_public', true)
-        .eq('is_marked_full', false)
-        .gte('start_time', now)
-        .order('start_time', { ascending: true })
-        .limit(50);
+  return upcomingSlice.map(b => {
+    const slot = b.availability_slots as any;
+    return {
+      id: b.id,
+      sessionTitle: slot?.cyclus_name || 'Training Session',
+      trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
+      startTime: new Date(slot.start_time),
+      location: slot?.locations?.name || null,
+      status: b.status,
+    };
+  });
+}
 
-      if (!slots || slots.length === 0) {
-        setFollowedTrainerSlots([]);
-        setSlotsLoading(false);
-        return;
-      }
+async function fetchFollowedTrainersData(profileId: string): Promise<{
+  trainers: FollowedTrainer[];
+  slots: FollowedTrainerSlot[];
+}> {
+  const { data: follows } = await supabase
+    .from('trainer_followers')
+    .select('id, trainer_id')
+    .eq('player_id', profileId)
+    .limit(10);
 
-      const trainerSlugMap = new Map(trainers.map(t => [t.id, t]));
+  if (!follows || follows.length === 0) return { trainers: [], slots: [] };
 
-      // Group slots by cyclus_id for bundling
-      const cycleGroups = new Map<string, typeof slots>();
-      const individualSlots: typeof slots = [];
+  const trainerIds = follows.map(f => f.trainer_id);
+  const { data: trainers } = await supabase
+    .from('trainer_profiles')
+    .select('id, user_id, slug')
+    .in('id', trainerIds);
 
-      for (const slot of slots) {
-        if (slot.cyclus_id && !slot.allow_single_booking) {
-          const group = cycleGroups.get(slot.cyclus_id) || [];
-          group.push(slot);
-          cycleGroups.set(slot.cyclus_id, group);
-        } else {
-          individualSlots.push(slot);
-        }
-      }
+  if (!trainers) return { trainers: [], slots: [] };
 
-      const enrichedSlots: FollowedTrainerSlot[] = [];
+  const userIds = trainers.map(t => t.user_id);
+  const { data: profiles } = await supabase
+    .from('profiles_public')
+    .select('user_id, full_name, avatar_url')
+    .in('user_id', userIds);
 
-      // Add bundled cycle entries
-      for (const [cyclusId, groupSlots] of cycleGroups) {
-        const first = groupSlots[0];
-        const trainer = trainerSlugMap.get(first.trainer_id);
-        const p = trainer ? profileMap.get(trainer.user_id) : null;
-        enrichedSlots.push({
-          id: first.id,
-          type: 'cycle',
-          cyclusName: first.cyclus_name,
-          trainerName: p?.full_name || 'Trainer',
-          trainerSlug: trainer?.slug || null,
-          startTime: new Date(first.start_time),
-          location: (first.locations as any)?.name || null,
-          sessionCount: groupSlots.length,
-          cyclusId: cyclusId,
-        });
-      }
+  const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
+  const trainerMap = new Map(trainers.map(t => [t.id, t]));
 
-      // Add individual slots
-      for (const slot of individualSlots) {
-        const trainer = trainerSlugMap.get(slot.trainer_id);
-        const p = trainer ? profileMap.get(trainer.user_id) : null;
-        enrichedSlots.push({
-          id: slot.id,
-          type: 'slot',
-          cyclusName: slot.cyclus_name,
-          trainerName: p?.full_name || 'Trainer',
-          trainerSlug: trainer?.slug || null,
-          startTime: new Date(slot.start_time),
-          location: (slot.locations as any)?.name || null,
-        });
-      }
+  const enrichedTrainers: FollowedTrainer[] = follows.map(f => {
+    const trainer = trainerMap.get(f.trainer_id);
+    const p = trainer ? profileMap.get(trainer.user_id) : null;
+    return {
+      id: f.id,
+      trainer_id: trainer?.id || '',
+      trainer_slug: trainer?.slug || null,
+      full_name: p?.full_name || null,
+      avatar_url: p?.avatar_url || null,
+    };
+  });
 
-      // Sort by start time and cap at 10
-      enrichedSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-      setFollowedTrainerSlots(enrichedSlots.slice(0, 10));
-    } catch (error) {
-      logger.error('Error fetching followed trainer slots', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
-    } finally {
-      setSlotsLoading(false);
+  // Fetch open slots
+  const now = new Date().toISOString();
+  const { data: slotsData } = await supabase
+    .from('availability_slots')
+    .select('id, cyclus_name, cyclus_id, allow_single_booking, trainer_id, start_time, location_id, locations(name)')
+    .in('trainer_id', trainerIds)
+    .eq('is_public', true)
+    .eq('is_marked_full', false)
+    .gte('start_time', now)
+    .order('start_time', { ascending: true })
+    .limit(50);
+
+  const slots = slotsData || [];
+  const trainerSlugMap = new Map(trainers.map(t => [t.id, t]));
+  const cycleGroups = new Map<string, typeof slots>();
+  const individualSlots: typeof slots = [];
+
+  for (const slot of slots) {
+    if (slot.cyclus_id && !slot.allow_single_booking) {
+      const group = cycleGroups.get(slot.cyclus_id) || [];
+      group.push(slot);
+      cycleGroups.set(slot.cyclus_id, group);
+    } else {
+      individualSlots.push(slot);
     }
-  };
+  }
 
-  const fetchPlayerClubs = async () => {
-    if (!profile?.id) return;
-    setClubsLoading(true);
-    try {
-      const { data: follows } = await supabase
-        .from('club_followers')
-        .select('id, club_profile_id, club_profiles(id, location_id, logo_url, locations(name, slug))')
-        .eq('player_id', profile.id)
-        .limit(10);
+  const enrichedSlots: FollowedTrainerSlot[] = [];
 
-      if (!follows || follows.length === 0) {
-        setPlayerClubs([]);
-        setClubsLoading(false);
-        return;
-      }
+  for (const [cyclusId, groupSlots] of cycleGroups) {
+    const first = groupSlots[0];
+    const trainer = trainerSlugMap.get(first.trainer_id);
+    const p = trainer ? profileMap.get(trainer.user_id) : null;
+    enrichedSlots.push({
+      id: first.id,
+      type: 'cycle',
+      cyclusName: first.cyclus_name,
+      trainerName: p?.full_name || 'Trainer',
+      trainerSlug: trainer?.slug || null,
+      startTime: new Date(first.start_time),
+      location: (first.locations as any)?.name || null,
+      sessionCount: groupSlots.length,
+      cyclusId,
+    });
+  }
 
-      const clubs: PlayerClub[] = follows.map(f => {
-        const cp = f.club_profiles as any;
-        const loc = cp?.locations;
-        return {
-          id: f.id,
-          clubProfileId: f.club_profile_id,
-          locationName: loc?.name || 'Club',
-          locationSlug: loc?.slug || '',
-          logoUrl: cp?.logo_url || null,
-        };
-      });
+  for (const slot of individualSlots) {
+    const trainer = trainerSlugMap.get(slot.trainer_id);
+    const p = trainer ? profileMap.get(trainer.user_id) : null;
+    enrichedSlots.push({
+      id: slot.id,
+      type: 'slot',
+      cyclusName: slot.cyclus_name,
+      trainerName: p?.full_name || 'Trainer',
+      trainerSlug: trainer?.slug || null,
+      startTime: new Date(slot.start_time),
+      location: (slot.locations as any)?.name || null,
+    });
+  }
 
-      setPlayerClubs(clubs);
-    } catch (error) {
-      logger.error('Error fetching player clubs', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
-    } finally {
-      setClubsLoading(false);
-    }
-  };
+  enrichedSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-  const fetchPlayerData = async () => {
-    if (!profile?.id) return;
-    setStatsLoading(true);
+  return { trainers: enrichedTrainers, slots: enrichedSlots.slice(0, 10) };
+}
 
-    try {
-      const now = new Date();
+async function fetchPlayerClubsData(profileId: string): Promise<PlayerClub[]> {
+  const { data: follows } = await supabase
+    .from('club_followers')
+    .select('id, club_profile_id, club_profiles(id, location_id, logo_url, locations(name, slug))')
+    .eq('player_id', profileId)
+    .limit(10);
 
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select(`
-          id,
-          status,
-          availability_slots(
-            start_time,
-            trainer_id,
-            cyclus_name,
-            location_id,
-            locations(name)
-          )
-        `)
-        .eq('player_id', profile.id)
-        .order('created_at', { ascending: false });
+  if (!follows || follows.length === 0) return [];
 
-      if (bookings) {
-        const active = bookings.filter(b => ['confirmed', 'pending', 'pending_approval'].includes(b.status));
-        const upcoming = active.filter(b => {
-          const slot = b.availability_slots as any;
-          return slot?.start_time && isAfter(new Date(slot.start_time), now);
-        });
+  return follows.map(f => {
+    const cp = f.club_profiles as any;
+    const loc = cp?.locations;
+    return {
+      id: f.id,
+      clubProfileId: f.club_profile_id,
+      locationName: loc?.name || 'Club',
+      locationSlug: loc?.slug || '',
+      logoUrl: cp?.logo_url || null,
+    };
+  });
+}
 
-        const upcomingSlice = upcoming.slice(0, 10);
-        const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
+// --- Component ---
 
-        let trainerNameMap = new Map<string, string>();
-        if (trainerIds.length > 0) {
-          const { data: trainers } = await supabase
-            .from('trainer_profiles')
-            .select('id, user_id')
-            .in('id', trainerIds);
-          if (trainers && trainers.length > 0) {
-            const userIds = trainers.map(t => t.user_id);
-            const { data: profiles } = await supabase
-              .from('profiles_public')
-              .select('user_id, full_name')
-              .in('user_id', userIds);
-            const pMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
-            trainers.forEach(t => {
-              trainerNameMap.set(t.id, pMap.get(t.user_id) || 'Trainer');
-            });
-          }
-        }
+export default function PlayerDashboard() {
+  const { profile, loading } = useAuth();
+  const navigate = useNavigate();
+  const profileId = profile?.id;
 
-        const upcomingFormatted: UpcomingBooking[] = upcomingSlice.map(b => {
-          const slot = b.availability_slots as any;
-          return {
-            id: b.id,
-            sessionTitle: slot?.cyclus_name || 'Training Session',
-            trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
-            startTime: new Date(slot.start_time),
-            location: slot?.locations?.name || null,
-            status: b.status,
-          };
-        });
+  const { data: upcomingBookings = [], isLoading: statsLoading } = useQuery({
+    queryKey: ['player-bookings', profileId],
+    queryFn: () => fetchPlayerBookings(profileId!),
+    enabled: !!profileId,
+    staleTime: 60_000,
+  });
 
-        setUpcomingBookings(upcomingFormatted);
-      }
-    } catch (error) {
-      logger.error('Error fetching player data', error instanceof Error ? error : new Error(String(error)), { component: 'PlayerDashboard' });
-    } finally {
-      setStatsLoading(false);
-    }
-  };
+  const { data: followedData, isLoading: followingLoading } = useQuery({
+    queryKey: ['player-followed-trainers', profileId],
+    queryFn: () => fetchFollowedTrainersData(profileId!),
+    enabled: !!profileId,
+    staleTime: 60_000,
+  });
+
+  const followedTrainers = followedData?.trainers ?? [];
+  const followedTrainerSlots = followedData?.slots ?? [];
+  const slotsLoading = followingLoading;
+
+  const { data: playerClubs = [], isLoading: clubsLoading } = useQuery({
+    queryKey: ['player-clubs', profileId],
+    queryFn: () => fetchPlayerClubsData(profileId!),
+    enabled: !!profileId,
+    staleTime: 60_000,
+  });
 
   if (loading) {
     return (
