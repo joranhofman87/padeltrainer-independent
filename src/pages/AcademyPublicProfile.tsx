@@ -459,6 +459,7 @@ export default function AcademyPublicProfile() {
           <AcademyOpenCycles 
             academyId={academy.id!}
             academyName={academy.name || 'Academy'}
+            academySlug={academy.slug || ''}
           />
           {/* Waiting List Card - only when enabled */}
           {(academy as any).waiting_list_enabled && (
