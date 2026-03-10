@@ -171,3 +171,6 @@ verify_jwt = false
 
 [functions.track-banner-event]
 verify_jwt = false
+
+[functions.submit-guest-intake]
+verify_jwt = false
