@@ -93,6 +93,9 @@
     "registrationNamePlaceholder": "bijv. Voorjaarsinschrijving 2026",
     "registrationDescriptionPlaceholder": "Beschrijf deze inschrijving...",
     "registrationDescriptionHelp": "Zichtbaar voor spelers voordat ze zich aanmelden",
+    "successMessage": "Succesbericht",
+    "successMessagePlaceholder": "bijv. Bedankt voor je aanmelding! We nemen binnen 2 dagen contact met je op.",
+    "successMessageHelp": "Eigen bericht dat spelers zien nadat ze het formulier hebben ingestuurd. Laat leeg voor het standaard bericht.",
     "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
     "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving"
   },

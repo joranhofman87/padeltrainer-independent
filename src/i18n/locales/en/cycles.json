@@ -93,6 +93,9 @@
     "registrationNamePlaceholder": "e.g., Spring Registration 2026",
     "registrationDescriptionPlaceholder": "Describe this registration...",
     "registrationDescriptionHelp": "Visible to players before they apply",
+    "successMessage": "Success Message",
+    "successMessagePlaceholder": "e.g. Thanks for signing up! We will contact you within 2 days.",
+    "successMessageHelp": "Custom message shown to players after they submit the form. Leave empty for the default message.",
     "registrationAssignedTrainerHelp": "The trainer who will give the lessons for this registration",
     "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration"
   },
