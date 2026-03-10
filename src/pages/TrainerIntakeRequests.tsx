@@ -190,34 +190,52 @@ export default function TrainerIntakeRequests() {
         </div>
       </div>
 
-      {/* Status Filter Tabs */}
-      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-        <TabsList>
-          <TabsTrigger value="all">
-            {t('intakeRequests.filters.all')} ({requests.length})
-          </TabsTrigger>
-          <TabsTrigger value="new">
-            {t('intakeRequests.filters.new')} ({newCount})
-          </TabsTrigger>
-          <TabsTrigger value="proposed">
-            {t('intakeRequests.filters.proposed')} ({proposedCount})
-          </TabsTrigger>
-          <TabsTrigger value="confirmed">
-            {t('intakeRequests.filters.confirmed')}
-          </TabsTrigger>
-          <TabsTrigger value="waitlist">
-            {t('intakeRequests.filters.waitlist')}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Status Filter Tabs + View Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+          <TabsList>
+            <TabsTrigger value="all">
+              {t('intakeRequests.filters.all')} ({requests.length})
+            </TabsTrigger>
+            <TabsTrigger value="new">
+              {t('intakeRequests.filters.new')} ({newCount})
+            </TabsTrigger>
+            <TabsTrigger value="proposed">
+              {t('intakeRequests.filters.proposed')} ({proposedCount})
+            </TabsTrigger>
+            <TabsTrigger value="confirmed">
+              {t('intakeRequests.filters.confirmed')}
+            </TabsTrigger>
+            <TabsTrigger value="waitlist">
+              {t('intakeRequests.filters.waitlist')}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-      {/* Requests Table */}
-      <IntakeRequestsTable
-        requests={filteredRequests}
-        onRowClick={setSelectedRequest}
-        emptyMessage={t('intakeRequests.noRequests')}
-        emptyDescription={t('intakeRequests.noRequestsDescription')}
-      />
+        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+          <ToggleGroupItem value="list" aria-label="List view">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="schedule" aria-label="Schedule view">
+            <CalendarDays className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {/* Requests Table or Schedule Grid */}
+      {viewMode === 'list' ? (
+        <IntakeRequestsTable
+          requests={filteredRequests}
+          onRowClick={setSelectedRequest}
+          emptyMessage={t('intakeRequests.noRequests')}
+          emptyDescription={t('intakeRequests.noRequestsDescription')}
+        />
+      ) : (
+        <ProposalScheduleGrid
+          requests={filteredRequests}
+          onBlockClick={setSelectedRequest}
+        />
+      )}
 
       {/* Detail Sheet */}
       <IntakeRequestDetailSheet
