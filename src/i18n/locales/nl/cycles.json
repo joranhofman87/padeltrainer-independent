@@ -157,6 +157,8 @@
       },
       "preferredDuration": "Gewenste Duur",
       "sessionsPerWeek": "Trainingen per week",
+      "groupNotes": "Groepsvoorkeuren (optioneel)",
+      "groupNotesPlaceholder": "Bijv. Ik wil graag samen trainen met Jan en Sara. We hebben al een groep van 4.",
       "sessionsPerWeekHelp": "Hoe vaak per week wil je trainen?",
       "timesPerWeek": "per week",
       "preferredTrainer": "Voorkeurstrainer (optioneel)",

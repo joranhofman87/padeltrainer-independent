@@ -150,6 +150,8 @@
       },
       "preferredDuration": "Duración preferida",
       "sessionsPerWeek": "Sesiones por semana",
+      "groupNotes": "Preferencias de grupo (opcional)",
+      "groupNotesPlaceholder": "Ej. Me gustaría entrenar junto con Juan y María. Ya tenemos un grupo de 4.",
       "sessionsPerWeekHelp": "¿Cuántas veces a la semana te gustaría entrenar?",
       "timesPerWeek": "por semana",
       "preferredTrainer": "Entrenador preferido (opcional)",
