@@ -322,7 +322,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'academy')
       .in('owner_id', academyIds)
       .eq('status', 'open');
-    if (academyCycles) allCycles.push(...(academyCycles as Cycle[]));
+    if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
   }
   
   return allCycles.sort((a, b) => 
