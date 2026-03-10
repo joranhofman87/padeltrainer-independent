@@ -242,13 +242,13 @@ export default function AcademyDashboard() {
         </Alert>
       )}
 
-      {/* Verification Alert */}
-      {activeAcademy && !activeAcademy.is_verified && (
+      {/* Subscription Alert */}
+      {activeAcademy && activeAcademy.subscription_status !== 'active' && (
         <Alert className="mb-6">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{t('dashboard.pendingVerification')}</AlertTitle>
+          <AlertTitle>{t('dashboard.subscriptionRequired', 'Subscription required')}</AlertTitle>
           <AlertDescription>
-            {t('dashboard.pendingVerificationDescription')}
+            {t('dashboard.subscriptionRequiredDescription', 'Subscribe to a paid plan to make your academy visible in the directory.')}
           </AlertDescription>
         </Alert>
       )}
