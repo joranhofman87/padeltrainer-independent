@@ -144,6 +144,7 @@ export default function CycleApplicationForm({
     lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
+    group_notes: z.string().optional(),
     availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
     location_id: z.string().optional(),
