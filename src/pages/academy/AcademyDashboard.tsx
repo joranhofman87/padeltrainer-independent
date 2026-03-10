@@ -308,7 +308,7 @@ export default function AcademyDashboard() {
               className="p-0 h-auto"
               onClick={() => {
                 const lang = i18n.language || 'nl';
-                window.open(getMarketingUrl(`academies/${activeAcademy?.slug}`, lang), '_blank');
+                window.open(getMarketingUrl(`academies/${activeAcademy?.slug}`, lang) + '?preview=true', '_blank');
               }}
             >
               {t('dashboard.viewProfile', 'View profile')} <ExternalLink className="ml-2 h-4 w-4" />
