@@ -83,6 +83,8 @@ interface LocationData {
 export default function AcademyPublicProfile() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isPreview = searchParams.get('preview') === 'true';
   const { t } = useTranslation(['academy', 'common']);
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
