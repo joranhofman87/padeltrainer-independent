@@ -356,24 +356,6 @@ export default function CycleApplicationForm({
               )}
             />
 
-            {isGuest && (
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      {t('application.form.passwordHelp', 'An account will be created so you can track your application')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
 
             <FormField
               control={form.control}
@@ -744,6 +726,36 @@ export default function CycleApplicationForm({
             />
           </CardContent>
         </Card>
+
+        {/* Create Account - shown at the end for guest users */}
+        {isGuest && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.createAccount', 'Create Your Account')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {t('application.form.createAccountHelp', 'Choose a password to create your account. This lets you track your application and manage your bookings.')}
+              </p>
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('application.form.passwordMin', 'Password must be at least 6 characters')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Submit */}
         <div className="flex gap-3">

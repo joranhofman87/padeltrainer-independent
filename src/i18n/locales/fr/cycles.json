@@ -185,6 +185,13 @@
       "notesPlaceholder": "Parlez-nous de votre expérience au padel ou dans d'autres sports de raquette. Cela nous aide à vous placer dans le bon groupe si vous n'avez pas encore de classement.",
       "consent": "J'accepte d'être contacté concernant ma candidature et je consens au traitement de mes données.",
       "consentRequired": "Vous devez accepter pour continuer",
+
+      "createAccount": "Créez votre compte",
+      "createAccountHelp": "Choisissez un mot de passe pour créer votre compte. Cela vous permettra de suivre votre inscription et de gérer vos réservations.",
+      "password": "Mot de passe",
+      "passwordPlaceholder": "Créer un mot de passe",
+      "passwordMin": "Le mot de passe doit contenir au moins 6 caractères",
+
       "submit": "Soumettre la candidature",
       "submitting": "Soumission en cours..."
     },
