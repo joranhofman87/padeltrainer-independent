@@ -359,12 +359,12 @@ export default function AcademyProfile() {
                 id="is_public"
                 checked={formData.is_public}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_public: checked })}
-                disabled={!activeAcademy.is_verified}
+                disabled={activeAcademy.subscription_status !== 'active'}
               />
             </div>
-            {!activeAcademy.is_verified && (
+            {activeAcademy.subscription_status !== 'active' && (
               <p className="text-sm text-muted-foreground">
-                {t('profile.verificationRequired', 'Your academy must be verified before it can be made public.')}
+                {t('profile.subscriptionRequiredForVisibility', 'An active subscription is required to make your academy public.')}
               </p>
             )}
           </CardContent>

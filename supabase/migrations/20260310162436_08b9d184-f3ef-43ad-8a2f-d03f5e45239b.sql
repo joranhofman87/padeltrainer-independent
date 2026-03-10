@@ -1,0 +1,1 @@
+ALTER TABLE public.academy_profiles ALTER COLUMN is_verified SET DEFAULT true;

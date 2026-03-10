@@ -124,7 +124,7 @@ export async function createAcademy(
         slug,
         description: description || null,
         contact_email: contactEmail || null,
-        is_verified: false,
+        is_verified: true,
         is_public: false,
         created_by: session.user.id,
         country,
