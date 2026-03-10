@@ -217,6 +217,8 @@ export default function CycleForm({
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
       setEventPaymentMethod((cycle?.settings as any)?.payment_methods ?? 'online');
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
+      setTerms(cycle?.terms || '');
+      setPriceTable(cycle?.price_table || []);
     }
   }, [cycle, open]);
 
