@@ -196,6 +196,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
         )}
         <SidebarGroup>
           <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
+            <SidebarMenu>
               {/* Dashboard */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.dashboard")}>
