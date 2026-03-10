@@ -180,7 +180,7 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                           {t('application.deadlinePassed', 'Deadline passed')}
                         </Badge>
                       )}
-                      {canApply && (
+                    {canApply && (
                         <CollapsibleTrigger asChild>
                           <Button variant="default" size="sm">
                             {isExpanded ? (
@@ -194,12 +194,6 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                             )}
                           </Button>
                         </CollapsibleTrigger>
-                      )}
-                      {!user && !deadlinePassed && (
-                        <Button variant="default" size="sm" onClick={handleSignupRedirect}>
-                          <UserPlus className="h-4 w-4 mr-1" />
-                          {t('application.signUpAndApply')}
-                        </Button>
                       )}
                     </div>
                   </div>
