@@ -68,6 +68,7 @@
     "currency": "Currency",
     "pricingHelp": "Set either price per session or a fixed package price",
     "save": "Save Cycle",
+    "saveRegistration": "Save Registration",
     "saveAndOpen": "Save & Open Enrollment",
     "allowSingleBooking": "Allow individual lesson booking",
     "allowSingleBookingHelp": "When off, players must book the entire cycle",
