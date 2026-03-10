@@ -41,6 +41,7 @@ export default function TrainerIntakeRequests() {
   const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [viewMode, setViewMode] = useState<string>('list');
 
   useEffect(() => {
     const fetchTrainerId = async () => {
