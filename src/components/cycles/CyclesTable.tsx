@@ -378,7 +378,7 @@ export default function CyclesTable({
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash className="h-4 w-4 mr-2" />
-                          {t('deleteCycle')}
+                          {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
