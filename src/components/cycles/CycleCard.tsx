@@ -88,11 +88,12 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this cycle?')) return;
+    const isRegistration = cycle.type === 'registration';
+    if (!confirm(isRegistration ? t('deleteRegistration', 'Delete this registration?') : t('deleteCycle') + '?')) return;
     
     try {
       await deleteCycle(cycle.id);
-      toast.success('Cycle deleted');
+      toast.success(isRegistration ? t('common:deleted', 'Deleted') : 'Cycle deleted');
       onDeleted?.();
     } catch (error: any) {
       toast.error(error.message);
