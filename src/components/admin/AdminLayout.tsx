@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin } from "@/hooks/useAdminData";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "@/components/ui/button";
@@ -11,8 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
+  const { user, roles, loading: authLoading } = useAuth();
+  const isAdmin = roles.includes('admin');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -34,7 +33,7 @@ export default function AdminLayout() {
     }
   };
 
-  const loading = authLoading || adminLoading;
+  const loading = authLoading;
 
   if (loading) {
     return (

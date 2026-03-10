@@ -3,12 +3,12 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageRouter, RootRedirect } from '@/components/LanguageRouter';
 import { Loader2 } from 'lucide-react';
 
-// Layout components stay eagerly loaded (they wrap child routes)
-import TrainerLayout from '@/components/trainer/TrainerLayout';
-import PlayerLayout from '@/components/player/PlayerLayout';
-import ClubLayout from '@/components/club/ClubLayout';
-import AcademyLayout from '@/components/academy/AcademyLayout';
-import AdminLayout from '@/components/admin/AdminLayout';
+// Layout components lazy-loaded to reduce initial bundle size
+const TrainerLayout = lazy(() => import('@/components/trainer/TrainerLayout'));
+const PlayerLayout = lazy(() => import('@/components/player/PlayerLayout'));
+const ClubLayout = lazy(() => import('@/components/club/ClubLayout'));
+const AcademyLayout = lazy(() => import('@/components/academy/AcademyLayout'));
+const AdminLayout = lazy(() => import('@/components/admin/AdminLayout'));
 
 // Lightweight loading fallback
 function PageLoader() {

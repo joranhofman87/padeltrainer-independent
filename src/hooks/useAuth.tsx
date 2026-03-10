@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext, ReactNode, useCallback } from 'react';
+import { useEffect, useState, useRef, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAcademyManager, setIsAcademyManager] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastFetchedRef = useRef<string | null>(null);
 
   const fetchUserData = async (userId: string) => {
     try {
@@ -176,7 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
-        if (session?.user) {
+        if (session?.user && lastFetchedRef.current !== session.user.id) {
+          lastFetchedRef.current = session.user.id;
           // Race fetchUserData against a 5-second deadline so a hanging
           // DB query can't block the entire app from rendering
           await Promise.race([
@@ -200,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         } else {
+          lastFetchedRef.current = null;
           setProfile(null);
           setRole(null);
           setRoles([]);
