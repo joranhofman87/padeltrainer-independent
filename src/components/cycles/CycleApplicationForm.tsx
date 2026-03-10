@@ -335,21 +335,24 @@ export default function CycleApplicationForm({
               )}
             />
 
-            {!isGuest && (
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.email')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="email" disabled />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.email')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="email" disabled={!isGuest} />
+                  </FormControl>
+                  {isGuest && (
+                    <FormDescription className="text-xs">
+                      {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
             <FormField
@@ -723,32 +726,6 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Email - shown at the end for guest users */}
-        {isGuest && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{t('application.form.yourEmail', 'Your Email')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
-              </p>
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.email', 'Email')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="email" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
-        )}
 
         <TermsAcceptance
           terms={cycleTerms}
