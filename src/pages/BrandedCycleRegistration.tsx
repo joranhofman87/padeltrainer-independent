@@ -304,26 +304,6 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
           {/* Cycle details (description, location, price table, terms) */}
           <CycleDetailDisplay cycle={cycle} />
 
-          {/* Price table (if not already in CycleDetailDisplay) */}
-          {priceTable && priceTable.length > 0 && (
-            <Card className="my-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t('application.pricing', 'Pricing')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {priceTable.map((tier, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                      <span className="text-sm">{tier.label}</span>
-                      <span className="text-sm font-semibold">
-                        {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(tier.price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Status alerts */}
           {hasApplied && (
