@@ -33,6 +33,7 @@ import { recordProfileView } from '@/lib/profileViews';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 import { getRatingSystemByCode } from '@/lib/ratingSystems';
 import { getTrainerAcademy, isTrainerInPaidAcademy, type AcademyProfile } from '@/lib/academy';
+import { canBeVisible } from '@/lib/subscription';
 import { toast } from 'sonner';
 import { getMarketingUrl, getAppUrl } from '@/lib/domains';
 import { SEO } from '@/components/SEO';
@@ -119,7 +120,7 @@ export default function TrainerProfile() {
   const [showVideo, setShowVideo] = useState(false);
   const [preferredRatingSystemName, setPreferredRatingSystemName] = useState<string>('');
   const navigate = useNavigate();
-  const { user, role } = useAuth();
+  const { user, role, subscription } = useAuth();
   const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
@@ -438,16 +439,20 @@ export default function TrainerProfile() {
                 <div className="flex gap-2 shrink-0">
                   <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/profile')}>Edit profile</Button>
                   <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>Add availability</Button>
-                  <Button size="sm" onClick={async () => {
-                    const { error } = await supabase
-                      .from('trainer_profiles')
-                      .update({ is_public: true })
-                      .eq('user_id', user.id);
-                    if (!error) {
-                      toast.success('Profile published!');
-                      fetchTrainerProfile();
-                    }
-                  }}>Publish profile</Button>
+                  {subscription && canBeVisible(subscription) ? (
+                    <Button size="sm" onClick={async () => {
+                      const { error } = await supabase
+                        .from('trainer_profiles')
+                        .update({ is_public: true })
+                        .eq('user_id', user.id);
+                      if (!error) {
+                        toast.success('Profile published!');
+                        fetchTrainerProfile();
+                      }
+                    }}>Publish profile</Button>
+                  ) : (
+                    <Button size="sm" onClick={() => navigate('/trainer/subscription')}>Upgrade to publish</Button>
+                  )}
                 </div>
               </div>
             </AlertDescription>
