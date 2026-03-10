@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext, ReactNode, useCallback } from 'react';
+import { useEffect, useState, useRef, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { getUserRole, getUserRoles, getProfile, UserRole, UserProfile } from '@/lib/auth';
