@@ -606,8 +606,9 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
 
   // Auto-follow and add to student list (non-blocking - don't fail registration)
   if (cycle) {
-    await autoFollowOwner(cycle.owner_type as 'trainer' | 'club', cycle.owner_id, input.player_id);
-    await addToStudentList(cycle.owner_type as 'trainer' | 'club', cycle.owner_id, input);
+    const ownerType = cycle.owner_type as 'trainer' | 'club' | 'academy';
+    await autoFollowOwner(ownerType, cycle.owner_id, input.player_id);
+    await addToStudentList(ownerType, cycle.owner_id, input);
   }
 
   return toIntakeRequest(data);
