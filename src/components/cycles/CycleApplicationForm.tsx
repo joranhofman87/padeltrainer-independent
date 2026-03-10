@@ -698,24 +698,6 @@ export default function CycleApplicationForm({
           <CardContent className="space-y-4">
             <FormField
               control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('application.form.notes')}</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      placeholder={t('application.form.notesPlaceholder')}
-                      rows={3}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="consent"
               render={({ field }) => (
                 <FormItem className="flex flex-row items-start space-x-3 space-y-0">
