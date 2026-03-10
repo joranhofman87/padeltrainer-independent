@@ -271,38 +271,42 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
             </div>
           </div>
 
-          {/* Cycle header */}
-          <h1 className="text-3xl font-bold mb-3">{cycle.name}</h1>
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-4">
+              {/* Cycle header */}
+              <h1 className="text-3xl font-bold">{cycle.name}</h1>
 
-          {/* Meta info */}
-          <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Calendar className="h-4 w-4" />
-              <span>
-                {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
-              </span>
-            </div>
-            {cycle.enrollment_deadline && (
-              <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
-                <Clock className="h-4 w-4" />
-                <span>
-                  {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
-                </span>
+              {/* Meta info */}
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>
+                    {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
+                  </span>
+                </div>
+                {cycle.enrollment_deadline && (
+                  <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
+                    <Clock className="h-4 w-4" />
+                    <span>
+                      {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
+                    </span>
+                  </div>
+                )}
+                {cycleLocation && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span>{cycleLocation.name}, {cycleLocation.city}</span>
+                  </div>
+                )}
+                <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
+                  {t(`status.${cycle.status}`)}
+                </Badge>
               </div>
-            )}
-            {cycleLocation && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                <span>{cycleLocation.name}, {cycleLocation.city}</span>
-              </div>
-            )}
-            <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
-              {t(`status.${cycle.status}`)}
-            </Badge>
-          </div>
 
-          {/* Cycle details (description, location, price table, terms) */}
-          <CycleDetailDisplay cycle={cycle} />
+              {/* Cycle details (description, location, price table, terms) */}
+              <CycleDetailDisplay cycle={cycle} />
+            </CardContent>
+          </Card>
 
 
           {/* Status alerts */}
