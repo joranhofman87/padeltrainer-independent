@@ -10,8 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
+  const { user, roles, loading: authLoading } = useAuth();
+  const isAdmin = roles.includes('admin');
   const { toast } = useToast();
 
   useEffect(() => {
