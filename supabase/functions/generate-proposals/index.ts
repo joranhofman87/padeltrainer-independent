@@ -842,6 +842,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         generated,
         skipped,
+        slotsCreated: slotsCreated || 0,
         errors: errors.length > 0 ? errors : undefined,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
