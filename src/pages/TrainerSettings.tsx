@@ -285,7 +285,29 @@ export default function TrainerSettings() {
                 />
               </div>
             </CardHeader>
-            <CardContent className="pt-0 space-y-2">
+            <CardContent className="pt-0 space-y-3">
+              <div className="flex flex-wrap gap-3 text-xs">
+                <a
+                  href={localizePath('/trainers')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {t('settings.viewMarketplace', 'View marketplace')}
+                </a>
+                {trainerSlug && (
+                  <a
+                    href={localizePath(`/trainer/${trainerSlug}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <Eye className="h-3 w-3" />
+                    {t('settings.previewProfile', 'Preview your profile')}
+                  </a>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('settings.visibilitySafety', 'You can switch this off anytime.')}
               </p>
@@ -294,9 +316,14 @@ export default function TrainerSettings() {
                   {visibilityStatus.type === 'warning' && <AlertTriangle className="h-4 w-4" />}
                   <AlertDescription className="flex items-center justify-between">
                     <span>{visibilityStatus.message}</span>
-                    {!canToggleVisibility && (
-                      <Button size="sm" onClick={() => navigate('/subscription')}>
+                    {!canToggleVisibility && !isTrialActive && (
+                      <Button size="sm" onClick={() => navigate('/trainer/subscription')}>
                         {t('settings.subscribe', 'Subscribe')}
+                      </Button>
+                    )}
+                    {isTrialActive && !inPaidAcademy && (
+                      <Button size="sm" onClick={() => navigate('/trainer/subscription')}>
+                        {t('settings.upgrade', 'Upgrade')}
                       </Button>
                     )}
                   </AlertDescription>
