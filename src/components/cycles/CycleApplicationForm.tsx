@@ -369,7 +369,7 @@ export default function CycleApplicationForm({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="rating"
@@ -509,7 +509,7 @@ export default function CycleApplicationForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('application.form.lessonType')}</FormLabel>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {allowedLessonTypes.map(type => {
                       const isChecked = field.value?.includes(type) ?? false;
                       const toggle = () => {

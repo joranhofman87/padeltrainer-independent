@@ -51,31 +51,35 @@ export function ProfileLayout({
 
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 overflow-x-auto">
             {showBackButton && (
-              <Button variant="ghost" onClick={() => navigate(-1)}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(-1)}>
+                <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
             )}
             {breadcrumbs && breadcrumbs.length > 0 && (
-              <Breadcrumb>
-                <BreadcrumbList>
-                  {breadcrumbs.map((crumb, index) => (
-                    <React.Fragment key={index}>
-                      {index > 0 && <BreadcrumbSeparator />}
-                      <BreadcrumbItem>
-                        {crumb.path ? (
-                          <BreadcrumbLink asChild>
-                            <LocalizedLink to={crumb.path}>{crumb.label}</LocalizedLink>
-                          </BreadcrumbLink>
-                        ) : (
-                          <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                        )}
-                      </BreadcrumbItem>
-                    </React.Fragment>
-                  ))}
+              <Breadcrumb className="min-w-0">
+                <BreadcrumbList className="flex-nowrap">
+                  {breadcrumbs.map((crumb, index) => {
+                    // On mobile, hide middle breadcrumb items (keep first and last two)
+                    const isMiddle = breadcrumbs.length > 3 && index > 0 && index < breadcrumbs.length - 2;
+                    return (
+                      <React.Fragment key={index}>
+                        {index > 0 && <BreadcrumbSeparator className={isMiddle ? 'hidden sm:flex' : ''} />}
+                        <BreadcrumbItem className={isMiddle ? 'hidden sm:flex' : ''}>
+                          {crumb.path ? (
+                            <BreadcrumbLink asChild>
+                              <LocalizedLink to={crumb.path}>{crumb.label}</LocalizedLink>
+                            </BreadcrumbLink>
+                          ) : (
+                            <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                          )}
+                        </BreadcrumbItem>
+                      </React.Fragment>
+                    );
+                  })}
                 </BreadcrumbList>
               </Breadcrumb>
             )}

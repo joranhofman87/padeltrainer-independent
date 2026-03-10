@@ -150,13 +150,13 @@ export default function DayAvailabilityPicker({
             </div>
 
             {dayEnabled && (
-              <div className="mt-3 ml-7 space-y-2">
+              <div className="mt-3 ml-0 sm:ml-7 space-y-2">
                 {blocks.map((block, index) => {
                   const isValid = isValidTimeRange(block.start, block.end);
                   
                   return (
-                    <div key={index} className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-muted-foreground w-10">
+                    <div key={index} className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <span className="hidden sm:inline text-sm text-muted-foreground w-10">
                         {t('application.form.startTime')}
                       </span>
                       <Select
@@ -164,7 +164,7 @@ export default function DayAvailabilityPicker({
                         onValueChange={(val) => updateTimeBlock(day, index, 'start', val)}
                         disabled={disabled}
                       >
-                        <SelectTrigger className="w-24 h-9">
+                        <SelectTrigger className="w-20 sm:w-24 h-9">
                           <SelectValue>{formatTime(block.start)}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
@@ -178,7 +178,7 @@ export default function DayAvailabilityPicker({
                       
                       <span className="text-sm text-muted-foreground">—</span>
                       
-                      <span className="text-sm text-muted-foreground w-8">
+                      <span className="hidden sm:inline text-sm text-muted-foreground w-8">
                         {t('application.form.endTime')}
                       </span>
                       <Select
@@ -186,7 +186,7 @@ export default function DayAvailabilityPicker({
                         onValueChange={(val) => updateTimeBlock(day, index, 'end', val)}
                         disabled={disabled}
                       >
-                        <SelectTrigger className={`w-24 h-9 ${!isValid ? 'border-destructive' : ''}`}>
+                        <SelectTrigger className={`w-20 sm:w-24 h-9 ${!isValid ? 'border-destructive' : ''}`}>
                           <SelectValue>{formatTime(block.end)}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
