@@ -25,6 +25,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
   
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [appliedCycles, setAppliedCycles] = useState<Set<string>>(new Set());
+  const [academySlugs, setAcademySlugs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
