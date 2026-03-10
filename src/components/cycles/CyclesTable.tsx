@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getMarketingUrl } from '@/lib/domains';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, differenceInWeeks } from 'date-fns';
