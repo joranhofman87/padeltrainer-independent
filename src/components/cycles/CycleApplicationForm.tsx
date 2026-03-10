@@ -737,12 +737,6 @@ export default function CycleApplicationForm({
               )}
             />
 
-            <TermsAcceptance
-              terms={cycleTerms}
-              loading={termsLoading}
-              accepted={termsAccepted}
-              onAcceptChange={setTermsAccepted}
-            />
           </CardContent>
         </Card>
 
