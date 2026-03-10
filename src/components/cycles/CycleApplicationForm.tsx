@@ -172,6 +172,7 @@ export default function CycleApplicationForm({
       preferred_trainer_id: '',
       location_id: '',
       notes: '',
+      group_notes: '',
       consent: false,
     },
   });
