@@ -16,6 +16,7 @@ import {
   type IntakeRequestWithProposal,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
+import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
