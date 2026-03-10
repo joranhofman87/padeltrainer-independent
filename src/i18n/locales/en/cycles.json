@@ -27,6 +27,8 @@
     "archived": "Archived"
   },
   
+  "editRegistration": "Edit Registration",
+  "deleteRegistration": "Delete Registration",
   "form": {
     "name": "Cycle Name",
     "namePlaceholder": "e.g., Spring Cycle 2026",
