@@ -88,7 +88,13 @@
     "paymentManualHelp": "Je regelt de betaling zelf (contant, bankoverschrijving, etc.)",
     "invoiceDelayWeeks": "weken na start",
     "weeksLabel": "{{count}} week",
-    "weeksLabel_other": "{{count}} weken"
+    "weeksLabel_other": "{{count}} weken",
+    "registrationName": "Inschrijvingsnaam",
+    "registrationNamePlaceholder": "bijv. Voorjaarsinschrijving 2026",
+    "registrationDescriptionPlaceholder": "Beschrijf deze inschrijving...",
+    "registrationDescriptionHelp": "Zichtbaar voor spelers voordat ze zich aanmelden",
+    "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
+    "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving"
   },
   
   "actions": {

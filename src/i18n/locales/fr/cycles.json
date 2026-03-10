@@ -86,7 +86,13 @@
     "paymentManualHelp": "Vous gérez le paiement vous-même (espèces, virement, etc.)",
     "invoiceDelayWeeks": "semaines après le début",
     "weeksLabel": "{{count}} semaine",
-    "weeksLabel_other": "{{count}} semaines"
+    "weeksLabel_other": "{{count}} semaines",
+    "registrationName": "Nom de l'inscription",
+    "registrationNamePlaceholder": "ex. Inscription Printemps 2026",
+    "registrationDescriptionPlaceholder": "Décrivez cette inscription...",
+    "registrationDescriptionHelp": "Visible par les joueurs avant leur inscription",
+    "registrationAssignedTrainerHelp": "L'entraîneur qui donnera les cours pour cette inscription",
+    "registrationApplicableTrainersHelp": "Quels entraîneurs peuvent être assignés à cette inscription"
   },
   "actions": {
     "openEnrollment": "Ouvrir les inscriptions",

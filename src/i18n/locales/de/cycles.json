@@ -86,7 +86,13 @@
     "paymentManualHelp": "Du regelst die Zahlung selbst (Bargeld, Überweisung, etc.)",
     "invoiceDelayWeeks": "Wochen nach Start",
     "weeksLabel": "{{count}} Woche",
-    "weeksLabel_other": "{{count}} Wochen"
+    "weeksLabel_other": "{{count}} Wochen",
+    "registrationName": "Anmeldungsname",
+    "registrationNamePlaceholder": "z.B. Frühjahrsanmeldung 2026",
+    "registrationDescriptionPlaceholder": "Beschreibe diese Anmeldung...",
+    "registrationDescriptionHelp": "Sichtbar für Spieler bevor sie sich anmelden",
+    "registrationAssignedTrainerHelp": "Der Trainer, der die Stunden für diese Anmeldung gibt",
+    "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können"
   },
   "actions": {
     "openEnrollment": "Anmeldung öffnen",
