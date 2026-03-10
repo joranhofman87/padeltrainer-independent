@@ -706,7 +706,7 @@ export default function CycleForm({
                         </SelectContent>
                       </Select>
                       <FormDescription className="text-xs">
-                        {t('form.assignedTrainerHelp', 'The trainer who will give the lessons in this cycle')}
+                        {isRegistration ? t('form.registrationAssignedTrainerHelp', 'The trainer who will give the lessons for this registration') : t('form.assignedTrainerHelp', 'The trainer who will give the lessons in this cycle')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
