@@ -401,6 +401,25 @@ export default function CycleForm({
                 )}
               />
             )}
+            {/* Registration description */}
+            {isRegistration && (
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.description', 'Description')}</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} placeholder={t('form.registrationDescriptionPlaceholder', 'Describe this registration...')} rows={3} />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.registrationDescriptionHelp', 'Visible to players before they apply')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {isEvent ? (
               /* Event: start date + end date */
