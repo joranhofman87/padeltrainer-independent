@@ -428,7 +428,11 @@
     "marketplaceVisibility": "Marktplaats zichtbaarheid",
     "visibleHelper": "Zichtbaar — spelers kunnen je vinden en lessen aanvragen",
     "hiddenHelper": "Verborgen — je verschijnt niet in de zoekresultaten",
-    "visibilitySafety": "Je kunt dit altijd weer uitzetten."
+    "visibilitySafety": "Je kunt dit altijd weer uitzetten.",
+    "trialNoVisibility": "Upgrade naar een betaald plan om in de marktplaats te verschijnen.",
+    "viewMarketplace": "Bekijk marktplaats",
+    "previewProfile": "Bekijk je profiel",
+    "upgrade": "Upgraden"
   },
   "terms": {
     "title": "Algemene Voorwaarden",

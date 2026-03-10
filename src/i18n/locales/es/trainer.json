@@ -428,7 +428,11 @@
     "marketplaceVisibility": "Visibilidad en el marketplace",
     "visibleHelper": "Visible — los jugadores pueden encontrarte y solicitar clases",
     "hiddenHelper": "Oculto — no aparecerás en las búsquedas",
-    "visibilitySafety": "Puedes desactivarlo en cualquier momento."
+    "visibilitySafety": "Puedes desactivarlo en cualquier momento.",
+    "trialNoVisibility": "Actualiza a un plan de pago para aparecer en el marketplace.",
+    "viewMarketplace": "Ver marketplace",
+    "previewProfile": "Vista previa de tu perfil",
+    "upgrade": "Mejorar plan"
   },
   "terms": {
     "title": "Términos generales",

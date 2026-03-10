@@ -428,7 +428,11 @@
     "marketplaceVisibility": "Marketplace-Sichtbarkeit",
     "visibleHelper": "Sichtbar — Spieler können dich finden und Stunden anfragen",
     "hiddenHelper": "Verborgen — du erscheinst nicht in der Suche",
-    "visibilitySafety": "Du kannst dies jederzeit deaktivieren."
+    "visibilitySafety": "Du kannst dies jederzeit deaktivieren.",
+    "trialNoVisibility": "Upgrade auf einen bezahlten Plan, um im Marktplatz zu erscheinen.",
+    "viewMarketplace": "Marktplatz anzeigen",
+    "previewProfile": "Dein Profil ansehen",
+    "upgrade": "Upgraden"
   },
   "terms": {
     "title": "Allgemeine Geschäftsbedingungen",

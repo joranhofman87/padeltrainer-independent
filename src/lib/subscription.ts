@@ -37,6 +37,6 @@ export const STARTER_TIER = {
 export { getTrialDaysRemaining, isDateExpired } from './sharedSubscription';
 
 export function canBeVisible(subscription: SubscriptionInfo): boolean {
-  // Trainer can be visible only with an active paid subscription (trial alone is not enough)
-  return subscription.isSubscribed;
+  // Trainer can be visible only with an active paid subscription — trial alone is not enough
+  return subscription.isSubscribed && !subscription.isInTrial;
 }

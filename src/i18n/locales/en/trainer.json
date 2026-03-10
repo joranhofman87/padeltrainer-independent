@@ -428,7 +428,11 @@
     "marketplaceVisibility": "Marketplace visibility",
     "visibleHelper": "Visible — players can find you and request lessons",
     "hiddenHelper": "Hidden — you won't appear in search and players can't book you",
-    "visibilitySafety": "You can switch this off anytime."
+    "visibilitySafety": "You can switch this off anytime.",
+    "trialNoVisibility": "Upgrade to a paid plan to appear in the marketplace.",
+    "viewMarketplace": "View marketplace",
+    "previewProfile": "Preview your profile",
+    "upgrade": "Upgrade"
   },
   "terms": {
     "title": "General Terms",
