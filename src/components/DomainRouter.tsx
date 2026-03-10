@@ -243,6 +243,7 @@ export function DomainRouter() {
           <Route path="players" element={<ClubPlayers />} />
           <Route path="trainers" element={<ClubTrainers />} />
           <Route path="calendar" element={<ClubCalendar />} />
+          <Route path="registrations" element={<ClubCycles />} />
           
           <Route path="tournaments" element={<ClubTournaments />} />
           <Route path="settings" element={<ClubSettings />} />

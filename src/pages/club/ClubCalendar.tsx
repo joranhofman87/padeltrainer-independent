@@ -279,19 +279,6 @@ export default function ClubCalendar() {
         onSlotsCreated={() => fetchSlots()}
       />
 
-      {/* Bulk Create Sheet */}
-      <ClubBulkCreateSheet
-        open={bulkCreateSheetOpen}
-        onOpenChange={setBulkCreateSheetOpen}
-        trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-        defaultTrainerId={selectedTrainerId !== "all" ? selectedTrainerId : undefined}
-        defaultDate={clickedDate}
-        defaultTime={clickedTime}
-        defaultDuration={60}
-        defaultWeeks={8}
-        clubLocationId={clubLocationId || undefined}
-        onSlotsCreated={() => fetchSlots()}
-      />
     </div>
   );
 }
