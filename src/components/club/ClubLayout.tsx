@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Building2, Menu, Clock } from 'lucide-react';
+// SubscriptionOverlay removed - now using redirect approach
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +12,7 @@ import { ClubSidebar } from '@/components/club/ClubSidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import type { Location } from '@/lib/locations';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
+
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkClubSubscription, 
@@ -133,6 +134,13 @@ export default function ClubLayout() {
   const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
   const isOnSubscriptionPage = location.pathname === '/app/club/subscription';
 
+  // Redirect to subscription page when expired
+  useEffect(() => {
+    if (!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage) {
+      navigate('/app/club/subscription', { replace: true });
+    }
+  }, [subscriptionLoading, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -198,12 +206,8 @@ export default function ClubLayout() {
     );
   }
 
-  const subscriptionFeatures = [
-    t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
-    t('subscription.features.unifiedCalendar', 'Unified calendar'),
-    t('subscription.features.analytics', 'Club analytics'),
-    t('subscription.features.prioritySupport', 'Priority support'),
-  ];
+
+
 
   return (
     <ClubContext.Provider value={{ 
@@ -222,6 +226,7 @@ export default function ClubLayout() {
           <ClubSidebar 
             club={activeClub}
             onClubChange={handleClubChange}
+            isExpired={!!isSubscriptionExpired}
           />
           <SidebarInset className="flex-1">
             {/* Mobile Header */}
@@ -245,20 +250,6 @@ export default function ClubLayout() {
         
         <ReferralWidget />
 
-        {/* Subscription Paywall Overlay */}
-        {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
-          <SubscriptionOverlay
-            roleName="club"
-            subscriptionPath="/app/club/subscription"
-            pricing={{
-              monthly: CLUB_SUBSCRIPTION.monthlyPrice,
-              yearly: CLUB_SUBSCRIPTION.yearlyPrice,
-            }}
-            features={subscriptionFeatures}
-            trialDaysRemaining={trialDaysRemaining}
-            isTrialExpired={isSubscriptionExpired}
-          />
-        )}
       </SidebarProvider>
     </ClubContext.Provider>
   );

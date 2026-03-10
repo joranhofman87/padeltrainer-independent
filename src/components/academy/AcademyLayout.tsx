@@ -9,7 +9,6 @@ import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkAcademySubscription, 
@@ -133,6 +132,13 @@ export default function AcademyLayout() {
   const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
   const isOnSubscriptionPage = location.pathname === '/app/academy/subscription';
 
+  // Redirect to subscription page when expired
+  useEffect(() => {
+    if (!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage) {
+      navigate('/app/academy/subscription', { replace: true });
+    }
+  }, [subscriptionLoading, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -171,14 +177,6 @@ export default function AcademyLayout() {
     );
   }
 
-  // Feature translations for subscription overlay
-  const subscriptionFeatures = [
-    t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
-    t('subscription.features.multipleLocations', 'Multiple locations'),
-    t('subscription.features.analytics', 'Advanced analytics'),
-    t('subscription.features.prioritySupport', 'Priority support'),
-  ];
-
   return (
     <AcademyContext.Provider value={{ 
       activeAcademy, 
@@ -196,6 +194,7 @@ export default function AcademyLayout() {
           <AcademySidebar 
             academy={activeAcademy}
             onAcademyChange={handleAcademyChange}
+            isExpired={!!isSubscriptionExpired}
           />
           <SidebarInset className="flex-1">
             {/* Mobile Header */}
@@ -218,21 +217,6 @@ export default function AcademyLayout() {
         
         
         <ReferralWidget />
-
-        {/* Subscription Paywall Overlay */}
-        {!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage && (
-          <SubscriptionOverlay
-            roleName="academy"
-            subscriptionPath="/app/academy/subscription"
-            pricing={{
-              monthly: ACADEMY_SUBSCRIPTION.monthlyPrice,
-              yearly: ACADEMY_SUBSCRIPTION.yearlyPrice,
-            }}
-            features={subscriptionFeatures}
-            trialDaysRemaining={trialDaysRemaining}
-            isTrialExpired={isSubscriptionExpired}
-          />
-        )}
       </SidebarProvider>
     </AcademyContext.Provider>
   );

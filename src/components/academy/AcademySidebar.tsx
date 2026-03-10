@@ -57,9 +57,10 @@ import type { AcademyProfile } from "@/lib/academy";
 interface AcademySidebarProps {
   academy: (AcademyProfile & { role: string }) | null;
   onAcademyChange?: (academy: AcademyProfile & { role: string }) => void;
+  isExpired?: boolean;
 }
 
-export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps) {
+export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: AcademySidebarProps) {
   const { t, i18n } = useTranslation("academy");
   const navigate = useNavigate();
   const location = useLocation();
@@ -189,9 +190,12 @@ export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={cn(isExpired && "relative")}>
+        {isExpired && (
+          <div className="absolute inset-0 z-10" />
+        )}
         <SidebarGroup>
-          <SidebarGroupContent>
+          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
             <SidebarMenu>
               {/* Dashboard */}
               <SidebarMenuItem>

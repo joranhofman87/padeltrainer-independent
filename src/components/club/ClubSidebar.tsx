@@ -62,9 +62,10 @@ interface ClubWithLocation extends ClubProfile {
 interface ClubSidebarProps {
   club: ClubWithLocation | null;
   onClubChange?: (club: ClubWithLocation) => void;
+  isExpired?: boolean;
 }
 
-export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
+export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSidebarProps) {
   const { t, i18n } = useTranslation("club");
   const navigate = useNavigate();
   const location = useLocation();
@@ -187,9 +188,12 @@ export function ClubSidebar({ club, onClubChange }: ClubSidebarProps) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={cn(isExpired && "relative")}>
+        {isExpired && (
+          <div className="absolute inset-0 z-10" />
+        )}
         <SidebarGroup>
-          <SidebarGroupContent>
+          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
             <SidebarMenu>
               {/* Dashboard */}
               <SidebarMenuItem>

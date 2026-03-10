@@ -57,7 +57,11 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/Logo";
 
-export function TrainerSidebar() {
+interface TrainerSidebarProps {
+  isExpired?: boolean;
+}
+
+export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   const { t, i18n } = useTranslation("trainer");
   const navigate = useNavigate();
   const location = useLocation();
@@ -221,9 +225,12 @@ export function TrainerSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={cn(isExpired && "relative")}>
+        {isExpired && (
+          <div className="absolute inset-0 z-10" />
+        )}
         <SidebarGroup>
-          <SidebarGroupContent>
+          <SidebarGroupContent className={cn(isExpired && "opacity-50 pointer-events-none")}>
             <SidebarMenu>
               {/* My Profile */}
               <SidebarMenuItem>

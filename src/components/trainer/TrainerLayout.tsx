@@ -5,7 +5,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
@@ -50,6 +49,23 @@ export default function TrainerLayout() {
     }
   }, [user, roles, loading, navigate]);
 
+  // Calculate subscription status
+  const subscriptionLoaded = subscription !== null;
+  const hasActiveSubscription = subscription?.isSubscribed || subscription?.isInTrial || false;
+  const isTrialing = subscription?.isInTrial || false;
+  const trialDaysRemaining = subscription?.trialEndsAt 
+    ? getTrialDaysRemaining(subscription.trialEndsAt) 
+    : 0;
+  const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
+  const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
+
+  // Redirect to subscription page when expired
+  useEffect(() => {
+    if (!loading && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy) {
+      navigate('/app/trainer/subscription', { replace: true });
+    }
+  }, [loading, isSubscriptionExpired, isOnSubscriptionPage, hasAcademy, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -78,28 +94,10 @@ export default function TrainerLayout() {
     );
   }
 
-  // Calculate subscription status
-  const subscriptionLoaded = subscription !== null;
-  const hasActiveSubscription = subscription?.isSubscribed || subscription?.isInTrial || false;
-  const isTrialing = subscription?.isInTrial || false;
-  const trialDaysRemaining = subscription?.trialEndsAt 
-    ? getTrialDaysRemaining(subscription.trialEndsAt) 
-    : 0;
-  const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
-  const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
-
-  // Feature translations for subscription overlay
-  const subscriptionFeatures = [
-    t('subscriptionOverlay.features.unlimitedLessons', 'Unlimited lessons'),
-    t('subscriptionOverlay.features.calendarSync', 'Google Calendar sync'),
-    t('subscriptionOverlay.features.analytics', 'Analytics dashboard'),
-    t('subscriptionOverlay.features.prioritySupport', 'Priority support'),
-  ];
-
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
-        <TrainerSidebar />
+        <TrainerSidebar isExpired={!!(isSubscriptionExpired && !hasAcademy)} />
         <main className="flex-1 overflow-auto">
           {/* Mobile header */}
           <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 lg:hidden">
@@ -114,21 +112,6 @@ export default function TrainerLayout() {
       
       
       <ReferralWidget />
-
-      {/* Subscription Paywall Overlay */}
-      {!loading && role === 'trainer' && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy && (
-        <SubscriptionOverlay
-          roleName="trainer"
-          subscriptionPath="/app/trainer/subscription"
-          pricing={{
-            monthly: SUBSCRIPTION_TIERS.professional.monthlyPrice,
-            yearly: SUBSCRIPTION_TIERS.professional.yearlyPrice,
-          }}
-          features={subscriptionFeatures}
-          trialDaysRemaining={trialDaysRemaining}
-          isTrialExpired={isSubscriptionExpired}
-        />
-      )}
     </SidebarProvider>
   );
 }
