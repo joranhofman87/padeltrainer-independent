@@ -21,7 +21,7 @@ import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 
 interface OwnerInfo {
-  type: 'trainer' | 'club';
+  type: 'trainer' | 'club' | 'academy';
   name: string;
   avatar_url?: string;
   welcomeMessage?: string | null;
@@ -67,14 +67,14 @@ export default function CycleRegistration() {
             .from('trainer_profiles')
             .select('id, user_id, welcome_message')
             .eq('id', cycleData.owner_id)
-            .single();
+            .maybeSingle();
 
           if (trainerData) {
             const { data: profileData } = await supabase
               .from('profiles')
               .select('full_name, avatar_url')
-              .eq('id', trainerData.user_id)
-              .single();
+              .eq('user_id', trainerData.user_id)
+              .maybeSingle();
 
             setOwner({
               type: 'trainer',
@@ -84,30 +84,30 @@ export default function CycleRegistration() {
             });
             setTrainers([{ id: trainerData.id, name: profileData?.full_name || 'Trainer' }]);
           }
-        } else {
-          const { data: clubData } = await supabase
-            .from('clubs' as any)
-            .select('id, name, logo_url')
+        } else if (cycleData.owner_type === 'academy') {
+          const { data: academyData } = await supabase
+            .from('academy_profiles')
+            .select('id, name, logo_url, welcome_message')
             .eq('id', cycleData.owner_id)
-            .single();
+            .maybeSingle();
 
-          if (clubData) {
-            const club = clubData as any;
+          if (academyData) {
             setOwner({
-              type: 'club',
-              name: club.name,
-              avatar_url: club.logo_url || undefined
+              type: 'academy',
+              name: academyData.name,
+              avatar_url: academyData.logo_url || undefined,
+              welcomeMessage: academyData.welcome_message,
             });
 
-            // Fetch club trainers
-            const { data: clubTrainers } = await supabase
-              .from('club_trainers' as any)
-              .select('trainer_id')
-              .eq('club_id', club.id);
+            // Fetch academy trainers
+            const { data: academyTrainers } = await supabase
+              .from('academy_trainers')
+              .select('trainer_profile_id')
+              .eq('academy_profile_id', academyData.id)
+              .eq('status', 'active');
 
-            if (clubTrainers && clubTrainers.length > 0) {
-              const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_id);
-              
+            if (academyTrainers && academyTrainers.length > 0) {
+              const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
               const { data: trainerProfiles } = await supabase
                 .from('trainer_profiles')
                 .select('id, user_id')
@@ -117,16 +117,66 @@ export default function CycleRegistration() {
                 const userIds = trainerProfiles.map(tp => tp.user_id);
                 const { data: profiles } = await supabase
                   .from('profiles')
-                  .select('id, full_name')
-                  .in('id', userIds);
+                  .select('user_id, full_name')
+                  .in('user_id', userIds);
 
                 if (profiles) {
                   const trainersList = trainerProfiles.map(tp => {
-                    const profile = profiles.find(p => p.id === tp.user_id);
-                    return {
-                      id: tp.id,
-                      name: profile?.full_name || 'Trainer'
-                    };
+                    const prof = profiles.find(p => p.user_id === tp.user_id);
+                    return { id: tp.id, name: prof?.full_name || 'Trainer' };
+                  });
+                  setTrainers(trainersList);
+                }
+              }
+            }
+          }
+        } else {
+          // Club owner type
+          const { data: clubData } = await supabase
+            .from('club_profiles')
+            .select('id, location_id, welcome_message')
+            .eq('id', cycleData.owner_id)
+            .maybeSingle();
+
+          if (clubData) {
+            // Get location name for the club
+            const { data: locationData } = await supabase
+              .from('locations')
+              .select('name')
+              .eq('id', clubData.location_id)
+              .maybeSingle();
+
+            setOwner({
+              type: 'club',
+              name: locationData?.name || 'Club',
+              welcomeMessage: clubData.welcome_message,
+            });
+
+            // Fetch club trainers
+            const { data: clubTrainers } = await supabase
+              .from('club_trainers' as any)
+              .select('trainer_profile_id')
+              .eq('club_profile_id', clubData.id)
+              .eq('status', 'active');
+
+            if (clubTrainers && clubTrainers.length > 0) {
+              const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_profile_id);
+              const { data: trainerProfiles } = await supabase
+                .from('trainer_profiles')
+                .select('id, user_id')
+                .in('id', trainerIds);
+
+              if (trainerProfiles) {
+                const userIds = trainerProfiles.map(tp => tp.user_id);
+                const { data: profiles } = await supabase
+                  .from('profiles')
+                  .select('user_id, full_name')
+                  .in('user_id', userIds);
+
+                if (profiles) {
+                  const trainersList = trainerProfiles.map(tp => {
+                    const prof = profiles.find(p => p.user_id === tp.user_id);
+                    return { id: tp.id, name: prof?.full_name || 'Trainer' };
                   });
                   setTrainers(trainersList);
                 }
@@ -273,7 +323,7 @@ export default function CycleRegistration() {
               )}
               <div>
                 <p className="text-sm text-muted-foreground">
-                  {owner?.type === 'club' ? 'Club' : 'Trainer'}
+                  {owner?.type === 'academy' ? 'Academy' : owner?.type === 'club' ? 'Club' : 'Trainer'}
                 </p>
                 <p className="font-medium">{owner?.name}</p>
               </div>
