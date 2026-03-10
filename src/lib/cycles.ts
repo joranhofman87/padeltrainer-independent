@@ -955,7 +955,40 @@ export async function saveCycleScoringWeights(
   return updateCycle(cycleId, { settings: updatedSettings });
 }
 
-// Delete an intake request and its associated proposals
+// Reset all proposals for a cycle (delete proposed_assignments and set intake_requests back to 'new')
+export async function resetProposals(cycleId: string): Promise<{ reset: number }> {
+  // Get all intake requests for this cycle that have proposals
+  const { data: requests, error: fetchError } = await supabase
+    .from('intake_requests')
+    .select('id')
+    .eq('cycle_id', cycleId)
+    .in('status', ['proposed']);
+
+  if (fetchError) throw fetchError;
+  if (!requests || requests.length === 0) return { reset: 0 };
+
+  const requestIds = requests.map(r => r.id);
+
+  // Delete all proposed assignments for these requests
+  const { error: deleteError } = await supabase
+    .from('proposed_assignments')
+    .delete()
+    .in('intake_request_id', requestIds);
+
+  if (deleteError) throw deleteError;
+
+  // Set intake request statuses back to 'new'
+  const { error: updateError } = await supabase
+    .from('intake_requests')
+    .update({ status: 'new' })
+    .in('id', requestIds);
+
+  if (updateError) throw updateError;
+
+  return { reset: requests.length };
+}
+
+
 export async function deleteIntakeRequest(requestId: string): Promise<void> {
   // First delete any associated proposed assignments
   const { error: proposalError } = await supabase
