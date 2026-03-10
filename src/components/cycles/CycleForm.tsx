@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
 import { CalendarIcon, Loader2, Plus, Trash2, Euro } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -398,7 +399,7 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.description', 'Description')}</FormLabel>
                     <FormControl>
-                      <Textarea {...field} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} rows={3} />
+                      <RichTextEditor value={field.value || ''} onChange={field.onChange} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -414,7 +415,7 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.description', 'Description')}</FormLabel>
                     <FormControl>
-                      <Textarea {...field} placeholder={t('form.registrationDescriptionPlaceholder', 'Describe this registration...')} rows={3} />
+                      <RichTextEditor value={field.value || ''} onChange={field.onChange} placeholder={t('form.registrationDescriptionPlaceholder', 'Describe this registration...')} />
                     </FormControl>
                     <FormDescription className="text-xs">
                       {t('form.registrationDescriptionHelp', 'Visible to players before they apply')}
