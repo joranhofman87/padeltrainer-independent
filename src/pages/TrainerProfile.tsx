@@ -120,7 +120,7 @@ export default function TrainerProfile() {
   const [showVideo, setShowVideo] = useState(false);
   const [preferredRatingSystemName, setPreferredRatingSystemName] = useState<string>('');
   const navigate = useNavigate();
-  const { user, role } = useAuth();
+  const { user, role, subscription } = useAuth();
   const { isFollowing, loading: followLoading, toggleFollow, canFollow } = useFollowTrainer(trainer?.id || null);
   const localizePath = useLocalizedPathFn();
   const currentLang = useCurrentLanguage();
