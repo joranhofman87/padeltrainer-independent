@@ -33,16 +33,8 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
   useEffect(() => {
     async function fetchData() {
       try {
-        const [cyclesData, trainersData] = await Promise.all([
-          getActiveCycles('academy', academyId),
-          getPublicAcademyTrainers(academyId),
-        ]);
-        
+        const cyclesData = await getActiveCycles('academy', academyId);
         setCycles(cyclesData);
-        setTrainers(trainersData.map(t => ({
-          id: t.trainer_profile_id,
-          name: t.profile?.full_name || 'Trainer',
-        })));
 
         if (user && cyclesData.length > 0) {
           const appliedSet = new Set<string>();
@@ -61,17 +53,6 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
 
     fetchData();
   }, [academyId, user]);
-
-  const handleSignupRedirect = () => {
-    const currentPath = window.location.pathname;
-    navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(currentPath)}`));
-  };
-
-  const handleSuccess = (cycleId: string) => {
-    setSuccessCycleId(cycleId);
-    setAppliedCycles(prev => new Set(prev).add(cycleId));
-    setExpandedCycleId(null);
-  };
 
   const isDeadlinePassed = (cycle: Cycle) => {
     return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
