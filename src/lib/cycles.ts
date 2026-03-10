@@ -4,6 +4,11 @@ import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
 
 // Types
+export interface PriceTableRow {
+  label: string;
+  price: number;
+}
+
 export interface Cycle {
   id: string;
   owner_type: 'trainer' | 'club' | 'academy';
@@ -20,6 +25,8 @@ export interface Cycle {
   price_per_session: number | null;
   total_price: number | null;
   currency: string;
+  terms: string | null;
+  price_table: PriceTableRow[] | null;
   created_at: string;
   updated_at: string;
   // Joined data (optional)
@@ -189,6 +196,8 @@ export interface CycleInput {
   price_per_session?: number | null;
   total_price?: number | null;
   currency?: string;
+  terms?: string | null;
+  price_table?: PriceTableRow[] | null;
 }
 
 // Helper to convert DB row to typed object
@@ -196,6 +205,7 @@ function toCycle(row: any): Cycle {
   return {
     ...row,
     settings: (row.settings || {}) as CycleSettings,
+    price_table: (row.price_table || null) as PriceTableRow[] | null,
   };
 }
 
@@ -223,7 +233,7 @@ export async function getCycles(ownerType: 'trainer' | 'club' | 'academy', owner
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as Cycle[];
+  return (data || []).map(toCycle);
 }
 
 // Get cycles with intake request counts
@@ -237,7 +247,7 @@ export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'acade
 
   if (error) throw error;
   
-  const cycles = (data || []) as Cycle[];
+  const cycles = (data || []).map(toCycle);
   
   // Get intake counts for all cycles
   if (cycles.length > 0) {
@@ -263,14 +273,14 @@ export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'acade
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
-    .select('*')
+    .select('*, location:locations(id, name, city)')
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
     .order('start_date', { ascending: true });
 
   if (error) throw error;
-  return (data || []) as Cycle[];
+  return (data || []).map(toCycle);
 }
 
 // Fetch all open cycles for a location (from trainers + academies at that location)
@@ -302,7 +312,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'trainer')
       .in('owner_id', trainerIds)
       .eq('status', 'open');
-    if (trainerCycles) allCycles.push(...(trainerCycles as Cycle[]));
+    if (trainerCycles) allCycles.push(...trainerCycles.map(toCycle));
   }
   
   if (academyIds.length > 0) {
@@ -312,7 +322,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'academy')
       .in('owner_id', academyIds)
       .eq('status', 'open');
-    if (academyCycles) allCycles.push(...(academyCycles as Cycle[]));
+    if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
   }
   
   return allCycles.sort((a, b) => 
@@ -331,7 +341,7 @@ export async function getCycle(cycleId: string): Promise<Cycle | null> {
     if (error.code === 'PGRST116') return null;
     throw error;
   }
-  return data as Cycle;
+  return toCycle(data);
 }
 
 export async function createCycle(input: CycleInput): Promise<Cycle> {
@@ -350,6 +360,8 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     price_per_session: input.price_per_session ?? null,
     total_price: input.total_price ?? null,
     currency: input.currency || 'EUR',
+    terms: input.terms ?? null,
+    price_table: (input.price_table ?? null) as unknown as Json,
   };
   
   const { data, error } = await supabase
@@ -377,6 +389,8 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   if (updates.price_per_session !== undefined) updateData.price_per_session = updates.price_per_session;
   if (updates.total_price !== undefined) updateData.total_price = updates.total_price;
   if (updates.currency !== undefined) updateData.currency = updates.currency;
+  if (updates.terms !== undefined) updateData.terms = updates.terms;
+  if (updates.price_table !== undefined) updateData.price_table = updates.price_table as unknown as Json;
   
   const { data, error } = await supabase
     .from('cycles')

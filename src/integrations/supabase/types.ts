@@ -1674,9 +1674,11 @@ export type Database = {
           owner_id: string
           owner_type: string
           price_per_session: number | null
+          price_table: Json | null
           settings: Json | null
           start_date: string
           status: string
+          terms: string | null
           total_price: number | null
           type: string
           updated_at: string
@@ -1693,9 +1695,11 @@ export type Database = {
           owner_id: string
           owner_type: string
           price_per_session?: number | null
+          price_table?: Json | null
           settings?: Json | null
           start_date: string
           status?: string
+          terms?: string | null
           total_price?: number | null
           type?: string
           updated_at?: string
@@ -1712,9 +1716,11 @@ export type Database = {
           owner_id?: string
           owner_type?: string
           price_per_session?: number | null
+          price_table?: Json | null
           settings?: Json | null
           start_date?: string
           status?: string
+          terms?: string | null
           total_price?: number | null
           type?: string
           updated_at?: string

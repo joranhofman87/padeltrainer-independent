@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
 import { getAppUrl } from '@/lib/domains';
+import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,7 +95,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
           const deadlinePassed = isDeadlinePassed(cycle);
           const isExpanded = expandedCycleId === cycle.id;
           const showSuccess = successCycleId === cycle.id;
-          const canApply = user && !hasApplied && !deadlinePassed;
+          const canApply = !hasApplied && !deadlinePassed;
 
           return (
             <div key={cycle.id} className={`border rounded-lg p-4 ${showSuccess ? 'border-green-500' : ''}`}>
@@ -120,6 +121,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                     {cycle.description && (
                       <div className="text-sm text-muted-foreground mt-2 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
                     )}
+                    <CycleDetailDisplay cycle={cycle} />
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -148,12 +150,6 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                         </Button>
                       </CollapsibleTrigger>
                     )}
-                    {!user && !deadlinePassed && (
-                      <Button variant="default" size="sm" onClick={handleSignupRedirect}>
-                        <UserPlus className="h-4 w-4 mr-1" />
-                        {t('application.signUpAndApply')}
-                      </Button>
-                    )}
                   </div>
                 </div>
 
@@ -168,7 +164,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                         </AlertDescription>
                       </Alert>
                     ) : (
-                      user && profile && (
+                      user && profile ? (
                         <CycleApplicationForm
                           cycle={cycle}
                           playerId={profile.id}
@@ -178,6 +174,19 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                           playerPhone={profile.phone || ''}
                           playerRating={profile.skill_rating ?? undefined}
                           playerRatingSystem={profile.rating_system || 'knltb'}
+                          trainers={[{ id: trainerId, name: trainerName }]}
+                          onSuccess={() => handleSuccess(cycle.id)}
+                          onCancel={() => setExpandedCycleId(null)}
+                        />
+                      ) : (
+                        <CycleApplicationForm
+                          cycle={cycle}
+                          playerId=""
+                          playerUserId=""
+                          playerName=""
+                          playerEmail=""
+                          playerPhone=""
+                          isGuest
                           trainers={[{ id: trainerId, name: trainerName }]}
                           onSuccess={() => handleSuccess(cycle.id)}
                           onCancel={() => setExpandedCycleId(null)}

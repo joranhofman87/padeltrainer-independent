@@ -55,6 +55,7 @@ interface CycleApplicationFormProps {
   playerRatingSystem?: string;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
+  isGuest?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -74,6 +75,7 @@ export default function CycleApplicationForm({
   playerRatingSystem = 'knltb',
   trainers = [],
   locations = [],
+  isGuest = false,
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
@@ -136,6 +138,7 @@ export default function CycleApplicationForm({
     full_name: z.string().min(2),
     email: z.string().email(),
     phone: z.string().optional(),
+    password: isGuest ? z.string().min(6, t('application.form.passwordMin', 'Password must be at least 6 characters')) : z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
@@ -158,6 +161,7 @@ export default function CycleApplicationForm({
       full_name: playerName || '',
       email: playerEmail || '',
       phone: playerPhone || '',
+      password: '',
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_types: ['group'] as typeof LESSON_TYPES[number][],
@@ -174,6 +178,58 @@ export default function CycleApplicationForm({
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
+      let currentPlayerId = playerId;
+      let currentPlayerUserId = playerUserId;
+
+      // Guest signup flow
+      if (isGuest) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: values.email,
+          password: values.password!,
+          options: {
+            data: {
+              full_name: values.full_name,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        if (!signUpData.user) throw new Error('Signup failed');
+
+        currentPlayerUserId = signUpData.user.id;
+
+        // Wait for profile trigger, then get profile id
+        // The handle_new_user trigger creates the profile
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', currentPlayerUserId)
+          .single();
+        
+        if (!profileData) throw new Error('Profile not created');
+        currentPlayerId = profileData.id;
+
+        // Set player role
+        await supabase
+          .from('user_roles')
+          .insert({ user_id: currentPlayerUserId, role: 'player' });
+        
+        // Update profile with phone/rating if provided
+        const profileUpdates: Record<string, any> = {};
+        if (values.phone) profileUpdates.phone = values.phone;
+        if (values.rating) {
+          profileUpdates.skill_rating = values.rating;
+          profileUpdates.rating_system = values.rating_system;
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', currentPlayerId);
+        }
+      }
+
       // Convert availability to TimeWindow[] format
       const timeWindows: TimeWindow[] = [];
       const preferredDays: string[] = [];
@@ -191,7 +247,7 @@ export default function CycleApplicationForm({
 
       await submitIntakeRequest({
         cycle_id: cycle.id,
-        player_id: playerId,
+        player_id: currentPlayerId,
         full_name: values.full_name,
         email: values.email,
         phone: values.phone,
@@ -208,20 +264,22 @@ export default function CycleApplicationForm({
         consent_given: values.consent,
       });
 
-      // Update player profile if rating/phone changed
-      const profileUpdates: Record<string, any> = {};
-      if (values.rating && values.rating !== playerRating) {
-        profileUpdates.skill_rating = values.rating;
-        profileUpdates.rating_system = values.rating_system;
-      }
-      if (values.phone && values.phone !== playerPhone) {
-        profileUpdates.phone = values.phone;
-      }
-      if (Object.keys(profileUpdates).length > 0) {
-        await supabase
-          .from('profiles')
-          .update(profileUpdates)
-          .eq('user_id', playerUserId);
+      // Update player profile if rating/phone changed (for logged-in users)
+      if (!isGuest) {
+        const profileUpdates: Record<string, any> = {};
+        if (values.rating && values.rating !== playerRating) {
+          profileUpdates.skill_rating = values.rating;
+          profileUpdates.rating_system = values.rating_system;
+        }
+        if (values.phone && values.phone !== playerPhone) {
+          profileUpdates.phone = values.phone;
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('user_id', currentPlayerUserId);
+        }
       }
 
       setIsSuccess(true);
@@ -242,7 +300,11 @@ export default function CycleApplicationForm({
           <div className="text-center space-y-4">
             <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
             <h3 className="text-xl font-semibold">{t('application.success.title')}</h3>
-            <p className="text-muted-foreground">{t('application.success.message')}</p>
+            <p className="text-muted-foreground">
+              {isGuest 
+                ? t('application.success.guestMessage', 'Your application has been submitted! Please check your email to verify your account.')
+                : t('application.success.message')}
+            </p>
             
             <div className="text-left mt-6 p-4 bg-muted rounded-lg">
               <h4 className="font-medium mb-2">{t('application.success.whatNext')}</h4>
@@ -297,12 +359,31 @@ export default function CycleApplicationForm({
                 <FormItem>
                   <FormLabel>{t('application.form.email')}</FormLabel>
                   <FormControl>
-                    <Input {...field} type="email" disabled />
+                    <Input {...field} type="email" disabled={!isGuest} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {isGuest && (
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('application.form.passwordHelp', 'An account will be created so you can track your application')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
