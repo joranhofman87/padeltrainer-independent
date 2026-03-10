@@ -197,19 +197,13 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
                       </Badge>
                     )}
                     {canApply && (
-                      <CollapsibleTrigger asChild>
-                        <Button variant="default" size="sm">
-                          {isExpanded ? (
-                            <>
-                              {t('common:close', 'Close')} <ChevronUp className="h-4 w-4 ml-1" />
-                            </>
-                          ) : (
-                            <>
-                              {t('application.apply', 'Apply')} <ChevronDown className="h-4 w-4 ml-1" />
-                            </>
-                          )}
-                        </Button>
-                      </CollapsibleTrigger>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => navigate(getMarketingPath(`academies/${academySlug}/register/${cycle.id}`, lang || i18n.language))}
+                      >
+                        {t('application.apply', 'Apply')} <ExternalLink className="h-4 w-4 ml-1" />
+                      </Button>
                     )}
                   </div>
                 </div>
