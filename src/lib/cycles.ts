@@ -272,7 +272,7 @@ export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'acade
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
-    .select('*')
+    .select('*, location:locations(id, name, city)')
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
