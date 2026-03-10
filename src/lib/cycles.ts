@@ -312,7 +312,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'trainer')
       .in('owner_id', trainerIds)
       .eq('status', 'open');
-    if (trainerCycles) allCycles.push(...(trainerCycles as Cycle[]));
+    if (trainerCycles) allCycles.push(...trainerCycles.map(toCycle));
   }
   
   if (academyIds.length > 0) {
