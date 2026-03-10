@@ -361,7 +361,7 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     total_price: input.total_price ?? null,
     currency: input.currency || 'EUR',
     terms: input.terms ?? null,
-    price_table: (input.price_table ?? null) as Json,
+    price_table: (input.price_table ?? null) as unknown as Json,
   };
   
   const { data, error } = await supabase
