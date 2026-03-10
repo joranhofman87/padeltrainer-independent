@@ -206,12 +206,8 @@ export default function ClubLayout() {
     );
   }
 
-  const subscriptionFeatures = [
-    t('subscription.features.unlimitedTrainers', 'Unlimited trainers'),
-    t('subscription.features.unifiedCalendar', 'Unified calendar'),
-    t('subscription.features.analytics', 'Club analytics'),
-    t('subscription.features.prioritySupport', 'Priority support'),
-  ];
+
+
 
   return (
     <ClubContext.Provider value={{ 
