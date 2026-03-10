@@ -21,7 +21,7 @@ import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 
 interface OwnerInfo {
-  type: 'trainer' | 'club';
+  type: 'trainer' | 'club' | 'academy';
   name: string;
   avatar_url?: string;
   welcomeMessage?: string | null;
