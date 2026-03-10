@@ -5,7 +5,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
