@@ -568,8 +568,8 @@ export default function LocationDetail() {
                       className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
                       onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
                     >
-                      <Avatar className="h-10 w-10 rounded-lg">
-                        <AvatarImage src={academy.logo_url || ''} />
+                      <Avatar className="h-10 w-10 rounded-lg bg-muted">
+                        <AvatarImage src={academy.logo_url || ''} className="object-cover" />
                         <AvatarFallback className="rounded-lg">{getInitials(academy.name)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
