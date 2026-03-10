@@ -210,6 +210,9 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
                     <div className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
                   </CardContent>
                 )}
+                <CardContent className="pt-0 pb-2">
+                  <CycleDetailDisplay cycle={cycle} />
+                </CardContent>
 
                 <CollapsibleContent>
                   <CardContent className="pt-4 border-t">
