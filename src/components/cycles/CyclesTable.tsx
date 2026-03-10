@@ -64,6 +64,7 @@ export default function CyclesTable({
   onEdit,
   onDuplicate,
   onDeleted,
+  ownerType,
 }: CyclesTableProps) {
   const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
@@ -116,8 +117,16 @@ export default function CyclesTable({
     toast.success(t('actions.linkCopied'));
   };
 
+  const getBasePath = () => {
+    switch (ownerType) {
+      case 'academy': return '/app/academy';
+      case 'club': return '/app/club';
+      case 'trainer': return '/app/trainer';
+    }
+  };
+
   const handleViewRequests = (cycle: Cycle) => {
-    navigate(`/academy/cycles/${cycle.id}/requests`);
+    navigate(`${getBasePath()}/intake-requests?cycle=${cycle.id}`);
   };
 
   // Filter and sort cycles
