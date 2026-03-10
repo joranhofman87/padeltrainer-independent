@@ -27,6 +27,8 @@
     "archived": "Gearchiveerd"
   },
   
+  "editRegistration": "Inschrijving Bewerken",
+  "deleteRegistration": "Inschrijving Verwijderen",
   "form": {
     "name": "Cyclus Naam",
     "namePlaceholder": "bijv. Voorjaarscyclus 2026",
