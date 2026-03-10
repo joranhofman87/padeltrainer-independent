@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { getTrialDaysRemaining, canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy, getTrainerAcademy } from '@/lib/academy';
 import { logger } from '@/lib/logger';
+import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 export default function TrainerSettings() {
   const { user, role, roles, loading, subscription, refreshSubscription, session, refreshAuth } = useAuth();
