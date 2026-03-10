@@ -451,7 +451,9 @@ export default function AddIntakeRequestDialog({
                             render={({ field }) => (
                               <FormItem 
                                 className="flex items-center space-x-2 space-y-0 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  // Prevent double-toggle: only handle if not clicking the checkbox itself
+                                  if ((e.target as HTMLElement).closest('button[role="checkbox"]')) return;
                                   const current = field.value || [];
                                   const updated = current.includes(type)
                                     ? current.filter((v: string) => v !== type)
