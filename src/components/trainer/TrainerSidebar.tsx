@@ -225,7 +225,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className={cn(isExpired && "relative")}>
+        {isExpired && (
+          <div className="absolute inset-0 z-10" />
+        )}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
