@@ -335,21 +335,24 @@ export default function CycleApplicationForm({
               )}
             />
 
-            {!isGuest && (
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.email')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="email" disabled />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.email')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="email" disabled={!isGuest} />
+                  </FormControl>
+                  {isGuest && (
+                    <FormDescription className="text-xs">
+                      {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
             <FormField
