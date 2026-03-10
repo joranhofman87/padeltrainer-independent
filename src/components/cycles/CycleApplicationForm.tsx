@@ -638,14 +638,14 @@ export default function CycleApplicationForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('application.form.location')}</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <Select onValueChange={(val) => field.onChange(val === '__none__' ? '' : val)} value={field.value || '__none__'}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder={t('application.form.noPreference')} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">{t('application.form.noPreference')}</SelectItem>
+                        <SelectItem value="__none__">{t('application.form.noPreference')}</SelectItem>
                         {locations.map(loc => (
                           <SelectItem key={loc.id} value={loc.id}>
                             {loc.name}
