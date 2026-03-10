@@ -22,6 +22,7 @@ import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailShe
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
 export default function AcademyIntakeRequests() {
