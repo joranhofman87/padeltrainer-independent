@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
 import { CalendarIcon, Loader2, Plus, Trash2, Euro } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
