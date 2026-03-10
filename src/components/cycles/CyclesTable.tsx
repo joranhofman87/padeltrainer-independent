@@ -99,7 +99,7 @@ export default function CyclesTable({
   };
 
   const handleDelete = async (cycle: Cycle) => {
-    if (!confirm(t('deleteCycle') + '?')) return;
+    if (!confirm((cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')) + '?')) return;
     try {
       await deleteCycle(cycle.id);
       toast.success(t('common:deleted', 'Deleted'));
