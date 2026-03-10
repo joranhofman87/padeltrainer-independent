@@ -143,7 +143,7 @@ export function LocationOpenCycles({ locationId, locationName }: LocationOpenCyc
           const deadlinePassed = isDeadlinePassed(cycle);
           const isExpanded = expandedCycleId === cycle.id;
           const showSuccess = successCycleId === cycle.id;
-          const canApply = user && !hasApplied && !deadlinePassed;
+          const canApply = !hasApplied && !deadlinePassed;
 
           return (
             <Card key={cycle.id} className={showSuccess ? 'border-green-500' : ''}>
