@@ -241,11 +241,6 @@ export default function ClubCalendar() {
                   <Plus className="h-4 w-4 mr-1" />
                   {t("calendar.addSlot", "Add Slot")}
                 </Button>
-                
-                <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => { setClickedDate(undefined); setClickedTime(undefined); setBulkCreateSheetOpen(true); }}>
-                  <Repeat className="h-4 w-4 mr-1" />
-                  {t("calendar.createCyclus", "Create Cyclus")}
-                </Button>
               </div>
             </div>
           </CardHeader>
