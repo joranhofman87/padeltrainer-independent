@@ -37,6 +37,18 @@ describe('subscription', () => {
       expect(canBeVisible(sub)).toBe(true);
     });
 
+    it('returns false when in trial even if subscribed flag is true', () => {
+      const sub: SubscriptionInfo = {
+        isSubscribed: true,
+        tier: 'trial',
+        subscriptionEnd: null,
+        trialEndsAt: new Date(Date.now() + 86400000).toISOString(),
+        isInTrial: true,
+        isPublic: false,
+      };
+      expect(canBeVisible(sub)).toBe(false);
+    });
+
     it('returns false when only in trial (not subscribed)', () => {
       const sub: SubscriptionInfo = {
         isSubscribed: false,
