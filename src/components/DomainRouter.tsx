@@ -59,6 +59,7 @@ const Onboarding = lazy(() => import('@/pages/Onboarding'));
 const TrainerOnboarding = lazy(() => import('@/pages/TrainerOnboarding'));
 const AcademySignup = lazy(() => import('@/pages/AcademySignup'));
 const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
+const SignupRolePicker = lazy(() => import('@/pages/SignupRolePicker'));
 
 // Player pages
 const PlayerDashboard = lazy(() => import('@/pages/PlayerDashboard'));
@@ -161,6 +162,7 @@ export function DomainRouter() {
         <Route path="/app/auth" element={<Auth />} />
         <Route path="/app/forgot-password" element={<ForgotPassword />} />
         <Route path="/app/reset-password" element={<ResetPassword />} />
+        <Route path="/app/signup" element={<SignupRolePicker />} />
         <Route path="/app/signup/player" element={<PlayerSignup />} />
         <Route path="/app/signup/trainer" element={<TrainerSignup />} />
         <Route path="/app/signup/club" element={<ClubSignup />} />

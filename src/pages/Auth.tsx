@@ -280,18 +280,13 @@ export default function Auth() {
             </Button>
           </form>
 
-          <div className="space-y-3 pt-4 border-t">
-            <p className="text-center text-sm text-muted-foreground">
-              {t('signIn.noAccount', "Don't have an account?")}
+          <div className="pt-4 border-t text-center">
+            <p className="text-sm text-muted-foreground">
+              {t('signIn.noAccount', "Don't have an account?")}{' '}
+              <Link to="/app/signup" className="font-medium text-primary hover:underline">
+                {t('signupPicker.signUp', 'Sign up')}
+              </Link>
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" asChild>
-                <Link to="/app/signup/player">{t('signIn.signupPlayer', 'Join as Player')}</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/app/signup/trainer">{t('signIn.signupTrainer', 'Join as Trainer')}</Link>
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
