@@ -341,7 +341,7 @@ export async function getCycle(cycleId: string): Promise<Cycle | null> {
     if (error.code === 'PGRST116') return null;
     throw error;
   }
-  return data as Cycle;
+  return toCycle(data);
 }
 
 export async function createCycle(input: CycleInput): Promise<Cycle> {
