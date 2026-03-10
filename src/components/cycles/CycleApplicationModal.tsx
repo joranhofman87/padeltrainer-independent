@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { logger } from '@/lib/logger';
 import { CalendarDays, AlertCircle } from 'lucide-react';
 import {
@@ -16,8 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { hasPlayerApplied, type Cycle } from '@/lib/cycles';
-import { supabase } from '@/lib/supabaseClient';
 import CycleApplicationForm from './CycleApplicationForm';
+import CycleDetailDisplay from './CycleDetailDisplay';
 import { format } from 'date-fns';
 
 interface TrainerOption {
@@ -46,7 +45,6 @@ export default function CycleApplicationModal({
   locations = [],
 }: CycleApplicationModalProps) {
   const { t } = useTranslation('cycles');
-  const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [hasApplied, setHasApplied] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
@@ -69,14 +67,10 @@ export default function CycleApplicationModal({
     }
 
     if (open) {
+      setCheckingStatus(!!user);
       checkApplication();
     }
   }, [open, user, profile, cycle.id]);
-
-  const handleLoginRedirect = () => {
-    const currentPath = window.location.pathname;
-    navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
-  };
 
   const isDeadlinePassed = cycle.enrollment_deadline 
     ? new Date(cycle.enrollment_deadline) < new Date() 
@@ -84,35 +78,8 @@ export default function CycleApplicationModal({
 
   const isCycleClosed = cycle.status !== 'open';
 
-  // Not logged in
-  if (!user) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              {t('application.title')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('application.subtitle', { cycleName: cycle.name })}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-6 text-center space-y-4">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
-            <p className="text-muted-foreground">{t('application.loginRequired')}</p>
-            <Button onClick={handleLoginRedirect}>
-              {t('common:login', 'Log in')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Already applied
-  if (hasApplied && !checkingStatus) {
+  // Already applied (only for logged-in users)
+  if (hasApplied && !checkingStatus && user) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
@@ -184,26 +151,39 @@ export default function CycleApplicationModal({
         </DialogHeader>
         
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
+          {/* Show cycle details */}
+          <CycleDetailDisplay cycle={cycle} />
+          
           {checkingStatus ? (
             <div className="py-8 space-y-4">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-2/3" />
-              <div className="flex gap-4 pt-4">
-                <Skeleton className="h-10 w-24" />
-                <Skeleton className="h-10 w-24" />
-              </div>
             </div>
+          ) : user && profile ? (
+            <CycleApplicationForm
+              cycle={cycle}
+              playerId={profile.id}
+              playerUserId={user.id}
+              playerName={profile.full_name || ''}
+              playerEmail={profile.email || ''}
+              playerPhone={profile.phone || ''}
+              playerRating={profile.skill_rating ?? undefined}
+              playerRatingSystem={profile.rating_system || 'knltb'}
+              trainers={trainers}
+              locations={locations}
+              onSuccess={() => onOpenChange(false)}
+              onCancel={() => onOpenChange(false)}
+            />
           ) : (
             <CycleApplicationForm
               cycle={cycle}
-              playerId={profile!.id}
-              playerUserId={user!.id}
-              playerName={profile!.full_name || ''}
-              playerEmail={profile!.email || ''}
-              playerPhone={profile!.phone || ''}
-              playerRating={profile!.skill_rating ?? undefined}
-              playerRatingSystem={profile!.rating_system || 'knltb'}
+              playerId=""
+              playerUserId=""
+              playerName=""
+              playerEmail=""
+              playerPhone=""
+              isGuest
               trainers={trainers}
               locations={locations}
               onSuccess={() => onOpenChange(false)}
