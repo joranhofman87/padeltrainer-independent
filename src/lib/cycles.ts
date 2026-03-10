@@ -196,6 +196,8 @@ export interface CycleInput {
   price_per_session?: number | null;
   total_price?: number | null;
   currency?: string;
+  terms?: string | null;
+  price_table?: PriceTableRow[] | null;
 }
 
 // Helper to convert DB row to typed object
