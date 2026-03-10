@@ -55,6 +55,7 @@ interface CycleApplicationFormProps {
   playerRatingSystem?: string;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
+  isGuest?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
