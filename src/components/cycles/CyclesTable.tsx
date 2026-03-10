@@ -53,6 +53,7 @@ interface CyclesTableProps {
   onDuplicate?: (cycle: Cycle) => void;
   onDeleted: () => void;
   ownerType: 'trainer' | 'club' | 'academy';
+  ownerSlug?: string;
 }
 
 type SortField = 'name' | 'location' | 'start_date' | 'status' | 'applications';
