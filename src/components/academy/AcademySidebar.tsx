@@ -57,9 +57,10 @@ import type { AcademyProfile } from "@/lib/academy";
 interface AcademySidebarProps {
   academy: (AcademyProfile & { role: string }) | null;
   onAcademyChange?: (academy: AcademyProfile & { role: string }) => void;
+  isExpired?: boolean;
 }
 
-export function AcademySidebar({ academy, onAcademyChange }: AcademySidebarProps) {
+export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: AcademySidebarProps) {
   const { t, i18n } = useTranslation("academy");
   const navigate = useNavigate();
   const location = useLocation();
