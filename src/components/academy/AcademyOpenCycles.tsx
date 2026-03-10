@@ -99,8 +99,6 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
         {cycles.map(cycle => {
           const hasApplied = appliedCycles.has(cycle.id);
           const deadlinePassed = isDeadlinePassed(cycle);
-          const isExpanded = expandedCycleId === cycle.id;
-          const showSuccess = successCycleId === cycle.id;
           const canApply = !hasApplied && !deadlinePassed;
 
           return (
