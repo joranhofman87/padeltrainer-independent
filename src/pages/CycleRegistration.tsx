@@ -334,10 +334,11 @@ export default function CycleRegistration() {
             <CardContent className="pt-6 space-y-4">
               {/* Owner info */}
               <div className="flex items-center gap-3">
-                {owner?.logo_url && (
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={owner.logo_url} alt={owner.name} />
-                    <AvatarFallback>
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback>
+                    {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
+                  </AvatarFallback>
+                </Avatar>
                       {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
                     </AvatarFallback>
                   </Avatar>
