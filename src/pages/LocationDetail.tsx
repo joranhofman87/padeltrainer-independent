@@ -530,6 +530,7 @@ export default function LocationDetail() {
             <LocationOpenCycles
               locationId={location.id}
               locationName={location.name}
+              clubSlug={clubProfile?.id}
             />
 
             {/* Waiting List Card */}
