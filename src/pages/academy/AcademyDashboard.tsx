@@ -9,6 +9,7 @@ import {
   Eye,
   Clock,
   AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +24,7 @@ import { format } from 'date-fns';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 
 export default function AcademyDashboard() {
-  const { t } = useTranslation('academy');
+  const { t, i18n } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
   const navigate = useNavigate();
   const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
@@ -300,9 +301,17 @@ export default function AcademyDashboard() {
             <CardTitle className="text-3xl">{stats.viewsLast30Days}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {t('stats.last30Days')}
-            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="p-0 h-auto"
+              onClick={() => {
+                const lang = i18n.language || 'nl';
+                window.open(`/${lang}/academies/${activeAcademy?.slug}`, '_blank');
+              }}
+            >
+              {t('dashboard.viewProfile', 'View profile')} <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
       </div>

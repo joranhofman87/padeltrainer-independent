@@ -206,55 +206,48 @@ export default function AcademyProfile() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Banner Upload */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ImageIcon className="h-5 w-5" />
-              {t('profile.banner')}
-            </CardTitle>
-            <CardDescription>
-              {t('profile.bannerDescription')}
-              <br />
-              <span className="text-xs">{t('profile.bannerSizeHint')}</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {activeAcademy.banner_url ? (
-              <AspectRatio ratio={3 / 1} className="bg-muted rounded-lg overflow-hidden">
-                <img
-                  src={activeAcademy.banner_url}
-                  alt="Academy banner"
-                  className="object-cover w-full h-full"
-                  loading="lazy"
-                />
-              </AspectRatio>
-            ) : (
-              <AspectRatio ratio={3 / 1} className="bg-muted rounded-lg flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <ImageIcon className="h-12 w-12 mx-auto mb-2" />
-                  <p className="text-sm">{t('profile.noBanner')}</p>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              {activeAcademy.banner_url ? (
+                <div className="w-32 h-12 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                  <img
+                    src={activeAcademy.banner_url}
+                    alt="Academy banner"
+                    className="object-cover w-full h-full"
+                    loading="lazy"
+                  />
                 </div>
-              </AspectRatio>
-            )}
-            <input
-              ref={bannerInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleBannerUpload}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => bannerInputRef.current?.click()}
-              disabled={bannerUploading}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              {bannerUploading
-                ? t('common.saving')
-                : activeAcademy.banner_url
-                ? t('profile.changeBanner')
-                : t('profile.uploadBanner')}
-            </Button>
+              ) : (
+                <div className="w-32 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{t('profile.banner')}</p>
+                <p className="text-xs text-muted-foreground">{t('profile.bannerSizeHint')}</p>
+              </div>
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleBannerUpload}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => bannerInputRef.current?.click()}
+                disabled={bannerUploading}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {bannerUploading
+                  ? t('common.saving')
+                  : activeAcademy.banner_url
+                  ? t('profile.changeBanner')
+                  : t('profile.uploadBanner')}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
