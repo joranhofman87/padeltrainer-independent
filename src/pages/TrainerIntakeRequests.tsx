@@ -193,6 +193,12 @@ export default function TrainerIntakeRequests() {
               {t('intakeRequests.addManual')}
             </Button>
             {proposedCount > 0 && (
+              <Button variant="outline" onClick={() => setShowResetConfirm(true)} disabled={isResetting}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {t('proposals.reset', { defaultValue: 'Reset proposals' })}
+              </Button>
+            )}
+            {proposedCount > 0 && (
               <Button variant="outline">
                 <CheckCheck className="mr-2 h-4 w-4" />
                 {t('proposals.approveAll')}
