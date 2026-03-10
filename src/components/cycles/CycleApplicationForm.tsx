@@ -604,7 +604,7 @@ export default function CycleApplicationForm({
               />
             )}
 
-            {locations.length > 1 && (
+            {!cycle.location_id && locations.length > 1 && (
               <FormField
                 control={form.control}
                 name="location_id"
