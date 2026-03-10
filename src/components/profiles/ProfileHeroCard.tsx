@@ -102,10 +102,11 @@ export function ProfileHeroCard({
           <div className="flex flex-col lg:flex-row gap-8">
             {/* Avatar with video play button */}
             <div className="relative mx-auto lg:mx-0">
-              <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl">
+              <Avatar className="h-36 w-36 ring-4 ring-background shadow-xl bg-muted">
                 <AvatarImage 
                   src={avatarUrl || undefined} 
                   alt={avatarAlt || `${name} profile photo`}
+                  className="object-cover"
                 />
                 <AvatarFallback className="text-4xl bg-primary text-primary-foreground">
                   {getInitials(name)}
