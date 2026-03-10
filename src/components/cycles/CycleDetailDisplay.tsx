@@ -6,6 +6,7 @@ import type { Cycle, PriceTableRow } from '@/lib/cycles';
 
 interface CycleDetailDisplayProps {
   cycle: Cycle;
+  hideLocation?: boolean;
 }
 
 export default function CycleDetailDisplay({ cycle }: CycleDetailDisplayProps) {
