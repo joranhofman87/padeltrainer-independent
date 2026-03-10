@@ -290,6 +290,20 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* Registrations */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.registrations", "Registrations")}>
+                  <NavLink
+                    to="/app/club/registrations"
+                    className="flex items-center gap-2"
+                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.registrations", "Registrations")}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               {/* Tournaments */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.tournaments")}>

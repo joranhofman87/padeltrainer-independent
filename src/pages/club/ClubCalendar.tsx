@@ -8,7 +8,7 @@ import {
   addWeeks,
   subWeeks,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
-import { ClubAddSlotDialog, ClubBulkCreateSheet } from "@/components/club/ClubAddSlotDialog";
+import { ClubAddSlotDialog } from "@/components/club/ClubAddSlotDialog";
 import { supabase } from "@/lib/supabaseClient";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
@@ -71,7 +71,6 @@ export default function ClubCalendar() {
   
   // Dialog states
   const [addSlotDialogOpen, setAddSlotDialogOpen] = useState(false);
-  const [bulkCreateSheetOpen, setBulkCreateSheetOpen] = useState(false);
   const [clickedDate, setClickedDate] = useState<Date | undefined>();
   const [clickedTime, setClickedTime] = useState<string | undefined>();
 
@@ -242,11 +241,6 @@ export default function ClubCalendar() {
                   <Plus className="h-4 w-4 mr-1" />
                   {t("calendar.addSlot", "Add Slot")}
                 </Button>
-                
-                <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => { setClickedDate(undefined); setClickedTime(undefined); setBulkCreateSheetOpen(true); }}>
-                  <Repeat className="h-4 w-4 mr-1" />
-                  {t("calendar.createCyclus", "Create Cyclus")}
-                </Button>
               </div>
             </div>
           </CardHeader>
@@ -285,19 +279,6 @@ export default function ClubCalendar() {
         onSlotsCreated={() => fetchSlots()}
       />
 
-      {/* Bulk Create Sheet */}
-      <ClubBulkCreateSheet
-        open={bulkCreateSheetOpen}
-        onOpenChange={setBulkCreateSheetOpen}
-        trainers={trainers.map(t => ({ id: t.id, name: t.name }))}
-        defaultTrainerId={selectedTrainerId !== "all" ? selectedTrainerId : undefined}
-        defaultDate={clickedDate}
-        defaultTime={clickedTime}
-        defaultDuration={60}
-        defaultWeeks={8}
-        clubLocationId={clubLocationId || undefined}
-        onSlotsCreated={() => fetchSlots()}
-      />
     </div>
   );
 }

@@ -117,6 +117,7 @@ const ClubTrainers = lazy(() => import('@/pages/club/ClubTrainers'));
 const ClubProfile = lazy(() => import('@/pages/club/ClubProfile'));
 const ClubCalendar = lazy(() => import('@/pages/club/ClubCalendar'));
 const ClubTournaments = lazy(() => import('@/pages/club/ClubTournaments'));
+const ClubCycles = lazy(() => import('@/pages/club/ClubCycles'));
 const ClubSettings = lazy(() => import('@/pages/club/ClubSettings'));
 const ClubSubscription = lazy(() => import('@/pages/club/ClubSubscription'));
 const ClubTrainerInvitation = lazy(() => import('@/pages/club/ClubTrainerInvitation'));
@@ -242,6 +243,7 @@ export function DomainRouter() {
           <Route path="players" element={<ClubPlayers />} />
           <Route path="trainers" element={<ClubTrainers />} />
           <Route path="calendar" element={<ClubCalendar />} />
+          <Route path="registrations" element={<ClubCycles />} />
           
           <Route path="tournaments" element={<ClubTournaments />} />
           <Route path="settings" element={<ClubSettings />} />
