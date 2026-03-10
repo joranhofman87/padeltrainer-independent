@@ -300,6 +300,8 @@ export function DomainRouter() {
           <Route path="locations/:slug" element={<LocationDetail />} />
           <Route path="academies" element={<Academies />} />
           <Route path="academies/:slug" element={<AcademyPublicProfile />} />
+          <Route path="academies/:slug/register/:cycleId" element={<BrandedCycleRegistration ownerType="academy" />} />
+          <Route path="clubs/:slug/register/:cycleId" element={<BrandedCycleRegistration ownerType="club" />} />
           <Route path="book/:trainerId" element={<BookLesson />} />
           <Route path="register/:cycleId" element={<CycleRegistration />} />
         </Route>

@@ -27,10 +27,11 @@ interface TrainerOption {
   name: string;
 }
 
-export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesProps) {
+export function AcademyOpenCycles({ academyId, academyName, academySlug }: AcademyOpenCyclesProps) {
   const { t, i18n } = useTranslation(['cycles', 'common']);
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const { lang } = useParams<{ lang: string }>();
   
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
