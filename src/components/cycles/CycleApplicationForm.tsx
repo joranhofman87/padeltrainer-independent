@@ -783,6 +783,13 @@ export default function CycleApplicationForm({
           </Card>
         )}
 
+        <TermsAcceptance
+          terms={cycleTerms}
+          loading={termsLoading}
+          accepted={termsAccepted}
+          onAcceptChange={setTermsAccepted}
+        />
+
         {/* Submit */}
         <div className="flex gap-3">
           {onCancel && (
