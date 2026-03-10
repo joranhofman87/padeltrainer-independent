@@ -1,248 +1,130 @@
 
 
-# Growth Hacks & Quick Wins Plan
+# Performance Audit Report — Launch Readiness
 
-## Current State Analysis
+## Executive Summary
 
-I've examined the codebase and identified several untapped growth opportunities:
+The homepage takes **~5 seconds to show any content** (First Contentful Paint: 4.99s). For non-technical users on slower connections, this will feel broken. There are 20 API calls on the homepage alone, several taking 1-2.5 seconds each. The entire i18n bundle (5 languages x 11 namespaces = 55 JSON files) loads eagerly on every page, even if the user only needs Dutch.
 
-**Strengths:**
-- Solid SEO foundation with sitemap, structured data, hreflang
-- PostHog analytics and event tracking in place
-- Social sharing on trainer profiles (WhatsApp, LinkedIn, Twitter)
-- Follow functionality for trainers
-- PWA manifest exists
-- Referral system integrated (Reditus)
-- Sponsor banner system just implemented
-
-**Gaps:**
-- No review request flow after bookings
-- Google Reviews data exists but not displayed
-- No email capture on marketing pages
-- No exit-intent capture
-- BookingSuccess page doesn't ask for reviews or encourage shares
-- No viral referral mechanics in booking flow
-- PWA not optimized for app-like experience
-- No social proof widgets (live booking feed, counter)
-- Newsletter/lead magnets missing
+**Overall verdict: Not launch-ready for a consumer audience without the fixes below.**
 
 ---
 
-## Recommended Growth Hacks (by impact)
+## Critical Issues (Must Fix Before Launch)
 
-### 1. **Post-Booking Review Request** (HIGH IMPACT)
-**Problem:** After a successful booking, players see a generic success page. No review collection, no social sharing prompt.
+### 1. First Contentful Paint: 5 seconds — users will bounce
 
-**Solution:**
-- Add a "How was your experience?" card to `BookingSuccess.tsx` 
-- For first booking: Ask for Google/platform review with direct link
-- For return bookings: Show trainer-specific review form
-- Include social share buttons: "I just booked a padel lesson with [Trainer]!"
-- Add referral incentive: "Get €5 off your next lesson when a friend books"
+**Measured:** FCP = 4,992ms, DOM Content Loaded = 4,823ms
 
-**Implementation:**
-- Modify `BookingSuccess.tsx` to include review CTA
-- Add review dialog component
-- Create edge function `request-review-email` (7-day follow-up)
-- Track conversion with PostHog
+**Root cause:** 250 resources load before anything paints. The critical render chain includes:
+- React DOM (166KB)
+- lucide-react (157KB) — the entire icon library
+- react-router-dom (96KB)
+- framer-motion (90KB)
+- Supabase client (83KB)
+- All 55 i18n JSON files (every language, every namespace)
 
----
+**Fix:** 
+- Lazy-load i18n — only load the active language on startup, load others on demand
+- The `lucide-react` import is pulling the entire icon set (157KB). This is a Vite dev-mode artifact that resolves in production builds, but should be verified in the published build.
 
-### 2. **Display Google Reviews on Location Pages** (HIGH IMPACT)
-**Problem:** The database stores `google_rating` and `google_review_count` for 1400+ locations but this social proof isn't displayed anywhere.
+### 2. Duplicate API calls — every request fires twice
 
-**Solution:**
-- Show Google rating stars + review count on `LocationDetail.tsx`
-- Add "Read reviews on Google" link with UTM tracking
-- Show top review snippets if available
-- Include in location cards on `Trainers.tsx` search results
+**Evidence from network log:** The locations endpoint fires **4 times** (937ms–2,550ms each). `academy_profiles_public`, `banner_placements`, `club_profiles`, and `trainer_profiles_safe` all fire **twice each**.
 
-**Files:** `src/pages/LocationDetail.tsx`, `src/components/locations/LocationCard.tsx`
+**Root cause:** `HomeFeaturedSections` and other home page sections use raw `useEffect` + direct Supabase calls. When React StrictMode double-mounts in dev, these fire twice. But more critically, `HomeFeaturedSections` calls `getActiveLocations()` AND the `Locations`-related components on the home page likely also call it independently.
 
----
+**Fix:**
+- Wrap `HomeFeaturedSections` data fetching in `useQuery` with proper query keys — TanStack Query deduplicates identical in-flight requests automatically
+- The `getActiveLocations()` call fetches `SELECT *` on all locations (every column). The homepage only needs `id, name, city, slug, logo_url`. Selecting only needed columns reduces payload significantly.
 
-### 3. **Exit-Intent Email Capture** (MEDIUM-HIGH IMPACT)
-**Problem:** Marketing pages have no email capture. Visitors leave without any follow-up mechanism.
+### 3. Locations query is the slowest request (2.5 seconds)
 
-**Solution:**
-- Add exit-intent modal on `/nl`, `/en`, `/trainers` pages
-- Offer lead magnet: "Free Padel Training Guide" or "€10 off first lesson"
-- Simple form: email + language preference
-- Store in new `email_subscribers` table with double opt-in
-- Send weekly newsletter with new trainers, tips, promotions
+`SELECT * FROM locations WHERE is_active = true` takes up to 2.5 seconds and returns all rows with all columns. This is the single biggest bottleneck.
 
-**Implementation:**
-- Create `<ExitIntentModal>` component with `beforeunload` / mouse-leave detection
-- Add `email_subscribers` table with RLS
-- Create `subscribe-newsletter` edge function
-- Add to `Home.tsx`, `Trainers.tsx`, `TrainersCity.tsx`
+**Fix:**
+- Add a database index on `locations(is_active)` if not present
+- For the homepage, select only the columns needed: `id, name, city, slug, logo_url`
+- Consider a `locations_summary` view or materialized view for public-facing pages
+
+### 4. i18n loads ALL 5 languages eagerly (55 JSON files in initial bundle)
+
+Every user downloads Dutch, English, Spanish, German, AND French translation files on first load — even though they only need one language. This adds significant weight to the initial JS bundle.
+
+**Fix:** Use dynamic `import()` for non-active languages. Load only the detected language on init, lazy-load others when the user switches via `LanguageSwitcher`.
 
 ---
 
-### 4. **Live Social Proof Widget** (MEDIUM IMPACT)
-**Problem:** Static testimonials don't create urgency or FOMO.
+## High Priority Issues
 
-**Solution:**
-- Add floating toast notification: "Anna just booked a lesson in Amsterdam" (real-time)
-- Show counter: "1,234 lessons booked this month"
-- Display on homepage and trainer directory
-- Use `banner_events` table impressions + clicks OR create new `social_proof_events` stream
+### 5. HomeFeaturedSections has a waterfall pattern
 
-**Implementation:**
-- Create `<LiveBookingToast>` component with Supabase Realtime subscription to `bookings` table
-- Add aggregate query for monthly booking count
-- Show on `Home.tsx` and `Trainers.tsx`
+The data fetching in `HomeFeaturedSections` does:
+1. First parallel batch: trainers, academies, locations, claimed IDs (1-2.5s)
+2. Then sequentially: profiles + ratings for trainers (200ms each)
+3. Then: club_profiles_public (200ms)
 
----
+Steps 2-3 can't start until step 1 finishes. That's a 3+ second waterfall before the featured sections can render.
 
-### 5. **Enhanced PWA with Install Prompt** (MEDIUM IMPACT)
-**Problem:** PWA manifest exists but no install prompts or app-like features.
+**Fix:** Flatten the waterfall — fetch profiles/ratings/club_profiles in the same initial `Promise.all` where possible, or use a database view that joins trainer + profile + rating data.
 
-**Solution:**
-- Add "Install App" banner for mobile users (iOS + Android)
-- Improve manifest: better icons, shortcuts, categories
-- Add offline fallback page
-- Push notifications for followed trainers' new slots (requires user opt-in)
+### 6. No loading skeleton for above-the-fold content
 
-**Implementation:**
-- Create `<InstallPWAPrompt>` component with `beforeinstallprompt` event
-- Update `manifest.json` with shortcuts (bookings, trainers, account)
-- Add service worker for offline support
-- Request notification permission after first booking
+The `HeroSection` renders static content immediately (good), but `HomeFeaturedSections` shows a full skeleton until all data loads. Users scrolling down will see a loading state for 3+ seconds.
+
+**Fix:** Already using skeletons, which is fine. But consider rendering featured sections with `Suspense` boundaries individually so trainers can appear before locations finish loading.
+
+### 7. Auth provider runs on marketing pages unnecessarily
+
+`MarketingLayout` calls `useAuth()` just to check if the user is logged in (for showing "Dashboard" vs "Sign in" buttons). This triggers the full auth initialization flow (Supabase `onAuthStateChange`) even for anonymous marketing visitors.
+
+**Fix:** This is likely acceptable since `onAuthStateChange` fires once quickly for anonymous users. But ensure it doesn't block rendering — currently it doesn't since `loading` isn't used to gate marketing content.
 
 ---
 
-### 6. **Booking Success Viral Loop** (MEDIUM IMPACT)
-**Problem:** BookingSuccess page has "Book Another Lesson" but no social/referral mechanics.
+## Medium Priority
 
-**Solution:**
-- Add prominent "Share & Get €5 Off" card
-- Pre-filled social share: "I just booked a padel lesson with [Trainer] on @padeltrainer! 🎾"
-- Show referral code: "Your friends get €10 off, you get €5 off"
-- Gamify: "Invite 3 friends → 1 free lesson"
+### 8. 3,224 DOM nodes on homepage
 
-**Files:** `src/pages/BookingSuccess.tsx`
+This is borderline high (Google recommends <1,500). The featured sections render up to 24 cards with motion wrappers, each containing multiple nested elements.
 
----
+### 9. No `loading="lazy"` on featured section images
 
-### 7. **Trainer Profile QR Codes** (LOW-MEDIUM IMPACT)
-**Problem:** Trainers can't easily share their profiles offline (courts, clubs, flyers).
+Avatar images in the featured trainers/academies/locations sections load eagerly even though they're below the fold.
 
-**Solution:**
-- Add "Download QR Code" button on `TrainerProfile.tsx` (trainer view)
-- Generate QR with profile URL + UTM params
-- Include in confirmation emails: "Share your profile with players at the club!"
+### 10. framer-motion on every card is expensive
 
-**Implementation:**
-- Add QR generation library (`qrcode.react`)
-- Create download function with canvas → PNG
-- Add to trainer settings page
+Each featured card is wrapped in `<motion.div>` with `whileInView` animations. With 24 cards, that's 24 IntersectionObservers + animation calculations. Consider using CSS animations or `@starting-style` for simple fade-ins.
 
 ---
 
-### 8. **Content Hub with SEO Blog** (HIGH LONG-TERM)
-**Already exists** (`/blog`) but not heavily promoted:
-- Add blog CTA on homepage
-- Link to articles from trainer profiles ("Read about padel techniques")
-- Create content series: "Beginner's Guide to Padel in [City]"
-- Internal linking from city pages to relevant blog posts
+## Implementation Plan
 
-**Quick Win:** Add blog link to footer + marketing nav
+### Phase 1: Eliminate duplicate requests (biggest quick win)
+- Convert `HomeFeaturedSections` to use `useQuery` hooks instead of raw `useEffect`
+- This alone will cut the 20 API calls roughly in half via deduplication
+- Add narrow column selects for the homepage locations query
 
----
+### Phase 2: Optimize the locations query
+- Add database index on `locations(is_active)` via migration
+- Create a lightweight query variant that selects only `id, name, city, slug, logo_url` for listing pages
 
-### 9. **Waitlist Viral Mechanics** (LOW-MEDIUM IMPACT)
-**Problem:** Waitlist exists for cycles but no referral incentive.
+### Phase 3: Lazy-load i18n
+- Refactor `src/i18n/index.ts` to only load the detected language eagerly
+- Load other languages on demand via `i18n.loadLanguages()` when the user switches
 
-**Solution:**
-- "Move up the waitlist by inviting friends"
-- Show position: "You're #12 in line. Share to jump ahead!"
-- Track referrals and bump positions
+### Phase 4: Flatten the data waterfall
+- Combine the sequential fetches in `HomeFeaturedSections` into a single parallel batch
+- Consider a Supabase view that joins `trainer_profiles_safe` + `profiles_public` + ratings
 
-**Files:** `src/pages/TrainerWaitingList.tsx`, `src/pages/CycleRegistration.tsx`
+### Phase 5: DOM/render optimizations
+- Add `loading="lazy"` to below-fold images
+- Replace `framer-motion` `whileInView` with CSS animations for cards
+- Reduce DOM depth in featured card components
 
----
-
-### 10. **Google My Business Integration** (MEDIUM IMPACT)
-**Problem:** Location pages have Google Maps URLs but no GMB API integration.
-
-**Solution:**
-- Fetch reviews via Google Places API
-- Display on `LocationDetail.tsx`
-- Auto-update `google_rating` weekly via cron edge function
-
-**Implementation:**
-- Add Google Places API key to secrets
-- Create `sync-google-reviews` edge function
-- Schedule with `pg_cron` or external cron job
-
----
-
-## Priority Matrix
-
-| Priority | Effort | Impact | Feature |
-|----------|--------|--------|---------|
-| P0 | Low | High | Post-Booking Review Request |
-| P0 | Low | High | Display Google Reviews |
-| P1 | Medium | High | Exit-Intent Email Capture |
-| P2 | Medium | Medium | Live Social Proof Widget |
-| P2 | Medium | Medium | Booking Success Viral Loop |
-| P3 | Low | Medium | Enhanced PWA Install |
-| P3 | Low | Low | Trainer QR Codes |
-| P4 | High | High | Google Places API Integration |
-
----
-
-## Quick Wins (Next 2 Hours)
-
-1. **Display Google Reviews** — Already in DB, just render on location pages
-2. **Post-Booking Review CTA** — Add 1 card to `BookingSuccess.tsx`
-3. **Blog Promo** — Add blog links to footer + nav
-4. **Social Share Buttons** — Enhance `BookingSuccess.tsx` with pre-filled tweets
-
----
-
-## Implementation Order
-
-**Phase 1 (Week 1):**
-1. Display Google Reviews on location pages
-2. Post-booking review request flow
-3. Blog promotion on homepage
-
-**Phase 2 (Week 2):**
-4. Exit-intent email capture
-5. Booking success viral loop
-6. Live social proof widget
-
-**Phase 3 (Week 3):**
-7. Enhanced PWA with install prompts
-8. Trainer QR codes
-9. Google Places API sync
-
----
-
-## Files to Create/Modify
-
-**New Components:**
-- `src/components/growth/ExitIntentModal.tsx`
-- `src/components/growth/LiveBookingToast.tsx`
-- `src/components/growth/ReviewRequestCard.tsx`
-- `src/components/growth/InstallPWAPrompt.tsx`
-- `src/components/growth/SocialShareCard.tsx`
-
-**Modify:**
-- `src/pages/BookingSuccess.tsx` (review + share CTAs)
-- `src/pages/LocationDetail.tsx` (Google reviews display)
-- `src/pages/marketing/Home.tsx` (exit-intent, live proof)
-- `src/components/locations/LocationCard.tsx` (rating stars)
-- `src/components/marketing/MarketingLayout.tsx` (blog links)
-
-**Database:**
-- `email_subscribers` table (email, locale, subscribed_at, confirmed, source)
-- `review_requests` table (booking_id, requested_at, completed_at, rating)
-
-**Edge Functions:**
-- `supabase/functions/subscribe-newsletter/index.ts`
-- `supabase/functions/request-review-email/index.ts`
-- `supabase/functions/sync-google-reviews/index.ts` (optional)
+### Files to modify:
+- `src/components/home/HomeFeaturedSections.tsx` — useQuery + narrow selects + flatten waterfall
+- `src/i18n/index.ts` — lazy language loading
+- `src/lib/locations.ts` — add lightweight query variant
+- Database migration — index on `locations(is_active)`
 
