@@ -9,7 +9,6 @@ import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
-import { SubscriptionOverlay } from '@/components/shared/SubscriptionOverlay';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { 
   checkAcademySubscription, 
