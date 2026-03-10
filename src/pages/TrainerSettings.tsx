@@ -157,20 +157,20 @@ export default function TrainerSettings() {
     ? getTrialDaysRemaining(subscription.trialEndsAt) 
     : 0;
   const canToggleVisibility = subscription ? (canBeVisible(subscription) || inPaidAcademy) : false;
-  const isTrialActive = subscription?.isInTrial && !subscription?.isSubscribed;
-  const isSubscribed = subscription?.isSubscribed;
+  const isTrialActive = subscription?.isInTrial;
+  const isSubscribed = subscription?.isSubscribed && !subscription?.isInTrial;
 
   const getVisibilityStatus = () => {
+    if (isTrialActive && !inPaidAcademy) {
+      return {
+        message: t('settings.trialNoVisibility', 'Upgrade to a paid plan to appear in the marketplace.'),
+        type: 'warning' as const,
+      };
+    }
     if (!canToggleVisibility) {
       return {
         message: t('settings.trialExpiredMessage', 'Your trial has ended. Subscribe to be visible to players.'),
         type: 'warning' as const,
-      };
-    }
-    if (isPublic && isTrialActive) {
-      return {
-        message: t('settings.visibleTrialMessage', 'Your profile is visible. {{days}} days left in your trial.', { days: trialDaysRemaining }),
-        type: 'info' as const,
       };
     }
     if (isPublic && isSubscribed) {
