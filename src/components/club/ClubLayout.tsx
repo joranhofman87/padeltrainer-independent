@@ -134,6 +134,13 @@ export default function ClubLayout() {
   const isSubscriptionExpired = subscription?.trialExpired && !subscription?.isSubscribed;
   const isOnSubscriptionPage = location.pathname === '/app/club/subscription';
 
+  // Redirect to subscription page when expired
+  useEffect(() => {
+    if (!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage) {
+      navigate('/app/club/subscription', { replace: true });
+    }
+  }, [subscriptionLoading, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background">
