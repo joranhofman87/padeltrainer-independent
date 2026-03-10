@@ -117,7 +117,7 @@ export default function ClubLayout() {
 
   useEffect(() => {
     fetchSubscription();
-    const interval = setInterval(fetchSubscription, 60000);
+    const interval = setInterval(fetchSubscription, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [activeClub]);
 
