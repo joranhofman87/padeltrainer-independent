@@ -323,7 +323,7 @@ export default function CycleRegistration() {
               )}
               <div>
                 <p className="text-sm text-muted-foreground">
-                  {owner?.type === 'club' ? 'Club' : 'Trainer'}
+                  {owner?.type === 'academy' ? 'Academy' : owner?.type === 'club' ? 'Club' : 'Trainer'}
                 </p>
                 <p className="font-medium">{owner?.name}</p>
               </div>
