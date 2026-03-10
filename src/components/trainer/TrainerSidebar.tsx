@@ -57,7 +57,11 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/Logo";
 
-export function TrainerSidebar() {
+interface TrainerSidebarProps {
+  isExpired?: boolean;
+}
+
+export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   const { t, i18n } = useTranslation("trainer");
   const navigate = useNavigate();
   const location = useLocation();
