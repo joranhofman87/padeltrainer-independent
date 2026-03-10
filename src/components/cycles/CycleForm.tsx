@@ -302,6 +302,7 @@ export default function CycleForm({
         // Event-specific
         payment_methods: isEvent ? eventPaymentMethod : undefined,
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
+        success_message: values.success_message?.trim() || undefined,
       };
 
       // For cyclus, auto-generate name from day + time
