@@ -280,7 +280,7 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .order('start_date', { ascending: true });
 
   if (error) throw error;
-  return (data || []) as Cycle[];
+  return (data || []).map(toCycle);
 }
 
 // Fetch all open cycles for a location (from trainers + academies at that location)
