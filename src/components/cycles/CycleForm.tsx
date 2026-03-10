@@ -732,7 +732,7 @@ export default function CycleForm({
                     <FormItem>
                       <FormLabel>{t('form.applicableTrainers')}</FormLabel>
                       <FormDescription className="text-xs">
-                        {t('form.applicableTrainersHelp')}
+                        {isRegistration ? t('form.registrationApplicableTrainersHelp') : t('form.applicableTrainersHelp')}
                       </FormDescription>
                       {filteredTrainers.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-2">
