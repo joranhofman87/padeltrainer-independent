@@ -188,6 +188,7 @@ export default function ClubCycles() {
           onDuplicate={handleDuplicate}
           onDeleted={fetchCycles}
           ownerType="club"
+          ownerSlug={activeClub.id}
         />
       )}
 

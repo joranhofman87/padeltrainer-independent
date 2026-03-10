@@ -113,7 +113,12 @@ export default function CyclesTable({
 
   const handleCopyLink = (cycle: Cycle) => {
     const lang = i18n.language || 'nl';
-    const url = getMarketingUrl(`register/${cycle.id}`, lang);
+    let path = `register/${cycle.id}`;
+    if (ownerSlug) {
+      if (ownerType === 'club') path = `clubs/${ownerSlug}/register/${cycle.id}`;
+      else if (ownerType === 'academy') path = `academies/${ownerSlug}/register/${cycle.id}`;
+    }
+    const url = getMarketingUrl(path, lang);
     navigator.clipboard.writeText(url);
     toast.success(t('actions.linkCopied'));
   };
