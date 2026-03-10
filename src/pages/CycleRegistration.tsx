@@ -339,10 +339,6 @@ export default function CycleRegistration() {
                     {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
                   </AvatarFallback>
                 </Avatar>
-                      {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
                   <p className="font-semibold text-lg">{owner?.name}</p>
