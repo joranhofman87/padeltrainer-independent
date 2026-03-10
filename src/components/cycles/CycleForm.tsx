@@ -399,7 +399,7 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.description', 'Description')}</FormLabel>
                     <FormControl>
-                      <Textarea {...field} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} rows={3} />
+                      <RichTextEditor value={field.value || ''} onChange={field.onChange} placeholder={t('form.descriptionPlaceholder', 'Describe the event...')} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
