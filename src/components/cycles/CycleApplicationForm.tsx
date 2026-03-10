@@ -496,36 +496,27 @@ export default function CycleApplicationForm({
                   <div className="grid grid-cols-2 gap-2">
                     {allowedLessonTypes.map(type => {
                       const isChecked = field.value?.includes(type) ?? false;
+                      const toggle = () => {
+                        const current = field.value || [];
+                        const updated = current.includes(type)
+                          ? current.filter((v: string) => v !== type)
+                          : [...current, type];
+                        field.onChange(updated);
+                      };
                       return (
                         <div
                           key={type}
                           className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                          onClick={() => {
-                            const current = field.value || [];
-                            const updated = current.includes(type)
-                              ? current.filter((v: string) => v !== type)
-                              : [...current, type];
-                            field.onChange(updated);
-                          }}
+                          onClick={toggle}
                         >
                           <Checkbox
-                            id={`lesson-type-${type}`}
                             checked={isChecked}
-                            onCheckedChange={(checked) => {
-                              const current = field.value || [];
-                              const updated = checked
-                                ? [...current, type]
-                                : current.filter((v: string) => v !== type);
-                              field.onChange(updated);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
+                            tabIndex={-1}
+                            className="pointer-events-none"
                           />
-                          <label 
-                            htmlFor={`lesson-type-${type}`}
-                            className="font-normal cursor-pointer flex-1 m-0 text-sm"
-                          >
+                          <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
                             {t(`application.form.lessonTypes.${type}`)}
-                          </label>
+                          </span>
                         </div>
                       );
                     })}
