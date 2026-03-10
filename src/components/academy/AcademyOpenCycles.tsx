@@ -252,7 +252,6 @@ export function AcademyOpenCycles({ academyId, academyName }: AcademyOpenCyclesP
                         />
                       )
                     )}
-                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
