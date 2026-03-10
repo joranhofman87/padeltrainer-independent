@@ -233,7 +233,7 @@ export async function getCycles(ownerType: 'trainer' | 'club' | 'academy', owner
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as Cycle[];
+  return (data || []).map(toCycle);
 }
 
 // Get cycles with intake request counts
