@@ -25,6 +25,8 @@
     "closed": "Cerrado",
     "archived": "Archivado"
   },
+  "editRegistration": "Editar inscripción",
+  "deleteRegistration": "Eliminar inscripción",
   "form": {
     "name": "Nombre del ciclo",
     "namePlaceholder": "ej. Ciclo de primavera 2026",
