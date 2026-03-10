@@ -99,6 +99,9 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
     if (cycle.owner_type === 'academy' && academySlugs[cycle.owner_id]) {
       return getMarketingPath(`academies/${academySlugs[cycle.owner_id]}/register/${cycle.id}`, currentLang);
     }
+    if (cycle.owner_type === 'trainer' && trainerAcademySlugs[cycle.owner_id]) {
+      return getMarketingPath(`academies/${trainerAcademySlugs[cycle.owner_id]}/register/${cycle.id}`, currentLang);
+    }
     return getMarketingPath(`register/${cycle.id}`, currentLang);
   };
 
