@@ -114,7 +114,7 @@ export default function AcademyLayout() {
     fetchSubscription();
     
     // Refresh subscription every 60 seconds
-    const interval = setInterval(fetchSubscription, 60000);
+    const interval = setInterval(fetchSubscription, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [activeAcademy]);
 
