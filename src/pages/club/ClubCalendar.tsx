@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
-import { ClubAddSlotDialog, ClubBulkCreateSheet } from "@/components/club/ClubAddSlotDialog";
+import { ClubAddSlotDialog } from "@/components/club/ClubAddSlotDialog";
 import { supabase } from "@/lib/supabaseClient";
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
