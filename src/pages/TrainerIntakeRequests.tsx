@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Sparkles, CheckCheck, UserPlus } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { ArrowLeft, Sparkles, CheckCheck, UserPlus, List, CalendarDays } from 'lucide-react';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
@@ -17,6 +18,7 @@ import {
   type IntakeRequestWithProposal,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
+import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
@@ -39,6 +41,7 @@ export default function TrainerIntakeRequests() {
   const [showWizard, setShowWizard] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [viewMode, setViewMode] = useState<string>('list');
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -187,34 +190,52 @@ export default function TrainerIntakeRequests() {
         </div>
       </div>
 
-      {/* Status Filter Tabs */}
-      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-        <TabsList>
-          <TabsTrigger value="all">
-            {t('intakeRequests.filters.all')} ({requests.length})
-          </TabsTrigger>
-          <TabsTrigger value="new">
-            {t('intakeRequests.filters.new')} ({newCount})
-          </TabsTrigger>
-          <TabsTrigger value="proposed">
-            {t('intakeRequests.filters.proposed')} ({proposedCount})
-          </TabsTrigger>
-          <TabsTrigger value="confirmed">
-            {t('intakeRequests.filters.confirmed')}
-          </TabsTrigger>
-          <TabsTrigger value="waitlist">
-            {t('intakeRequests.filters.waitlist')}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Status Filter Tabs + View Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+          <TabsList>
+            <TabsTrigger value="all">
+              {t('intakeRequests.filters.all')} ({requests.length})
+            </TabsTrigger>
+            <TabsTrigger value="new">
+              {t('intakeRequests.filters.new')} ({newCount})
+            </TabsTrigger>
+            <TabsTrigger value="proposed">
+              {t('intakeRequests.filters.proposed')} ({proposedCount})
+            </TabsTrigger>
+            <TabsTrigger value="confirmed">
+              {t('intakeRequests.filters.confirmed')}
+            </TabsTrigger>
+            <TabsTrigger value="waitlist">
+              {t('intakeRequests.filters.waitlist')}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-      {/* Requests Table */}
-      <IntakeRequestsTable
-        requests={filteredRequests}
-        onRowClick={setSelectedRequest}
-        emptyMessage={t('intakeRequests.noRequests')}
-        emptyDescription={t('intakeRequests.noRequestsDescription')}
-      />
+        <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
+          <ToggleGroupItem value="list" aria-label="List view">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="schedule" aria-label="Schedule view">
+            <CalendarDays className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {/* Requests Table or Schedule Grid */}
+      {viewMode === 'list' ? (
+        <IntakeRequestsTable
+          requests={filteredRequests}
+          onRowClick={setSelectedRequest}
+          emptyMessage={t('intakeRequests.noRequests')}
+          emptyDescription={t('intakeRequests.noRequestsDescription')}
+        />
+      ) : (
+        <ProposalScheduleGrid
+          requests={filteredRequests}
+          onBlockClick={setSelectedRequest}
+        />
+      )}
 
       {/* Detail Sheet */}
       <IntakeRequestDetailSheet

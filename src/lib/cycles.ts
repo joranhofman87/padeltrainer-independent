@@ -115,6 +115,9 @@ export interface ProposalDetails {
   slot_day: string;      // e.g., "Monday"
   slot_time: string;     // e.g., "12:00 - 13:00"
   slot_date: string;     // e.g., "Feb 16"
+  slot_start: string;    // ISO timestamp
+  slot_end: string;      // ISO timestamp
+  trainer_id: string;
   trainer_name: string;
   trainer_avatar?: string | null;
   confidence_score: number;
@@ -542,6 +545,9 @@ export async function getIntakeRequestsWithProposals(
         slot_day: format(new Date(proposal.slot.start_time), 'EEEE'),
         slot_time: `${format(new Date(proposal.slot.start_time), 'HH:mm')} - ${format(new Date(proposal.slot.end_time), 'HH:mm')}`,
         slot_date: format(new Date(proposal.slot.start_time), 'MMM d'),
+        slot_start: proposal.slot.start_time,
+        slot_end: proposal.slot.end_time,
+        trainer_id: proposal.trainer_id,
         trainer_name: trainerName || 'Unknown',
         trainer_avatar: trainerAvatar,
         confidence_score: proposal.confidence_score || 0,
