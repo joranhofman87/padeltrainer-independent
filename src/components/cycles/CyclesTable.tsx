@@ -342,7 +342,7 @@ export default function CyclesTable({
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onEdit(cycle)}>
                           <Edit className="h-4 w-4 mr-2" />
-                          {t('editCycle')}
+                          {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleViewRequests(cycle)}>
                           <Users className="h-4 w-4 mr-2" />
