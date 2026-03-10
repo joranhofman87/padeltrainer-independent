@@ -115,6 +115,9 @@ export interface ProposalDetails {
   slot_day: string;      // e.g., "Monday"
   slot_time: string;     // e.g., "12:00 - 13:00"
   slot_date: string;     // e.g., "Feb 16"
+  slot_start: string;    // ISO timestamp
+  slot_end: string;      // ISO timestamp
+  trainer_id: string;
   trainer_name: string;
   trainer_avatar?: string | null;
   confidence_score: number;
