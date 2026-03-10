@@ -138,7 +138,7 @@ export default function CycleApplicationForm({
     full_name: z.string().min(2),
     email: z.string().email(),
     phone: z.string().optional(),
-    password: isGuest ? z.string().min(6, t('application.form.passwordMin', 'Password must be at least 6 characters')) : z.string().optional(),
+    password: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
@@ -162,7 +162,7 @@ export default function CycleApplicationForm({
       full_name: playerName || '',
       email: playerEmail || '',
       phone: playerPhone || '',
-      password: '',
+      
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_types: ['group'] as typeof LESSON_TYPES[number][],
@@ -196,26 +196,9 @@ export default function CycleApplicationForm({
       });
 
       if (isGuest) {
-        // Guest flow: signup then submit via edge function
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: values.email,
-          password: values.password!,
-          options: {
-            data: {
-              full_name: values.full_name,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        if (!signUpData.user) throw new Error('Signup failed');
-
-        // Wait for profile trigger
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // Submit intake via edge function (uses service role, bypasses RLS)
+        // Guest flow: edge function handles account creation + intake
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {
-            userId: signUpData.user.id,
             email: values.email,
             fullName: values.full_name,
             phone: values.phone,
@@ -740,15 +723,15 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Create Account - shown at the end for guest users */}
+        {/* Email - shown at the end for guest users */}
         {isGuest && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">{t('application.form.createAccount', 'Create Your Account')}</CardTitle>
+              <CardTitle className="text-lg">{t('application.form.yourEmail', 'Your Email')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                {t('application.form.createAccountHelp', 'Choose a password to create your account. This lets you track your application and manage your bookings.')}
+                {t('application.form.yourEmailHelp', 'We\'ll send you a confirmation and a link to set up your account.')}
               </p>
               <FormField
                 control={form.control}
@@ -759,22 +742,6 @@ export default function CycleApplicationForm({
                     <FormControl>
                       <Input {...field} type="email" />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('application.form.password', 'Password')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} type="password" placeholder={t('application.form.passwordPlaceholder', 'Create a password')} />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      {t('application.form.passwordMin', 'Password must be at least 6 characters')}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
