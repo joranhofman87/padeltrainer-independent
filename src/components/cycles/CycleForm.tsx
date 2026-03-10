@@ -105,6 +105,8 @@ export default function CycleForm({
   const [maxParticipants, setMaxParticipants] = useState<number | ''>(
     (cycle?.settings as any)?.max_participants ?? ''
   );
+  const [terms, setTerms] = useState<string>(cycle?.terms || '');
+  const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
