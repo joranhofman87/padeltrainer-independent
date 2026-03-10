@@ -178,6 +178,58 @@ export default function CycleApplicationForm({
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
+      let currentPlayerId = playerId;
+      let currentPlayerUserId = playerUserId;
+
+      // Guest signup flow
+      if (isGuest) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: values.email,
+          password: values.password!,
+          options: {
+            data: {
+              full_name: values.full_name,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        if (!signUpData.user) throw new Error('Signup failed');
+
+        currentPlayerUserId = signUpData.user.id;
+
+        // Wait for profile trigger, then get profile id
+        // The handle_new_user trigger creates the profile
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', currentPlayerUserId)
+          .single();
+        
+        if (!profileData) throw new Error('Profile not created');
+        currentPlayerId = profileData.id;
+
+        // Set player role
+        await supabase
+          .from('user_roles')
+          .insert({ user_id: currentPlayerUserId, role: 'player' });
+        
+        // Update profile with phone/rating if provided
+        const profileUpdates: Record<string, any> = {};
+        if (values.phone) profileUpdates.phone = values.phone;
+        if (values.rating) {
+          profileUpdates.skill_rating = values.rating;
+          profileUpdates.rating_system = values.rating_system;
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', currentPlayerId);
+        }
+      }
+
       // Convert availability to TimeWindow[] format
       const timeWindows: TimeWindow[] = [];
       const preferredDays: string[] = [];
@@ -195,7 +247,7 @@ export default function CycleApplicationForm({
 
       await submitIntakeRequest({
         cycle_id: cycle.id,
-        player_id: playerId,
+        player_id: currentPlayerId,
         full_name: values.full_name,
         email: values.email,
         phone: values.phone,
@@ -212,20 +264,22 @@ export default function CycleApplicationForm({
         consent_given: values.consent,
       });
 
-      // Update player profile if rating/phone changed
-      const profileUpdates: Record<string, any> = {};
-      if (values.rating && values.rating !== playerRating) {
-        profileUpdates.skill_rating = values.rating;
-        profileUpdates.rating_system = values.rating_system;
-      }
-      if (values.phone && values.phone !== playerPhone) {
-        profileUpdates.phone = values.phone;
-      }
-      if (Object.keys(profileUpdates).length > 0) {
-        await supabase
-          .from('profiles')
-          .update(profileUpdates)
-          .eq('user_id', playerUserId);
+      // Update player profile if rating/phone changed (for logged-in users)
+      if (!isGuest) {
+        const profileUpdates: Record<string, any> = {};
+        if (values.rating && values.rating !== playerRating) {
+          profileUpdates.skill_rating = values.rating;
+          profileUpdates.rating_system = values.rating_system;
+        }
+        if (values.phone && values.phone !== playerPhone) {
+          profileUpdates.phone = values.phone;
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('user_id', currentPlayerUserId);
+        }
       }
 
       setIsSuccess(true);
