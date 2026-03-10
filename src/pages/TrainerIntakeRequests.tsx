@@ -127,6 +127,21 @@ export default function TrainerIntakeRequests() {
     }
   };
 
+  const handleResetProposals = async () => {
+    if (selectedCycleId === 'all') return;
+    setIsResetting(true);
+    try {
+      const result = await resetProposals(selectedCycleId);
+      toast.success(t('proposals.resetSuccess', { count: result.reset, defaultValue: `Reset ${result.reset} proposals` }));
+      setShowResetConfirm(false);
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
   const newCount = requests.filter(r => r.status === 'new').length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
