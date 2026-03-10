@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,31 +10,32 @@ import { ReferralWidget } from '@/components/ReferralWidget';
 import { getTrialDaysRemaining, SUBSCRIPTION_TIERS, STARTER_TIER } from '@/lib/subscription';
 import { getTrainerAcademy } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
+import { useQuery } from '@tanstack/react-query';
 
 export default function TrainerLayout() {
   const { t } = useTranslation('trainer');
   const navigate = useNavigate();
   const location = useLocation();
   const { user, role, roles, loading, subscription } = useAuth();
-  const [hasAcademy, setHasAcademy] = useState(false);
 
-  // Check academy membership
-  useEffect(() => {
-    const check = async () => {
-      if (user) {
-        const { data: trainerProfile } = await supabase
-          .from('trainer_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (trainerProfile) {
-          const academy = await getTrainerAcademy(trainerProfile.id);
-          setHasAcademy(!!academy);
-        }
-      }
-    };
-    check();
-  }, [user]);
+  // Check academy membership with caching
+  const { data: hasAcademy = false } = useQuery({
+    queryKey: ['trainer-has-academy', user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data: trainerProfile } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!trainerProfile) return false;
+      const academy = await getTrainerAcademy(trainerProfile.id);
+      return !!academy;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,  // cache for 5 minutes
+    gcTime: 10 * 60 * 1000,
+  });
 
   // Auth guard - use roles array to support dual-role trainers
   useEffect(() => {

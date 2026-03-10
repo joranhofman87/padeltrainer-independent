@@ -946,7 +946,7 @@ const handler = async (req: Request): Promise<Response> => {
           .eq("user_id", recipientUserId)
           .maybeSingle();
 
-        const frequency = prefs?.[prefColumn] || "instant";
+        const frequency = (prefs as Record<string, string> | null)?.[prefColumn] || "instant";
 
         if (frequency === "off") {
           console.log(`Notification ${type} suppressed for user ${recipientUserId} (preference: off)`);

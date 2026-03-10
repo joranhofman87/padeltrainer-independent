@@ -298,7 +298,13 @@ serve(async (req) => {
         }
       }
 
-      const subscriptionPayload: Record<string, unknown> = {
+    const subscriptionPayload: {
+        amount: string;
+        interval: string;
+        description: string;
+        metadata: Record<string, unknown>;
+        startDate?: string;
+      } = {
         amount: clubSubAmount,
         interval: billingCycle === "yearly" ? "12 months" : "1 month",
         description: `Club subscription - ${billingCycle}`,

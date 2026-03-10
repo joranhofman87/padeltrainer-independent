@@ -231,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const interval = setInterval(() => {
       fetchSubscription();
-    }, 60000);
+    }, 5 * 60 * 1000); // every 5 minutes instead of 60s
 
     return () => clearInterval(interval);
   }, [role, session?.access_token, fetchSubscription]);

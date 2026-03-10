@@ -1,11 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { signOut } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
 import { 
   Users, DollarSign, Clock, 
   Bell, Eye, ArrowRight,
@@ -18,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { getTrainerAcademy } from '@/lib/academy';
+import { useQuery } from '@tanstack/react-query';
 
 interface DashboardStats {
   totalStudents: number;
@@ -27,258 +25,204 @@ interface DashboardStats {
   profileViews: number;
 }
 
-export default function TrainerDashboard() {
-  const { user, profile, role, loading, subscription } = useAuth();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const { t } = useTranslation('trainer');
-  const [stats, setStats] = useState<DashboardStats>({
-    totalStudents: 0,
-    openSlots: 0,
-    monthlyEarnings: 0,
-    followerCount: 0,
-    profileViews: 0,
-  });
-  const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
+// --- Query functions ---
 
-  // Activity data
-  const [recentPlayers, setRecentPlayers] = useState<any[]>([]);
-  const [recentBookings, setRecentBookings] = useState<any[]>([]);
-  const [recentRegistrations, setRecentRegistrations] = useState<any[]>([]);
-  const [upcomingSlots, setUpcomingSlots] = useState<any[]>([]);
-  const [hasAcademy, setHasAcademy] = useState(false);
+async function fetchTrainerStats(userId: string): Promise<{ stats: DashboardStats; trainerId: string } | null> {
+  const { data: trainerProfile } = await supabase
+    .from('trainer_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
 
-  // Check academy membership
-  useEffect(() => {
-    const check = async () => {
-      if (trainerId) {
-        const academy = await getTrainerAcademy(trainerId);
-        setHasAcademy(!!academy);
-      }
-    };
-    check();
-  }, [trainerId]);
+  if (!trainerProfile) return null;
 
-  useEffect(() => {
-    if (user && role === 'trainer') {
-      fetchStats();
-    }
-  }, [user, role]);
+  const currentTrainerId = trainerProfile.id;
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
 
-  useEffect(() => {
-    if (trainerId) {
-      fetchActivityData();
-    }
-  }, [trainerId]);
-
-  const fetchActivityData = async () => {
-    if (!trainerId) return;
-    try {
-      const now = new Date().toISOString();
-
-      // Recent Players: combine guest_players + registered players from bookings
-      const { data: guestPlayers } = await supabase
-        .from('guest_players')
-        .select('id, full_name, email, skill_rating, rating_system, has_trained, created_at')
-        .eq('trainer_id', trainerId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      // Registered players who booked with this trainer
-      const { data: registeredBookings } = await supabase
-        .from('bookings')
-        .select(`
-          id, created_at, player_id,
-          profiles:player_id (id, full_name),
-          availability_slots!inner (trainer_id)
-        `)
-        .eq('availability_slots.trainer_id', trainerId)
-        .not('player_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      // Deduplicate registered players and merge with guest players
-      const seenPlayerIds = new Set<string>();
-      const registeredPlayers: any[] = [];
-      for (const b of registeredBookings || []) {
-        const profile = b.profiles as any;
-        if (profile?.id && !seenPlayerIds.has(profile.id)) {
-          seenPlayerIds.add(profile.id);
-          registeredPlayers.push({
-            id: profile.id,
-            full_name: profile.full_name || '—',
-            has_trained: true,
-            created_at: b.created_at,
-            _isRegistered: true,
-          });
-        }
-      }
-
-      // Merge: guest players + registered players, sort by created_at desc, take 10
-      const allPlayers = [...(guestPlayers || []), ...registeredPlayers]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10);
-
-      // Recent Bookings (last 10 by created_at)
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select(`
-          id, status, payment_status, created_at, player_id, guest_player_id,
-          profiles:player_id (full_name),
-          guest_players:guest_player_id (full_name),
-          availability_slots!inner (trainer_id, start_time, cyclus_name)
-        `)
-        .eq('availability_slots.trainer_id', trainerId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      // Registrations (intake_requests via cycles owned by trainer)
-      const { data: registrations } = await supabase
-        .from('intake_requests')
-        .select(`
-          id, full_name, status, created_at,
-          cycles!inner (owner_id, name)
-        `)
-        .eq('cycles.owner_id', trainerId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      // Upcoming Open Spots (next 10 available slots)
-      const { data: slots } = await supabase
-        .from('availability_slots')
-        .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, cyclus_id, locations:location_id (name)')
-        .eq('trainer_id', trainerId)
-        .eq('is_marked_full', false)
-        .gte('start_time', now)
-        .order('start_time', { ascending: true })
-        .limit(50);
-
-      // Group upcoming slots by cyclus_id
-      const rawSlots = slots || [];
-      const grouped: any[] = [];
-      const cyclusMap = new Map<string, any>();
-      for (const slot of rawSlots) {
-        if (slot.cyclus_id) {
-          if (!cyclusMap.has(slot.cyclus_id)) {
-            cyclusMap.set(slot.cyclus_id, { ...slot, sessionCount: 1 });
-            grouped.push(cyclusMap.get(slot.cyclus_id));
-          } else {
-            cyclusMap.get(slot.cyclus_id)!.sessionCount++;
-          }
-        } else {
-          grouped.push({ ...slot, sessionCount: 1 });
-        }
-      }
-
-      setRecentPlayers(allPlayers);
-
-      // Group bookings by cyclus + player to show cyclus bookings as one row
-      const rawBookings = bookings || [];
-      const groupedBookings: any[] = [];
-      const cyclusPlayerMap = new Map<string, any>();
-      for (const b of rawBookings) {
-        const slot = b.availability_slots as any;
-        const cyclusName = slot?.cyclus_name;
-        const playerId = (b as any).player_id || (b as any).guest_player_id || '';
-        if (cyclusName && playerId) {
-          const key = `${cyclusName}::${playerId}`;
-          if (!cyclusPlayerMap.has(key)) {
-            cyclusPlayerMap.set(key, { ...b, sessionCount: 1 });
-            groupedBookings.push(cyclusPlayerMap.get(key));
-          } else {
-            cyclusPlayerMap.get(key)!.sessionCount++;
-          }
-        } else {
-          groupedBookings.push({ ...b, sessionCount: 1 });
-        }
-      }
-
-      setRecentBookings(groupedBookings.slice(0, 10));
-      setRecentRegistrations(registrations || []);
-      setUpcomingSlots(grouped);
-    } catch (error) {
-      logger.error('Error fetching activity data', error as Error, { component: 'TrainerDashboard' });
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('id')
-        .eq('user_id', user?.id)
-        .maybeSingle();
-
-      if (!trainerProfile) {
-        setStatsLoading(false);
-        return;
-      }
-
-      setTrainerId(trainerProfile.id);
-      const currentTrainerId = trainerProfile.id;
-      const now = new Date();
-      const monthStart = startOfMonth(now);
-      const monthEnd = endOfMonth(now);
-
-      const { count: guestPlayerCount } = await supabase
-        .from('guest_players')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
-
-      const { data: futureSlots } = await supabase
-        .from('availability_slots')
-        .select(`id, is_marked_full, max_participants, bookings(id, status)`)
-        .eq('trainer_id', currentTrainerId)
-        .eq('is_marked_full', false)
-        .gte('start_time', now.toISOString());
-
-      let openSlotsCount = 0;
-      futureSlots?.forEach(slot => {
-        const maxParticipants = slot.max_participants || 4;
-        const confirmedBookings = slot.bookings?.filter((b: { status: string }) => b.status === 'confirmed').length || 0;
-        if (confirmedBookings < maxParticipants) {
-          openSlotsCount++;
-        }
-      });
-
-      const { data: monthlyBookings } = await supabase
-        .from('bookings')
-        .select(`payment_amount, paid_at, availability_slots!inner(trainer_id)`)
-        .eq('availability_slots.trainer_id', currentTrainerId)
-        .eq('payment_status', 'paid')
-        .gte('paid_at', monthStart.toISOString())
-        .lte('paid_at', monthEnd.toISOString());
-
-      const totalEarnings = monthlyBookings?.reduce((sum, b) => sum + (b.payment_amount || 0), 0) || 0;
-      const netEarnings = totalEarnings * 0.9;
-
-      const { count: followerCount } = await supabase
-        .from('trainer_followers')
-        .select('id', { count: 'exact', head: true })
-        .eq('trainer_id', currentTrainerId);
-
+  const [guestResult, futureSlots, monthlyBookings, followerResult, viewsResult] = await Promise.all([
+    supabase.from('guest_players').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
+    supabase.from('availability_slots')
+      .select('id, is_marked_full, max_participants, bookings(id, status)')
+      .eq('trainer_id', currentTrainerId)
+      .eq('is_marked_full', false)
+      .gte('start_time', now.toISOString()),
+    supabase.from('bookings')
+      .select('payment_amount, paid_at, availability_slots!inner(trainer_id)')
+      .eq('availability_slots.trainer_id', currentTrainerId)
+      .eq('payment_status', 'paid')
+      .gte('paid_at', monthStart.toISOString())
+      .lte('paid_at', monthEnd.toISOString()),
+    supabase.from('trainer_followers').select('id', { count: 'exact', head: true }).eq('trainer_id', currentTrainerId),
+    (() => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const { count: profileViews } = await supabase
-        .from('trainer_profile_views')
+      return supabase.from('trainer_profile_views')
         .select('id', { count: 'exact', head: true })
         .eq('trainer_id', currentTrainerId)
         .gte('viewed_at', thirtyDaysAgo.toISOString());
+    })(),
+  ]);
 
-      setStats({
-        totalStudents: guestPlayerCount || 0,
-        openSlots: openSlotsCount,
-        monthlyEarnings: netEarnings,
-        followerCount: followerCount || 0,
-        profileViews: profileViews || 0,
-      });
-    } catch (error) {
-      logger.error('Error fetching stats', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerDashboard' });
-    } finally {
-      setStatsLoading(false);
-    }
+  let openSlotsCount = 0;
+  futureSlots.data?.forEach(slot => {
+    const maxParticipants = slot.max_participants || 4;
+    const confirmedBookings = slot.bookings?.filter((b: { status: string }) => b.status === 'confirmed').length || 0;
+    if (confirmedBookings < maxParticipants) openSlotsCount++;
+  });
+
+  const totalEarnings = monthlyBookings.data?.reduce((sum, b) => sum + (b.payment_amount || 0), 0) || 0;
+
+  return {
+    trainerId: currentTrainerId,
+    stats: {
+      totalStudents: guestResult.count || 0,
+      openSlots: openSlotsCount,
+      monthlyEarnings: totalEarnings * 0.9,
+      followerCount: followerResult.count || 0,
+      profileViews: viewsResult.count || 0,
+    },
   };
+}
+
+async function fetchTrainerActivity(trainerId: string) {
+  const now = new Date().toISOString();
+
+  const [guestPlayers, registeredBookings, bookings, registrations, slots] = await Promise.all([
+    supabase.from('guest_players')
+      .select('id, full_name, email, skill_rating, rating_system, has_trained, created_at')
+      .eq('trainer_id', trainerId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(r => r.data),
+    supabase.from('bookings')
+      .select('id, created_at, player_id, profiles:player_id (id, full_name), availability_slots!inner (trainer_id)')
+      .eq('availability_slots.trainer_id', trainerId)
+      .not('player_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(r => r.data),
+    supabase.from('bookings')
+      .select('id, status, payment_status, created_at, player_id, guest_player_id, profiles:player_id (full_name), guest_players:guest_player_id (full_name), availability_slots!inner (trainer_id, start_time, cyclus_name)')
+      .eq('availability_slots.trainer_id', trainerId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(r => r.data),
+    supabase.from('intake_requests')
+      .select('id, full_name, status, created_at, cycles!inner (owner_id, name)')
+      .eq('cycles.owner_id', trainerId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(r => r.data),
+    supabase.from('availability_slots')
+      .select('id, start_time, end_time, max_participants, is_marked_full, cyclus_name, cyclus_id, locations:location_id (name)')
+      .eq('trainer_id', trainerId)
+      .eq('is_marked_full', false)
+      .gte('start_time', now)
+      .order('start_time', { ascending: true })
+      .limit(50)
+      .then(r => r.data),
+  ]);
+
+  // Process players
+  const seenPlayerIds = new Set<string>();
+  const regPlayers: any[] = [];
+  for (const b of registeredBookings || []) {
+    const profile = b.profiles as any;
+    if (profile?.id && !seenPlayerIds.has(profile.id)) {
+      seenPlayerIds.add(profile.id);
+      regPlayers.push({ id: profile.id, full_name: profile.full_name || '—', has_trained: true, created_at: b.created_at, _isRegistered: true });
+    }
+  }
+  const allPlayers = [...(guestPlayers || []), ...regPlayers]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 10);
+
+  // Group bookings
+  const rawBookings = bookings || [];
+  const groupedBookings: any[] = [];
+  const cyclusPlayerMap = new Map<string, any>();
+  for (const b of rawBookings) {
+    const slot = b.availability_slots as any;
+    const cyclusName = slot?.cyclus_name;
+    const playerId = (b as any).player_id || (b as any).guest_player_id || '';
+    if (cyclusName && playerId) {
+      const key = `${cyclusName}::${playerId}`;
+      if (!cyclusPlayerMap.has(key)) {
+        cyclusPlayerMap.set(key, { ...b, sessionCount: 1 });
+        groupedBookings.push(cyclusPlayerMap.get(key));
+      } else {
+        cyclusPlayerMap.get(key)!.sessionCount++;
+      }
+    } else {
+      groupedBookings.push({ ...b, sessionCount: 1 });
+    }
+  }
+
+  // Group slots
+  const rawSlots = slots || [];
+  const grouped: any[] = [];
+  const cyclusMap = new Map<string, any>();
+  for (const slot of rawSlots) {
+    if (slot.cyclus_id) {
+      if (!cyclusMap.has(slot.cyclus_id)) {
+        cyclusMap.set(slot.cyclus_id, { ...slot, sessionCount: 1 });
+        grouped.push(cyclusMap.get(slot.cyclus_id));
+      } else {
+        cyclusMap.get(slot.cyclus_id)!.sessionCount++;
+      }
+    } else {
+      grouped.push({ ...slot, sessionCount: 1 });
+    }
+  }
+
+  return {
+    recentPlayers: allPlayers,
+    recentBookings: groupedBookings.slice(0, 10),
+    recentRegistrations: registrations || [],
+    upcomingSlots: grouped,
+  };
+}
+
+// --- Component ---
+
+export default function TrainerDashboard() {
+  const { user, profile, role, loading, subscription } = useAuth();
+  const navigate = useNavigate();
+  const { t } = useTranslation('trainer');
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ['trainer-stats', user?.id],
+    queryFn: () => fetchTrainerStats(user!.id),
+    enabled: !!user && role === 'trainer',
+    staleTime: 60_000,
+  });
+
+  const trainerId = statsData?.trainerId ?? null;
+  const stats = statsData?.stats ?? { totalStudents: 0, openSlots: 0, monthlyEarnings: 0, followerCount: 0, profileViews: 0 };
+
+  const { data: hasAcademy = false } = useQuery({
+    queryKey: ['trainer-has-academy', trainerId],
+    queryFn: async () => {
+      const academy = await getTrainerAcademy(trainerId!);
+      return !!academy;
+    },
+    enabled: !!trainerId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: activityData } = useQuery({
+    queryKey: ['trainer-activity', trainerId],
+    queryFn: () => fetchTrainerActivity(trainerId!),
+    enabled: !!trainerId,
+    staleTime: 60_000,
+  });
+
+  const recentPlayers = activityData?.recentPlayers ?? [];
+  const recentBookings = activityData?.recentBookings ?? [];
+  const recentRegistrations = activityData?.recentRegistrations ?? [];
+  const upcomingSlots = activityData?.upcomingSlots ?? [];
 
   if (loading) {
     return (
@@ -534,7 +478,7 @@ export default function TrainerDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upcomingSlots.map((slot, idx) => (
+                  {upcomingSlots.map((slot) => (
                     <TableRow key={slot.cyclus_id || slot.id}>
                       <TableCell className="text-sm py-2">{slot.cyclus_name || '—'}</TableCell>
                       <TableCell className="text-sm py-2 text-muted-foreground">
