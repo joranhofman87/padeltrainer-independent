@@ -24,7 +24,7 @@ import { format } from 'date-fns';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 
 export default function AcademyDashboard() {
-  const { t } = useTranslation('academy');
+  const { t, i18n } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
   const navigate = useNavigate();
   const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
