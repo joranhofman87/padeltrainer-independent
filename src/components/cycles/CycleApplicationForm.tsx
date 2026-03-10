@@ -737,12 +737,6 @@ export default function CycleApplicationForm({
               )}
             />
 
-            <TermsAcceptance
-              terms={cycleTerms}
-              loading={termsLoading}
-              accepted={termsAccepted}
-              onAcceptChange={setTermsAccepted}
-            />
           </CardContent>
         </Card>
 
@@ -788,6 +782,13 @@ export default function CycleApplicationForm({
             </CardContent>
           </Card>
         )}
+
+        <TermsAcceptance
+          terms={cycleTerms}
+          loading={termsLoading}
+          accepted={termsAccepted}
+          onAcceptChange={setTermsAccepted}
+        />
 
         {/* Submit */}
         <div className="flex gap-3">
