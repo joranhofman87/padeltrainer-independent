@@ -87,7 +87,8 @@ Deno.serve(async (req) => {
       .single();
 
     if (banner) {
-      const newCount = (banner[column] || 0) + 1;
+      const bannerAny = banner as Record<string, unknown>;
+      const newCount = ((bannerAny[column] as number) || 0) + 1;
       const updatePayload: Record<string, unknown> = { [column]: newCount };
 
       // Check budget cap
