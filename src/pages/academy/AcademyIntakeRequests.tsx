@@ -12,6 +12,7 @@ import {
   getCycles, 
   getIntakeRequestsWithProposals, 
   generateProposals,
+  resetProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
 } from '@/lib/cycles';
