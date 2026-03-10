@@ -150,12 +150,6 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
                         </Button>
                       </CollapsibleTrigger>
                     )}
-                    {!user && !deadlinePassed && (
-                      <Button variant="default" size="sm" onClick={handleSignupRedirect}>
-                        <UserPlus className="h-4 w-4 mr-1" />
-                        {t('application.signUpAndApply')}
-                      </Button>
-                    )}
                   </div>
                 </div>
 
