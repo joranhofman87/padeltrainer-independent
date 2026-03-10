@@ -170,7 +170,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onEdit?.(cycle)}>
                     <Edit className="mr-2 h-4 w-4" />
-                    {t('editCycle')}
+                    {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem onClick={() => navigate(`${getBasePath()}/intake-requests?cycle=${cycle.id}`)}>
