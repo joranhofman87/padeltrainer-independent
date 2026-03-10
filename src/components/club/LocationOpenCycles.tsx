@@ -48,6 +48,24 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
             const slugMap: Record<string, string> = {};
             academies.forEach(a => { slugMap[a.id] = a.slug; });
             setAcademySlugs(slugMap);
+        }
+
+        // Fetch academy slugs for trainer-owned cycles via academy_trainers
+        const trainerOwnerIds = [...new Set(cyclesData.filter(c => c.owner_type === 'trainer').map(c => c.owner_id))];
+        if (trainerOwnerIds.length > 0) {
+          const { data: trainerAcademies } = await supabase
+            .from('academy_trainers')
+            .select('trainer_profile_id, academy_profile:academy_profiles(slug)')
+            .in('trainer_profile_id', trainerOwnerIds)
+            .eq('status', 'active');
+          if (trainerAcademies) {
+            const tMap: Record<string, string> = {};
+            trainerAcademies.forEach((ta: any) => {
+              if (ta.academy_profile?.slug) {
+                tMap[ta.trainer_profile_id] = ta.academy_profile.slug;
+              }
+            });
+            setTrainerAcademySlugs(tMap);
           }
         }
 
