@@ -21,12 +21,14 @@ export default function TrainerSettings() {
   const { user, role, roles, loading, subscription, refreshSubscription, session, refreshAuth } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('trainer');
+  const localizePath = useLocalizedPathFn();
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
   const [inPaidAcademy, setInPaidAcademy] = useState(false);
   const [hasAcademy, setHasAcademy] = useState(false);
   const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
   const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
+  const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
 
   // Auth is now handled by TrainerLayout
 
