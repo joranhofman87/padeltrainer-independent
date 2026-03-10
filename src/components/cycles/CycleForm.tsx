@@ -415,7 +415,7 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.description', 'Description')}</FormLabel>
                     <FormControl>
-                      <Textarea {...field} placeholder={t('form.registrationDescriptionPlaceholder', 'Describe this registration...')} rows={3} />
+                      <RichTextEditor value={field.value || ''} onChange={field.onChange} placeholder={t('form.registrationDescriptionPlaceholder', 'Describe this registration...')} />
                     </FormControl>
                     <FormDescription className="text-xs">
                       {t('form.registrationDescriptionHelp', 'Visible to players before they apply')}
