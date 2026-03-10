@@ -247,7 +247,7 @@ export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'acade
 
   if (error) throw error;
   
-  const cycles = (data || []) as Cycle[];
+  const cycles = (data || []).map(toCycle);
   
   // Get intake counts for all cycles
   if (cycles.length > 0) {
