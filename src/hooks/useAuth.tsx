@@ -202,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         } else {
+          lastFetchedRef.current = null;
           setProfile(null);
           setRole(null);
           setRoles([]);

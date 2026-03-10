@@ -33,7 +33,7 @@ export default function AdminLayout() {
     }
   };
 
-  const loading = authLoading || adminLoading;
+  const loading = authLoading;
 
   if (loading) {
     return (
