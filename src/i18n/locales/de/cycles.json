@@ -25,6 +25,8 @@
     "closed": "Geschlossen",
     "archived": "Archiviert"
   },
+  "editRegistration": "Anmeldung bearbeiten",
+  "deleteRegistration": "Anmeldung löschen",
   "form": {
     "name": "Zyklusname",
     "namePlaceholder": "z.B. Frühjahrszyklus 2026",
