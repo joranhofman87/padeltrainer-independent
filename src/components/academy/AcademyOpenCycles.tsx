@@ -19,6 +19,7 @@ import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 interface AcademyOpenCyclesProps {
   academyId: string;
   academyName: string;
+  academySlug: string;
 }
 
 interface TrainerOption {
