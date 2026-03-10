@@ -66,10 +66,21 @@ interface AvailabilitySlot {
   max_participants: number | null;
 }
 
+interface TrainerAvailabilityInput {
+  trainerId: string;
+  trainerName: string;
+  windows: { day: string; start: string; end: string }[];
+  minRating: number | null;
+  maxRating: number | null;
+}
+
 interface RequestBody {
   cycleId: string;
   weights?: ScoringWeights;
   ratingSpread?: RatingSpreadSettings;
+  startDate?: string;
+  trainerAvailability?: TrainerAvailabilityInput[];
+  additionalCriteria?: string;
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
