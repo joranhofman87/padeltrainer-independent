@@ -111,52 +111,51 @@ export function GenerateProposalsWizard({
     let trainers: TrainerOption[] = [];
 
     if (ownerType === 'academy') {
-      // First get academy trainer links
-      const { data: atData, error: atError } = await supabase
+      const { data: atData } = await supabase
         .from('academy_trainers')
         .select('trainer_profile_id')
         .eq('academy_profile_id', ownerId)
         .eq('status', 'active');
 
-      if (atError) {
-        console.error('Error fetching academy trainers:', atError);
-      }
-
       const trainerProfileIds = (atData || []).map(at => at.trainer_profile_id);
 
       if (trainerProfileIds.length > 0) {
-        const { data: tpData, error: tpError } = await supabase
+        const { data: tpData } = await supabase
           .from('trainer_profiles')
-          .select('id, preferred_min_rating, preferred_max_rating, profiles:user_id (full_name)')
+          .select('id, user_id, preferred_min_rating, preferred_max_rating')
           .in('id', trainerProfileIds);
 
-        if (tpError) {
-          console.error('Error fetching trainer profiles:', tpError);
-        }
+        const userIds = (tpData || []).map(tp => tp.user_id).filter(Boolean);
+        const { data: profilesData } = userIds.length > 0
+          ? await supabase.from('profiles').select('user_id, full_name').in('user_id', userIds)
+          : { data: [] };
 
-        trainers = (tpData || []).map((tp: any) => {
-          const profile = Array.isArray(tp.profiles) ? tp.profiles[0] : tp.profiles;
-          return {
-            id: tp.id,
-            name: profile?.full_name || 'Unknown',
-            preferredMinRating: tp.preferred_min_rating ?? null,
-            preferredMaxRating: tp.preferred_max_rating ?? null,
-          };
-        });
+        const nameMap = new Map((profilesData || []).map(p => [p.user_id, p.full_name]));
+
+        trainers = (tpData || []).map(tp => ({
+          id: tp.id,
+          name: nameMap.get(tp.user_id) || 'Unknown',
+          preferredMinRating: tp.preferred_min_rating ?? null,
+          preferredMaxRating: tp.preferred_max_rating ?? null,
+        }));
       }
     } else {
-      // Trainer owner — just the trainer themselves
       const { data } = await supabase
         .from('trainer_profiles')
-        .select('id, preferred_min_rating, preferred_max_rating, profiles:user_id (full_name)')
+        .select('id, user_id, preferred_min_rating, preferred_max_rating')
         .eq('id', ownerId)
         .single();
 
       if (data) {
-        const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', data.user_id)
+          .single();
+
         trainers = [{
           id: data.id,
-          name: profile?.full_name || 'Unknown',
+          name: profileData?.full_name || 'Unknown',
           preferredMinRating: data.preferred_min_rating,
           preferredMaxRating: data.preferred_max_rating,
         }];
