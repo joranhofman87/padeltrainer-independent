@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus, PartyPopper, CreditCard, Banknote, ExternalLink } from 'lucide-react';
-import { getAppUrl, getMarketingPath } from '@/lib/domains';
+import { Calendar, Clock, PartyPopper, CreditCard, Banknote, ExternalLink } from 'lucide-react';
+import { getMarketingPath } from '@/lib/domains';
 import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
 import { getActiveCycles, hasPlayerApplied, type Cycle } from '@/lib/cycles';
-import { getPublicAcademyTrainers } from '@/lib/academy';
-import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 
 interface AcademyOpenCyclesProps {
   academyId: string;
