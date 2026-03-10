@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   MapPin, Users, Star, ExternalLink, Calendar, Share2, Copy, Check, 
@@ -83,6 +83,8 @@ interface LocationData {
 export default function AcademyPublicProfile() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isPreview = searchParams.get('preview') === 'true';
   const { t } = useTranslation(['academy', 'common']);
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
@@ -101,14 +103,14 @@ export default function AcademyPublicProfile() {
       if (!slug) return;
 
       try {
-        const academyData = await getAcademyBySlug(slug);
+        const academyData = await getAcademyBySlug(slug, isPreview);
         if (!academyData) {
           navigate(localizePath('/academies'));
           return;
         }
 
-        // Only show if public
-        if (!academyData.is_public) {
+        // Only show if public (unless preview mode)
+        if (!isPreview && !academyData.is_public) {
           navigate(localizePath('/academies'));
           return;
         }
