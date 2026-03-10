@@ -103,14 +103,14 @@ export default function AcademyPublicProfile() {
       if (!slug) return;
 
       try {
-        const academyData = await getAcademyBySlug(slug);
+        const academyData = await getAcademyBySlug(slug, isPreview);
         if (!academyData) {
           navigate(localizePath('/academies'));
           return;
         }
 
-        // Only show if public
-        if (!academyData.is_public) {
+        // Only show if public (unless preview mode)
+        if (!isPreview && !academyData.is_public) {
           navigate(localizePath('/academies'));
           return;
         }

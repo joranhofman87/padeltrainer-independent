@@ -208,7 +208,23 @@ export async function isUserAcademyManager(userId: string): Promise<boolean> {
 }
 
 // Get academy by slug (for public profile)
-export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyProfile> | null> {
+// When preview=true, fetches from base table (for academy managers previewing their own profile)
+export async function getAcademyBySlug(slug: string, preview = false): Promise<Partial<AcademyProfile> | null> {
+  if (preview) {
+    // Preview mode: fetch from base table, allow non-public profiles
+    const { data, error } = await supabase
+      .from('academy_profiles')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (error) {
+      logger.error('Error fetching academy by slug (preview)', undefined, { error });
+      return null;
+    }
+    return data as Partial<AcademyProfile> | null;
+  }
+
   const { data, error } = await supabase
     .from('academy_profiles_public' as any)
     .select('*')
@@ -217,11 +233,6 @@ export async function getAcademyBySlug(slug: string): Promise<Partial<AcademyPro
 
   if (error) {
     logger.error('Error fetching academy by slug', undefined, { error });
-    return null;
-  }
-
-  // Filter for is_public in memory since view already filters it
-  if (data && !(data as any).is_public) {
     return null;
   }
 
