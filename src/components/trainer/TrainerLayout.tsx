@@ -17,25 +17,25 @@ export default function TrainerLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, role, roles, loading, subscription } = useAuth();
-  const [hasAcademy, setHasAcademy] = useState(false);
 
-  // Check academy membership
-  useEffect(() => {
-    const check = async () => {
-      if (user) {
-        const { data: trainerProfile } = await supabase
-          .from('trainer_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (trainerProfile) {
-          const academy = await getTrainerAcademy(trainerProfile.id);
-          setHasAcademy(!!academy);
-        }
-      }
-    };
-    check();
-  }, [user]);
+  // Check academy membership with caching
+  const { data: hasAcademy = false } = useQuery({
+    queryKey: ['trainer-has-academy', user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data: trainerProfile } = await supabase
+        .from('trainer_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!trainerProfile) return false;
+      const academy = await getTrainerAcademy(trainerProfile.id);
+      return !!academy;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,  // cache for 5 minutes
+    gcTime: 10 * 60 * 1000,
+  });
 
   // Auth guard - use roles array to support dual-role trainers
   useEffect(() => {

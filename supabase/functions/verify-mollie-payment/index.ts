@@ -175,7 +175,7 @@ serve(async (req) => {
         molliePaymentId = booking.mollie_payment_id;
       }
       const slotsData = booking.availability_slots as unknown as { trainer_id: string } | null;
-      trainerId = slotsData?.trainer_id;
+      trainerId = slotsData?.trainer_id ?? null;
     }
 
     if (!molliePaymentId) {
