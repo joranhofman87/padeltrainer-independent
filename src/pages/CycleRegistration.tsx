@@ -333,17 +333,19 @@ export default function CycleRegistration() {
           <Card className="mb-6">
             <CardContent className="pt-6 space-y-4">
               {/* Owner info */}
-              <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback>
-                    {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
-                  <p className="font-semibold text-lg">{owner?.name}</p>
+              {owner && (
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback>
+                      {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
+                    <p className="font-semibold text-lg">{owner.name}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <h1 className="text-3xl font-bold">{cycle.name}</h1>
               
