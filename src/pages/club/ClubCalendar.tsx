@@ -71,7 +71,6 @@ export default function ClubCalendar() {
   
   // Dialog states
   const [addSlotDialogOpen, setAddSlotDialogOpen] = useState(false);
-  const [bulkCreateSheetOpen, setBulkCreateSheetOpen] = useState(false);
   const [clickedDate, setClickedDate] = useState<Date | undefined>();
   const [clickedTime, setClickedTime] = useState<string | undefined>();
 
