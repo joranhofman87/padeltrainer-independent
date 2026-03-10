@@ -736,6 +736,10 @@ export default function CycleApplicationForm({
               <p className="text-sm text-muted-foreground">
                 {t('application.form.createAccountHelp', 'Choose a password to create your account. This lets you track your application and manage your bookings.')}
               </p>
+              <div className="space-y-1">
+                <FormLabel>{t('application.form.email', 'Email')}</FormLabel>
+                <Input value={form.watch('email') || ''} disabled className="bg-muted" />
+              </div>
               <FormField
                 control={form.control}
                 name="password"
