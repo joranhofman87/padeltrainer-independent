@@ -5,14 +5,14 @@ import { trackEvent } from '@/lib/tracking';
 import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { Calendar, Clock, AlertCircle, LogIn, Building2, User } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, MapPin, Building2, User } from 'lucide-react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
@@ -27,6 +27,11 @@ interface OwnerInfo {
   welcomeMessage?: string | null;
 }
 
+interface CycleLocation {
+  name: string;
+  city: string;
+}
+
 export default function CycleRegistration() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const { t } = useTranslation('cycles');
@@ -35,6 +40,7 @@ export default function CycleRegistration() {
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [owner, setOwner] = useState<OwnerInfo | null>(null);
+  const [cycleLocation, setCycleLocation] = useState<CycleLocation | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
@@ -60,6 +66,16 @@ export default function CycleRegistration() {
           return;
         }
         setCycle(cycleData);
+
+        // Fetch cycle location
+        if (cycleData.location_id) {
+          const { data: locData } = await supabase
+            .from('locations')
+            .select('name, city')
+            .eq('id', cycleData.location_id)
+            .maybeSingle();
+          if (locData) setCycleLocation(locData);
+        }
 
         // Fetch owner info
         if (cycleData.owner_type === 'trainer') {
@@ -139,7 +155,6 @@ export default function CycleRegistration() {
             .maybeSingle();
 
           if (clubData) {
-            // Get location name for the club
             const { data: locationData } = await supabase
               .from('locations')
               .select('name')
@@ -195,7 +210,7 @@ export default function CycleRegistration() {
             .from('profiles')
             .select('id')
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
 
           if (playerProfile) {
             const applied = await hasPlayerApplied(cycleId, playerProfile.id);
@@ -212,18 +227,14 @@ export default function CycleRegistration() {
     fetchData();
   }, [cycleId, user]);
 
-  const handleLoginRedirect = () => {
-    const currentPath = window.location.pathname;
-    navigate(`/app/signup/player?redirect=${encodeURIComponent(currentPath)}`);
-  };
-
   const handleSuccess = () => {
     setIsSuccess(true);
   };
 
   const isEnrollmentClosed = cycle && cycle.status !== 'open';
   const isDeadlinePassed = cycle?.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied && user;
+  const canApply = cycle && !isEnrollmentClosed && !isDeadlinePassed && !hasApplied;
+  const priceTable = cycle?.price_table as { label: string; price: number }[] | null;
 
   if (isLoading || authLoading) {
     return (
@@ -263,8 +274,8 @@ export default function CycleRegistration() {
       <MarketingLayout>
         <div className="container mx-auto px-4 py-12">
           <div className="max-w-md mx-auto text-center">
-            <div className="mx-auto h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
-              <Calendar className="h-8 w-8 text-green-600 dark:text-green-400" />
+            <div className="mx-auto h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Calendar className="h-8 w-8 text-primary" />
             </div>
             <h1 className="text-2xl font-bold mb-2">{t('application.success.title')}</h1>
             <p className="text-muted-foreground mb-6">
@@ -296,14 +307,22 @@ export default function CycleRegistration() {
                 labelKey={t('common:messageFrom', { name: owner.name, defaultValue: `Message from ${owner.name}` })}
               />
             )}
-            <Button onClick={() => navigate('/app/player')}>
-              {t('application.success.backToProfile')}
-            </Button>
+            {user ? (
+              <Button onClick={() => navigate('/app/player')}>
+                {t('application.success.backToProfile')}
+              </Button>
+            ) : (
+              <Button onClick={() => navigate('/')}>
+                {t('common:backToHome', 'Back to homepage')}
+              </Button>
+            )}
           </div>
         </div>
       </MarketingLayout>
     );
   }
+
+  const ownerTypeLabel = owner?.type === 'academy' ? t('common:academy', 'Academy') : owner?.type === 'club' ? t('common:club', 'Club') : t('common:trainer', 'Trainer');
 
   return (
     <FeatureErrorBoundary featureName="CycleRegistration" onRetry={() => window.location.reload()}>
@@ -312,26 +331,26 @@ export default function CycleRegistration() {
         <div className="max-w-2xl mx-auto">
           {/* Cycle Header */}
           <div className="mb-8">
+            {/* Owner info */}
             <div className="flex items-center gap-3 mb-4">
               {owner && (
-                <Avatar className="h-10 w-10">
+                <Avatar className="h-12 w-12">
                   <AvatarImage src={owner.avatar_url} />
                   <AvatarFallback>
-                    {owner.type === 'club' ? <Building2 className="h-5 w-5" /> : <User className="h-5 w-5" />}
+                    {owner.type === 'trainer' ? <User className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
                   </AvatarFallback>
                 </Avatar>
               )}
               <div>
-                <p className="text-sm text-muted-foreground">
-                  {owner?.type === 'academy' ? 'Academy' : owner?.type === 'club' ? 'Club' : 'Trainer'}
-                </p>
-                <p className="font-medium">{owner?.name}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{ownerTypeLabel}</p>
+                <p className="font-semibold text-lg">{owner?.name}</p>
               </div>
             </div>
 
-            <h1 className="text-3xl font-bold mb-2">{cycle.name}</h1>
+            <h1 className="text-3xl font-bold mb-3">{cycle.name}</h1>
             
-            <div className="flex flex-wrap gap-3 mb-4">
+            {/* Meta info */}
+            <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Calendar className="h-4 w-4" />
                 <span>
@@ -342,8 +361,14 @@ export default function CycleRegistration() {
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   <span>
-                    Deadline: {format(new Date(cycle.enrollment_deadline), 'MMM d, yyyy')}
+                    {t('application.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'MMM d, yyyy')}
                   </span>
+                </div>
+              )}
+              {cycleLocation && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{cycleLocation.name}, {cycleLocation.city}</span>
                 </div>
               )}
               <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
@@ -351,30 +376,40 @@ export default function CycleRegistration() {
               </Badge>
             </div>
 
+            {/* Description */}
             {cycle.description && (
-              <div className="text-muted-foreground prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cycle.description }} />
+              <div className="text-muted-foreground prose dark:prose-invert max-w-none mb-6" dangerouslySetInnerHTML={{ __html: cycle.description }} />
+            )}
+
+            {/* Price table */}
+            {priceTable && priceTable.length > 0 && (
+              <Card className="mb-6">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{t('application.pricing', 'Pricing')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {priceTable.map((tier, idx) => (
+                      <div key={idx} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                        <span className="text-sm">{tier.label}</span>
+                        <span className="text-sm font-semibold">
+                          {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(tier.price)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
 
           {/* Status Alerts */}
-          {!user && (
-            <Alert className="mb-6">
-              <LogIn className="h-4 w-4" />
-              <AlertTitle>{t('application.loginRequired')}</AlertTitle>
-              <AlertDescription className="mt-2">
-                <Button size="sm" onClick={handleLoginRedirect}>
-                  Log in to apply
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
           {hasApplied && (
             <Alert className="mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('application.alreadyApplied')}</AlertTitle>
               <AlertDescription>
-                You have already submitted an application for this cycle.
+                {t('application.alreadyAppliedDesc', 'You have already submitted an application for this cycle.')}
               </AlertDescription>
             </Alert>
           )}
@@ -393,9 +428,9 @@ export default function CycleRegistration() {
             </Alert>
           )}
 
-          {/* Application Form */}
-          {canApply && profile && (
-          <CycleApplicationForm
+          {/* Application Form - show for logged-in users AND guests */}
+          {canApply && user && profile && (
+            <CycleApplicationForm
               cycle={cycle}
               playerId={profile.id}
               playerUserId={user.id}
@@ -404,7 +439,23 @@ export default function CycleRegistration() {
               playerPhone={profile.phone || ''}
               playerRating={profile.skill_rating ?? undefined}
               playerRatingSystem={profile.rating_system || 'knltb'}
-              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(t => ({ id: t.id, name: t.name })) : undefined}
+              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
+              locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
+              onSuccess={handleSuccess}
+            />
+          )}
+
+          {/* Guest form - allow filling out before creating account */}
+          {canApply && !user && (
+            <CycleApplicationForm
+              cycle={cycle}
+              playerId=""
+              playerUserId=""
+              playerName=""
+              playerEmail=""
+              playerPhone=""
+              isGuest={true}
+              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
               onSuccess={handleSuccess}
             />
