@@ -95,7 +95,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
           const deadlinePassed = isDeadlinePassed(cycle);
           const isExpanded = expandedCycleId === cycle.id;
           const showSuccess = successCycleId === cycle.id;
-          const canApply = user && !hasApplied && !deadlinePassed;
+          const canApply = !hasApplied && !deadlinePassed;
 
           return (
             <div key={cycle.id} className={`border rounded-lg p-4 ${showSuccess ? 'border-green-500' : ''}`}>
