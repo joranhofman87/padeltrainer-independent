@@ -87,13 +87,12 @@ export default function TrainerLayout() {
   const isSubscriptionExpired = subscriptionLoaded && !subscription?.isSubscribed && !subscription?.isInTrial;
   const isOnSubscriptionPage = location.pathname.endsWith('/subscription');
 
-  // Feature translations for subscription overlay
-  const subscriptionFeatures = [
-    t('subscriptionOverlay.features.unlimitedLessons', 'Unlimited lessons'),
-    t('subscriptionOverlay.features.calendarSync', 'Google Calendar sync'),
-    t('subscriptionOverlay.features.analytics', 'Analytics dashboard'),
-    t('subscriptionOverlay.features.prioritySupport', 'Priority support'),
-  ];
+  // Redirect to subscription page when expired
+  useEffect(() => {
+    if (!loading && isSubscriptionExpired && !isOnSubscriptionPage && !hasAcademy) {
+      navigate('/app/trainer/subscription', { replace: true });
+    }
+  }, [loading, isSubscriptionExpired, isOnSubscriptionPage, hasAcademy, navigate]);
 
   return (
     <SidebarProvider>
