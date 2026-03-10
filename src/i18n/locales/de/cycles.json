@@ -185,6 +185,13 @@
       "notesPlaceholder": "Erzähle uns mehr über deine Padel-Erfahrung oder andere Racketsportarten. Das hilft uns, dich in die richtige Gruppe einzuteilen, wenn du noch kein Niveau hast.",
       "consent": "Ich bin einverstanden, bezüglich meiner Bewerbung kontaktiert zu werden, und stimme der Verarbeitung meiner Daten zu.",
       "consentRequired": "Du musst zustimmen, um fortzufahren",
+
+      "createAccount": "Erstelle dein Konto",
+      "createAccountHelp": "Wähle ein Passwort, um dein Konto zu erstellen. Damit kannst du deine Anmeldung verfolgen und deine Buchungen verwalten.",
+      "password": "Passwort",
+      "passwordPlaceholder": "Passwort erstellen",
+      "passwordMin": "Passwort muss mindestens 6 Zeichen haben",
+
       "submit": "Bewerbung einreichen",
       "submitting": "Wird eingereicht..."
     },

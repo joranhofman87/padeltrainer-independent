@@ -195,6 +195,12 @@
       "consent": "Ik ga akkoord om te worden gecontacteerd over mijn aanmelding en stem in met de verwerking van mijn gegevens.",
       "consentRequired": "Je moet akkoord gaan om door te gaan",
       
+      "createAccount": "Maak je account aan",
+      "createAccountHelp": "Kies een wachtwoord om je account aan te maken. Hiermee kun je je aanmelding volgen en je boekingen beheren.",
+      "password": "Wachtwoord",
+      "passwordPlaceholder": "Kies een wachtwoord",
+      "passwordMin": "Wachtwoord moet minimaal 6 tekens bevatten",
+
       "submit": "Aanmelding Indienen",
       "submitting": "Bezig met indienen..."
     },
