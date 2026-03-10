@@ -419,6 +419,24 @@ export default function CycleApplicationForm({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.notes')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder={t('application.form.notesPlaceholder')}
+                      rows={3}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </CardContent>
         </Card>
 
