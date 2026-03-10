@@ -364,7 +364,7 @@ export default function CycleForm({
         <DialogHeader>
           <DialogTitle>
             {isEdit 
-              ? isEvent ? t('editEvent', 'Edit Event') : t('editCycle')
+              ? isEvent ? t('editEvent', 'Edit Event') : isRegistration ? t('editRegistration', 'Edit Registration') : t('editCycle')
               : isEvent
                 ? t('createEvent', 'Create Event')
                 : isRegistration 
