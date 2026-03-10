@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, ChevronDown, ChevronUp, UserPlus, PartyPopper, CreditCard, Banknote } from 'lucide-react';
 import { getAppUrl } from '@/lib/domains';
+import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
