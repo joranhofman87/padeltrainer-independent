@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getMarketingUrl } from '@/lib/domains';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, differenceInWeeks } from 'date-fns';
@@ -109,7 +110,8 @@ export default function CyclesTable({
   };
 
   const handleCopyLink = (cycle: Cycle) => {
-    const url = `${window.location.origin}/register/${cycle.id}`;
+    const lang = i18n.language || 'nl';
+    const url = getMarketingUrl(`register/${cycle.id}`, lang);
     navigator.clipboard.writeText(url);
     toast.success(t('actions.linkCopied'));
   };
