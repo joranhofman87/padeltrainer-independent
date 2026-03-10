@@ -846,7 +846,77 @@ export default function CycleForm({
               </FormDescription>
               </div>
 
+            {/* Terms / Voorwaarden — for registrations and events */}
+            {(isRegistration || isEvent) && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.terms', 'Terms (Voorwaarden)')}</Label>
+                <Textarea
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  placeholder={t('form.termsPlaceholder', 'Add specific terms and conditions for this registration...')}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('form.termsHelp', 'These terms are shown to players before they apply. Separate from your general terms.')}
+                </p>
+              </div>
+            )}
 
+            {/* Price Table / Tarieven — for registrations and events */}
+            {(isRegistration || isEvent) && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.priceTable', 'Price List (Tarieven)')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.priceTableHelp', 'Add price rows that players can see before applying')}
+                </p>
+                {priceTable.map((row, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
+                    <Input
+                      placeholder={t('form.priceLabel', 'e.g. Group lesson (4 players)')}
+                      value={row.label}
+                      onChange={(e) => {
+                        const updated = [...priceTable];
+                        updated[index] = { ...updated[index], label: e.target.value };
+                        setPriceTable(updated);
+                      }}
+                    />
+                    <div className="relative w-28">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={row.price || ''}
+                        onChange={(e) => {
+                          const updated = [...priceTable];
+                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                          setPriceTable(updated);
+                        }}
+                        className="pl-7"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setPriceTable(priceTable.filter((_, i) => i !== index))}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPriceTable([...priceTable, { label: '', price: 0 }])}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('form.addPriceRow', 'Add price row')}
+                </Button>
+              </div>
+            )}
 
 
             {/* Event: Pricing + Payment Method */}
