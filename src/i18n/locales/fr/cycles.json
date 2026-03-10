@@ -66,6 +66,7 @@
     "currency": "Devise",
     "pricingHelp": "Définissez un prix par séance ou un prix forfaitaire",
     "save": "Enregistrer le cycle",
+    "saveRegistration": "Enregistrer l'inscription",
     "saveAndOpen": "Enregistrer et ouvrir les inscriptions",
     "allowSingleBooking": "Permettre la réservation de cours individuels",
     "allowSingleBookingHelp": "Lorsque désactivé, les joueurs doivent réserver le cycle entier",
