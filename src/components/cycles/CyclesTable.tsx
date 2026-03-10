@@ -268,7 +268,7 @@ export default function CyclesTable({
           <TableHeader>
             <TableRow>
               <TableHead>
-                <SortableHeader field="name">{t('form.name')}</SortableHeader>
+                <SortableHeader field="name">{t('form.registrationName', 'Name')}</SortableHeader>
               </TableHead>
               <TableHead className="hidden md:table-cell">
                 <SortableHeader field="location">{t('common:location', 'Location')}</SortableHeader>

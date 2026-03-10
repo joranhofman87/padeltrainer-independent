@@ -218,7 +218,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     className="text-destructive focus:text-destructive"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    {t('deleteCycle')}
+                    {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
