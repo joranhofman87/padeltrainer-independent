@@ -50,24 +50,17 @@ export default function TrainerSettings() {
       if (user) {
         const { data: trainerProfile } = await supabase
           .from('trainer_profiles')
-          .select('id')
+          .select('id, slug')
           .eq('user_id', user.id)
           .maybeSingle();
         if (trainerProfile) {
+          setTrainerSlug(trainerProfile.slug);
           const academy = await getTrainerAcademy(trainerProfile.id);
           setHasAcademy(!!academy);
-        }
-      }
-      if (!subscription?.isSubscribed && user) {
-        // Only check if trainer doesn't have their own paid subscription
-        const { data: trainerProfile } = await supabase
-          .from('trainer_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (trainerProfile) {
-          const result = await isTrainerInPaidAcademy(trainerProfile.id);
-          setInPaidAcademy(result);
+          if (!subscription?.isSubscribed) {
+            const result = await isTrainerInPaidAcademy(trainerProfile.id);
+            setInPaidAcademy(result);
+          }
         }
       }
     };
