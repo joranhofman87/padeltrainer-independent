@@ -300,9 +300,17 @@ export default function AcademyDashboard() {
             <CardTitle className="text-3xl">{stats.viewsLast30Days}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {t('stats.last30Days')}
-            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="p-0 h-auto"
+              onClick={() => {
+                const lang = i18n.language || 'nl';
+                window.open(`/${lang}/academies/${activeAcademy?.slug}`, '_blank');
+              }}
+            >
+              {t('dashboard.viewProfile', 'View profile')} <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
       </div>
