@@ -9,14 +9,14 @@ interface CycleDetailDisplayProps {
   hideLocation?: boolean;
 }
 
-export default function CycleDetailDisplay({ cycle }: CycleDetailDisplayProps) {
+export default function CycleDetailDisplay({ cycle, hideLocation = false }: CycleDetailDisplayProps) {
   const { t, i18n } = useTranslation('cycles');
   const [showTerms, setShowTerms] = useState(false);
 
   const priceTable = cycle.price_table as PriceTableRow[] | null;
   const hasPriceTable = priceTable && priceTable.length > 0;
   const hasTerms = !!cycle.terms;
-  const hasLocation = !!cycle.location;
+  const hasLocation = !hideLocation && !!cycle.location;
   const hasDescription = !!cycle.description;
 
   if (!hasLocation && !hasDescription && !hasTerms && !hasPriceTable) {

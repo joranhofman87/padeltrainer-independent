@@ -251,8 +251,6 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
     );
   }
 
-  const priceTable = cycle.price_table as { label: string; price: number }[] | null;
-
   return (
     <FeatureErrorBoundary featureName="BrandedCycleRegistration" onRetry={() => window.location.reload()}>
       <ProfileLayout breadcrumbs={breadcrumbs} bannerUrl={owner.banner_url} showBackButton={false}>
@@ -271,42 +269,45 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
             </div>
           </div>
 
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-4">
-              {/* Cycle header */}
-              <h1 className="text-3xl font-bold">{cycle.name}</h1>
+          {/* Cycle hero section */}
+          <div className="mb-6 space-y-3">
+            <h1 className="text-3xl font-bold">{cycle.name}</h1>
 
-              {/* Meta info */}
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
+            {/* Prominent location */}
+            {cycleLocation && (
+              <div className="flex items-center gap-2 text-base font-medium text-foreground">
+                <MapPin className="h-5 w-5 text-primary shrink-0" />
+                <span>{cycleLocation.name}, {cycleLocation.city}</span>
+              </div>
+            )}
+
+            {/* Compact meta row */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>
+                  {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
+                </span>
+              </div>
+              {cycle.enrollment_deadline && (
+                <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
+                  <Clock className="h-4 w-4" />
                   <span>
-                    {format(new Date(cycle.start_date), 'd MMM', { locale: dateLocale })} - {format(new Date(cycle.end_date), 'd MMM yyyy', { locale: dateLocale })}
+                    {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
                   </span>
                 </div>
-                {cycle.enrollment_deadline && (
-                  <div className="flex items-center gap-1.5 text-sm text-orange-600 dark:text-orange-400">
-                    <Clock className="h-4 w-4" />
-                    <span>
-                      {t('registration.deadline', 'Deadline')}: {format(new Date(cycle.enrollment_deadline), 'd MMM yyyy', { locale: dateLocale })}
-                    </span>
-                  </div>
-                )}
-                {cycleLocation && (
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span>{cycleLocation.name}, {cycleLocation.city}</span>
-                  </div>
-                )}
-                <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
-                  {t(`status.${cycle.status}`)}
-                </Badge>
-              </div>
+              )}
+              <Badge variant={cycle.status === 'open' ? 'default' : 'secondary'}>
+                {t(`status.${cycle.status}`)}
+              </Badge>
+            </div>
+          </div>
 
-              {/* Cycle details (description, location, price table, terms) */}
-              <CycleDetailDisplay cycle={cycle} />
-            </CardContent>
-          </Card>
+          {/* Details card (description, price table, terms) — only if content exists */}
+          <CycleDetailDisplay cycle={cycle} hideLocation />
+          {(cycle.description || (cycle.price_table as any[])?.length > 0 || cycle.terms) && (
+            <div className="mb-6" />
+          )}
 
 
           {/* Status alerts */}
