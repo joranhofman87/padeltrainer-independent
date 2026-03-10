@@ -20,6 +20,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 
