@@ -288,8 +288,10 @@ export default function CycleForm({
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
     try {
+      const customLessonTypes = [customLessonType1.trim(), customLessonType2.trim()].filter(Boolean);
       const settings: CycleSettings = {
         lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
+        custom_lesson_types: !isEvent && customLessonTypes.length > 0 ? customLessonTypes : undefined,
         show_preferred_trainer: values.show_preferred_trainer,
         max_group_size: isEvent ? undefined : values.max_group_size,
         min_group_size: isEvent ? undefined : values.min_group_size,
