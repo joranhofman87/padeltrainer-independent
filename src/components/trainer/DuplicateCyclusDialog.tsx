@@ -133,7 +133,7 @@ export function DuplicateCyclusDialog({
       );
       setCyclusList(list);
     } catch (error) {
-      console.error("Error fetching cyclus list:", error);
+      logger.error("Error fetching cyclus list", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
       toast.error("Failed to load training cycles");
     } finally {
       setIsFetching(false);
