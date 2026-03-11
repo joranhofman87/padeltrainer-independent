@@ -800,7 +800,7 @@ export function BulkCreateSheet({
           },
         });
       } catch (notifyError) {
-        console.log("Failed to notify followers:", notifyError);
+        logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
       }
 
       toast({

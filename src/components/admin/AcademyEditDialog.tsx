@@ -60,6 +60,7 @@ import {
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { searchLocations, type Location } from "@/lib/locations";
 import { MollieDisconnectSection } from "./MollieDisconnectSection";

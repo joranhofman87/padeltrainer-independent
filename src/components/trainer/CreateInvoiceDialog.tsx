@@ -242,7 +242,7 @@ export function CreateInvoiceDialog({
       setNotes('');
       setLineItems([]);
     } catch (err: any) {
-      console.error('Error creating invoice:', err);
+      logger.error('Error creating invoice', err instanceof Error ? err : new Error(String(err)), { component: 'CreateInvoiceDialog' });
       toast({
         title: 'Fout',
         description: err.message || 'Kon factuur niet aanmaken',

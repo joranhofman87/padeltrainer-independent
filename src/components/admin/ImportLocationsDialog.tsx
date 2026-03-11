@@ -532,7 +532,7 @@ export function ImportLocationsDialog({
           imported += data?.length || batch.length;
         }
       } catch (error) {
-        console.error("Batch error:", error);
+        logger.error("Batch error", error instanceof Error ? error : new Error(String(error)), { component: 'ImportLocationsDialog' });
         failed += batch.length;
       }
 

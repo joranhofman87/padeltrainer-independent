@@ -102,7 +102,7 @@ export function LocationPicker({
         const data = await searchLocations(value, 100);
         setLocations(data);
       } catch (error) {
-        console.error('Error searching locations:', error);
+        logger.error('Error searching locations', error instanceof Error ? error : new Error(String(error)), { component: 'LocationPicker' });
       } finally {
         setSearchLoading(false);
       }

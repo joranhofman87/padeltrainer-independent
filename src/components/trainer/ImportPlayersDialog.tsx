@@ -316,7 +316,7 @@ export function ImportPlayersDialog({
         }
         imported.push(data as GuestPlayer);
       } catch (error) {
-        console.error("Failed to import player:", player.email, error);
+        logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersDialog', email: player.email });
         failed++;
       }
 

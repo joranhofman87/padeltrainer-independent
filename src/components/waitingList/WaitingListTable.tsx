@@ -61,7 +61,7 @@ export default function WaitingListTable({
     const { data, error } = await getOwnerWaitingListEntries(ownerType, ownerId, status);
     
     if (error) {
-      console.error('Error fetching waiting list:', error);
+      logger.error('Error fetching waiting list', error instanceof Error ? error : new Error(String(error)), { component: 'WaitingListTable' });
       toast({
         title: 'Error',
         description: 'Failed to load waiting list',

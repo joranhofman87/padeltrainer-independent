@@ -108,7 +108,7 @@ export function ClubEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (err) {
-      console.error("Error updating club:", err);
+      logger.error("Error updating club", err instanceof Error ? err : new Error(String(err)), { component: 'ClubEditDialog' });
       toast({
         title: "Update failed",
         description: err instanceof Error ? err.message : "Unknown error",

@@ -210,7 +210,7 @@ export function ScrapeLogosDialog({
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error("Batch error:", error);
+        logger.error("Batch error", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
         toast({
           title: "Batch Error",
           description: `Error processing batch ${i + 1}`,

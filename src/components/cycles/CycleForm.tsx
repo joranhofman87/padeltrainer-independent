@@ -363,7 +363,7 @@ export default function CycleForm({
       onSuccess?.(result);
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error saving cycle:', error);
+      logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
       toast.error(error.message || 'Failed to save cycle');
     } finally {
       setIsSubmitting(false);

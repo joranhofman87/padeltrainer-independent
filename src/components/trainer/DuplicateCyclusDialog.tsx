@@ -265,7 +265,7 @@ export function DuplicateCyclusDialog({
       setIncludeExistingPlayers(true);
       setMarkAsPaid(false);
     } catch (error) {
-      console.error("Error duplicating cyclus:", error);
+      logger.error("Error duplicating cyclus", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
       toast.error("Failed to duplicate cycle");
     } finally {
       setIsLoading(false);
