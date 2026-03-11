@@ -10,6 +10,27 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[MOLLIE-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+async function notifySlackError(functionName: string, errorMessage: string, context?: Record<string, unknown>) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) return;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    await supabase.functions.invoke("slack-notify", {
+      body: {
+        event: "edge_function_error",
+        data: {
+          function: functionName,
+          error: errorMessage.slice(0, 500),
+          ...context,
+        },
+      },
+    });
+  } catch (_) {
+    // Silent — don't let Slack notification failure affect the webhook
+  }
+}
+
 async function refreshTokenIfNeeded(
   supabaseClient: any,
   accountData: any,
