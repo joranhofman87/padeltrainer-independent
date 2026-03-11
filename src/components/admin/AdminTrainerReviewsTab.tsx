@@ -188,7 +188,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
       setShowAddForm(false);
       fetchReviews();
     } catch (error: any) {
-      console.error("Error adding review:", error);
+      logger.error("Error adding review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: error.message || "Failed to add review",
