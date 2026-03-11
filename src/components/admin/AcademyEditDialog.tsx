@@ -248,7 +248,7 @@ export function AcademyEditDialog({
       const data = await searchLocations("", 100);
       setAllLocations(data);
     } catch (error) {
-      console.error("Error loading locations:", error);
+      logger.error("Error loading locations", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     } finally {
       setLocationSearchLoading(false);
     }
