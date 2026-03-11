@@ -251,7 +251,7 @@ export function EditAcademyTrainerDialog({
         description: "The trainer's profile picture has been updated.",
       });
     } catch (error: any) {
-      console.error('Avatar upload error:', error);
+      logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditAcademyTrainerDialog' });
       toast({
         title: t('common.error'),
         description: error.message || 'Failed to upload avatar',
