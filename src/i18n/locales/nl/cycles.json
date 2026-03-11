@@ -197,8 +197,9 @@
       "customTimes": "Of stel specifieke tijden in",
       
       "additional": "Meer informatie over je padel ervaring",
-      "notes": "Ervaring (optioneel)",
-      "notesPlaceholder": "Vertel ons meer over je ervaring met Padel of andere racketsporten. Dit helpt ons om je in de juiste groep te plaatsen als je nog geen rating hebt.",
+      "notes": "Ervaring",
+      "notesPlaceholder": "Hoe lang speel je al padel? Heb je al eerder les gehad? Heb je een tennisachtergrond?",
+      "experienceRequired": "Vertel ons over je ervaring",
       "consent": "Ik ga akkoord om te worden gecontacteerd over mijn aanmelding en stem in met de verwerking van mijn gegevens.",
       "consentRequired": "Je moet akkoord gaan om door te gaan",
       

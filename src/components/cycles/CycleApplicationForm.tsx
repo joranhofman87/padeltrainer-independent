@@ -148,7 +148,7 @@ export default function CycleApplicationForm({
     availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
     location_id: z.string().optional(),
-    notes: z.string().optional(),
+    notes: z.string().min(1, t('application.form.experienceRequired')),
     consent: z.boolean().refine(val => val === true, {
       message: t('application.form.consentRequired'),
     }),
