@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
-  ArrowLeft, MapPin, Star, Clock, Award, Mail, Euro,
+  ArrowLeft, MapPin, Star, Clock, Award, Mail,
   Calendar, Users, CheckCircle, UserPlus, UserCheck,
   Share2, Copy, Check, MessageCircle, Quote, Play,
   Target, Sparkles, Linkedin, GraduationCap, Eye, EyeOff,
