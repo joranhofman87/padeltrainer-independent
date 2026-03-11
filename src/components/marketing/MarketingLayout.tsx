@@ -187,6 +187,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               </nav>
             </motion.div>
           )}
+          </AnimatePresence>
         </div>
       </header>
 
