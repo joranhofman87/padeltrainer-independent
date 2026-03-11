@@ -176,7 +176,13 @@
   "notFound": {
     "title": "Página no encontrada",
     "description": "La página que buscas no existe o ha sido movida.",
-    "goHome": "Ir al inicio"
+    "goHome": "Ir al inicio",
+    "suggestions": {
+      "heading": "¿Quizás buscabas:",
+      "findTrainer": "Encontrar un entrenador",
+      "browseAcademies": "Ver academias",
+      "readBlog": "Leer nuestro blog"
+    }
   },
   "deleteAccount": {
     "title": "Eliminar cuenta",
