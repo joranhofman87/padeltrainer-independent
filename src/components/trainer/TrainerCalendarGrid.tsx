@@ -366,7 +366,7 @@ function MobileDayView({
                 : "bg-muted/50 hover:bg-muted"
             )}
           >
-            <span className="text-xs font-medium">{format(day, "EEE")}</span>
+            <span className="text-xs font-medium">{format(day, "EEE", { locale: dfLocale })}</span>
             <span className="text-lg font-bold">{format(day, "d")}</span>
           </button>
         ))}
