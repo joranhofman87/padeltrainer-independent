@@ -310,7 +310,7 @@ export function ImportPlayersDialog({
         if (error) {
           // Handle unique constraint violation (duplicate email)
           if (error.code === "23505") {
-            console.warn("Duplicate email skipped:", player.email);
+            logger.warn("Duplicate email skipped", { component: 'ImportPlayersDialog', email: player.email });
           }
           throw error;
         }
