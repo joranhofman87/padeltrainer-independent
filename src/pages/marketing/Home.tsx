@@ -22,6 +22,17 @@ export default function Home() {
 
   useEffect(() => {
     trackEvent('home_page_viewed');
+    // Prefetch high-traffic route chunks while user is idle on landing page
+    const prefetch = () => {
+      import('@/pages/Trainers');
+      import('@/pages/TrainerProfile');
+      import('@/pages/Locations');
+    };
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(prefetch);
+    } else {
+      setTimeout(prefetch, 2000);
+    }
   }, []);
 
   const websiteStructuredData = {
