@@ -116,7 +116,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       toast({ title: 'Factuur gemarkeerd als betaald' });
       // Auto-forward if emails configured
       if (forwardEmails.length > 0) {
-        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(console.error);
+        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
       }
       fetchInvoices();
     }
