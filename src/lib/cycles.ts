@@ -493,22 +493,47 @@ export async function getIntakeRequestsWithProposals(
 
   const requestIds = requests.map(r => r.id);
 
-  // Fetch all proposals for these requests with slot and trainer info
+  // Fetch all proposals for these requests with slot info (no nested profile join)
   const { data: proposals, error } = await supabase
     .from('proposed_assignments')
     .select(`
       *,
-      slot:availability_slots(id, start_time, end_time),
-      trainer:trainer_profiles(
-        id,
-        profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
-      )
+      slot:availability_slots(id, start_time, end_time)
     `)
     .in('intake_request_id', requestIds);
 
   if (error) {
     logger.warn('Error fetching proposals', { error });
     return requests; // Return requests without proposals on error
+  }
+
+  // Resolve trainer names via separate queries (no FK from trainer_profiles to profiles)
+  const trainerIds = [...new Set((proposals || []).map(p => p.trainer_id).filter(Boolean))];
+  const trainerProfileMap = new Map<string, { full_name: string; avatar_url: string | null }>();
+
+  if (trainerIds.length > 0) {
+    const { data: trainerProfiles } = await supabase
+      .from('trainer_profiles')
+      .select('id, user_id')
+      .in('id', trainerIds);
+
+    if (trainerProfiles && trainerProfiles.length > 0) {
+      const userIds = trainerProfiles.map(tp => tp.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      trainerProfiles.forEach(tp => {
+        const profile = profiles?.find(p => p.user_id === tp.user_id);
+        if (profile) {
+          trainerProfileMap.set(tp.id, {
+            full_name: profile.full_name || 'Unknown',
+            avatar_url: profile.avatar_url,
+          });
+        }
+      });
+    }
   }
 
   // Group proposals by slot_id to find group members
@@ -531,14 +556,7 @@ export async function getIntakeRequestsWithProposals(
       ?.filter(m => m.requestId !== req.id)
       ?.map(m => m.name) || [];
 
-    // Get trainer name from the nested profile (type assertion for Supabase query result)
-    const trainerProfile = proposal.trainer?.profiles as { full_name?: string; avatar_url?: string | null } | { full_name?: string; avatar_url?: string | null }[] | null;
-    const trainerName = Array.isArray(trainerProfile) 
-      ? trainerProfile[0]?.full_name 
-      : trainerProfile?.full_name;
-    const trainerAvatar = Array.isArray(trainerProfile) 
-      ? trainerProfile[0]?.avatar_url 
-      : trainerProfile?.avatar_url;
+    const trainerInfo = trainerProfileMap.get(proposal.trainer_id);
 
     return {
       ...req,
@@ -549,8 +567,8 @@ export async function getIntakeRequestsWithProposals(
         slot_start: proposal.slot.start_time,
         slot_end: proposal.slot.end_time,
         trainer_id: proposal.trainer_id,
-        trainer_name: trainerName || 'Unknown',
-        trainer_avatar: trainerAvatar,
+        trainer_name: trainerInfo?.full_name || 'Unknown',
+        trainer_avatar: trainerInfo?.avatar_url || null,
         confidence_score: proposal.confidence_score || 0,
         group_members: groupMembers,
       },
