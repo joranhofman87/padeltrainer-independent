@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { logger } from '@/lib/logger';
 import { CalendarIcon, Clock, Plus, Trash2, AlertTriangle, CheckCircle2, CalendarPlus, Repeat } from 'lucide-react';
 import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHours, setMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
