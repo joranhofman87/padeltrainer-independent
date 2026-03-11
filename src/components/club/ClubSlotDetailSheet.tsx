@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import {
