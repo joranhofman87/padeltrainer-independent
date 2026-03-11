@@ -45,7 +45,6 @@ export interface RatingSystem {
 }
 
 export interface TrainerFiltersState {
-  priceRange: [number, number];
   minRating: number;
   specializations: string[];
   certifications: string[];
