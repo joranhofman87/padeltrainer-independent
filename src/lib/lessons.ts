@@ -59,8 +59,8 @@ export async function getAvailableSlotsForTrainer(trainerId: string) {
   if (error) return { data: null, error };
 
   const availableSlots = slots?.filter(slot => {
-    const confirmedBookings = slot.bookings?.filter((b: any) => b.status === 'confirmed' || b.status === 'pending') || [];
-    const maxParticipants = (slot as any).max_participants || 4;
+    const confirmedBookings = slot.bookings?.filter((b: { id: string; status: string }) => b.status === 'confirmed' || b.status === 'pending') || [];
+    const maxParticipants = slot.max_participants ?? 4;
     return confirmedBookings.length < maxParticipants;
   });
 

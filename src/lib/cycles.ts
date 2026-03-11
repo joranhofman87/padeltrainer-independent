@@ -208,26 +208,30 @@ export interface CycleInput {
 }
 
 // Helper to convert DB row to typed object
-function toCycle(row: any): Cycle {
+// Helper to convert DB row to typed object
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toCycle(row: Record<string, any>): Cycle {
   return {
     ...row,
     settings: (row.settings || {}) as CycleSettings,
-    price_table: (row.price_table || null) as PriceTableRow[] | null,
-  };
+    price_table: (row.price_table || null) as unknown as PriceTableRow[] | null,
+  } as Cycle;
 }
 
-function toIntakeRequest(row: any): IntakeRequest {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toIntakeRequest(row: Record<string, any>): IntakeRequest {
   return {
     ...row,
-    preferred_time_windows: (row.preferred_time_windows || []) as TimeWindow[],
-  };
+    preferred_time_windows: (row.preferred_time_windows || []) as unknown as TimeWindow[],
+  } as IntakeRequest;
 }
 
-function toProposedAssignment(row: any): ProposedAssignment {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toProposedAssignment(row: Record<string, any>): ProposedAssignment {
   return {
     ...row,
-    rationale: (row.rationale || null) as RationaleItem[] | null,
-  };
+    rationale: (row.rationale || null) as unknown as RationaleItem[] | null,
+  } as ProposedAssignment;
 }
 
 // Cycle CRUD

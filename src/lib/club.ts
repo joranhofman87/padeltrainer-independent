@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import type { Location } from '@/lib/locations';
 
 export interface ClubProfile {
   id: string;
@@ -140,7 +141,7 @@ export async function claimClub(
 }
 
 // Get user's club profiles (clubs they manage)
-export async function getUserClubProfiles(userId: string): Promise<(ClubProfile & { role: string; location: any })[]> {
+export async function getUserClubProfiles(userId: string) {
   const { data, error } = await supabase
     .from('club_managers')
     .select(`
@@ -157,7 +158,7 @@ export async function getUserClubProfiles(userId: string): Promise<(ClubProfile 
     return [];
   }
 
-  return data?.map((item: any) => ({
+  return data?.map((item: Record<string, any>) => ({
     ...item.club_profile,
     role: item.role,
     location: item.club_profile.location,
@@ -429,7 +430,7 @@ export async function removeClubManager(managerId: string): Promise<boolean> {
 }
 
 // Get all pending club claims (for admin)
-export async function getPendingClubClaims(): Promise<(ClubProfile & { location: any; owner: any })[]> {
+export async function getPendingClubClaims() {
   const { data, error } = await supabase
     .from('club_profiles')
     .select(`
@@ -449,9 +450,9 @@ export async function getPendingClubClaims(): Promise<(ClubProfile & { location:
     return [];
   }
 
-  return (data || []).map((claim: any) => ({
+  return (data || []).map((claim: Record<string, any>) => ({
     ...claim,
-    owner: claim.managers?.find((m: any) => m.role === 'owner')?.profile || null,
+    owner: claim.managers?.find((m: { role: string }) => m.role === 'owner')?.profile || null,
   }));
 }
 
