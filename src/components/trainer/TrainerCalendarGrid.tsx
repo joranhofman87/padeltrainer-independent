@@ -502,10 +502,10 @@ function DayView({
         </Button>
         <div className="text-center">
           <div className={cn("font-semibold text-xl", isToday(currentDate) && "text-primary")}>
-            {format(currentDate, "EEEE")}
+            {format(currentDate, "EEEE", { locale: dfLocale })}
           </div>
           <div className="text-muted-foreground">
-            {format(currentDate, "MMMM d, yyyy")}
+            {format(currentDate, "d MMMM yyyy", { locale: dfLocale })}
           </div>
         </div>
         <Button
