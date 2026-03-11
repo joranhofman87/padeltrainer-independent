@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/accordion';
 import { Search, MapPin, Star, TrendingUp, Building2, ChevronRight, HelpCircle, Globe } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
-import { getTrainerAverageRating } from '@/lib/reviews';
+import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { LocationCard } from '@/components/locations/LocationCard';
