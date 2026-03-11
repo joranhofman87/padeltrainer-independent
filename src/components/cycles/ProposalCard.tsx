@@ -29,9 +29,12 @@ import {
   type RationaleItem,
   updateProposedAssignmentStatus
 } from '@/lib/cycles';
+import ReassignPlayerDialog from './ReassignPlayerDialog';
 
 interface ProposalCardProps {
   proposal: EnrichedProposedAssignment;
+  cycleId?: string;
+  playerName?: string;
   onStatusChange?: () => void;
 }
 
@@ -40,13 +43,15 @@ const rationaleIcons: Record<string, React.ReactNode> = {
   preferred_trainer: <User className="h-4 w-4" />,
   level_compatible: <Trophy className="h-4 w-4" />,
   priority_bonus: <Target className="h-4 w-4" />,
-  capacity_available: <Box className="h-4 w-4" />
+  capacity_available: <Box className="h-4 w-4" />,
+  manual_override: <Edit className="h-4 w-4" />
 };
 
-export default function ProposalCard({ proposal, onStatusChange }: ProposalCardProps) {
+export default function ProposalCard({ proposal, cycleId, playerName, onStatusChange }: ProposalCardProps) {
   const { t } = useTranslation('cycles');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showReassign, setShowReassign] = useState(false);
 
   const handleApprove = async () => {
     setIsUpdating(true);
@@ -91,7 +96,8 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
     }
   };
 
-  // Get formatted slot info
+  const isManualOverride = proposal.rationale?.some(r => r.type === 'manual_override');
+
   const slotDate = proposal.slot?.start_time 
     ? format(new Date(proposal.slot.start_time), 'EEEE, MMM d')
     : null;
@@ -99,118 +105,138 @@ export default function ProposalCard({ proposal, onStatusChange }: ProposalCardP
     ? `${format(new Date(proposal.slot.start_time), 'HH:mm')} - ${format(new Date(proposal.slot.end_time), 'HH:mm')}`
     : null;
   
-  // Get trainer name from joined profile (array from Supabase join)
-  const trainerProfile = proposal.trainer?.profile?.[0];
-  const trainerName = trainerProfile?.full_name || 'Unknown Trainer';
-  const trainerAvatar = trainerProfile?.avatar_url;
-  const trainerInitials = trainerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const trainerProfile = proposal.trainer?.profile?.[0] ?? proposal.trainer?.profile;
+  const trainerName = (trainerProfile as any)?.full_name || 'Unknown Trainer';
+  const trainerAvatar = (trainerProfile as any)?.avatar_url;
+  const trainerInitials = trainerName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
 
-  // Get cyclus name if available
   const cyclusName = proposal.slot?.cyclus_name;
 
   return (
-    <Card className={proposal.status === 'confirmed' ? 'border-green-500/30' : ''}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              {slotDate || t('proposals.card.slot')}
-            </CardTitle>
-            {slotTime && (
-              <p className="text-lg font-semibold text-foreground">{slotTime}</p>
-            )}
-            {cyclusName && (
-              <p className="text-xs text-muted-foreground">{cyclusName}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {getStatusBadge()}
-            <div className={`text-2xl font-bold ${getScoreColor(proposal.confidence_score || 0)}`}>
-              {Math.round(proposal.confidence_score || 0)}%
+    <>
+      <Card className={proposal.status === 'confirmed' ? 'border-green-500/30' : ''}>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                {slotDate || t('proposals.card.slot')}
+              </CardTitle>
+              {slotTime && (
+                <p className="text-lg font-semibold text-foreground">{slotTime}</p>
+              )}
+              {cyclusName && (
+                <p className="text-xs text-muted-foreground">{cyclusName}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {isManualOverride && (
+                <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600">
+                  <Edit className="h-3 w-3 mr-1" />
+                  Manual
+                </Badge>
+              )}
+              {getStatusBadge()}
+              {proposal.confidence_score != null && (
+                <div className={`text-2xl font-bold ${getScoreColor(proposal.confidence_score)}`}>
+                  {Math.round(proposal.confidence_score)}%
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="space-y-4">
-        {/* Trainer Info */}
-        <div className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={trainerAvatar || undefined} alt={trainerName} />
-            <AvatarFallback className="text-xs">{trainerInitials}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="text-sm font-medium">{trainerName}</p>
-            <p className="text-xs text-muted-foreground">{t('proposals.card.trainer')}</p>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {/* Trainer Info */}
+          <div className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={trainerAvatar || undefined} alt={trainerName} />
+              <AvatarFallback className="text-xs">{trainerInitials}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-sm font-medium">{trainerName}</p>
+              <p className="text-xs text-muted-foreground">{t('proposals.card.trainer')}</p>
+            </div>
           </div>
-        </div>
 
-        {/* Rationale Breakdown */}
-        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between">
-              <span className="flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                {t('proposals.card.rationale')}
-              </span>
-              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-3 mt-3">
-            {proposal.rationale?.map((item: RationaleItem, idx: number) => (
-              <div key={idx} className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm">
-                    {rationaleIcons[item.type as keyof typeof rationaleIcons] || <Target className="h-4 w-4" />}
-                    <span>{t(`proposals.rationaleTypes.${item.type}`)}</span>
+          {/* Rationale Breakdown */}
+          {proposal.rationale && proposal.rationale.length > 0 && !isManualOverride && (
+            <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-between">
+                  <span className="flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    {t('proposals.card.rationale')}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 mt-3">
+                {proposal.rationale.map((item: RationaleItem, idx: number) => (
+                  <div key={idx} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm">
+                        {rationaleIcons[item.type as keyof typeof rationaleIcons] || <Target className="h-4 w-4" />}
+                        <span>{t(`proposals.rationaleTypes.${item.type}`)}</span>
+                      </div>
+                      <span className="text-sm font-medium">+{item.score.toFixed(0)}</span>
+                    </div>
+                    <Progress value={(item.score / 40) * 100} className="h-1.5" />
+                    {item.detail && (
+                      <p className="text-xs text-muted-foreground">{item.detail}</p>
+                    )}
                   </div>
-                  <span className="text-sm font-medium">+{item.score.toFixed(0)}</span>
-                </div>
-                <Progress value={(item.score / 40) * 100} className="h-1.5" />
-                {item.detail && (
-                  <p className="text-xs text-muted-foreground">{item.detail}</p>
-                )}
-              </div>
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
-        {/* Actions */}
-        {proposal.status === 'proposed' && (
-          <div className="flex gap-2 pt-2">
-            <Button 
-              size="sm" 
-              className="flex-1"
-              onClick={handleApprove}
-              disabled={isUpdating}
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              {t('proposals.actions.approve')}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                // Slot picker not implemented - disabled until feature is built
-              }}
-              disabled={true}
-              title="Slot picker coming soon"
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={handleReject}
-              disabled={isUpdating}
-            >
-              <XCircle className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          {/* Actions */}
+          {proposal.status === 'proposed' && (
+            <div className="flex gap-2 pt-2">
+              <Button 
+                size="sm" 
+                className="flex-1"
+                onClick={handleApprove}
+                disabled={isUpdating}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                {t('proposals.actions.approve')}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowReassign(true)}
+                disabled={!cycleId}
+                title={cycleId ? t('proposals.reassign.title', { name: playerName || '' }) : ''}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={handleReject}
+                disabled={isUpdating}
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {cycleId && (
+        <ReassignPlayerDialog
+          open={showReassign}
+          onOpenChange={setShowReassign}
+          assignmentId={proposal.id}
+          currentSlotId={proposal.slot_id}
+          cycleId={cycleId}
+          playerName={playerName || 'Player'}
+          onReassigned={onStatusChange}
+        />
+      )}
+    </>
   );
 }

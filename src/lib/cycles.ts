@@ -846,17 +846,172 @@ export async function updateProposedAssignmentStatus(
 
 export async function updateProposedAssignment(
   assignmentId: string,
-  updates: { slot_id?: string; trainer_id?: string; status?: ProposedAssignment['status'] }
+  updates: {
+    slot_id?: string;
+    trainer_id?: string;
+    status?: ProposedAssignment['status'];
+    confidence_score?: number | null;
+    rationale?: RationaleItem[];
+  }
 ): Promise<ProposedAssignment> {
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (updates.slot_id !== undefined) updateData.slot_id = updates.slot_id;
+  if (updates.trainer_id !== undefined) updateData.trainer_id = updates.trainer_id;
+  if (updates.status !== undefined) updateData.status = updates.status;
+  if (updates.confidence_score !== undefined) updateData.confidence_score = updates.confidence_score;
+  if (updates.rationale !== undefined) updateData.rationale = updates.rationale as unknown as Json;
+
   const { data, error } = await supabase
     .from('proposed_assignments')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update(updateData)
     .eq('id', assignmentId)
     .select()
     .single();
 
   if (error) throw error;
   return toProposedAssignment(data);
+}
+
+// Get all available slots for a cycle with current assignment counts
+export interface SlotWithOccupancy {
+  id: string;
+  start_time: string;
+  end_time: string;
+  trainer_id: string;
+  trainer_name: string;
+  trainer_avatar: string | null;
+  max_participants: number | null;
+  cyclus_name: string | null;
+  current_assignments: Array<{
+    id: string;
+    intake_request_id: string;
+    player_name: string;
+    player_rating: number | null;
+    player_rating_system: string | null;
+    confidence_score: number | null;
+  }>;
+}
+
+export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWithOccupancy[]> {
+  // 1. Get cycle to know date range and owner
+  const { data: cycle, error: cycleError } = await supabase
+    .from('cycles')
+    .select('start_date, end_date, owner_id, owner_type')
+    .eq('id', cycleId)
+    .single();
+
+  if (cycleError) throw cycleError;
+
+  // 2. Get trainer IDs for this owner
+  let trainerIds: string[] = [];
+  if (cycle.owner_type === 'academy') {
+    const { data: trainers } = await supabase
+      .from('academy_trainers')
+      .select('trainer_profile_id')
+      .eq('academy_profile_id', cycle.owner_id)
+      .eq('status', 'active');
+    trainerIds = (trainers || []).map(t => t.trainer_profile_id);
+  } else {
+    // For trainer-owned cycles, get trainer_profile_id from user_id
+    const { data: tp } = await supabase
+      .from('trainer_profiles')
+      .select('id')
+      .eq('user_id', cycle.owner_id)
+      .single();
+    if (tp) trainerIds = [tp.id];
+  }
+
+  if (trainerIds.length === 0) return [];
+
+  // 3. Fetch availability slots within cycle date range
+  const { data: slots, error: slotsError } = await supabase
+    .from('availability_slots')
+    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name')
+    .in('trainer_id', trainerIds)
+    .gte('start_time', cycle.start_date)
+    .lte('end_time', cycle.end_date + 'T23:59:59')
+    .order('start_time', { ascending: true });
+
+  if (slotsError) throw slotsError;
+  if (!slots || slots.length === 0) return [];
+
+  // 4. Fetch all proposed_assignments for intake_requests in this cycle
+  const { data: requests } = await supabase
+    .from('intake_requests')
+    .select('id, full_name, rating, rating_system')
+    .eq('cycle_id', cycleId);
+
+  const requestMap = new Map((requests || []).map(r => [r.id, r]));
+  const requestIds = (requests || []).map(r => r.id);
+
+  let assignments: Array<{ id: string; intake_request_id: string; slot_id: string; confidence_score: number | null }> = [];
+  if (requestIds.length > 0) {
+    const { data: pa } = await supabase
+      .from('proposed_assignments')
+      .select('id, intake_request_id, slot_id, confidence_score')
+      .in('intake_request_id', requestIds)
+      .eq('status', 'proposed');
+    assignments = pa || [];
+  }
+
+  // 5. Get trainer profiles -> user_ids -> profiles (two-step)
+  const uniqueTrainerIds = [...new Set(slots.map(s => s.trainer_id))];
+  const { data: trainerProfiles } = await supabase
+    .from('trainer_profiles')
+    .select('id, user_id')
+    .in('id', uniqueTrainerIds);
+
+  const userIds = (trainerProfiles || []).map(tp => tp.user_id).filter(Boolean);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, avatar_url')
+    .in('user_id', userIds);
+
+  const trainerNameMap = new Map<string, { name: string; avatar: string | null }>();
+  for (const tp of trainerProfiles || []) {
+    const profile = (profiles || []).find(p => p.user_id === tp.user_id);
+    trainerNameMap.set(tp.id, {
+      name: profile?.full_name || 'Unknown',
+      avatar: profile?.avatar_url || null,
+    });
+  }
+
+  // 6. Build result
+  const slotAssignmentMap = new Map<string, typeof assignments>();
+  for (const a of assignments) {
+    const existing = slotAssignmentMap.get(a.slot_id) || [];
+    existing.push(a);
+    slotAssignmentMap.set(a.slot_id, existing);
+  }
+
+  return slots.map(slot => {
+    const trainer = trainerNameMap.get(slot.trainer_id) || { name: 'Unknown', avatar: null };
+    const slotAssignments = slotAssignmentMap.get(slot.id) || [];
+
+    return {
+      id: slot.id,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      trainer_id: slot.trainer_id,
+      trainer_name: trainer.name,
+      trainer_avatar: trainer.avatar,
+      max_participants: slot.max_participants,
+      cyclus_name: slot.cyclus_name,
+      current_assignments: slotAssignments.map(a => {
+        const req = requestMap.get(a.intake_request_id);
+        return {
+          id: a.id,
+          intake_request_id: a.intake_request_id,
+          player_name: req?.full_name || 'Unknown',
+          player_rating: req?.rating ?? null,
+          player_rating_system: req?.rating_system ?? null,
+          confidence_score: a.confidence_score,
+        };
+      }),
+    };
+  });
 }
 
 export async function deleteProposedAssignment(assignmentId: string): Promise<void> {

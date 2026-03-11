@@ -299,6 +299,14 @@
       "changeSlot": "Cambiar plaza",
       "changeTrainer": "Cambiar entrenador"
     },
+    "reassign": {
+      "title": "Mover {{name}}",
+      "description": "Selecciona otra plaza para mover a este jugador",
+      "current": "Asignación actual",
+      "noSlots": "No hay otras plazas disponibles",
+      "confirm": "Mover jugador",
+      "success": "{{name}} ha sido movido"
+    },
     "confirmDialog": {
       "title": "Confirmar asignación",
       "message": "Esto añadirá al jugador a la plaza y le enviará un email de confirmación.",

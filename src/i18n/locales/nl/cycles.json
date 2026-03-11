@@ -311,6 +311,14 @@
       "changeSlot": "Moment Wijzigen",
       "changeTrainer": "Trainer Wijzigen"
     },
+    "reassign": {
+      "title": "Verplaats {{name}}",
+      "description": "Selecteer een ander moment om deze speler naartoe te verplaatsen",
+      "current": "Huidige toewijzing",
+      "noSlots": "Geen andere momenten beschikbaar",
+      "confirm": "Speler Verplaatsen",
+      "success": "{{name}} is verplaatst"
+    },
     "confirmDialog": {
       "title": "Toewijzing Bevestigen",
       "message": "Dit voegt de speler toe aan het moment en stuurt een bevestigingsmail.",

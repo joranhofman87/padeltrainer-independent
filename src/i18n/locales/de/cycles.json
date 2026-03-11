@@ -299,6 +299,14 @@
       "changeSlot": "Platz ändern",
       "changeTrainer": "Trainer ändern"
     },
+    "reassign": {
+      "title": "{{name}} verschieben",
+      "description": "Wähle einen anderen Platz für diesen Spieler",
+      "current": "Aktuelle Zuweisung",
+      "noSlots": "Keine anderen Plätze verfügbar",
+      "confirm": "Spieler verschieben",
+      "success": "{{name}} wurde verschoben"
+    },
     "confirmDialog": {
       "title": "Zuweisung bestätigen",
       "message": "Dies fügt den Spieler zum Platz hinzu und sendet ihm eine Bestätigungs-E-Mail.",

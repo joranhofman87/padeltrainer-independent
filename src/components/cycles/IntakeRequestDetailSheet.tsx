@@ -54,13 +54,15 @@ interface IntakeRequestDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onStatusChange?: () => void;
+  cycleId?: string;
 }
 
 export default function IntakeRequestDetailSheet({
   request,
   open,
   onOpenChange,
-  onStatusChange
+  onStatusChange,
+  cycleId
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
@@ -287,6 +289,8 @@ export default function IntakeRequestDetailSheet({
             ) : proposal ? (
               <ProposalCard 
                 proposal={proposal} 
+                cycleId={cycleId}
+                playerName={request.full_name}
                 onStatusChange={onStatusChange}
               />
             ) : request.skip_reason ? (

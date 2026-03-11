@@ -299,6 +299,14 @@
       "changeSlot": "Changer de créneau",
       "changeTrainer": "Changer d'entraîneur"
     },
+    "reassign": {
+      "title": "Déplacer {{name}}",
+      "description": "Sélectionnez un autre créneau pour ce joueur",
+      "current": "Attribution actuelle",
+      "noSlots": "Aucun autre créneau disponible",
+      "confirm": "Déplacer le joueur",
+      "success": "{{name}} a été déplacé"
+    },
     "confirmDialog": {
       "title": "Confirmer l'affectation",
       "message": "Cela ajoutera le joueur au créneau et lui enverra un e-mail de confirmation.",
