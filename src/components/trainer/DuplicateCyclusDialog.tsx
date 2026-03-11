@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, addWeeks, parseISO, setHours, setMinutes } from "date-fns";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import { Copy, Repeat, Users } from "lucide-react";
 import {
   Dialog,
