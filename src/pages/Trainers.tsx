@@ -380,10 +380,6 @@ export default function Trainers() {
       const matchesLocation = filters.locationId === 'all' || 
         trainerLocationMap.get(trainer.id)?.includes(filters.locationId);
       
-      // Price range filter
-      const rate = trainer.hourly_rate || 0;
-      const matchesPrice = rate >= filters.priceRange[0] && rate <= filters.priceRange[1];
-      
       // Rating filter
       const matchesRating = trainer.averageRating >= filters.minRating;
       
