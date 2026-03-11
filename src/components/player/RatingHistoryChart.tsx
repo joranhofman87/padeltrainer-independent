@@ -69,7 +69,7 @@ export function RatingHistoryChart({
         setHistory(data || []);
       }
     } catch (err) {
-      console.error('Failed to fetch history:', err);
+      logger.error('Failed to fetch history', err instanceof Error ? err : new Error(String(err)), { component: 'RatingHistoryChart' });
     } finally {
       setLoading(false);
     }

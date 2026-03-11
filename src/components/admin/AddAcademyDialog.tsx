@@ -141,7 +141,7 @@ export function AddAcademyDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error creating academy:", error);
+      logger.error("Error creating academy", error instanceof Error ? error : new Error(String(error)), { component: 'AddAcademyDialog' });
       toast({
         title: "Error",
         description: "Failed to create academy. Please try again.",

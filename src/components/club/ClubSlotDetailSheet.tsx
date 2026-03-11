@@ -109,7 +109,7 @@ export function ClubSlotDetailSheet({
       if (error) throw error;
       setBookings((data as SlotBooking[]) || []);
     } catch (error) {
-      console.error("Error fetching bookings:", error);
+      logger.error("Error fetching bookings", error instanceof Error ? error : new Error(String(error)), { component: 'ClubSlotDetailSheet' });
     } finally {
       setLoading(false);
     }

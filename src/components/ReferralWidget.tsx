@@ -38,7 +38,7 @@ export function ReferralWidget() {
           });
         }
       } catch (err) {
-        console.error('Error initializing referral widget:', err);
+        logger.error('Error initializing referral widget', err instanceof Error ? err : new Error(String(err)), { component: 'ReferralWidget' });
       }
     };
 

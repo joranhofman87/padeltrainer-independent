@@ -39,7 +39,7 @@ export default function MyWaitingListEntries() {
     setLoading(true);
     const { data, error } = await getPlayerWaitingListEntries(profile.id);
     if (error) {
-      console.error('Error fetching waiting list entries:', error);
+      logger.error('Error fetching waiting list entries', error instanceof Error ? error : new Error(String(error)), { component: 'MyWaitingListEntries' });
     }
     setEntries(data || []);
     setLoading(false);

@@ -104,7 +104,7 @@ export function EditPlayerDialog({
       onOpenChange(false);
       onPlayerUpdated?.(data as GuestPlayer);
     } catch (error: any) {
-      console.error("Error updating player:", error);
+      logger.error("Error updating player", error instanceof Error ? error : new Error(String(error)), { component: 'EditPlayerDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

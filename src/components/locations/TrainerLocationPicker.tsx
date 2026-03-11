@@ -71,7 +71,7 @@ export function TrainerLocationPicker({
         const data = await getActiveLocations();
         setLocations(data);
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerLocationPicker' });
       } finally {
         setLoading(false);
       }
