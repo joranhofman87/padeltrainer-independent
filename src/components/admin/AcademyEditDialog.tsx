@@ -270,7 +270,7 @@ export function AcademyEditDialog({
         const data = await searchLocations(value, 100);
         setAllLocations(data);
       } catch (error) {
-        console.error("Error searching locations:", error);
+        logger.error("Error searching locations", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       } finally {
         setLocationSearchLoading(false);
       }
