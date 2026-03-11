@@ -958,46 +958,45 @@ export async function saveCycleScoringWeights(
 
 // Reset all proposals for a cycle (delete proposed_assignments and set intake_requests back to 'new')
 export async function resetProposals(cycleId: string): Promise<{ reset: number }> {
-  // Get all intake requests for this cycle that are not already 'new'
-  const { data: requests, error: fetchError } = await supabase
-    .from('intake_requests')
-    .select('id')
-    .eq('cycle_id', cycleId)
-    .in('status', ['proposed', 'confirmed', 'skipped']);
-
-  if (fetchError) throw fetchError;
-
-  const requestIds = requests?.map(r => r.id) || [];
-
-  // Delete ALL proposed assignments for this cycle's requests (regardless of status)
+  // Get ALL intake requests for this cycle
   const { data: allRequests, error: allFetchError } = await supabase
     .from('intake_requests')
     .select('id')
     .eq('cycle_id', cycleId);
 
   if (allFetchError) throw allFetchError;
+  if (!allRequests || allRequests.length === 0) return { reset: 0 };
 
-  if (allRequests && allRequests.length > 0) {
-    const allIds = allRequests.map(r => r.id);
-    const { error: deleteError } = await supabase
-      .from('proposed_assignments')
-      .delete()
-      .in('intake_request_id', allIds);
+  const allIds = allRequests.map(r => r.id);
 
-    if (deleteError) throw deleteError;
+  // Step 1: Delete ALL proposed assignments for this cycle's requests
+  const { error: deleteError } = await supabase
+    .from('proposed_assignments')
+    .delete()
+    .in('intake_request_id', allIds);
+
+  if (deleteError) throw deleteError;
+
+  // Step 2: Reset ALL intake requests to 'new' and clear skip_reason
+  const { error: updateError } = await supabase
+    .from('intake_requests')
+    .update({ status: 'new', skip_reason: null })
+    .eq('cycle_id', cycleId);
+
+  if (updateError) throw updateError;
+
+  // Step 3: Verify no stale proposals remain
+  const { count } = await supabase
+    .from('proposed_assignments')
+    .select('*', { count: 'exact', head: true })
+    .in('intake_request_id', allIds);
+
+  if (count && count > 0) {
+    logger.warn('Stale proposals remain after reset', { cycleId, count });
+    throw new Error(`Reset incomplete: ${count} proposals could not be deleted. Please check permissions.`);
   }
 
-  // Set all non-new intake request statuses back to 'new'
-  if (requestIds.length > 0) {
-    const { error: updateError } = await supabase
-      .from('intake_requests')
-      .update({ status: 'new' })
-      .in('id', requestIds);
-
-    if (updateError) throw updateError;
-  }
-
-  return { reset: requestIds.length };
+  return { reset: allRequests.length };
 }
 
 

@@ -120,7 +120,14 @@ export default function TrainerIntakeRequests() {
         trainerAvailability: config.trainerAvailability,
         additionalCriteria: config.additionalCriteria,
       });
-      toast.success(t('proposals.generated', { count: result.generated }));
+      if (result.skipped > 0) {
+        toast.success(
+          t('proposals.generated', { count: result.generated }) + 
+          ` · ${result.skipped} ${t('intakeRequests.filters.skipped', { defaultValue: 'skipped' }).toLowerCase()}`
+        );
+      } else {
+        toast.success(t('proposals.generated', { count: result.generated }));
+      }
       setShowWizard(false);
       fetchData();
     } catch (error: any) {

@@ -596,17 +596,20 @@ Deno.serve(async (req) => {
       bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
     });
 
-    // Check for existing proposals to avoid duplicates
+    // Defensively clean up any stale proposals for these "new" requests
     const requestIds = requests.map((r) => r.id);
-    const { data: existingProposals } = await supabase
+    const { data: staleProposals } = await supabase
       .from("proposed_assignments")
-      .select("intake_request_id")
-      .in("intake_request_id", requestIds)
-      .eq("status", "proposed");
+      .select("id")
+      .in("intake_request_id", requestIds);
 
-    const existingProposalRequestIds = new Set(
-      (existingProposals || []).map((p) => p.intake_request_id)
-    );
+    if (staleProposals && staleProposals.length > 0) {
+      console.log(`Cleaning up ${staleProposals.length} stale proposals for 'new' requests`);
+      await supabase
+        .from("proposed_assignments")
+        .delete()
+        .in("intake_request_id", requestIds);
+    }
 
     let generated = 0;
     let skipped = 0;
@@ -616,21 +619,14 @@ Deno.serve(async (req) => {
     const slotAssignments: Record<string, IntakeRequest[]> = {};
 
     // Clear old skip reasons before regenerating
-    const requestIdsToProcess = requests.map(r => r.id);
     await supabase
       .from("intake_requests")
       .update({ skip_reason: null })
-      .in("id", requestIdsToProcess);
+      .in("id", requestIds);
 
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
-
-      // Skip if already has a proposal
-      if (existingProposalRequestIds.has(request.id)) {
-        skipped++;
-        continue;
-      }
 
       // Filter slots - all available slots can be considered
       // Lesson type matching is flexible since slots may be generic
