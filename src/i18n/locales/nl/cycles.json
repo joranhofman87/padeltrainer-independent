@@ -42,6 +42,8 @@
     "endTime": "Eindtijd",
     "enrollmentDeadline": "Inschrijfdeadline",
     "lessonTypes": "Aangeboden Lesvormen",
+    "customLessonTypes": "Eigen lesvormen (optioneel)",
+    "customLessonTypePlaceholder": "Eigen type {{number}}",
     "showPreferredTrainer": "Trainer voorkeur toestaan",
     "showPreferredTrainerHelp": "Spelers kunnen een voorkeurscoach aangeven bij aanmelding",
     "maxGroupSize": "Max Groepsgrootte",

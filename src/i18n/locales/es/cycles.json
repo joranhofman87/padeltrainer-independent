@@ -40,6 +40,8 @@
     "endTime": "Hora de fin",
     "enrollmentDeadline": "Fecha límite de inscripción",
     "lessonTypes": "Tipos de clase ofrecidos",
+    "customLessonTypes": "Tipos de clase personalizados (opcional)",
+    "customLessonTypePlaceholder": "Tipo personalizado {{number}}",
     "showPreferredTrainer": "Permitir preferencia de entrenador",
     "showPreferredTrainerHelp": "Los jugadores pueden indicar un entrenador preferido al solicitar",
     "maxGroupSize": "Tamaño máximo del grupo",
