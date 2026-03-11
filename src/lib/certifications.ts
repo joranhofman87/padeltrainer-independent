@@ -222,7 +222,7 @@ export async function createSpecialization(
     .single();
   
   if (error) {
-    console.error('Error creating specialization:', error);
+    logger.error('Error creating specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
