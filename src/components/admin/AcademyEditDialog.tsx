@@ -643,7 +643,7 @@ export function AcademyEditDialog({
       setSelectedUserId(null);
       setSelectedManagerRole("manager");
     } catch (error) {
-      console.error("Error adding manager:", error);
+      logger.error("Error adding manager", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add manager.", variant: "destructive" });
     } finally {
       setAddingManager(false);
