@@ -191,7 +191,7 @@ export function EditAcademyTrainerDialog({
         setAssignedLocationIds(new Set(trainerLocs.map((tl) => tl.location_id)));
       }
     } catch (error) {
-      console.error('Error fetching trainer data:', error);
+      logger.error('Error fetching trainer data', error instanceof Error ? error : new Error(String(error)), { component: 'EditAcademyTrainerDialog' });
     } finally {
       setLoading(false);
     }
