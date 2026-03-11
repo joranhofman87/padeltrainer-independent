@@ -74,6 +74,7 @@ export default function CycleApplicationForm({
   playerPhone,
   playerRating,
   playerRatingSystem = 'knltb',
+  playerBirthDate,
   trainers = [],
   locations = [],
   isGuest = false,
