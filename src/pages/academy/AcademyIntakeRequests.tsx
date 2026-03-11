@@ -195,6 +195,14 @@ export default function AcademyIntakeRequests() {
         </div>
       </div>
 
+      {/* Cycle selection hint */}
+      {selectedCycleId === 'all' && cycles.length > 0 && (
+        <Alert variant="default" className="bg-muted/50 border-dashed">
+          <Info className="h-4 w-4" />
+          <AlertDescription>{t('intakeRequests.selectCycleHint')}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <Tabs value={statusFilter} onValueChange={setStatusFilter}>
