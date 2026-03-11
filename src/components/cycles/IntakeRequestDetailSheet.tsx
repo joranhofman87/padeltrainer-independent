@@ -80,7 +80,7 @@ export default function IntakeRequestDetailSheet({
         const data = await getProposedAssignmentForRequest(request.id);
         setProposal(data);
       } catch (error) {
-        console.error('Error fetching proposal:', error);
+        logger.error('Error fetching proposal', error instanceof Error ? error : new Error(String(error)), { component: 'IntakeRequestDetailSheet' });
       } finally {
         setIsLoadingProposal(false);
       }

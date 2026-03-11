@@ -281,7 +281,7 @@ export function LocationEditDialog({
       updateField('logo_url', newUrl);
       toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading logo:", error);
+      logger.error("Error uploading logo", error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
     } finally {
       setLogoUploading(false);

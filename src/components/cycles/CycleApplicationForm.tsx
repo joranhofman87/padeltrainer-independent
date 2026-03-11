@@ -271,7 +271,7 @@ export default function CycleApplicationForm({
       toast.success(t('application.success.title'));
       onSuccess?.();
     } catch (error: any) {
-      console.error('Error submitting application:', error);
+      logger.error('Error submitting application', error instanceof Error ? error : new Error(String(error)), { component: 'CycleApplicationForm' });
       toast.error(error.message || 'Failed to submit application');
     } finally {
       setIsSubmitting(false);

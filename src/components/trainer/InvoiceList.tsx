@@ -76,7 +76,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching invoices:', error);
+      logger.error('Error fetching invoices', error instanceof Error ? error : new Error(String(error)), { component: 'InvoiceList' });
       toast({
         title: 'Fout',
         description: 'Kon facturen niet laden',

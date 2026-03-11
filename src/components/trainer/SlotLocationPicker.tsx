@@ -89,7 +89,7 @@ export function SlotLocationPicker({
           }
         }
       } catch (e) {
-        console.error("Error fetching trainer locations:", e);
+        logger.error("Error fetching trainer locations", e instanceof Error ? e : new Error(String(e)), { component: 'SlotLocationPicker' });
       } finally {
         setLoading(false);
       }

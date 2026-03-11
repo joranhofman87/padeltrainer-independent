@@ -194,7 +194,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setCyclusSessions(slotsToInsert.length);
       toast.success(`Training cycle created with ${slotsToInsert.length} sessions!`);
     } catch (error: any) {
-      console.error('Error creating cyclus:', error);
+      logger.error('Error creating cyclus', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to create training cycle');
     } finally {
       setCreatingCyclus(false);

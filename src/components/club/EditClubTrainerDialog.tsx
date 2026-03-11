@@ -287,7 +287,7 @@ export function EditClubTrainerDialog({
       onTrainerUpdated();
       setOpen(false);
     } catch (error: any) {
-      console.error('Error updating trainer:', error);
+      logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
         description: error.message || 'Failed to update trainer profile',
