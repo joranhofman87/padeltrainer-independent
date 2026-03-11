@@ -211,7 +211,7 @@ export function CreateInvoiceDialog({
             });
           }
         } catch (pdfErr) {
-          console.error('PDF error:', pdfErr);
+          logger.error('PDF error', pdfErr instanceof Error ? pdfErr : new Error(String(pdfErr)), { component: 'CreateInvoiceDialog' });
         }
         setGenerating(false);
       }
