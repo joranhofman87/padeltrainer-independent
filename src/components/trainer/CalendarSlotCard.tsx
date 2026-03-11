@@ -113,7 +113,8 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
 }
 
 export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, startOffset = 0, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
