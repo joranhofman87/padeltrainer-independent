@@ -229,7 +229,7 @@ export default function Trainers() {
       const now = new Date().toISOString();
       const { data: allPublicTrainers, error: trainerError } = await supabase
         .from('trainer_profiles_safe')
-        .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
+        .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
         .eq('is_public', true);
       
       if (trainerError) {

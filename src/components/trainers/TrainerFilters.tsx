@@ -67,7 +67,6 @@ interface TrainerFiltersProps {
 }
 
 const DEFAULT_FILTERS: TrainerFiltersState = {
-  priceRange: [0, 200],
   minRating: 0,
   specializations: [],
   certifications: [],

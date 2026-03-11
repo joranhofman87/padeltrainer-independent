@@ -179,17 +179,18 @@ export default function TrainersCity() {
       return profileLocationMatches || linkedToLocation;
     });
 
-    const trainersWithRatings = await Promise.all(
-      cityTrainerProfiles.map(async (trainer) => {
-        const { average, count } = await getTrainerAverageRating(trainer.id);
-        return {
-          ...trainer,
-          profile: profiles?.find(p => p.user_id === trainer.user_id) || null,
-          averageRating: average || 0,
-          reviewCount: count,
-        };
-      })
-    );
+    const cityTrainerIds = cityTrainerProfiles.map(t => t.id);
+    const ratingsMap = await getBatchTrainerRatings(cityTrainerIds);
+
+    const trainersWithRatings = cityTrainerProfiles.map(trainer => {
+      const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
+      return {
+        ...trainer,
+        profile: profiles?.find(p => p.user_id === trainer.user_id) || null,
+        averageRating: ratings.average,
+        reviewCount: ratings.count,
+      };
+    });
 
     setTrainers(trainersWithRatings);
     setLoading(false);
