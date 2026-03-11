@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/accordion';
 import { Search, MapPin, Star, TrendingUp, Building2, ChevronRight, HelpCircle, Globe } from 'lucide-react';
 import { FollowButton } from '@/components/trainers/FollowButton';
-import { getTrainerAverageRating } from '@/lib/reviews';
+import { getBatchTrainerRatings } from '@/lib/reviews';
 import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
 import { getActiveLocations, getLocationTrainerCounts, getClaimedLocationIds, type Location } from '@/lib/locations';
 import { LocationCard } from '@/components/locations/LocationCard';
@@ -32,7 +32,6 @@ interface TrainerWithProfile {
   id: string;
   user_id: string;
   slug: string | null;
-  hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
   specializations: string[] | null;
@@ -135,7 +134,7 @@ export default function TrainersCity() {
     const now = new Date().toISOString();
     const { data: allPublicTrainers, error: trainerError } = await supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, slug, hourly_rate, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
+      .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, subscription_status, trial_ends_at')
       .eq('is_public', true);
 
     if (trainerError) {
@@ -180,17 +179,18 @@ export default function TrainersCity() {
       return profileLocationMatches || linkedToLocation;
     });
 
-    const trainersWithRatings = await Promise.all(
-      cityTrainerProfiles.map(async (trainer) => {
-        const { average, count } = await getTrainerAverageRating(trainer.id);
-        return {
-          ...trainer,
-          profile: profiles?.find(p => p.user_id === trainer.user_id) || null,
-          averageRating: average || 0,
-          reviewCount: count,
-        };
-      })
-    );
+    const cityTrainerIds = cityTrainerProfiles.map(t => t.id);
+    const ratingsMap = await getBatchTrainerRatings(cityTrainerIds);
+
+    const trainersWithRatings = cityTrainerProfiles.map(trainer => {
+      const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
+      return {
+        ...trainer,
+        profile: profiles?.find(p => p.user_id === trainer.user_id) || null,
+        averageRating: ratings.average,
+        reviewCount: ratings.count,
+      };
+    });
 
     setTrainers(trainersWithRatings);
     setLoading(false);

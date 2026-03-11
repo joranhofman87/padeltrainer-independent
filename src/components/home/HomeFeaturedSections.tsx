@@ -21,7 +21,6 @@ interface TrainerWithProfile {
   id: string;
   user_id: string;
   slug: string | null;
-  hourly_rate: number | null;
   experience_years: number | null;
   is_verified: boolean;
   subscription_status: string | null;
@@ -39,7 +38,7 @@ async function fetchFeaturedData() {
   const [trainersResult, academiesData, locationsData, claimedData, clubProfilesResult] = await Promise.all([
     supabase
       .from('trainer_profiles_safe')
-      .select('id, user_id, slug, hourly_rate, experience_years, is_verified, subscription_status')
+      .select('id, user_id, slug, experience_years, is_verified, subscription_status')
       .eq('is_public', true)
       .eq('subscription_status', 'active'),
     getPublicAcademies(),
