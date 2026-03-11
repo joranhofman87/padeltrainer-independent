@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 
 interface BannerWithAssignment {
@@ -37,79 +38,77 @@ function weightedRandom(banners: BannerWithAssignment[]): BannerWithAssignment |
   return banners[0];
 }
 
+async function fetchBannersForPlacement(placementSlug: string, locationId?: string): Promise<{ banners: BannerWithAssignment[]; rotationInterval: number }> {
+  const now = new Date().toISOString();
+
+  // Get placement info
+  const { data: placement } = await supabase
+    .from("banner_placements")
+    .select("id, rotation_interval_seconds")
+    .eq("slug", placementSlug)
+    .single();
+
+  if (!placement) return { banners: [], rotationInterval: 15 };
+
+  // Get active assignments with their banners
+  const { data: assignments } = await supabase
+    .from("banner_placement_assignments")
+    .select(`
+      id, weight, priority, placement_id,
+      banner:partner_banners (
+        id, name, image_url, link_url, sponsor_name, sponsor_logo_url,
+        is_active, start_date, end_date, location_id
+      )
+    `)
+    .eq("placement_id", placement.id)
+    .eq("is_active", true)
+    .order("priority", { ascending: false });
+
+  if (!assignments) return { banners: [], rotationInterval: placement.rotation_interval_seconds || 15 };
+
+  // Filter active banners with valid dates and location
+  const activeBanners: BannerWithAssignment[] = [];
+  for (const a of assignments) {
+    const b = a.banner as any;
+    if (!b || !b.is_active) continue;
+    if (b.start_date && b.start_date > now) continue;
+    if (b.end_date && b.end_date < now) continue;
+    if (b.location_id && locationId && b.location_id !== locationId) continue;
+    activeBanners.push({
+      id: b.id,
+      name: b.name,
+      image_url: b.image_url,
+      link_url: b.link_url,
+      sponsor_name: b.sponsor_name,
+      sponsor_logo_url: b.sponsor_logo_url,
+      weight: a.weight || 1,
+      placement_id: placement.id,
+    });
+  }
+
+  return { banners: activeBanners, rotationInterval: placement.rotation_interval_seconds || 15 };
+}
+
 export function useBannerRotation({ placementSlug, locationId }: UseBannerRotationOptions) {
-  const [banners, setBanners] = useState<BannerWithAssignment[]>([]);
   const [currentBanner, setCurrentBanner] = useState<BannerWithAssignment | null>(null);
-  const [rotationInterval, setRotationInterval] = useState(15);
-  const [loading, setLoading] = useState(true);
   const sessionId = useRef(getSessionId());
 
-  // Fetch banners for this placement
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["banners", placementSlug, locationId],
+    queryFn: () => fetchBannersForPlacement(placementSlug, locationId),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const banners = data?.banners ?? [];
+  const rotationInterval = data?.rotationInterval ?? 15;
+
+  // Set initial banner when data loads
   useEffect(() => {
-    async function fetchBanners() {
-      const now = new Date().toISOString();
-
-      // Get placement info
-      const { data: placement } = await supabase
-        .from("banner_placements")
-        .select("id, rotation_interval_seconds")
-        .eq("slug", placementSlug)
-        .single();
-
-      if (!placement) {
-        setLoading(false);
-        return;
-      }
-
-      setRotationInterval(placement.rotation_interval_seconds || 15);
-
-      // Get active assignments with their banners
-      const { data: assignments } = await supabase
-        .from("banner_placement_assignments")
-        .select(`
-          id, weight, priority, placement_id,
-          banner:partner_banners (
-            id, name, image_url, link_url, sponsor_name, sponsor_logo_url,
-            is_active, start_date, end_date, location_id
-          )
-        `)
-        .eq("placement_id", placement.id)
-        .eq("is_active", true)
-        .order("priority", { ascending: false });
-
-      if (!assignments) {
-        setLoading(false);
-        return;
-      }
-
-      // Filter active banners with valid dates and location
-      const activeBanners: BannerWithAssignment[] = [];
-      for (const a of assignments) {
-        const b = a.banner as any;
-        if (!b || !b.is_active) continue;
-        if (b.start_date && b.start_date > now) continue;
-        if (b.end_date && b.end_date < now) continue;
-        if (b.location_id && locationId && b.location_id !== locationId) continue;
-        // Global banners (no location_id) always show
-        activeBanners.push({
-          id: b.id,
-          name: b.name,
-          image_url: b.image_url,
-          link_url: b.link_url,
-          sponsor_name: b.sponsor_name,
-          sponsor_logo_url: b.sponsor_logo_url,
-          weight: a.weight || 1,
-          placement_id: placement.id,
-        });
-      }
-
-      setBanners(activeBanners);
-      setCurrentBanner(weightedRandom(activeBanners));
-      setLoading(false);
+    if (banners.length > 0 && !currentBanner) {
+      setCurrentBanner(weightedRandom(banners));
     }
-
-    fetchBanners();
-  }, [placementSlug, locationId]);
+  }, [banners, currentBanner]);
 
   // Auto-rotate
   useEffect(() => {
