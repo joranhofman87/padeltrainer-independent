@@ -206,6 +206,7 @@ export default function CycleApplicationForm({
             email: values.email,
             fullName: values.full_name,
             phone: values.phone,
+            birthDate: values.birth_date || null,
             rating: values.rating,
             ratingSystem: values.rating_system,
             cycleId: cycle.id,
