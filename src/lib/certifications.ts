@@ -170,7 +170,7 @@ export async function createCertification(
     .single();
   
   if (error) {
-    console.error('Error creating certification:', error);
+    logger.error('Error creating certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
