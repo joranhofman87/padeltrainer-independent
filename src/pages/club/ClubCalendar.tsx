@@ -8,6 +8,7 @@ import {
   addWeeks,
   subWeeks,
 } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
