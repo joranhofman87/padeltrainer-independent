@@ -232,7 +232,7 @@ export function LocationEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error saving location:', error);
+      logger.error('Error saving location', error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
       toast({
         title: 'Error',
         description: error.message || 'Failed to save location',
