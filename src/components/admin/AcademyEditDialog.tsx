@@ -724,7 +724,7 @@ export function AcademyEditDialog({
       setBannerUrl(newUrl);
       toast({ title: "Banner uploaded", description: "Banner image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading banner:", error);
+      logger.error("Error uploading banner", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload banner.", variant: "destructive" });
     } finally {
       setBannerUploading(false);
