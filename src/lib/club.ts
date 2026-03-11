@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import type { Location } from '@/lib/locations';
 
 export interface ClubProfile {
   id: string;
