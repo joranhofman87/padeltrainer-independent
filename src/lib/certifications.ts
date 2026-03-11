@@ -78,7 +78,7 @@ export async function getCertificationsByCountry(country: string): Promise<Certi
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching certifications by country:', error);
+    logger.error('Error fetching certifications by country', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
