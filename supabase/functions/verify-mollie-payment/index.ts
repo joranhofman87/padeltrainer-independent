@@ -269,6 +269,7 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    await notifySlackError("verify-mollie-payment", message);
     return new Response(
       JSON.stringify({ error: message, paid: false }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

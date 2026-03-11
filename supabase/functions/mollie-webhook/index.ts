@@ -374,6 +374,7 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    await notifySlackError("mollie-webhook", message);
     // Return 200 to prevent Mollie from retrying (we've logged the error)
     return new Response("OK", { status: 200 });
   }
