@@ -187,19 +187,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             new Promise((resolve) => setTimeout(resolve, 5000)),
           ]);
 
-          // Trigger welcome emails on confirmed sign-in
+          // Trigger welcome emails only once per browser session (not on page refresh)
           if (
-            !hasTriggeredWelcomeEmails &&
+            !sessionStorage.getItem(welcomeEmailsKey) &&
             session.user.email_confirmed_at &&
             (event === 'SIGNED_IN' || event === 'USER_UPDATED')
           ) {
-            hasTriggeredWelcomeEmails = true;
-            supabase.functions.invoke('trigger-welcome-emails', {
-              headers: { Authorization: `Bearer ${session.access_token}` },
-            }).then(({ error }) => {
-              if (error) {
-                logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
-              }
+            sessionStorage.setItem(welcomeEmailsKey, '1');
+            // Fire-and-forget, don't block rendering
+            requestIdleCallback(() => {
+              supabase.functions.invoke('trigger-welcome-emails', {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+              }).then(({ error }) => {
+                if (error) {
+                  logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
+                }
+              });
             });
           }
         } else {
