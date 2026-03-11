@@ -52,7 +52,7 @@ const formSchema = z.object({
   phone: z.string().optional(),
   rating_system: z.string().default('knltb'),
   rating: z.coerce.number().optional(),
-  lesson_types: z.array(z.enum(['private', 'duo', 'group', 'kids'])).min(1, 'Select at least one lesson type'),
+  lesson_types: z.array(z.string()).min(1, 'Select at least one lesson type'),
   preferred_duration_minutes: z.coerce.number().default(60),
   sessions_per_week: z.coerce.number().min(1).max(7).default(1),
   preferred_trainer_id: z.string().optional(),
@@ -439,11 +439,17 @@ export default function AddIntakeRequestDialog({
                 <FormField
                   control={form.control}
                   name="lesson_types"
-                  render={() => (
+                  render={() => {
+                    const selectedCycle = cycles.find(c => c.id === selectedCycleId || c.id === cycleId);
+                    const standardTypes = ['private', 'duo', 'group', 'kids'] as const;
+                    const customTypes = (selectedCycle?.settings?.custom_lesson_types as string[] | undefined) || [];
+                    const allTypes: string[] = [...standardTypes, ...customTypes];
+                    
+                    return (
                     <FormItem>
                       <FormLabel>{t('application.form.lessonType')}</FormLabel>
                       <div className="grid grid-cols-2 gap-2">
-                        {(['private', 'duo', 'group', 'kids'] as const).map(type => (
+                        {allTypes.map(type => (
                           <FormField
                             key={type}
                             control={form.control}
@@ -452,7 +458,6 @@ export default function AddIntakeRequestDialog({
                               <FormItem 
                                 className="flex items-center space-x-2 space-y-0 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
                                 onClick={(e) => {
-                                  // Prevent double-toggle: only handle if not clicking the checkbox itself
                                   if ((e.target as HTMLElement).closest('button[role="checkbox"]')) return;
                                   const current = field.value || [];
                                   const updated = current.includes(type)
@@ -474,7 +479,9 @@ export default function AddIntakeRequestDialog({
                                   />
                                 </FormControl>
                                 <FormLabel className="font-normal cursor-pointer flex-1 m-0">
-                                  {t(`application.form.lessonTypes.${type}`)}
+                                  {(standardTypes as readonly string[]).includes(type)
+                                    ? t(`application.form.lessonTypes.${type}`)
+                                    : type.charAt(0).toUpperCase() + type.slice(1)}
                                 </FormLabel>
                               </FormItem>
                             )}
@@ -483,7 +490,8 @@ export default function AddIntakeRequestDialog({
                       </div>
                       <FormMessage />
                     </FormItem>
-                  )}
+                    );
+                  }}
                 />
 
                 <FormField

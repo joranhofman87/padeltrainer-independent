@@ -61,6 +61,7 @@ export type EventPaymentMethod = 'online' | 'cash' | 'both';
 
 export interface CycleSettings {
   lesson_types?: ('private' | 'duo' | 'group' | 'kids')[];
+  custom_lesson_types?: string[];
   show_preferred_trainer?: boolean;
   default_duration_minutes?: number;
   max_group_size?: number;

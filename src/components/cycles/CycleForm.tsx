@@ -108,6 +108,12 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [customLessonType1, setCustomLessonType1] = useState<string>(
+    (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
+  );
+  const [customLessonType2, setCustomLessonType2] = useState<string>(
+    (cycle?.settings as any)?.custom_lesson_types?.[1] ?? ''
+  );
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
@@ -282,8 +288,10 @@ export default function CycleForm({
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
     try {
+      const customLessonTypes = [customLessonType1.trim(), customLessonType2.trim()].filter(Boolean);
       const settings: CycleSettings = {
         lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
+        custom_lesson_types: !isEvent && customLessonTypes.length > 0 ? customLessonTypes : undefined,
         show_preferred_trainer: values.show_preferred_trainer,
         max_group_size: isEvent ? undefined : values.max_group_size,
         min_group_size: isEvent ? undefined : values.min_group_size,
@@ -1344,6 +1352,25 @@ export default function CycleForm({
                     ))}
                   </div>
                   <FormMessage />
+                  {isRegistration && (
+                    <div className="mt-3 space-y-2">
+                      <Label className="text-sm text-muted-foreground">{t('form.customLessonTypes')}</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder={t('form.customLessonTypePlaceholder', { number: 1 })}
+                          value={customLessonType1}
+                          onChange={(e) => setCustomLessonType1(e.target.value)}
+                          maxLength={30}
+                        />
+                        <Input
+                          placeholder={t('form.customLessonTypePlaceholder', { number: 2 })}
+                          value={customLessonType2}
+                          onChange={(e) => setCustomLessonType2(e.target.value)}
+                          maxLength={30}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </FormItem>
               )}
             />

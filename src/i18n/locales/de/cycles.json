@@ -40,6 +40,8 @@
     "endTime": "Endzeit",
     "enrollmentDeadline": "Anmeldefrist",
     "lessonTypes": "Angebotene Stundentypen",
+    "customLessonTypes": "Eigene Stundentypen (optional)",
+    "customLessonTypePlaceholder": "Eigener Typ {{number}}",
     "showPreferredTrainer": "Trainerpräferenz erlauben",
     "showPreferredTrainerHelp": "Spieler können bei der Bewerbung einen bevorzugten Trainer angeben",
     "maxGroupSize": "Max. Gruppengröße",

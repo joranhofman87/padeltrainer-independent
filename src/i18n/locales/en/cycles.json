@@ -42,6 +42,8 @@
     "endTime": "End Time",
     "enrollmentDeadline": "Enrollment Deadline",
     "lessonTypes": "Lesson Types Offered",
+    "customLessonTypes": "Custom lesson types (optional)",
+    "customLessonTypePlaceholder": "Custom type {{number}}",
     "showPreferredTrainer": "Allow trainer preference",
     "showPreferredTrainerHelp": "Players can indicate a preferred trainer when applying",
     "maxGroupSize": "Max Group Size",

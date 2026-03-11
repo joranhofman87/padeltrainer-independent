@@ -40,6 +40,8 @@
     "endTime": "Heure de fin",
     "enrollmentDeadline": "Date limite d'inscription",
     "lessonTypes": "Types de cours proposés",
+    "customLessonTypes": "Types de cours personnalisés (optionnel)",
+    "customLessonTypePlaceholder": "Type personnalisé {{number}}",
     "showPreferredTrainer": "Permettre la préférence d'entraîneur",
     "showPreferredTrainerHelp": "Les joueurs peuvent indiquer un entraîneur préféré lors de leur candidature",
     "maxGroupSize": "Taille max du groupe",

@@ -61,7 +61,7 @@ interface CycleApplicationFormProps {
 }
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
+const STANDARD_LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
 const DURATIONS = [30, 45, 60, 90, 120] as const;
 
 export default function CycleApplicationForm({
@@ -141,7 +141,7 @@ export default function CycleApplicationForm({
     password: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
-    lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
+    lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     group_notes: z.string().optional(),
@@ -165,7 +165,7 @@ export default function CycleApplicationForm({
       
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
-      lesson_types: ['group'] as typeof LESSON_TYPES[number][],
+      lesson_types: ['group'] as string[],
       preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
       sessions_per_week: 1,
       availability: {},
@@ -309,7 +309,9 @@ export default function CycleApplicationForm({
     );
   }
 
-  const allowedLessonTypes = (cycle.settings.lesson_types as typeof LESSON_TYPES[number][] | undefined) || [...LESSON_TYPES];
+  const standardAllowed = (cycle.settings.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+  const customTypes = (cycle.settings.custom_lesson_types as string[] | undefined) || [];
+  const allowedLessonTypes = [...standardAllowed, ...customTypes];
   const showTrainerPreference = cycle.settings.show_preferred_trainer && trainers.length > 0;
 
   return (
@@ -529,7 +531,9 @@ export default function CycleApplicationForm({
                             onCheckedChange={toggle}
                           />
                           <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
-                            {t(`application.form.lessonTypes.${type}`)}
+                            {(STANDARD_LESSON_TYPES as readonly string[]).includes(type)
+                              ? t(`application.form.lessonTypes.${type}`)
+                              : type.charAt(0).toUpperCase() + type.slice(1)}
                           </span>
                         </label>
                       );
