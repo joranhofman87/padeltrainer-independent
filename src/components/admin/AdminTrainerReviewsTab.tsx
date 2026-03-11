@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ReviewTagSelector } from "@/components/reviews/ReviewTagSelector";
 import { Loader2, Plus, Star, Trash2 } from "lucide-react";
+import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
