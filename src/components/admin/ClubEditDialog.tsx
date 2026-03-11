@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
