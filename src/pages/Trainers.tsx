@@ -64,14 +64,6 @@ type SortOption = 'rating' | 'experience';
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [clubLocations, setClubLocations] = useState<Location[]>([]);
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Map<string, string[]>>(new Map());
-  const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
-  const [allCertifications, setAllCertifications] = useState<string[]>([]);
-  const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
-  const [ratingSystems, setRatingSystems] = useState<RatingSystem[]>([]);
   const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
