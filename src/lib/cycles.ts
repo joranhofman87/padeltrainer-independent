@@ -174,6 +174,7 @@ export interface IntakeRequestInput {
   full_name: string;
   email: string;
   phone?: string;
+  birth_date?: string;
   rating?: number;
   rating_system?: string;
   lesson_types: string[];
