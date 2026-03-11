@@ -146,8 +146,17 @@ export default function TrainerIntakeRequests() {
   };
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
-  const newCount = requests.filter(r => r.status === 'new').length;
+  const newCount = requests.filter(r => r.status === 'new' && !r.skip_reason).length;
+  const skippedCount = requests.filter(r => r.status === 'new' && r.skip_reason).length;
   const proposedCount = requests.filter(r => r.status === 'proposed').length;
+
+  const skippedReasonCounts = statusFilter === 'skipped'
+    ? filteredRequests.reduce((acc, r) => {
+        const reason = r.skip_reason;
+        if (reason) acc[reason] = (acc[reason] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    : {};
 
   if (loading || isLoading) {
     return (
