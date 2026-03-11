@@ -636,8 +636,23 @@ export default function Trainers() {
 
         {/* Trainers Grid */}
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Card key={i} className="h-[140px]">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-12 w-12 rounded-full bg-muted animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="h-3 w-12 bg-muted animate-pulse rounded" />
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : filteredAndSortedTrainers.length === 0 ? (
           <Card className="text-center py-12">

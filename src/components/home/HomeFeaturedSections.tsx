@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Star, MapPin, CheckCircle, ArrowRight, Building2, Home, Sun } from 'lucide-react';
@@ -109,8 +109,8 @@ export function HomeFeaturedSections() {
   const { data, isLoading } = useQuery({
     queryKey: ['home-featured-sections'],
     queryFn: fetchFeaturedData,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes — this data changes infrequently
+    gcTime: 15 * 60 * 1000,
   });
 
   const featuredTrainers = useMemo(() => {
@@ -153,266 +153,333 @@ export function HomeFeaturedSections() {
     <>
       {/* Featured Trainers */}
       {featuredTrainers.length > 0 && (
-        <section className="py-16 md:py-20">
-          <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Star className="h-5 w-5 text-primary fill-primary/30" />
-                </div>
-                <div>
-                  <h2 className="text-2xl md:text-3xl font-bold">{t('featured.trainers')}</h2>
-                  <p className="text-muted-foreground text-sm">{t('featured.trainersDescription')}</p>
-                </div>
-              </div>
-              <Button variant="ghost" asChild className="hidden sm:flex">
-                <Link to={localizePath('/trainers')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto pb-4 -mx-4 px-4">
-              <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
-                {featuredTrainers.map((trainer, index) => (
-                  <div
-                    key={trainer.id}
-                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
-                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
-                  >
-                    <Card
-                      className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
-                      onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-12 w-12">
-                            <AvatarImage src={trainer.profile?.avatar_url || undefined} loading="lazy" />
-                            <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-base truncate">
-                                {trainer.profile?.full_name || 'Trainer'}
-                              </CardTitle>
-                              {trainer.is_verified && (
-                                <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
-                              )}
-                            </div>
-                            {trainer.profile?.location && (
-                              <CardDescription className="flex items-center gap-1 mt-0.5 text-xs">
-                                <MapPin className="h-3 w-3" />
-                                {trainer.profile.location}
-                              </CardDescription>
-                            )}
-                            {trainer.reviewCount > 0 && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                                <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div className="flex items-center justify-between text-sm">
-                          {trainer.hourly_rate && (
-                            <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                          )}
-                          {trainer.experience_years && (
-                            <span className="text-muted-foreground text-xs">
-                              {trainer.experience_years}y exp
-                            </span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="sm:hidden mt-4 text-center">
-              <Button variant="outline" asChild>
-                <Link to={localizePath('/trainers')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
+        <FeaturedTrainersSection
+          trainers={featuredTrainers}
+          getInitials={getInitials}
+          localizePath={localizePath}
+          navigate={navigate}
+          t={t}
+        />
       )}
 
-      {/* Featured Academies */}
+      {/* Featured Academies — lazy render when scrolled into view */}
       {featuredAcademies.length > 0 && (
-        <section className="py-16 md:py-20 bg-accent/30">
-          <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl md:text-3xl font-bold">{t('featured.academies')}</h2>
-                  <p className="text-muted-foreground text-sm">{t('featured.academiesDescription')}</p>
-                </div>
-              </div>
-              <Button variant="ghost" asChild className="hidden sm:flex">
-                <Link to={localizePath('/academies')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto pb-4 -mx-4 px-4">
-              <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
-                {featuredAcademies.map((academy, index) => (
-                  <div
-                    key={academy.id}
-                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
-                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
-                  >
-                    <Card
-                      className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full"
-                      onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
-                    >
-                      <CardContent className="pt-6">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-12 w-12 rounded-lg">
-                            <AvatarImage src={academy.logo_url || ''} className="object-contain" loading="lazy" />
-                            <AvatarFallback className="rounded-lg">{getInitials(academy.name || '')}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold truncate">{academy.name}</h3>
-                              {(academy.is_verified || academy.subscription_status === 'active') && (
-                                <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
-                              )}
-                            </div>
-                            {academy.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2">
-                                {academy.description}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="sm:hidden mt-4 text-center">
-              <Button variant="outline" asChild>
-                <Link to={localizePath('/academies')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
+        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' }}>
+          <FeaturedAcademiesSection
+            academies={featuredAcademies}
+            getInitials={getInitials}
+            localizePath={localizePath}
+            navigate={navigate}
+            t={t}
+          />
+        </div>
       )}
 
-      {/* Featured Locations */}
+      {/* Featured Locations — lazy render when scrolled into view */}
       {featuredLocations.length > 0 && (
-        <section className="py-16 md:py-20">
-          <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <MapPin className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl md:text-3xl font-bold">{t('featured.locations')}</h2>
-                  <p className="text-muted-foreground text-sm">{t('featured.locationsDescription')}</p>
-                </div>
-              </div>
-              <Button variant="ghost" asChild className="hidden sm:flex">
-                <Link to={localizePath('/locations')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto pb-4 -mx-4 px-4">
-              <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
-                {featuredLocations.map((location, index) => (
-                  <div
-                    key={location.id}
-                    className="animate-in fade-in slide-in-from-bottom-4 duration-500"
-                    style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
-                  >
-                    <Card
-                      className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full relative"
-                      onClick={() => navigate(localizePath(`/locations/${location.slug}`))}
-                    >
-                      <div className="absolute top-3 right-3">
-                        <CheckCircle className="h-4 w-4 text-primary" />
-                      </div>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start gap-3">
-                          {(data?.claimedIds.has(location.id) || data?.clubLogos[location.id]) && (
-                            <Avatar className="h-10 w-10 shrink-0">
-                              <AvatarImage src={data?.clubLogos[location.id] || undefined} className="object-contain" loading="lazy" />
-                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                {getInitials(location.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                          <CardTitle className="text-base break-words pr-6">{location.name}</CardTitle>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-                          <span>{location.city}</span>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {(location.indoor_courts != null && location.indoor_courts > 0) && (
-                            <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                              <Home className="h-3 w-3" />
-                              {location.indoor_courts} {t('locations.indoorCourts')}
-                            </Badge>
-                          )}
-                          {(location.outdoor_courts != null && location.outdoor_courts > 0) && (
-                            <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                              <Sun className="h-3 w-3" />
-                              {location.outdoor_courts} {t('locations.outdoorCourts')}
-                            </Badge>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="sm:hidden mt-4 text-center">
-              <Button variant="outline" asChild>
-                <Link to={localizePath('/locations')}>
-                  {t('viewAll')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
+        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' }}>
+          <FeaturedLocationsSection
+            locations={featuredLocations}
+            claimedIds={data?.claimedIds || new Set()}
+            clubLogos={data?.clubLogos || {}}
+            getInitials={getInitials}
+            localizePath={localizePath}
+            navigate={navigate}
+            t={t}
+          />
+        </div>
       )}
     </>
   );
 }
 
-function FeaturedSectionSkeleton() {
+// ─── Sub-components ──────────────────────────────────────
+
+interface TrainersSectionProps {
+  trainers: TrainerWithProfile[];
+  getInitials: (name: string | null) => string;
+  localizePath: (path: string) => string;
+  navigate: (path: string) => void;
+  t: (key: string) => string;
+}
+
+function FeaturedTrainersSection({ trainers, getInitials, localizePath, navigate, t }: TrainersSectionProps) {
   return (
     <section className="py-16 md:py-20">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Star className="h-5 w-5 text-primary fill-primary/30" />
+            </div>
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold">{t('featured.trainers')}</h2>
+              <p className="text-muted-foreground text-sm">{t('featured.trainersDescription')}</p>
+            </div>
+          </div>
+          <Button variant="ghost" asChild className="hidden sm:flex">
+            <Link to={localizePath('/trainers')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto pb-4 -mx-4 px-4">
+          <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
+            {trainers.map((trainer, index) => (
+              <div
+                key={trainer.id}
+                className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
+              >
+                <Card
+                  className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
+                  onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={trainer.profile?.avatar_url || undefined} />
+                        <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base truncate">
+                            {trainer.profile?.full_name || 'Trainer'}
+                          </CardTitle>
+                          {trainer.is_verified && (
+                            <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                        {trainer.profile?.location && (
+                          <CardDescription className="flex items-center gap-1 mt-0.5 text-xs">
+                            <MapPin className="h-3 w-3" />
+                            {trainer.profile.location}
+                          </CardDescription>
+                        )}
+                        {trainer.reviewCount > 0 && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
+                            <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="flex items-center justify-between text-sm">
+                      {trainer.experience_years && (
+                        <span className="text-muted-foreground text-xs">
+                          {trainer.experience_years}y exp
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:hidden mt-4 text-center">
+          <Button variant="outline" asChild>
+            <Link to={localizePath('/trainers')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+interface AcademiesSectionProps {
+  academies: Partial<AcademyProfile>[];
+  getInitials: (name: string | null) => string;
+  localizePath: (path: string) => string;
+  navigate: (path: string) => void;
+  t: (key: string) => string;
+}
+
+function FeaturedAcademiesSection({ academies, getInitials, localizePath, navigate, t }: AcademiesSectionProps) {
+  return (
+    <section className="py-16 md:py-20 bg-accent/30">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold">{t('featured.academies')}</h2>
+              <p className="text-muted-foreground text-sm">{t('featured.academiesDescription')}</p>
+            </div>
+          </div>
+          <Button variant="ghost" asChild className="hidden sm:flex">
+            <Link to={localizePath('/academies')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto pb-4 -mx-4 px-4">
+          <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
+            {academies.map((academy, index) => (
+              <div
+                key={academy.id}
+                className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
+              >
+                <Card
+                  className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full"
+                  onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-12 w-12 rounded-lg">
+                        <AvatarImage src={academy.logo_url || ''} className="object-contain" />
+                        <AvatarFallback className="rounded-lg">{getInitials(academy.name || '')}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold truncate">{academy.name}</h3>
+                          {(academy.is_verified || academy.subscription_status === 'active') && (
+                            <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                        {academy.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {academy.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:hidden mt-4 text-center">
+          <Button variant="outline" asChild>
+            <Link to={localizePath('/academies')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+interface LocationsSectionProps {
+  locations: LocationSummary[];
+  claimedIds: Set<string>;
+  clubLogos: Record<string, string>;
+  getInitials: (name: string | null) => string;
+  localizePath: (path: string) => string;
+  navigate: (path: string) => void;
+  t: (key: string) => string;
+}
+
+function FeaturedLocationsSection({ locations, claimedIds, clubLogos, getInitials, localizePath, navigate, t }: LocationsSectionProps) {
+  return (
+    <section className="py-16 md:py-20">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex items-center justify-between mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <MapPin className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold">{t('featured.locations')}</h2>
+              <p className="text-muted-foreground text-sm">{t('featured.locationsDescription')}</p>
+            </div>
+          </div>
+          <Button variant="ghost" asChild className="hidden sm:flex">
+            <Link to={localizePath('/locations')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto pb-4 -mx-4 px-4">
+          <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
+            {locations.map((location, index) => (
+              <div
+                key={location.id}
+                className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
+              >
+                <Card
+                  className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0 h-full relative"
+                  onClick={() => navigate(localizePath(`/locations/${location.slug}`))}
+                >
+                  <div className="absolute top-3 right-3">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                  </div>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start gap-3">
+                      {(claimedIds.has(location.id) || clubLogos[location.id]) && (
+                        <Avatar className="h-10 w-10 shrink-0">
+                          <AvatarImage src={clubLogos[location.id] || undefined} className="object-contain" />
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                            {getInitials(location.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      <CardTitle className="text-base break-words pr-6">{location.name}</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{location.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(location.indoor_courts != null && location.indoor_courts > 0) && (
+                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                          <Home className="h-3 w-3" />
+                          {location.indoor_courts} {t('locations.indoorCourts')}
+                        </Badge>
+                      )}
+                      {(location.outdoor_courts != null && location.outdoor_courts > 0) && (
+                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                          <Sun className="h-3 w-3" />
+                          {location.outdoor_courts} {t('locations.outdoorCourts')}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:hidden mt-4 text-center">
+          <Button variant="outline" asChild>
+            <Link to={localizePath('/locations')}>
+              {t('viewAll')}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeaturedSectionSkeleton() {
+  return (
+    <section className="py-16 md:py-20" style={{ containIntrinsicSize: '0 400px' }}>
       <div className="container mx-auto px-4">
         <div className="flex items-center gap-3 mb-8">
           <Skeleton className="h-10 w-10 rounded-lg" />

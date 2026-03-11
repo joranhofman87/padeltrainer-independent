@@ -150,18 +150,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
-    let hasTriggeredWelcomeEmails = false;
+    // Use sessionStorage to deduplicate welcome emails across page refreshes
+    const welcomeEmailsKey = 'hasTriggeredWelcomeEmails';
 
-    // Safety timeout: if auth hasn't resolved in 10 seconds, force loading=false
+    // Safety timeout: if auth hasn't resolved in 5 seconds, force loading=false
     // This prevents the app from being stuck on skeleton loaders forever
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
-          logger.warn('Auth loading safety timeout triggered after 10s', { component: 'useAuth' });
+          logger.warn('Auth loading safety timeout triggered after 5s', { component: 'useAuth' });
         }
         return false;
       });
-    }, 10_000);
+    }, 5_000);
 
     // Single source of truth: onAuthStateChange handles INITIAL_SESSION + all state changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
@@ -186,19 +187,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             new Promise((resolve) => setTimeout(resolve, 5000)),
           ]);
 
-          // Trigger welcome emails on confirmed sign-in
+          // Trigger welcome emails only once per browser session (not on page refresh)
           if (
-            !hasTriggeredWelcomeEmails &&
+            !sessionStorage.getItem(welcomeEmailsKey) &&
             session.user.email_confirmed_at &&
             (event === 'SIGNED_IN' || event === 'USER_UPDATED')
           ) {
-            hasTriggeredWelcomeEmails = true;
-            supabase.functions.invoke('trigger-welcome-emails', {
-              headers: { Authorization: `Bearer ${session.access_token}` },
-            }).then(({ error }) => {
-              if (error) {
-                logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
-              }
+            sessionStorage.setItem(welcomeEmailsKey, '1');
+            // Fire-and-forget, don't block rendering
+            requestIdleCallback(() => {
+              supabase.functions.invoke('trigger-welcome-emails', {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+              }).then(({ error }) => {
+                if (error) {
+                  logger.warn('Failed to trigger welcome emails', { component: 'useAuth', error });
+                }
+              });
             });
           }
         } else {
