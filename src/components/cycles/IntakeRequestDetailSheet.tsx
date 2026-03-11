@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import {
   Sheet,
   SheetContent,
@@ -79,7 +80,7 @@ export default function IntakeRequestDetailSheet({
         const data = await getProposedAssignmentForRequest(request.id);
         setProposal(data);
       } catch (error) {
-        console.error('Error fetching proposal:', error);
+        logger.error('Error fetching proposal', error instanceof Error ? error : new Error(String(error)), { component: 'IntakeRequestDetailSheet' });
       } finally {
         setIsLoadingProposal(false);
       }

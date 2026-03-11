@@ -8,6 +8,7 @@ import { ThemeProvider } from "next-themes";
 import { DomainRouter } from "@/components/DomainRouter";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { PageTracker } from "@/components/PageTracker";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import "@/i18n";
 
 const queryClient = new QueryClient({
@@ -27,6 +28,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <OfflineBanner />
         <BrowserRouter>
           <ScrollToTop />
           <PageTracker />

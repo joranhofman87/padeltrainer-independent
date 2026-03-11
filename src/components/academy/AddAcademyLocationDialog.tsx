@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Loader2, MapPin, CalendarDays } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -87,7 +88,7 @@ export function AddAcademyLocationDialog({
         onLocationAdded();
       }
     } catch (error) {
-      console.error('Error adding location:', error);
+      logger.error('Error adding location', error instanceof Error ? error : new Error(String(error)), { component: 'AddAcademyLocationDialog' });
       toast({
         title: t('common:error'),
         description: String(error),

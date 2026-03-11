@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { MapPin, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -88,7 +89,7 @@ export function SlotLocationPicker({
           }
         }
       } catch (e) {
-        console.error("Error fetching trainer locations:", e);
+        logger.error("Error fetching trainer locations", e instanceof Error ? e : new Error(String(e)), { component: 'SlotLocationPicker' });
       } finally {
         setLoading(false);
       }

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 export interface Certification {
   id: string;
@@ -44,7 +45,7 @@ export async function getCertifications(): Promise<Certification[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching certifications:', error);
+    logger.error('Error fetching certifications', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
@@ -60,7 +61,7 @@ export async function getAllCertifications(): Promise<Certification[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching all certifications:', error);
+    logger.error('Error fetching all certifications', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
@@ -77,7 +78,7 @@ export async function getCertificationsByCountry(country: string): Promise<Certi
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching certifications by country:', error);
+    logger.error('Error fetching certifications by country', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
@@ -134,7 +135,7 @@ export async function getSpecializations(): Promise<Specialization[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching specializations:', error);
+    logger.error('Error fetching specializations', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
@@ -149,7 +150,7 @@ export async function getAllSpecializations(): Promise<Specialization[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching all specializations:', error);
+    logger.error('Error fetching all specializations', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
@@ -169,7 +170,7 @@ export async function createCertification(
     .single();
   
   if (error) {
-    console.error('Error creating certification:', error);
+    logger.error('Error creating certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
@@ -189,7 +190,7 @@ export async function updateCertification(
     .single();
   
   if (error) {
-    console.error('Error updating certification:', error);
+    logger.error('Error updating certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
@@ -204,7 +205,7 @@ export async function deleteCertification(id: string): Promise<void> {
     .eq('id', id);
   
   if (error) {
-    console.error('Error deleting certification:', error);
+    logger.error('Error deleting certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
 }
@@ -221,7 +222,7 @@ export async function createSpecialization(
     .single();
   
   if (error) {
-    console.error('Error creating specialization:', error);
+    logger.error('Error creating specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
@@ -241,7 +242,7 @@ export async function updateSpecialization(
     .single();
   
   if (error) {
-    console.error('Error updating specialization:', error);
+    logger.error('Error updating specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
@@ -256,7 +257,7 @@ export async function deleteSpecialization(id: string): Promise<void> {
     .eq('id', id);
   
   if (error) {
-    console.error('Error deleting specialization:', error);
+    logger.error('Error deleting specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
 }

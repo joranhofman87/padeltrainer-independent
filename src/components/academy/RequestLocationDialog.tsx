@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPinPlus, Loader2 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -121,7 +122,7 @@ export function RequestLocationDialog({
 
       onRequestSubmitted?.();
     } catch (error: any) {
-      console.error('Error submitting location request:', error);
+      logger.error('Error submitting location request', error instanceof Error ? error : new Error(String(error)), { component: 'RequestLocationDialog' });
       toast({
         title: t('common.error'),
         description: error.message || 'Failed to submit location request',

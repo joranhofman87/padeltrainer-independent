@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -63,12 +64,12 @@ export function RatingHistoryChart({
         .order('scraped_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching rating history:', error);
+        logger.error('Error fetching rating history', error instanceof Error ? error : new Error(String(error)), { component: 'RatingHistoryChart' });
       } else {
         setHistory(data || []);
       }
     } catch (err) {
-      console.error('Failed to fetch history:', err);
+      logger.error('Failed to fetch history', err instanceof Error ? err : new Error(String(err)), { component: 'RatingHistoryChart' });
     } finally {
       setLoading(false);
     }

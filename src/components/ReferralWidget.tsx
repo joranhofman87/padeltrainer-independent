@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 
 declare global {
   interface Window {
@@ -21,7 +22,7 @@ export function ReferralWidget() {
       try {
         const { data, error } = await supabase.functions.invoke('reditus-referral-token');
         if (error || !data?.token) {
-          console.error('Failed to get referral token:', error);
+          logger.error('Failed to get referral token', error instanceof Error ? error : new Error(String(error)), { component: 'ReferralWidget' });
           return;
         }
 
@@ -37,7 +38,7 @@ export function ReferralWidget() {
           });
         }
       } catch (err) {
-        console.error('Error initializing referral widget:', err);
+        logger.error('Error initializing referral widget', err instanceof Error ? err : new Error(String(err)), { component: 'ReferralWidget' });
       }
     };
 

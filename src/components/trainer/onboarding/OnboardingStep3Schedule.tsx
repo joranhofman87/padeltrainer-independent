@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { logger } from '@/lib/logger';
 import { CalendarIcon, Clock, Plus, Trash2, AlertTriangle, CheckCircle2, CalendarPlus, Repeat } from 'lucide-react';
 import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHours, setMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -90,7 +91,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setSessionCreated(true);
       toast.success('Training session settings saved!');
     } catch (error: any) {
-      console.error('Error saving session settings:', error);
+      logger.error('Error saving session settings', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to save training session settings');
     } finally {
       setCreatingSession(false);
@@ -138,7 +139,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setSlotTime('09:00');
       setSlotDate(undefined);
     } catch (error: any) {
-      console.error('Error adding slot:', error);
+      logger.error('Error adding slot', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to add slot');
     } finally {
       setAddingSlot(false);
@@ -193,7 +194,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setCyclusSessions(slotsToInsert.length);
       toast.success(`Training cycle created with ${slotsToInsert.length} sessions!`);
     } catch (error: any) {
-      console.error('Error creating cyclus:', error);
+      logger.error('Error creating cyclus', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to create training cycle');
     } finally {
       setCreatingCyclus(false);

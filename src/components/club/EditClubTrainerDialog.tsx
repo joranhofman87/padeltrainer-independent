@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Loader2, Camera, Save } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -162,7 +163,7 @@ export function EditClubTrainerDialog({
         });
       }
     } catch (error) {
-      console.error('Error fetching trainer data:', error);
+      logger.error('Error fetching trainer data', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
     } finally {
       setLoading(false);
     }
@@ -222,7 +223,7 @@ export function EditClubTrainerDialog({
         description: 'The trainer\'s profile picture has been updated.',
       });
     } catch (error: any) {
-      console.error('Avatar upload error:', error);
+      logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
         description: error.message || 'Failed to upload avatar',
@@ -286,7 +287,7 @@ export function EditClubTrainerDialog({
       onTrainerUpdated();
       setOpen(false);
     } catch (error: any) {
-      console.error('Error updating trainer:', error);
+      logger.error('Error updating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
         description: error.message || 'Failed to update trainer profile',

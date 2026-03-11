@@ -4,6 +4,26 @@ import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 import "./index.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { logger } from "./lib/logger";
+
+// Global error handlers — catch unhandled errors and promise rejections
+window.addEventListener('error', (event) => {
+  logger.error('Unhandled error', event.error instanceof Error ? event.error : new Error(event.message || 'Unknown error'), {
+    component: 'global',
+    action: 'uncaught_error',
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason || 'Unhandled promise rejection'));
+  logger.error('Unhandled promise rejection', error, {
+    component: 'global',
+    action: 'unhandled_rejection',
+  });
+});
 import { initializePostHog } from "./lib/posthog";
 
 // Initialize PostHog and Reditus after critical rendering

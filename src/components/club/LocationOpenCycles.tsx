@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Clock, ExternalLink, Info } from 'lucide-react';
 import { getMarketingPath } from '@/lib/domains';
+import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -79,7 +80,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
           setAppliedCycles(appliedSet);
         }
       } catch (error) {
-        console.error('Error fetching open cycles:', error);
+        logger.error('Error fetching open cycles', error instanceof Error ? error : new Error(String(error)), { component: 'LocationOpenCycles' });
       } finally {
         setLoading(false);
       }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -99,7 +100,7 @@ export function TrainerSubscriptionEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating trainer:", error);
+      logger.error("Error updating trainer", error instanceof Error ? error : new Error(String(error)), { component: 'TrainerSubscriptionEditDialog' });
       toast({
         title: "Error",
         description: "Failed to update trainer. Please try again.",

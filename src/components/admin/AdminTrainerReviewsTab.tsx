@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ReviewTagSelector } from "@/components/reviews/ReviewTagSelector";
 import { Loader2, Plus, Star, Trash2 } from "lucide-react";
+import { logger } from "@/lib/logger";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -95,7 +96,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
       setReviews(reviewsWithDetails);
     } catch (error) {
-      console.error("Error fetching reviews:", error);
+      logger.error("Error fetching reviews", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: "Failed to load reviews",
@@ -187,7 +188,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
       setShowAddForm(false);
       fetchReviews();
     } catch (error: any) {
-      console.error("Error adding review:", error);
+      logger.error("Error adding review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: error.message || "Failed to add review",
@@ -222,7 +223,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
       fetchReviews();
     } catch (error: any) {
-      console.error("Error deleting review:", error);
+      logger.error("Error deleting review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: error.message || "Failed to delete review",

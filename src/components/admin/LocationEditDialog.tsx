@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 import { supabase as supabaseTyped } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -231,7 +232,7 @@ export function LocationEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error saving location:', error);
+      logger.error('Error saving location', error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
       toast({
         title: 'Error',
         description: error.message || 'Failed to save location',
@@ -280,7 +281,7 @@ export function LocationEditDialog({
       updateField('logo_url', newUrl);
       toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading logo:", error);
+      logger.error("Error uploading logo", error instanceof Error ? error : new Error(String(error)), { component: 'LocationEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
     } finally {
       setLogoUploading(false);

@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import { getTermsForCycleOwner } from '@/lib/terms';
+import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,7 +115,7 @@ export default function CycleApplicationForm({
         const { terms } = await getTermsForCycleOwner(cycle.owner_id, cycle.owner_type);
         setCycleTerms(terms);
       } catch (e) {
-        console.error('Error loading cycle terms:', e);
+        logger.error('Error loading cycle terms', e instanceof Error ? e : new Error(String(e)), { component: 'CycleApplicationForm' });
       } finally {
         setTermsLoading(false);
       }
@@ -270,7 +271,7 @@ export default function CycleApplicationForm({
       toast.success(t('application.success.title'));
       onSuccess?.();
     } catch (error: any) {
-      console.error('Error submitting application:', error);
+      logger.error('Error submitting application', error instanceof Error ? error : new Error(String(error)), { component: 'CycleApplicationForm' });
       toast.error(error.message || 'Failed to submit application');
     } finally {
       setIsSubmitting(false);

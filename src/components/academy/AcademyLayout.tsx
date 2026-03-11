@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
+import { logger } from '@/lib/logger';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
@@ -80,7 +81,7 @@ export default function AcademyLayout() {
         localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, userAcademies[0].id);
       }
     } catch (error) {
-      console.error('Error fetching academies:', error);
+      logger.error('Error fetching academies', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyLayout' });
     } finally {
       setLoading(false);
     }

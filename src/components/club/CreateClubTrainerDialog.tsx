@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UserPlus, Loader2, Copy, Check } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -78,7 +79,7 @@ export function CreateClubTrainerDialog({
 
       onTrainerCreated();
     } catch (error) {
-      console.error('Error creating trainer:', error);
+      logger.error('Error creating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'CreateClubTrainerDialog' });
       toast({
         title: t('createTrainer.error', 'Error'),
         description: String(error),

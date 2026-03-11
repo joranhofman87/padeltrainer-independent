@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
+import { logger } from '@/lib/logger';
 import { 
   Calendar, 
   Users, 
@@ -59,7 +60,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
         const data = await getIntakeRequestCounts(cycle.id);
         setCounts(data);
       } catch (error) {
-        console.error('Error loading counts:', error);
+        logger.error('Error loading counts', error instanceof Error ? error : new Error(String(error)), { component: 'CycleCard' });
       }
     }
     loadCounts();

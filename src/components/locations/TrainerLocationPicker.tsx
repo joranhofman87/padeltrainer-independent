@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Check, ChevronsUpDown, MapPin, X, Building2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { logger } from '@/lib/logger';
 import {
   Command,
   CommandEmpty,
@@ -70,7 +71,7 @@ export function TrainerLocationPicker({
         const data = await getActiveLocations();
         setLocations(data);
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerLocationPicker' });
       } finally {
         setLoading(false);
       }

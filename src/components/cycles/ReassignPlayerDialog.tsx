@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -60,7 +61,7 @@ export default function ReassignPlayerDialog({
         const data = await getAvailableSlotsForCycle(cycleId);
         setSlots(data);
       } catch (error) {
-        console.error('Error fetching slots:', error);
+        logger.error('Error fetching slots', error instanceof Error ? error : new Error(String(error)), { component: 'ReassignPlayerDialog' });
       } finally {
         setIsLoading(false);
       }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Loader2 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -71,7 +72,7 @@ export function EditAcademyLocationDialog({
         throw new Error('Failed to update');
       }
     } catch (error) {
-      console.error('Error updating location:', error);
+      logger.error('Error updating location', error instanceof Error ? error : new Error(String(error)), { component: 'EditAcademyLocationDialog' });
       toast({
         title: t('common:error'),
         description: String(error),

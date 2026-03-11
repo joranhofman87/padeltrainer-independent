@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
+import { logger } from "@/lib/logger";
 import { type ExtraCost } from "@/lib/cycles";
 import type { Json } from "@/integrations/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -761,7 +762,7 @@ export function BulkCreateSheet({
                 .from("bookings")
                 .insert(bookingsToInsert);
               if (bookingError) {
-                console.error("Error creating bookings:", bookingError);
+                logger.error("Error creating bookings", bookingError instanceof Error ? bookingError : new Error(String(bookingError)), { component: 'AddSlotDialog' });
               } else {
                 totalBookingsCreated += bookingsToInsert.length;
               }

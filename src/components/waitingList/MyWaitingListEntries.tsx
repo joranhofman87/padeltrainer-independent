@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +39,7 @@ export default function MyWaitingListEntries() {
     setLoading(true);
     const { data, error } = await getPlayerWaitingListEntries(profile.id);
     if (error) {
-      console.error('Error fetching waiting list entries:', error);
+      logger.error('Error fetching waiting list entries', error instanceof Error ? error : new Error(String(error)), { component: 'MyWaitingListEntries' });
     }
     setEntries(data || []);
     setLoading(false);

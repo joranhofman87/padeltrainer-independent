@@ -5,6 +5,7 @@ import { Trash2, AlertTriangle, Loader2, Bell, Calendar } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { sendBookingCancellation } from "@/lib/email";
+import { logger } from "@/lib/logger";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -161,7 +162,7 @@ export function DeleteSlotDialog({
                     lessonTitle,
                     lessonDate,
                     lessonTime
-                  ).catch(err => console.error("Failed to send cancellation email:", err));
+                   ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
                 }
               }
             }
@@ -241,7 +242,7 @@ export function DeleteSlotDialog({
                   lessonTitle,
                   lessonDate,
                   lessonTime
-                ).catch(err => console.error("Failed to send cancellation email:", err));
+                ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
               }
             }
           }
@@ -270,7 +271,7 @@ export function DeleteSlotDialog({
       onSlotDeleted();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error deleting slot:", error);
+      logger.error("Error deleting slot", error instanceof Error ? error : new Error(String(error)), { component: 'DeleteSlotDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

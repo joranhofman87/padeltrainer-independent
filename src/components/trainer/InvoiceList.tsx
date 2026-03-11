@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 import { 
   FileText, 
   Download, 
@@ -75,7 +76,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching invoices:', error);
+      logger.error('Error fetching invoices', error instanceof Error ? error : new Error(String(error)), { component: 'InvoiceList' });
       toast({
         title: 'Fout',
         description: 'Kon facturen niet laden',
@@ -115,7 +116,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       toast({ title: 'Factuur gemarkeerd als betaald' });
       // Auto-forward if emails configured
       if (forwardEmails.length > 0) {
-        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(console.error);
+        supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
       }
       fetchInvoices();
     }
@@ -131,7 +132,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     });
 
     if (genError) {
-      console.error('PDF generation error:', genError);
+      logger.error('PDF generation error', genError instanceof Error ? genError : new Error(String(genError)), { component: 'InvoiceList' });
     }
 
     // Update status to sent

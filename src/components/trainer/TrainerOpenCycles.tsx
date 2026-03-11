@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Clock, ExternalLink, Info } from 'lucide-react';
 import { getMarketingPath } from '@/lib/domains';
+import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +44,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
           setAppliedCycles(appliedSet);
         }
       } catch (error) {
-        console.error('Error fetching trainer cycles:', error);
+        logger.error('Error fetching trainer cycles', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerOpenCycles' });
       } finally {
         setLoading(false);
       }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -54,7 +55,7 @@ export function EditPlayerDialog({
         const systems = await getRatingSystems();
         setRatingSystems(systems);
       } catch (error) {
-        console.error("Error fetching rating systems:", error);
+        logger.error("Error fetching rating systems", error instanceof Error ? error : new Error(String(error)), { component: 'EditPlayerDialog' });
       } finally {
         setLoadingRatingSystems(false);
       }
@@ -103,7 +104,7 @@ export function EditPlayerDialog({
       onOpenChange(false);
       onPlayerUpdated?.(data as GuestPlayer);
     } catch (error: any) {
-      console.error("Error updating player:", error);
+      logger.error("Error updating player", error instanceof Error ? error : new Error(String(error)), { component: 'EditPlayerDialog' });
       toast({
         title: t("common:error"),
         description: error.message,
