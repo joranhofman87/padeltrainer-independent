@@ -45,7 +45,7 @@ export function AcademyOpenCycles({ academyId, academyName, academySlug }: Acade
           setAppliedCycles(appliedSet);
         }
       } catch (error) {
-        console.error('Error fetching academy cycles:', error);
+        logger.error('Error fetching academy cycles', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyOpenCycles' });
       } finally {
         setLoading(false);
       }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -107,7 +108,7 @@ export function ClubEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (err) {
-      console.error("Error updating club:", err);
+      logger.error("Error updating club", err instanceof Error ? err : new Error(String(err)), { component: 'ClubEditDialog' });
       toast({
         title: "Update failed",
         description: err instanceof Error ? err.message : "Unknown error",

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { logger } from '@/lib/logger';
 import { Check, ChevronsUpDown, MapPin, Star, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,7 +76,7 @@ export function LocationPicker({
           setLocations(data);
         }
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'LocationPicker' });
       } finally {
         setLoading(false);
       }
@@ -101,7 +102,7 @@ export function LocationPicker({
         const data = await searchLocations(value, 100);
         setLocations(data);
       } catch (error) {
-        console.error('Error searching locations:', error);
+        logger.error('Error searching locations', error instanceof Error ? error : new Error(String(error)), { component: 'LocationPicker' });
       } finally {
         setSearchLoading(false);
       }

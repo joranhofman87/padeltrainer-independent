@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -96,7 +97,7 @@ export function ClubSubscriptionEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating club:", error);
+      logger.error("Error updating club", error instanceof Error ? error : new Error(String(error)), { component: 'ClubSubscriptionEditDialog' });
       toast({
         title: "Error",
         description: "Failed to update club. Please try again.",

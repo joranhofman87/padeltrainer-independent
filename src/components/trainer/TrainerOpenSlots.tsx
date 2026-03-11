@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
 
@@ -195,7 +196,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
 
       setDayGroups(groups);
     } catch (error) {
-      console.error('Error fetching open slots:', error);
+      logger.error('Error fetching open slots', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerOpenSlots' });
     } finally {
       setLoading(false);
     }

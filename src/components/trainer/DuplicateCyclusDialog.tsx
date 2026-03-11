@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, addWeeks, parseISO, setHours, setMinutes } from "date-fns";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import { Copy, Repeat, Users } from "lucide-react";
 import {
   Dialog,
@@ -132,7 +133,7 @@ export function DuplicateCyclusDialog({
       );
       setCyclusList(list);
     } catch (error) {
-      console.error("Error fetching cyclus list:", error);
+      logger.error("Error fetching cyclus list", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
       toast.error("Failed to load training cycles");
     } finally {
       setIsFetching(false);
@@ -245,7 +246,7 @@ export function DuplicateCyclusDialog({
             .insert(bookingsToCreate);
 
           if (bookingsError) {
-            console.error("Error copying bookings:", bookingsError);
+            logger.error("Error copying bookings", bookingsError instanceof Error ? bookingsError : new Error(String(bookingsError)), { component: 'DuplicateCyclusDialog' });
             // Don't fail completely, just warn
             toast.warning("Cyclus created but some bookings could not be copied");
           }
@@ -264,7 +265,7 @@ export function DuplicateCyclusDialog({
       setIncludeExistingPlayers(true);
       setMarkAsPaid(false);
     } catch (error) {
-      console.error("Error duplicating cyclus:", error);
+      logger.error("Error duplicating cyclus", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
       toast.error("Failed to duplicate cycle");
     } finally {
       setIsLoading(false);

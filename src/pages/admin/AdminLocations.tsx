@@ -50,6 +50,7 @@ import {
 import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { useTableSort } from '@/hooks/useTableSort';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 // Extended type to include computed fields for sorting
 interface LocationWithComputedFields extends Location {
@@ -105,7 +106,6 @@ export default function AdminLocations() {
         setCities(citiesData);
 
         // Fetch verified club location IDs
-        const { supabase } = await import('@/integrations/supabase/client');
         const { data: verifiedClubs } = await supabase
           .from('club_profiles')
           .select('location_id')

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { logger } from "@/lib/logger";
 import { Loader2, Image, AlertCircle, CheckCircle2, XCircle, Play, Square, RefreshCw, Clock } from "lucide-react";
 import {
   Dialog,
@@ -91,7 +92,7 @@ export function ScrapeLogosDialog({
       const status = await getBackgroundLogoJobStatus();
       setBackgroundStatus(status);
     } catch (error) {
-      console.error("Error fetching background status:", error);
+      logger.error("Error fetching background status", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
     }
   }
 
@@ -109,7 +110,7 @@ export function ScrapeLogosDialog({
       if (error) throw error;
       setLocationsWithoutLogos(data || []);
     } catch (error) {
-      console.error("Error fetching locations:", error);
+      logger.error("Error fetching locations", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: "Failed to fetch locations",
@@ -138,7 +139,7 @@ export function ScrapeLogosDialog({
       }
       await fetchBackgroundStatus();
     } catch (error) {
-      console.error("Error toggling background job:", error);
+      logger.error("Error toggling background job", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to toggle background job",
@@ -160,7 +161,7 @@ export function ScrapeLogosDialog({
       await fetchBackgroundStatus();
       await fetchLocationsWithoutLogos();
     } catch (error) {
-      console.error("Error resetting:", error);
+      logger.error("Error resetting", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: "Failed to reset locations for retry",
@@ -209,7 +210,7 @@ export function ScrapeLogosDialog({
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error("Batch error:", error);
+        logger.error("Batch error", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
         toast({
           title: "Batch Error",
           description: `Error processing batch ${i + 1}`,

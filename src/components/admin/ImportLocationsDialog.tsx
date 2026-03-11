@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -506,7 +507,7 @@ export function ImportLocationsDialog({
           .select("id");
 
         if (error) {
-          console.error("Batch insert error:", error);
+          logger.error("Batch insert error", error instanceof Error ? error : new Error(String(error)), { component: 'ImportLocationsDialog' });
           // Try individual inserts for this batch
           for (const loc of insertData) {
             try {
@@ -531,7 +532,7 @@ export function ImportLocationsDialog({
           imported += data?.length || batch.length;
         }
       } catch (error) {
-        console.error("Batch error:", error);
+        logger.error("Batch error", error instanceof Error ? error : new Error(String(error)), { component: 'ImportLocationsDialog' });
         failed += batch.length;
       }
 

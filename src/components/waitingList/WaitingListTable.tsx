@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +61,7 @@ export default function WaitingListTable({
     const { data, error } = await getOwnerWaitingListEntries(ownerType, ownerId, status);
     
     if (error) {
-      console.error('Error fetching waiting list:', error);
+      logger.error('Error fetching waiting list', error instanceof Error ? error : new Error(String(error)), { component: 'WaitingListTable' });
       toast({
         title: 'Error',
         description: 'Failed to load waiting list',

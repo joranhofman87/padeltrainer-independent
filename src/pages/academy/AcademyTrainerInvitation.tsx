@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getAcademyInvitationByToken, respondToAcademyTrainerInvitation } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function AcademyTrainerInvitation() {
   const { t } = useTranslation('academy');
@@ -61,23 +62,17 @@ export default function AcademyTrainerInvitation() {
 
       if (accept) {
         // Send acceptance notification to academy manager
-        const { data: inviterProfile } = await import('@/integrations/supabase/client').then(
-          (mod) =>
-            mod.supabase
-              .from('profiles')
-              .select('email, full_name')
-              .eq('user_id', invitation.invited_by)
-              .single()
-        );
+        const { data: inviterProfile } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('user_id', invitation.invited_by)
+          .single();
 
-        const { data: trainerProfile } = await import('@/integrations/supabase/client').then(
-          (mod) =>
-            mod.supabase
-              .from('profiles')
-              .select('full_name, email')
-              .eq('user_id', user.id)
-              .single()
-        );
+        const { data: trainerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('user_id', user.id)
+          .single();
 
         if (inviterProfile?.email) {
           await sendEmail('academy_trainer_invitation_accepted', inviterProfile.email, {

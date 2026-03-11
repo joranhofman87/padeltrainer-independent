@@ -11,8 +11,6 @@ interface SEOProps {
   type?: 'website' | 'article' | 'place';
   structuredData?: object | object[];
   noIndex?: boolean;
-  /** @deprecated Use noIndex instead. App pages under /app are auto-detected. */
-  isAppPage?: boolean;
 }
 
 export function SEO({ 
@@ -23,45 +21,33 @@ export function SEO({
   type = 'website',
   structuredData,
   noIndex = false,
-  isAppPage = false
 }: SEOProps) {
   const { lang } = useParams<{ lang: string }>();
-  const location = useLocation();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
   
   const fullTitle = `${title} | PadelTrainer.ai`;
   
-  // Determine base URL - always use marketing domain
   const baseUrl = MARKETING_DOMAIN;
   
-  // Get the path without language prefix for hreflang generation
   const pathWithoutLang = url?.replace(/^\/(en|nl|es|de|fr)/, '') || '';
   
-  // For app pages, use the path directly without language prefix
-  // For marketing pages, include the language prefix
-  const fullUrl = isAppPage 
-    ? `${baseUrl}${location.pathname}` 
-    : url 
-      ? `${baseUrl}/${currentLang}${pathWithoutLang}` 
-      : `${baseUrl}/${currentLang}`;
+  const fullUrl = url 
+    ? `${baseUrl}/${currentLang}${pathWithoutLang}` 
+    : `${baseUrl}/${currentLang}`;
   
   const defaultImage = `${MARKETING_DOMAIN}/og-image.png`;
 
-  // Generate alternate URLs for each language (only for marketing pages)
-  const alternateUrls = isAppPage ? [] : SUPPORTED_LANGUAGES.map(langCode => ({
+  const alternateUrls = SUPPORTED_LANGUAGES.map(langCode => ({
     lang: langCode,
     url: `${baseUrl}/${langCode}${pathWithoutLang}`
   }));
-
-  // App pages should not be indexed
-  const shouldNoIndex = noIndex || isAppPage;
 
   return (
     <Helmet>
       {/* Basic Meta Tags */}
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
-      {shouldNoIndex && <meta name="robots" content="noindex, nofollow" />}
+      {noIndex && <meta name="robots" content="noindex, nofollow" />}
       
       {/* Language */}
       <html lang={currentLang} />
@@ -69,8 +55,8 @@ export function SEO({
       {/* Canonical URL */}
       <link rel="canonical" href={fullUrl} />
       
-      {/* Hreflang tags for multilingual SEO (marketing pages only) */}
-      {!isAppPage && alternateUrls.map(({ lang: langCode, url: altUrl }) => (
+      {/* Hreflang tags for multilingual SEO */}
+      {alternateUrls.map(({ lang: langCode, url: altUrl }) => (
         <link 
           key={langCode}
           rel="alternate" 
@@ -79,13 +65,11 @@ export function SEO({
         />
       ))}
       {/* x-default points to Dutch as the primary/default language */}
-      {!isAppPage && (
-        <link 
-          rel="alternate" 
-          hrefLang="x-default" 
-          href={`${MARKETING_DOMAIN}/nl${pathWithoutLang}`} 
-        />
-      )}
+      <link 
+        rel="alternate" 
+        hrefLang="x-default" 
+        href={`${MARKETING_DOMAIN}/nl${pathWithoutLang}`} 
+      />
       
       {/* Open Graph */}
       <meta property="og:title" content={fullTitle} />

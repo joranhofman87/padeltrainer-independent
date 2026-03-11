@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -362,7 +363,7 @@ export default function CycleForm({
       onSuccess?.(result);
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Error saving cycle:', error);
+      logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
       toast.error(error.message || 'Failed to save cycle');
     } finally {
       setIsSubmitting(false);

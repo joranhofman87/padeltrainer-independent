@@ -60,6 +60,7 @@ import {
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { searchLocations, type Location } from "@/lib/locations";
 import { MollieDisconnectSection } from "./MollieDisconnectSection";
@@ -247,7 +248,7 @@ export function AcademyEditDialog({
       const data = await searchLocations("", 100);
       setAllLocations(data);
     } catch (error) {
-      console.error("Error loading locations:", error);
+      logger.error("Error loading locations", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     } finally {
       setLocationSearchLoading(false);
     }
@@ -269,7 +270,7 @@ export function AcademyEditDialog({
         const data = await searchLocations(value, 100);
         setAllLocations(data);
       } catch (error) {
-        console.error("Error searching locations:", error);
+        logger.error("Error searching locations", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       } finally {
         setLocationSearchLoading(false);
       }
@@ -310,7 +311,7 @@ export function AcademyEditDialog({
         setAvailableTrainers(enrichedTrainers);
       }
     } catch (error) {
-      console.error("Error loading trainers:", error);
+      logger.error("Error loading trainers", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     }
   };
 
@@ -325,7 +326,7 @@ export function AcademyEditDialog({
         setAvailableUsers(profiles as AvailableUser[]);
       }
     } catch (error) {
-      console.error("Error loading users:", error);
+      logger.error("Error loading users", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     }
   };
 
@@ -420,7 +421,7 @@ export function AcademyEditDialog({
         setManagers([]);
       }
     } catch (error) {
-      console.error("Error loading related data:", error);
+      logger.error("Error loading related data", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     } finally {
       setLoadingRelated(false);
     }
@@ -492,7 +493,7 @@ export function AcademyEditDialog({
       await loadRelatedData();
       setLocationOpen(false);
     } catch (error) {
-      console.error("Error adding location:", error);
+      logger.error("Error adding location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add location.", variant: "destructive" });
     } finally {
       setAddingLocation(false);
@@ -511,7 +512,7 @@ export function AcademyEditDialog({
       toast({ title: "Location removed", description: "Location unlinked from academy." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing location:", error);
+      logger.error("Error removing location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove location.", variant: "destructive" });
     }
   };
@@ -526,7 +527,7 @@ export function AcademyEditDialog({
       if (error) throw error;
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating location:", error);
+      logger.error("Error updating location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
     }
   };
@@ -541,7 +542,7 @@ export function AcademyEditDialog({
       if (error) throw error;
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating location:", error);
+      logger.error("Error updating location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
     }
   };
@@ -567,7 +568,7 @@ export function AcademyEditDialog({
       setTrainerOpen(false);
       setSelectedTrainerId(null);
     } catch (error) {
-      console.error("Error adding trainer:", error);
+      logger.error("Error adding trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add trainer.", variant: "destructive" });
     } finally {
       setAddingTrainer(false);
@@ -586,7 +587,7 @@ export function AcademyEditDialog({
       toast({ title: "Trainer removed", description: "Trainer unlinked from academy." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing trainer:", error);
+      logger.error("Error removing trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove trainer.", variant: "destructive" });
     }
   };
@@ -602,7 +603,7 @@ export function AcademyEditDialog({
       if (error) throw error;
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating trainer:", error);
+      logger.error("Error updating trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update trainer.", variant: "destructive" });
     }
   };
@@ -642,7 +643,7 @@ export function AcademyEditDialog({
       setSelectedUserId(null);
       setSelectedManagerRole("manager");
     } catch (error) {
-      console.error("Error adding manager:", error);
+      logger.error("Error adding manager", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add manager.", variant: "destructive" });
     } finally {
       setAddingManager(false);
@@ -661,7 +662,7 @@ export function AcademyEditDialog({
       toast({ title: "Role updated", description: `Manager role changed to ${newRole}.` });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating manager role:", error);
+      logger.error("Error updating manager role", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update role.", variant: "destructive" });
     }
   };
@@ -678,7 +679,7 @@ export function AcademyEditDialog({
       toast({ title: "Manager removed", description: "User removed as academy manager." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing manager:", error);
+      logger.error("Error removing manager", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove manager.", variant: "destructive" });
     }
   };
@@ -723,7 +724,7 @@ export function AcademyEditDialog({
       setBannerUrl(newUrl);
       toast({ title: "Banner uploaded", description: "Banner image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading banner:", error);
+      logger.error("Error uploading banner", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload banner.", variant: "destructive" });
     } finally {
       setBannerUploading(false);
@@ -763,7 +764,7 @@ export function AcademyEditDialog({
       setLogoUrl(newUrl);
       toast({ title: "Logo uploaded", description: "Logo image uploaded successfully." });
     } catch (error: any) {
-      console.error("Error uploading logo:", error);
+      logger.error("Error uploading logo", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: error.message || "Failed to upload logo.", variant: "destructive" });
     } finally {
       setLogoUploading(false);
@@ -808,7 +809,7 @@ export function AcademyEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating academy:", error);
+      logger.error("Error updating academy", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({
         title: "Error",
         description: "Failed to update academy. Please try again.",

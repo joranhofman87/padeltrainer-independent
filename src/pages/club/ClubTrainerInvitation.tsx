@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getInvitationByToken, respondToTrainerInvitation } from '@/lib/club';
 import { sendEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ClubTrainerInvitation() {
   const { t } = useTranslation('club');
@@ -61,23 +62,17 @@ export default function ClubTrainerInvitation() {
 
       if (accept) {
         // Send acceptance notification to club manager
-        const { data: inviterProfile } = await import('@/integrations/supabase/client').then(
-          (mod) =>
-            mod.supabase
-              .from('profiles')
-              .select('email, full_name')
-              .eq('user_id', invitation.invited_by)
-              .single()
-        );
+        const { data: inviterProfile } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('user_id', invitation.invited_by)
+          .single();
 
-        const { data: trainerProfile } = await import('@/integrations/supabase/client').then(
-          (mod) =>
-            mod.supabase
-              .from('profiles')
-              .select('full_name, email')
-              .eq('user_id', user.id)
-              .single()
-        );
+        const { data: trainerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('user_id', user.id)
+          .single();
 
         if (inviterProfile?.email) {
           await sendEmail('club_trainer_invitation_accepted', inviterProfile.email, {

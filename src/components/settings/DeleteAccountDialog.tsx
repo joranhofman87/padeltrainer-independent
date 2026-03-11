@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { logger } from '@/lib/logger';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -67,7 +68,7 @@ export function DeleteAccountDialog({ trigger }: DeleteAccountDialogProps) {
         throw new Error(data?.error || 'Failed to delete account');
       }
     } catch (error: any) {
-      console.error('Delete account error:', error);
+      logger.error('Delete account error', error instanceof Error ? error : new Error(String(error)), { component: 'DeleteAccountDialog' });
       toast({
         title: t('deleteAccount.error'),
         description: error.message || t('deleteAccount.errorDescription', 'Failed to delete your account. Please try again.'),

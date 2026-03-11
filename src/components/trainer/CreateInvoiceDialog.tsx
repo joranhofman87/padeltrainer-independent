@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logger';
 import { Loader2, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
@@ -203,14 +204,14 @@ export function CreateInvoiceDialog({
           });
           
           if (pdfError) {
-            console.error('PDF generation error:', pdfError);
+            logger.error('PDF generation error', pdfError instanceof Error ? pdfError : new Error(String(pdfError)), { component: 'CreateInvoiceDialog' });
             toast({
               title: 'Factuur aangemaakt',
               description: 'PDF genereren mislukt, maar de factuur is opgeslagen.',
             });
           }
         } catch (pdfErr) {
-          console.error('PDF error:', pdfErr);
+          logger.error('PDF error', pdfErr instanceof Error ? pdfErr : new Error(String(pdfErr)), { component: 'CreateInvoiceDialog' });
         }
         setGenerating(false);
       }
@@ -241,7 +242,7 @@ export function CreateInvoiceDialog({
       setNotes('');
       setLineItems([]);
     } catch (err: any) {
-      console.error('Error creating invoice:', err);
+      logger.error('Error creating invoice', err instanceof Error ? err : new Error(String(err)), { component: 'CreateInvoiceDialog' });
       toast({
         title: 'Fout',
         description: err.message || 'Kon factuur niet aanmaken',

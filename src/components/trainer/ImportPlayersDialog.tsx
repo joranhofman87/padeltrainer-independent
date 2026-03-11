@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -309,13 +310,13 @@ export function ImportPlayersDialog({
         if (error) {
           // Handle unique constraint violation (duplicate email)
           if (error.code === "23505") {
-            console.warn("Duplicate email skipped:", player.email);
+            logger.warn("Duplicate email skipped", { component: 'ImportPlayersDialog', email: player.email });
           }
           throw error;
         }
         imported.push(data as GuestPlayer);
       } catch (error) {
-        console.error("Failed to import player:", player.email, error);
+        logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersDialog', email: player.email });
         failed++;
       }
 
