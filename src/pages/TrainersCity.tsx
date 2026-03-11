@@ -253,7 +253,7 @@ export default function TrainersCity() {
     {
       question: t('cityPage.faq1q', { city: displayCity }),
       answer: trainers.length > 0
-        ? t('cityPage.faq1aWithData', { city: displayCity, min: minRate, max: maxRate })
+        ? t('cityPage.faq1aWithData', { city: displayCity })
         : t('cityPage.faq1aNoData', { city: displayCity })
     },
     {
