@@ -132,9 +132,10 @@ Deno.serve(async (req) => {
         { onConflict: "user_id,role" }
       );
 
-    // Update profile with phone/rating if provided
+    // Update profile with phone/rating/birth_date if provided
     const profileUpdates: Record<string, unknown> = {};
     if (phone) profileUpdates.phone = phone;
+    if (birthDate) profileUpdates.birth_date = birthDate;
     if (rating) {
       profileUpdates.skill_rating = rating;
       profileUpdates.rating_system = ratingSystem || "knltb";
