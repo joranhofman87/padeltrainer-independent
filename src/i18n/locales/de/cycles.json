@@ -226,11 +226,13 @@
     "filters": {
       "all": "Alle",
       "new": "Neu",
+      "skipped": "Übersprungen",
       "proposed": "Vorgeschlagen",
       "confirmed": "Bestätigt",
       "waitlist": "Warteliste",
       "rejected": "Abgelehnt"
     },
+    "skippedSummary": "{{count}} Anmeldungen konnten nicht zugeordnet werden",
     "table": {
       "player": "Spieler",
       "lessonType": "Stundentyp",

@@ -237,11 +237,13 @@
     "filters": {
       "all": "Alle",
       "new": "Nieuw",
+      "skipped": "Overgeslagen",
       "proposed": "Voorgesteld",
       "confirmed": "Bevestigd",
       "waitlist": "Wachtlijst",
       "rejected": "Afgewezen"
     },
+    "skippedSummary": "{{count}} aanmeldingen konden niet worden gekoppeld",
     "table": {
       "player": "Speler",
       "lessonType": "Lesvorm",

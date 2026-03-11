@@ -237,11 +237,13 @@
     "filters": {
       "all": "All",
       "new": "New",
+      "skipped": "Skipped",
       "proposed": "Proposed",
       "confirmed": "Confirmed",
       "waitlist": "Waitlist",
       "rejected": "Rejected"
     },
+    "skippedSummary": "{{count}} registrations could not be matched",
     "table": {
       "player": "Player",
       "lessonType": "Lesson Type",

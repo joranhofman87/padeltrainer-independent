@@ -226,11 +226,13 @@
     "filters": {
       "all": "Tous",
       "new": "Nouveaux",
+      "skipped": "Ignorés",
       "proposed": "Proposés",
       "confirmed": "Confirmés",
       "waitlist": "Liste d'attente",
       "rejected": "Rejetés"
     },
+    "skippedSummary": "{{count}} inscriptions n'ont pas pu être attribuées",
     "table": {
       "player": "Joueur",
       "lessonType": "Type de cours",
