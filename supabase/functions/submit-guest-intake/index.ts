@@ -50,6 +50,7 @@ Deno.serve(async (req) => {
       email,
       fullName,
       phone,
+      birthDate,
       rating,
       ratingSystem,
       cycleId,
