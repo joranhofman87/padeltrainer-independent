@@ -257,7 +257,7 @@ export async function deleteSpecialization(id: string): Promise<void> {
     .eq('id', id);
   
   if (error) {
-    console.error('Error deleting specialization:', error);
+    logger.error('Error deleting specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
 }

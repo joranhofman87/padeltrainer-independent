@@ -271,7 +271,7 @@ export function DeleteSlotDialog({
       onSlotDeleted();
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error deleting slot:", error);
+      logger.error("Error deleting slot", error instanceof Error ? error : new Error(String(error)), { component: 'DeleteSlotDialog' });
       toast({
         title: t("common:error"),
         description: error.message,

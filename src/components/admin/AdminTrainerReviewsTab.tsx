@@ -223,7 +223,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
       fetchReviews();
     } catch (error: any) {
-      console.error("Error deleting review:", error);
+      logger.error("Error deleting review", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: error.message || "Failed to delete review",
