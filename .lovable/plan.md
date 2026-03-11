@@ -1,62 +1,248 @@
 
 
-## Performance Improvements for Academy Pages
+# Growth Hacks & Quick Wins Plan
 
-### Root Cause Analysis
+## Current State Analysis
 
-The screenshot shows `ERR_INSUFFICIENT_RESOURCES` — the browser ran out of network connections. This happens because the academy pages fire a **cascade of sequential and parallel Supabase requests** on every mount, none of which use TanStack Query caching. Here's what fires when an academy manager opens the dashboard:
+I've examined the codebase and identified several untapped growth opportunities:
 
-1. **AcademyLayout mount**: `getUserAcademyProfiles` → then `checkAcademySubscription` (edge function call)
-2. **useAuth**: `fetchUserData` (4 parallel queries) + `fetchSubscription` (edge function)
-3. **AcademyDashboard mount**: Two separate `useEffect`s both fire on `activeAcademy` change:
-   - `fetchStats`: 3 queries (trainers, locations, view stats — view stats itself is 2 queries)
-   - `fetchActivityData`: 5+ sequential queries (academy_trainers, bookings, guest_players, registered bookings, slots, intake_requests)
-4. **UnpaidBookingsCard**: Another `useEffect` fetch on mount
+**Strengths:**
+- Solid SEO foundation with sitemap, structured data, hreflang
+- PostHog analytics and event tracking in place
+- Social sharing on trainer profiles (WhatsApp, LinkedIn, Twitter)
+- Follow functionality for trainers
+- PWA manifest exists
+- Referral system integrated (Reditus)
+- Sponsor banner system just implemented
 
-That's **15+ Supabase requests** on a single page load, with zero caching. If the user tabs away and back, or navigates between academy pages, all of these re-fire because they use raw `useEffect` + `useState` instead of TanStack Query.
+**Gaps:**
+- No review request flow after bookings
+- Google Reviews data exists but not displayed
+- No email capture on marketing pages
+- No exit-intent capture
+- BookingSuccess page doesn't ask for reviews or encourage shares
+- No viral referral mechanics in booking flow
+- PWA not optimized for app-like experience
+- No social proof widgets (live booking feed, counter)
+- Newsletter/lead magnets missing
 
-### Non-Breaking Changes
+---
 
-#### 1. Migrate AcademyDashboard fetches to TanStack Query (biggest win)
+## Recommended Growth Hacks (by impact)
 
-Convert the two `useEffect` + `setState` patterns in `AcademyDashboard.tsx` to `useQuery` with appropriate `staleTime`. This gives:
-- **Deduplication**: Same data won't be fetched twice
-- **Caching**: Navigating away and back uses cached data
-- **No re-fetch on re-mount**: Data stays fresh for the configured window
+### 1. **Post-Booking Review Request** (HIGH IMPACT)
+**Problem:** After a successful booking, players see a generic success page. No review collection, no social sharing prompt.
 
-Set `staleTime: 5 * 60 * 1000` for stats and activity data — this is dashboard data that doesn't need to be real-time.
+**Solution:**
+- Add a "How was your experience?" card to `BookingSuccess.tsx` 
+- For first booking: Ask for Google/platform review with direct link
+- For return bookings: Show trainer-specific review form
+- Include social share buttons: "I just booked a padel lesson with [Trainer]!"
+- Add referral incentive: "Get €5 off your next lesson when a friend books"
 
-#### 2. Migrate AcademyLayout subscription check to TanStack Query
+**Implementation:**
+- Modify `BookingSuccess.tsx` to include review CTA
+- Add review dialog component
+- Create edge function `request-review-email` (7-day follow-up)
+- Track conversion with PostHog
 
-Currently `checkAcademySubscription` is called via `useEffect` + `setInterval`. Convert to `useQuery` with `staleTime: 5 * 60 * 1000` and `refetchInterval: 5 * 60 * 1000`. This prevents duplicate calls when the component re-renders.
+---
 
-#### 3. Consolidate AcademyDashboard's two useEffects into one query
+### 2. **Display Google Reviews on Location Pages** (HIGH IMPACT)
+**Problem:** The database stores `google_rating` and `google_review_count` for 1400+ locations but this social proof isn't displayed anywhere.
 
-Currently there are two separate `useEffect`s both triggered by `activeAcademy` — `fetchStats` and `fetchActivityData`. Merge them into a single `useQuery` call that runs one function doing all fetches in parallel where possible, reducing waterfall.
+**Solution:**
+- Show Google rating stars + review count on `LocationDetail.tsx`
+- Add "Read reviews on Google" link with UTM tracking
+- Show top review snippets if available
+- Include in location cards on `Trainers.tsx` search results
 
-#### 4. Batch the sequential queries in fetchActivityData
+**Files:** `src/pages/LocationDetail.tsx`, `src/components/locations/LocationCard.tsx`
 
-Currently `fetchActivityData` does: fetch trainer IDs → then 4 sequential queries using those IDs → then 1 more query. Restructure to run the 4 dependent queries in a single `Promise.all` after getting trainer IDs.
+---
 
-#### 5. Migrate UnpaidBookingsCard to TanStack Query
+### 3. **Exit-Intent Email Capture** (MEDIUM-HIGH IMPACT)
+**Problem:** Marketing pages have no email capture. Visitors leave without any follow-up mechanism.
 
-Same pattern — convert `useEffect` fetch to `useQuery` with `staleTime: 2 * 60 * 1000`.
+**Solution:**
+- Add exit-intent modal on `/nl`, `/en`, `/trainers` pages
+- Offer lead magnet: "Free Padel Training Guide" or "€10 off first lesson"
+- Simple form: email + language preference
+- Store in new `email_subscribers` table with double opt-in
+- Send weekly newsletter with new trainers, tips, promotions
 
-#### 6. Increase global default staleTime
+**Implementation:**
+- Create `<ExitIntentModal>` component with `beforeunload` / mouse-leave detection
+- Add `email_subscribers` table with RLS
+- Create `subscribe-newsletter` edge function
+- Add to `Home.tsx`, `Trainers.tsx`, `TrainersCity.tsx`
 
-The current global `staleTime: 30_000` (30s) is quite aggressive. For a management app, `60_000` (1 min) is more appropriate and reduces unnecessary refetches.
+---
 
-### Files to Edit
+### 4. **Live Social Proof Widget** (MEDIUM IMPACT)
+**Problem:** Static testimonials don't create urgency or FOMO.
 
-1. **`src/pages/academy/AcademyDashboard.tsx`** — Replace `useEffect` + `useState` with `useQuery` for stats and activity data; merge into fewer queries; parallelize dependent fetches
-2. **`src/components/academy/AcademyLayout.tsx`** — Replace subscription `useEffect` + `setInterval` with `useQuery` + `refetchInterval`
-3. **`src/components/trainer/UnpaidBookingsCard.tsx`** — Replace `useEffect` fetch with `useQuery`
-4. **`src/App.tsx`** — Increase default `staleTime` from 30s to 60s
+**Solution:**
+- Add floating toast notification: "Anna just booked a lesson in Amsterdam" (real-time)
+- Show counter: "1,234 lessons booked this month"
+- Display on homepage and trainer directory
+- Use `banner_events` table impressions + clicks OR create new `social_proof_events` stream
 
-### Impact
+**Implementation:**
+- Create `<LiveBookingToast>` component with Supabase Realtime subscription to `bookings` table
+- Add aggregate query for monthly booking count
+- Show on `Home.tsx` and `Trainers.tsx`
 
-- Reduces initial academy dashboard load from ~15 requests to ~8 (via parallelization and dedup)
-- Eliminates redundant refetches on navigation (TanStack Query cache)
-- Prevents `ERR_INSUFFICIENT_RESOURCES` crashes caused by request storms
-- All changes are purely internal refactors — no UI or behavior changes
+---
+
+### 5. **Enhanced PWA with Install Prompt** (MEDIUM IMPACT)
+**Problem:** PWA manifest exists but no install prompts or app-like features.
+
+**Solution:**
+- Add "Install App" banner for mobile users (iOS + Android)
+- Improve manifest: better icons, shortcuts, categories
+- Add offline fallback page
+- Push notifications for followed trainers' new slots (requires user opt-in)
+
+**Implementation:**
+- Create `<InstallPWAPrompt>` component with `beforeinstallprompt` event
+- Update `manifest.json` with shortcuts (bookings, trainers, account)
+- Add service worker for offline support
+- Request notification permission after first booking
+
+---
+
+### 6. **Booking Success Viral Loop** (MEDIUM IMPACT)
+**Problem:** BookingSuccess page has "Book Another Lesson" but no social/referral mechanics.
+
+**Solution:**
+- Add prominent "Share & Get €5 Off" card
+- Pre-filled social share: "I just booked a padel lesson with [Trainer] on @padeltrainer! 🎾"
+- Show referral code: "Your friends get €10 off, you get €5 off"
+- Gamify: "Invite 3 friends → 1 free lesson"
+
+**Files:** `src/pages/BookingSuccess.tsx`
+
+---
+
+### 7. **Trainer Profile QR Codes** (LOW-MEDIUM IMPACT)
+**Problem:** Trainers can't easily share their profiles offline (courts, clubs, flyers).
+
+**Solution:**
+- Add "Download QR Code" button on `TrainerProfile.tsx` (trainer view)
+- Generate QR with profile URL + UTM params
+- Include in confirmation emails: "Share your profile with players at the club!"
+
+**Implementation:**
+- Add QR generation library (`qrcode.react`)
+- Create download function with canvas → PNG
+- Add to trainer settings page
+
+---
+
+### 8. **Content Hub with SEO Blog** (HIGH LONG-TERM)
+**Already exists** (`/blog`) but not heavily promoted:
+- Add blog CTA on homepage
+- Link to articles from trainer profiles ("Read about padel techniques")
+- Create content series: "Beginner's Guide to Padel in [City]"
+- Internal linking from city pages to relevant blog posts
+
+**Quick Win:** Add blog link to footer + marketing nav
+
+---
+
+### 9. **Waitlist Viral Mechanics** (LOW-MEDIUM IMPACT)
+**Problem:** Waitlist exists for cycles but no referral incentive.
+
+**Solution:**
+- "Move up the waitlist by inviting friends"
+- Show position: "You're #12 in line. Share to jump ahead!"
+- Track referrals and bump positions
+
+**Files:** `src/pages/TrainerWaitingList.tsx`, `src/pages/CycleRegistration.tsx`
+
+---
+
+### 10. **Google My Business Integration** (MEDIUM IMPACT)
+**Problem:** Location pages have Google Maps URLs but no GMB API integration.
+
+**Solution:**
+- Fetch reviews via Google Places API
+- Display on `LocationDetail.tsx`
+- Auto-update `google_rating` weekly via cron edge function
+
+**Implementation:**
+- Add Google Places API key to secrets
+- Create `sync-google-reviews` edge function
+- Schedule with `pg_cron` or external cron job
+
+---
+
+## Priority Matrix
+
+| Priority | Effort | Impact | Feature |
+|----------|--------|--------|---------|
+| P0 | Low | High | Post-Booking Review Request |
+| P0 | Low | High | Display Google Reviews |
+| P1 | Medium | High | Exit-Intent Email Capture |
+| P2 | Medium | Medium | Live Social Proof Widget |
+| P2 | Medium | Medium | Booking Success Viral Loop |
+| P3 | Low | Medium | Enhanced PWA Install |
+| P3 | Low | Low | Trainer QR Codes |
+| P4 | High | High | Google Places API Integration |
+
+---
+
+## Quick Wins (Next 2 Hours)
+
+1. **Display Google Reviews** — Already in DB, just render on location pages
+2. **Post-Booking Review CTA** — Add 1 card to `BookingSuccess.tsx`
+3. **Blog Promo** — Add blog links to footer + nav
+4. **Social Share Buttons** — Enhance `BookingSuccess.tsx` with pre-filled tweets
+
+---
+
+## Implementation Order
+
+**Phase 1 (Week 1):**
+1. Display Google Reviews on location pages
+2. Post-booking review request flow
+3. Blog promotion on homepage
+
+**Phase 2 (Week 2):**
+4. Exit-intent email capture
+5. Booking success viral loop
+6. Live social proof widget
+
+**Phase 3 (Week 3):**
+7. Enhanced PWA with install prompts
+8. Trainer QR codes
+9. Google Places API sync
+
+---
+
+## Files to Create/Modify
+
+**New Components:**
+- `src/components/growth/ExitIntentModal.tsx`
+- `src/components/growth/LiveBookingToast.tsx`
+- `src/components/growth/ReviewRequestCard.tsx`
+- `src/components/growth/InstallPWAPrompt.tsx`
+- `src/components/growth/SocialShareCard.tsx`
+
+**Modify:**
+- `src/pages/BookingSuccess.tsx` (review + share CTAs)
+- `src/pages/LocationDetail.tsx` (Google reviews display)
+- `src/pages/marketing/Home.tsx` (exit-intent, live proof)
+- `src/components/locations/LocationCard.tsx` (rating stars)
+- `src/components/marketing/MarketingLayout.tsx` (blog links)
+
+**Database:**
+- `email_subscribers` table (email, locale, subscribed_at, confirmed, source)
+- `review_requests` table (booking_id, requested_at, completed_at, rating)
+
+**Edge Functions:**
+- `supabase/functions/subscribe-newsletter/index.ts`
+- `supabase/functions/request-review-email/index.ts`
+- `supabase/functions/sync-google-reviews/index.ts` (optional)
 

@@ -10,6 +10,7 @@ import { AcademySidebar } from '@/components/academy/AcademySidebar';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { useToast } from '@/hooks/use-toast';
 import { ReferralWidget } from '@/components/ReferralWidget';
+import { useQuery } from '@tanstack/react-query';
 import { 
   checkAcademySubscription, 
   getTrialDaysRemaining, 
@@ -44,6 +45,7 @@ export function useAcademyContext() {
 }
 
 const ACTIVE_ACADEMY_STORAGE_KEY = 'activeAcademyId';
+const SUBSCRIPTION_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 export default function AcademyLayout() {
   const { t } = useTranslation('academy');
@@ -54,8 +56,6 @@ export default function AcademyLayout() {
   const [academies, setAcademies] = useState<AcademyWithRole[]>([]);
   const [activeAcademy, setActiveAcademy] = useState<AcademyWithRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const [subscription, setSubscription] = useState<AcademySubscriptionInfo | null>(null);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -70,7 +70,6 @@ export default function AcademyLayout() {
       const userAcademies = await getUserAcademyProfiles(user.id);
       setAcademies(userAcademies);
       
-      // Try to restore previously selected academy from localStorage
       const savedAcademyId = localStorage.getItem(ACTIVE_ACADEMY_STORAGE_KEY);
       const savedAcademy = savedAcademyId ? userAcademies.find(a => a.id === savedAcademyId) : null;
       
@@ -91,32 +90,14 @@ export default function AcademyLayout() {
     fetchAcademies();
   }, [user]);
 
-  // Fetch subscription status when active academy changes
-  const fetchSubscription = async () => {
-    if (!activeAcademy) {
-      setSubscription(null);
-      return;
-    }
-    
-    setSubscriptionLoading(true);
-    try {
-      const sub = await checkAcademySubscription(activeAcademy.id);
-      setSubscription(sub);
-    } catch (error) {
-      console.error('Error fetching subscription:', error);
-      setSubscription(null);
-    } finally {
-      setSubscriptionLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSubscription();
-    
-    // Refresh subscription every 60 seconds
-    const interval = setInterval(fetchSubscription, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [activeAcademy]);
+  // Subscription check via TanStack Query — replaces useEffect + setInterval
+  const { data: subscription = null, refetch: refetchSubscription } = useQuery({
+    queryKey: ['academy-subscription', activeAcademy?.id],
+    queryFn: () => checkAcademySubscription(activeAcademy!.id),
+    enabled: !!activeAcademy,
+    staleTime: SUBSCRIPTION_STALE_TIME,
+    refetchInterval: SUBSCRIPTION_STALE_TIME,
+  });
 
   const handleAcademyChange = (academy: AcademyWithRole) => {
     setActiveAcademy(academy);
@@ -134,10 +115,10 @@ export default function AcademyLayout() {
 
   // Redirect to subscription page when expired
   useEffect(() => {
-    if (!subscriptionLoading && isSubscriptionExpired && !isOnSubscriptionPage) {
+    if (subscription && isSubscriptionExpired && !isOnSubscriptionPage) {
       navigate('/app/academy/subscription', { replace: true });
     }
-  }, [subscriptionLoading, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
+  }, [subscription, isSubscriptionExpired, isOnSubscriptionPage, navigate]);
 
   if (authLoading || loading) {
     return (
@@ -187,7 +168,7 @@ export default function AcademyLayout() {
       hasActiveSubscription,
       isTrialing: isTrialing || false,
       trialDaysRemaining,
-      refreshSubscription: fetchSubscription,
+      refreshSubscription: async () => { await refetchSubscription(); },
     }}>
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-background">

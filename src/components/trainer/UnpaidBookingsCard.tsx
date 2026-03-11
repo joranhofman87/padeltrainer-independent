@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Euro, Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface UnpaidBooking {
   id: string;
@@ -31,105 +32,94 @@ interface UnpaidBookingsCardProps {
   academyId?: string | null;
 }
 
+async function fetchUnpaidBookingsData(trainerId?: string | null, academyId?: string | null): Promise<UnpaidBooking[]> {
+  let trainerIds: string[] = [];
+
+  if (academyId) {
+    const { data: academyTrainers } = await supabase
+      .from("academy_trainers")
+      .select("trainer_profile_id")
+      .eq("academy_profile_id", academyId)
+      .eq("status", "active");
+    trainerIds = academyTrainers?.map((t) => t.trainer_profile_id) || [];
+  } else if (trainerId) {
+    trainerIds = [trainerId];
+  }
+
+  if (trainerIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(`
+      id,
+      slot_id,
+      payment_status,
+      payment_amount,
+      reminder_sent_at,
+      player_id,
+      guest_player_id,
+      profiles:player_id (full_name, email),
+      guest_players:guest_player_id (full_name, email),
+      availability_slots!inner (
+        start_time,
+        end_time,
+        trainer_id,
+        cyclus_name,
+        price_per_session,
+        trainer_profiles:trainer_id (
+          id,
+          profiles:user_id (full_name)
+        )
+      )
+    `)
+    .in("availability_slots.trainer_id", trainerIds)
+    .eq("payment_status", "pending")
+    .in("status", ["confirmed", "pending"])
+    .gte("availability_slots.start_time", new Date().toISOString())
+    .order("availability_slots(start_time)", { ascending: true });
+
+  if (error) throw error;
+
+  return (data || []).map((b: any) => {
+    const slot = b.availability_slots;
+    const profile = b.profiles as { full_name: string | null; email: string | null } | null;
+    const guest = b.guest_players as { full_name: string | null; email: string | null } | null;
+    const trainerProfile = slot?.trainer_profiles as any;
+    const trainerProfileData = trainerProfile?.profiles as { full_name: string | null } | null;
+
+    return {
+      id: b.id,
+      slotId: b.slot_id,
+      playerName: profile?.full_name || guest?.full_name || "Unknown",
+      playerEmail: profile?.email || guest?.email || "",
+      playerId: b.player_id,
+      guestPlayerId: b.guest_player_id,
+      sessionDate: format(new Date(slot.start_time), "dd MMM yyyy"),
+      sessionTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
+      amount: b.payment_amount || slot.price_per_session || null,
+      cyclusName: slot.cyclus_name || null,
+      reminderSentAt: b.reminder_sent_at,
+      trainerName: trainerProfileData?.full_name || "Trainer",
+    };
+  });
+}
+
 export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
-  const [bookings, setBookings] = useState<UnpaidBooking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    fetchUnpaidBookings();
-  }, [trainerId, academyId]);
+  const queryKey = ['unpaid-bookings', trainerId, academyId];
 
-  const fetchUnpaidBookings = async () => {
-    setLoading(true);
-    try {
-      let trainerIds: string[] = [];
-
-      if (academyId) {
-        const { data: academyTrainers } = await supabase
-          .from("academy_trainers")
-          .select("trainer_profile_id")
-          .eq("academy_profile_id", academyId)
-          .eq("status", "active");
-        trainerIds = academyTrainers?.map((t) => t.trainer_profile_id) || [];
-      } else if (trainerId) {
-        trainerIds = [trainerId];
-      }
-
-      if (trainerIds.length === 0) {
-        setBookings([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("bookings")
-        .select(`
-          id,
-          slot_id,
-          payment_status,
-          payment_amount,
-          reminder_sent_at,
-          player_id,
-          guest_player_id,
-          profiles:player_id (full_name, email),
-          guest_players:guest_player_id (full_name, email),
-          availability_slots!inner (
-            start_time,
-            end_time,
-            trainer_id,
-            cyclus_name,
-            price_per_session,
-            trainer_profiles:trainer_id (
-              id,
-              profiles:user_id (full_name)
-            )
-          )
-        `)
-        .in("availability_slots.trainer_id", trainerIds)
-        .eq("payment_status", "pending")
-        .in("status", ["confirmed", "pending"])
-        .gte("availability_slots.start_time", new Date().toISOString())
-        .order("availability_slots(start_time)", { ascending: true });
-
-      if (error) throw error;
-
-      const mapped: UnpaidBooking[] = (data || []).map((b: any) => {
-        const slot = b.availability_slots;
-        const profile = b.profiles as { full_name: string | null; email: string | null } | null;
-        const guest = b.guest_players as { full_name: string | null; email: string | null } | null;
-        const trainerProfile = slot?.trainer_profiles as any;
-        const trainerProfileData = trainerProfile?.profiles as { full_name: string | null } | null;
-
-        return {
-          id: b.id,
-          slotId: b.slot_id,
-          playerName: profile?.full_name || guest?.full_name || "Unknown",
-          playerEmail: profile?.email || guest?.email || "",
-          playerId: b.player_id,
-          guestPlayerId: b.guest_player_id,
-          sessionDate: format(new Date(slot.start_time), "dd MMM yyyy"),
-          sessionTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
-          amount: b.payment_amount || slot.price_per_session || null,
-          cyclusName: slot.cyclus_name || null,
-          reminderSentAt: b.reminder_sent_at,
-          trainerName: trainerProfileData?.full_name || "Trainer",
-        };
-      });
-
-      setBookings(mapped);
-    } catch (error) {
-      logger.error("Error fetching unpaid bookings", error as Error, {
-        component: "UnpaidBookingsCard",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: bookings = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: () => fetchUnpaidBookingsData(trainerId, academyId),
+    enabled: !!(trainerId || academyId),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
 
   const handleMarkPaid = async (bookingId: string) => {
     setMarkingIds((prev) => new Set(prev).add(bookingId));
@@ -141,7 +131,10 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
 
       if (error) throw error;
 
-      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+      // Optimistically remove from cache
+      queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
+        old?.filter((b) => b.id !== bookingId) || []
+      );
       setSelected((prev) => {
         const next = new Set(prev);
         next.delete(bookingId);
@@ -177,10 +170,11 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
         .update({ reminder_sent_at: new Date().toISOString() })
         .eq("id", booking.id);
 
-      setBookings((prev) =>
-        prev.map((b) =>
+      // Optimistically update cache
+      queryClient.setQueryData<UnpaidBooking[]>(queryKey, (old) =>
+        old?.map((b) =>
           b.id === booking.id ? { ...b, reminderSentAt: new Date().toISOString() } : b
-        )
+        ) || []
       );
 
       toast({ title: t("unpaidBookings.reminderSentSuccess") });
@@ -245,7 +239,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
 
     setSelected(new Set());
     setSendingIds(new Set());
-    fetchUnpaidBookings();
+    queryClient.invalidateQueries({ queryKey });
   };
 
   const toggleSelect = (id: string) => {
@@ -267,7 +261,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
 
   const totalOutstanding = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
 
-  if (loading) return null;
+  if (isLoading) return null;
   if (bookings.length === 0) return null;
 
   return (
