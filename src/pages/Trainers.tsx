@@ -59,7 +59,7 @@ interface TrainerWithProfile {
   hasAvailability: boolean;
 }
 
-type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
+type SortOption = 'rating' | 'experience';
 
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
@@ -145,17 +145,6 @@ export default function Trainers() {
       newParams.delete('locationId');
     }
     
-    // Price range
-    if (newFilters.priceRange[0] > 0) {
-      newParams.set('minPrice', String(newFilters.priceRange[0]));
-    } else {
-      newParams.delete('minPrice');
-    }
-    if (newFilters.priceRange[1] < 200) {
-      newParams.set('maxPrice', String(newFilters.priceRange[1]));
-    } else {
-      newParams.delete('maxPrice');
-    }
     
     // Rating
     if (newFilters.minRating > 0) {
@@ -356,7 +345,7 @@ export default function Trainers() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.locationId !== 'all') count++;
-    if (filters.priceRange[0] > 0 || filters.priceRange[1] < 200) count++;
+    
     if (filters.minRating > 0) count++;
     if (filters.minExperience > 0) count++;
     if (filters.specializations.length > 0) count++;
@@ -379,10 +368,6 @@ export default function Trainers() {
       // Location filter - now matches trainer_locations
       const matchesLocation = filters.locationId === 'all' || 
         trainerLocationMap.get(trainer.id)?.includes(filters.locationId);
-      
-      // Price range filter
-      const rate = trainer.hourly_rate || 0;
-      const matchesPrice = rate >= filters.priceRange[0] && rate <= filters.priceRange[1];
       
       // Rating filter
       const matchesRating = trainer.averageRating >= filters.minRating;
@@ -427,7 +412,7 @@ export default function Trainers() {
       // Availability filter
       const matchesAvailability = !filters.hasAvailability || trainer.hasAvailability;
       
-      return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
+      return matchesSearch && matchesLocation && matchesRating && 
              matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified && matchesAvailability;
     });
 
@@ -436,10 +421,6 @@ export default function Trainers() {
       switch (sortBy) {
         case 'rating':
           return b.averageRating - a.averageRating;
-        case 'price-low':
-          return (a.hourly_rate || 0) - (b.hourly_rate || 0);
-        case 'price-high':
-          return (b.hourly_rate || 0) - (a.hourly_rate || 0);
         case 'experience':
           return (b.experience_years || 0) - (a.experience_years || 0);
         default:
@@ -601,9 +582,6 @@ export default function Trainers() {
                       </CardHeader>
                       <CardContent className="pt-0">
                         <div className="flex items-center justify-between text-sm">
-                          {trainer.hourly_rate && (
-                            <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                          )}
                           {trainer.experience_years && (
                             <span className="text-muted-foreground text-xs">
                               {trainer.experience_years}y exp
@@ -639,8 +617,6 @@ export default function Trainers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="rating">Top Rated</SelectItem>
-                <SelectItem value="price-low">Price: Low to High</SelectItem>
-                <SelectItem value="price-high">Price: High to Low</SelectItem>
                 <SelectItem value="experience">Most Experienced</SelectItem>
               </SelectContent>
             </Select>
@@ -724,9 +700,6 @@ export default function Trainers() {
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      {trainer.hourly_rate && (
-                        <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                      )}
                       {trainer.hasAvailability && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
                           <CalendarCheck className="h-3 w-3" />

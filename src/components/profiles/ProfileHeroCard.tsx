@@ -20,7 +20,7 @@ interface ProfileHeroCardProps {
   avatarAlt?: string; // For SEO-friendly alt text
   location?: string | null;
   isVerified?: boolean;
-  hourlyRate?: number | null;
+  
   experienceYears?: number | null;
   averageRating?: number | null;
   reviewCount?: number;
@@ -39,7 +39,7 @@ export function ProfileHeroCard({
   avatarAlt,
   location,
   isVerified,
-  hourlyRate,
+  
   experienceYears,
   averageRating,
   reviewCount = 0,
@@ -149,12 +149,6 @@ export function ProfileHeroCard({
                   <span className="text-muted-foreground flex items-center gap-1">
                     <MapPin className="h-4 w-4" />
                     {location}
-                  </span>
-                )}
-                {hourlyRate && (
-                  <span className="flex items-center gap-1">
-                    <span className="font-bold text-xl text-primary">€{hourlyRate}</span>
-                    <span className="text-muted-foreground">/hour</span>
                   </span>
                 )}
                 {experienceYears && (

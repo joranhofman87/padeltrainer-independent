@@ -37,15 +37,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
         setBio(profile.bio || '');
       }
 
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('hourly_rate')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-
-      if (trainerProfile?.hourly_rate) {
-        setHourlyRate(String(trainerProfile.hourly_rate));
-      }
     } catch (e) {
       logger.error('Failed to load profile data', e as Error, { component: 'OnboardingStep1Profile' });
     } finally {
@@ -68,15 +59,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
         .eq('user_id', user.id);
 
       if (profileError) throw profileError;
-
-      // Update hourly rate on trainer_profiles
-      const rate = hourlyRate ? parseFloat(hourlyRate) : null;
-      const { error: trainerError } = await supabase
-        .from('trainer_profiles')
-        .update({ hourly_rate: rate })
-        .eq('user_id', user.id);
-
-      if (trainerError) throw trainerError;
 
       onNext();
     } catch (error: any) {
@@ -129,20 +111,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
           <p className="text-xs text-muted-foreground">1–2 sentences is plenty. You can update this anytime.</p>
         </div>
 
-        {/* Hourly rate */}
-        <div className="space-y-2">
-          <Label htmlFor="hourlyRate">Hourly rate (€) <span className="text-muted-foreground text-xs">(optional)</span></Label>
-          <Input
-            id="hourlyRate"
-            type="number"
-            step="0.01"
-            min="0"
-            value={hourlyRate}
-            onChange={(e) => setHourlyRate(e.target.value)}
-            placeholder="50.00"
-          />
-          <p className="text-xs text-muted-foreground">Shown on your profile. You can set per-session prices later.</p>
-        </div>
       </div>
 
       <Button

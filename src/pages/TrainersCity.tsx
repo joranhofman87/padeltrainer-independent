@@ -49,7 +49,7 @@ interface TrainerWithProfile {
   reviewCount: number;
 }
 
-type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
+type SortOption = 'rating' | 'experience';
 
 export default function TrainersCity() {
   const { city } = useParams<{ city: string }>();
@@ -210,10 +210,6 @@ export default function TrainersCity() {
       switch (sortBy) {
         case 'rating':
           return b.averageRating - a.averageRating;
-        case 'price-low':
-          return (a.hourly_rate || 0) - (b.hourly_rate || 0);
-        case 'price-high':
-          return (b.hourly_rate || 0) - (a.hourly_rate || 0);
         case 'experience':
           return (b.experience_years || 0) - (a.experience_years || 0);
         default:
@@ -229,15 +225,13 @@ export default function TrainersCity() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
-  const minRate = trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30;
-  const maxRate = trainers.length > 0 ? Math.max(...trainers.map(t => t.hourly_rate || 50)) : 50;
 
   // SEO structured data
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": t('cityPage.heroTitle', { city: displayCity }),
-    "description": t('cityPage.description', { city: displayCity, count: trainers.length, minRate }),
+    "description": t('cityPage.description', { city: displayCity, count: trainers.length }),
     "numberOfItems": filteredAndSortedTrainers.length,
     "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
@@ -259,7 +253,7 @@ export default function TrainersCity() {
     {
       question: t('cityPage.faq1q', { city: displayCity }),
       answer: trainers.length > 0
-        ? t('cityPage.faq1aWithData', { city: displayCity, min: minRate, max: maxRate })
+        ? t('cityPage.faq1aWithData', { city: displayCity })
         : t('cityPage.faq1aNoData', { city: displayCity })
     },
     {
@@ -315,7 +309,7 @@ export default function TrainersCity() {
     <MarketingLayout>
       <SEO
         title={t('cityPage.title', { city: displayCity })}
-        description={t('cityPage.description', { city: displayCity, count: trainers.length, minRate })}
+        description={t('cityPage.description', { city: displayCity, count: trainers.length })}
         url={`/trainers/${city}`}
         image="https://padeltrainer.ai/og-trainers.png"
         structuredData={[structuredData, faqStructuredData, breadcrumbData]}
@@ -366,8 +360,6 @@ export default function TrainersCity() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="rating">{t('cityPage.sortTopRated')}</SelectItem>
-              <SelectItem value="price-low">{t('cityPage.sortPriceLow')}</SelectItem>
-              <SelectItem value="price-high">{t('cityPage.sortPriceHigh')}</SelectItem>
               <SelectItem value="experience">{t('cityPage.sortExperience')}</SelectItem>
             </SelectContent>
           </Select>
@@ -452,11 +444,6 @@ export default function TrainersCity() {
                   )}
 
                   <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">
-                        €{trainer.hourly_rate}{t('cityPage.perHour')}
-                      </span>
-                    )}
                     <div className="flex items-center gap-3 text-muted-foreground">
                       {trainer.profile?.skill_rating && trainer.profile?.rating_system && (
                         <span className="font-medium text-foreground">
