@@ -512,7 +512,7 @@ export function AcademyEditDialog({
       toast({ title: "Location removed", description: "Location unlinked from academy." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing location:", error);
+      logger.error("Error removing location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove location.", variant: "destructive" });
     }
   };
