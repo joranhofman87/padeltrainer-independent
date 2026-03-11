@@ -115,7 +115,7 @@ export default function CycleApplicationForm({
         const { terms } = await getTermsForCycleOwner(cycle.owner_id, cycle.owner_type);
         setCycleTerms(terms);
       } catch (e) {
-        console.error('Error loading cycle terms:', e);
+        logger.error('Error loading cycle terms', e instanceof Error ? e : new Error(String(e)), { component: 'CycleApplicationForm' });
       } finally {
         setTermsLoading(false);
       }
