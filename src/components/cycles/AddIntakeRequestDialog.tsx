@@ -130,80 +130,90 @@ export default function AddIntakeRequestDialog({
   const selectedCycleId = form.watch('cycle_id');
   useEffect(() => {
     const fetchTrainers = async () => {
-      const cycleToUse = selectedCycleId || cycleId;
-      if (!cycleToUse) {
-        setTrainers([]);
-        return;
-      }
+      try {
+        const cycleToUse = selectedCycleId || cycleId;
+        if (!cycleToUse) {
+          setTrainers([]);
+          return;
+        }
 
-      // Find the cycle to get owner info
-      const cycle = cycles.find((c) => c.id === cycleToUse);
-      if (!cycle) {
-        setTrainers([]);
-        return;
-      }
+        const cycle = cycles.find((c) => c.id === cycleToUse);
+        if (!cycle) {
+          setTrainers([]);
+          return;
+        }
 
-      if (cycle.owner_type === 'club') {
-        // Fetch trainers linked to this club
-        const { data: clubData } = await supabase
-          .from('club_profiles')
-          .select('location_id')
-          .eq('id', cycle.owner_id)
-          .single();
+        // Helper: given trainer profile rows [{id, user_id}], fetch names from profiles
+        const resolveTrainerNames = async (trainerProfiles: Array<{ id: string; user_id: string }>) => {
+          if (!trainerProfiles.length) return [];
+          const userIds = trainerProfiles.map((tp) => tp.user_id);
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+          return trainerProfiles
+            .map((tp) => ({
+              id: tp.id,
+              name: profiles?.find((p) => p.user_id === tp.user_id)?.full_name || 'Unknown',
+            }))
+            .filter((t) => t.name !== 'Unknown');
+        };
 
-        if (clubData?.location_id) {
-          // First get trainer IDs from trainer_locations
-          const { data: trainerLocations } = await supabase
-            .from('trainer_locations')
-            .select('trainer_id')
-            .eq('location_id', clubData.location_id)
-            .in('relationship_type', ['club', 'club_trainer']);
+        if (cycle.owner_type === 'club') {
+          const { data: clubData } = await supabase
+            .from('club_profiles')
+            .select('location_id')
+            .eq('id', cycle.owner_id)
+            .single();
 
-          if (trainerLocations && trainerLocations.length > 0) {
-            const trainerIds = trainerLocations.map((tl) => tl.trainer_id);
-            
-            // Then fetch trainer profiles with names
+          if (clubData?.location_id) {
+            const { data: trainerLocations } = await supabase
+              .from('trainer_locations')
+              .select('trainer_id')
+              .eq('location_id', clubData.location_id)
+              .in('relationship_type', ['club', 'club_trainer']);
+
+            if (trainerLocations && trainerLocations.length > 0) {
+              const trainerIds = trainerLocations.map((tl) => tl.trainer_id);
+              const { data: trainerProfiles } = await supabase
+                .from('trainer_profiles')
+                .select('id, user_id')
+                .in('id', trainerIds);
+
+              setTrainers(await resolveTrainerNames(trainerProfiles || []));
+            }
+          }
+        } else if (cycle.owner_type === 'trainer') {
+          const { data: trainerData } = await supabase
+            .from('trainer_profiles')
+            .select('id, user_id')
+            .eq('id', cycle.owner_id)
+            .single();
+
+          if (trainerData) {
+            setTrainers(await resolveTrainerNames([trainerData]));
+          }
+        } else if (cycle.owner_type === 'academy') {
+          // Fetch trainers linked to this academy
+          const { data: academyTrainers } = await supabase
+            .from('academy_trainers')
+            .select('trainer_profile_id')
+            .eq('academy_profile_id', cycle.owner_id)
+            .eq('status', 'active');
+
+          if (academyTrainers && academyTrainers.length > 0) {
+            const trainerIds = academyTrainers.map((at) => at.trainer_profile_id);
             const { data: trainerProfiles } = await supabase
               .from('trainer_profiles')
               .select('id, user_id')
               .in('id', trainerIds);
 
-            if (trainerProfiles && trainerProfiles.length > 0) {
-              const userIds = trainerProfiles.map((tp) => tp.user_id);
-              
-              // Fetch profile names
-              const { data: profiles } = await supabase
-                .from('profiles')
-                .select('user_id, full_name')
-                .in('user_id', userIds);
-
-              const trainerList = trainerProfiles
-                .map((tp) => ({
-                  id: tp.id,
-                  name: profiles?.find((p) => p.user_id === tp.user_id)?.full_name || 'Unknown',
-                }))
-                .filter((t) => t.name !== 'Unknown');
-              
-              setTrainers(trainerList);
-            }
+            setTrainers(await resolveTrainerNames(trainerProfiles || []));
           }
         }
-      } else if (cycle.owner_type === 'trainer') {
-        // For trainer-owned cycles, use the trainer themselves
-        const { data: trainerData } = await supabase
-          .from('trainer_profiles')
-          .select('id, user_id, profiles:user_id (full_name)')
-          .eq('id', cycle.owner_id)
-          .single();
-
-        if (trainerData) {
-          setTrainers([
-            {
-              id: trainerData.id,
-              name: (trainerData as any).profiles?.full_name || 'Unknown',
-            },
-          ]);
-        }
+      } catch (error) {
+        logger.error('Error fetching trainers', error as Error, { component: 'AddIntakeRequestDialog' });
+        setTrainers([]);
       }
     };
 
