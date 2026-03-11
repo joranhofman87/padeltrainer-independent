@@ -1,11 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subDays, isToday, isBefore, isSameDay } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
 import { DayViewSlotCard } from "./DayViewSlotCard";
 import { useTranslation } from "react-i18next";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const dateFnsLocales: Record<string, Locale> = { nl, en: enUS, es, de, fr };
 interface TrainerCalendarGridProps {
   slots: SlotWithBookings[];
   currentDate: Date;
