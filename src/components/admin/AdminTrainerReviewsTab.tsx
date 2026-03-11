@@ -96,7 +96,7 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
       setReviews(reviewsWithDetails);
     } catch (error) {
-      console.error("Error fetching reviews:", error);
+      logger.error("Error fetching reviews", error instanceof Error ? error : new Error(String(error)), { component: 'AdminTrainerReviewsTab' });
       toast({
         title: "Error",
         description: "Failed to load reviews",
