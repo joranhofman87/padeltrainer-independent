@@ -109,8 +109,8 @@ export function HomeFeaturedSections() {
   const { data, isLoading } = useQuery({
     queryKey: ['home-featured-sections'],
     queryFn: fetchFeaturedData,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes — this data changes infrequently
+    gcTime: 15 * 60 * 1000,
   });
 
   const featuredTrainers = useMemo(() => {
