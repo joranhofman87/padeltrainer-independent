@@ -389,6 +389,7 @@ export default function EditProfile() {
             skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
             rating_system: formData.rating_system,
             rating_member_id: formData.rating_member_id,
+            birth_date: formData.birth_date || null,
           })
           .eq('user_id', user.id);
         
