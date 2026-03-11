@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getInvitationByToken, respondToTrainerInvitation } from '@/lib/club';
 import { sendEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ClubTrainerInvitation() {
   const { t } = useTranslation('club');
