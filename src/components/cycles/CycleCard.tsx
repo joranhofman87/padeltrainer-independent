@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
+import { logger } from '@/lib/logger';
 import { 
   Calendar, 
   Users, 
