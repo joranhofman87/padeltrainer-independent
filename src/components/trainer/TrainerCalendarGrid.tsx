@@ -300,6 +300,7 @@ interface MobileDayViewProps {
   onDateChange: (date: Date) => void;
   slotsByHour: Record<number, SlotWithBookings[]>;
   weekDays: Date[];
+  dateLocale: typeof enUS;
   onCellClick?: (date: Date, hour: number) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
@@ -315,6 +316,7 @@ function MobileDayView({
   onDateChange,
   slotsByHour,
   weekDays,
+  dateLocale: dfLocale,
   onCellClick,
   onBookForPlayer,
   onDuplicateCyclus,
