@@ -88,7 +88,7 @@ export function AddAcademyLocationDialog({
         onLocationAdded();
       }
     } catch (error) {
-      console.error('Error adding location:', error);
+      logger.error('Error adding location', error instanceof Error ? error : new Error(String(error)), { component: 'AddAcademyLocationDialog' });
       toast({
         title: t('common:error'),
         description: String(error),

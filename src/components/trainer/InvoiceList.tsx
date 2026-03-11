@@ -132,7 +132,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     });
 
     if (genError) {
-      console.error('PDF generation error:', genError);
+      logger.error('PDF generation error', genError instanceof Error ? genError : new Error(String(genError)), { component: 'InvoiceList' });
     }
 
     // Update status to sent

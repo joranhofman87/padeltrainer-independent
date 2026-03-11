@@ -762,7 +762,7 @@ export function BulkCreateSheet({
                 .from("bookings")
                 .insert(bookingsToInsert);
               if (bookingError) {
-                console.error("Error creating bookings:", bookingError);
+                logger.error("Error creating bookings", bookingError instanceof Error ? bookingError : new Error(String(bookingError)), { component: 'AddSlotDialog' });
               } else {
                 totalBookingsCreated += bookingsToInsert.length;
               }

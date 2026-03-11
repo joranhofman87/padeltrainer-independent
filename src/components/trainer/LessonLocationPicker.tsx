@@ -57,7 +57,7 @@ export function LessonLocationPicker({
         const data = await getActiveLocations();
         setLocations(data);
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations', error instanceof Error ? error : new Error(String(error)), { component: 'LessonLocationPicker' });
       } finally {
         setLoading(false);
       }
