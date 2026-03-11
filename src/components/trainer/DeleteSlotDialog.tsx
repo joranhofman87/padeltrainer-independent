@@ -242,7 +242,7 @@ export function DeleteSlotDialog({
                   lessonTitle,
                   lessonDate,
                   lessonTime
-                ).catch(err => console.error("Failed to send cancellation email:", err));
+                ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
               }
             }
           }
