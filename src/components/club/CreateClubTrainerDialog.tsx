@@ -79,7 +79,7 @@ export function CreateClubTrainerDialog({
 
       onTrainerCreated();
     } catch (error) {
-      console.error('Error creating trainer:', error);
+      logger.error('Error creating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'CreateClubTrainerDialog' });
       toast({
         title: t('createTrainer.error', 'Error'),
         description: String(error),

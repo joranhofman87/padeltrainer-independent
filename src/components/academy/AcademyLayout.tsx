@@ -81,7 +81,7 @@ export default function AcademyLayout() {
         localStorage.setItem(ACTIVE_ACADEMY_STORAGE_KEY, userAcademies[0].id);
       }
     } catch (error) {
-      console.error('Error fetching academies:', error);
+      logger.error('Error fetching academies', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyLayout' });
     } finally {
       setLoading(false);
     }

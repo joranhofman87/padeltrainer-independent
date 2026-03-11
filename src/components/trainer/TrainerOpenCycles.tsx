@@ -44,7 +44,7 @@ export function TrainerOpenCycles({ trainerId, trainerName }: TrainerOpenCyclesP
           setAppliedCycles(appliedSet);
         }
       } catch (error) {
-        console.error('Error fetching trainer cycles:', error);
+        logger.error('Error fetching trainer cycles', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerOpenCycles' });
       } finally {
         setLoading(false);
       }

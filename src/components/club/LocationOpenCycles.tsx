@@ -80,7 +80,7 @@ export function LocationOpenCycles({ locationId, locationName, clubSlug }: Locat
           setAppliedCycles(appliedSet);
         }
       } catch (error) {
-        console.error('Error fetching open cycles:', error);
+        logger.error('Error fetching open cycles', error instanceof Error ? error : new Error(String(error)), { component: 'LocationOpenCycles' });
       } finally {
         setLoading(false);
       }

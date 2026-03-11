@@ -93,7 +93,7 @@ export function CreateAcademyTrainerDialog({
 
       onTrainerCreated();
     } catch (error: any) {
-      console.error('Error creating trainer:', error);
+      logger.error('Error creating trainer', error instanceof Error ? error : new Error(String(error)), { component: 'CreateAcademyTrainerDialog' });
       toast({
         title: t('common.error'),
         description: error.message || 'Failed to create trainer',
