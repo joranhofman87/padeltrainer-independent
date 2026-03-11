@@ -311,7 +311,7 @@ export function AcademyEditDialog({
         setAvailableTrainers(enrichedTrainers);
       }
     } catch (error) {
-      console.error("Error loading trainers:", error);
+      logger.error("Error loading trainers", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     }
   };
 
