@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getAcademyInvitationByToken, respondToAcademyTrainerInvitation } from '@/lib/academy';
 import { sendEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function AcademyTrainerInvitation() {
   const { t } = useTranslation('academy');
