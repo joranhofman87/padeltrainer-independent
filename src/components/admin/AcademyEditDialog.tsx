@@ -568,7 +568,7 @@ export function AcademyEditDialog({
       setTrainerOpen(false);
       setSelectedTrainerId(null);
     } catch (error) {
-      console.error("Error adding trainer:", error);
+      logger.error("Error adding trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add trainer.", variant: "destructive" });
     } finally {
       setAddingTrainer(false);
