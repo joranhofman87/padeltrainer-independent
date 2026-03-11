@@ -130,6 +130,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           </div>
 
           {/* Mobile Menu */}
+          <AnimatePresence>
           {mobileMenuOpen && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
