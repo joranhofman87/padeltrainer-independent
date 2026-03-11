@@ -208,7 +208,7 @@ export function LocationEditDialog({
 
       // Update linked club profile if present
       if (clubData && clubFormData) {
-        const { error: clubError } = await supabaseTyped
+        const { error: clubError } = await supabase
           .from('club_profiles')
           .update({
             is_verified: clubFormData.is_verified,
