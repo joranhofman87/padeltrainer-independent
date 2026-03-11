@@ -179,6 +179,7 @@ export function TrainerCalendarGrid({
           onDateChange={handleMobileDateChange}
           slotsByHour={mobileDaySlots}
           weekDays={weekDays}
+          dateLocale={dfLocale}
           onCellClick={onCellClick}
           onBookForPlayer={onBookForPlayer}
           onDuplicateCyclus={onDuplicateCyclus}
