@@ -110,7 +110,7 @@ export function ScrapeLogosDialog({
       if (error) throw error;
       setLocationsWithoutLogos(data || []);
     } catch (error) {
-      console.error("Error fetching locations:", error);
+      logger.error("Error fetching locations", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: "Failed to fetch locations",
