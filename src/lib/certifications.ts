@@ -242,7 +242,7 @@ export async function updateSpecialization(
     .single();
   
   if (error) {
-    console.error('Error updating specialization:', error);
+    logger.error('Error updating specialization', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
