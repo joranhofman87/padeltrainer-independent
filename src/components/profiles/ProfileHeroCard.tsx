@@ -20,7 +20,7 @@ interface ProfileHeroCardProps {
   avatarAlt?: string; // For SEO-friendly alt text
   location?: string | null;
   isVerified?: boolean;
-  hourlyRate?: number | null;
+  
   experienceYears?: number | null;
   averageRating?: number | null;
   reviewCount?: number;
