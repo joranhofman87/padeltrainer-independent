@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Check, ChevronsUpDown, MapPin, Plus, X } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
