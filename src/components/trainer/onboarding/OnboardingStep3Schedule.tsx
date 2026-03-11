@@ -139,7 +139,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setSlotTime('09:00');
       setSlotDate(undefined);
     } catch (error: any) {
-      console.error('Error adding slot:', error);
+      logger.error('Error adding slot', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to add slot');
     } finally {
       setAddingSlot(false);
