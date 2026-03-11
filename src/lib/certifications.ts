@@ -135,7 +135,7 @@ export async function getSpecializations(): Promise<Specialization[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching specializations:', error);
+    logger.error('Error fetching specializations', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
