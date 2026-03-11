@@ -212,7 +212,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
               {startTime} - {endTime}
             </div>
             <div className="text-sm text-muted-foreground">
-              {format(new Date(slot.start_time), "EEEE, MMMM d")}
+              {format(new Date(slot.start_time), "EEEE d MMMM", { locale: dfLocale })}
             </div>
           </div>
 
