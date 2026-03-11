@@ -141,7 +141,7 @@ export async function claimClub(
 }
 
 // Get user's club profiles (clubs they manage)
-export async function getUserClubProfiles(userId: string): Promise<(ClubProfile & { role: string; location: Location | null })[]> {
+export async function getUserClubProfiles(userId: string) {
   const { data, error } = await supabase
     .from('club_managers')
     .select(`
