@@ -105,7 +105,7 @@ export default function ProposalCard({ proposal, cycleId, playerName, onStatusCh
     ? `${format(new Date(proposal.slot.start_time), 'HH:mm')} - ${format(new Date(proposal.slot.end_time), 'HH:mm')}`
     : null;
   
-  const trainerProfile = proposal.trainer?.profile?.[0] ?? proposal.trainer?.profile;
+  const trainerProfile = proposal.trainer?.profile;
   const trainerName = (trainerProfile as any)?.full_name || 'Unknown Trainer';
   const trainerAvatar = (trainerProfile as any)?.avatar_url;
   const trainerInitials = trainerName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
