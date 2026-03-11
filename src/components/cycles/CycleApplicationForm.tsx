@@ -246,7 +246,7 @@ export default function CycleApplicationForm({
           consent_given: values.consent,
         });
 
-        // Update player profile if rating/phone changed
+        // Update player profile if rating/phone/birth_date changed
         const profileUpdates: Record<string, any> = {};
         if (values.rating && values.rating !== playerRating) {
           profileUpdates.skill_rating = values.rating;
@@ -254,6 +254,9 @@ export default function CycleApplicationForm({
         }
         if (values.phone && values.phone !== playerPhone) {
           profileUpdates.phone = values.phone;
+        }
+        if (values.birth_date && values.birth_date !== playerBirthDate) {
+          profileUpdates.birth_date = values.birth_date;
         }
         if (Object.keys(profileUpdates).length > 0) {
           await supabase
