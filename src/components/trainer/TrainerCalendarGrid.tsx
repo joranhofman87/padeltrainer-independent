@@ -589,7 +589,8 @@ interface MonthViewProps {
 }
 
 function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking, onToggleMarkedFull, showTrainerInfo, onSlotClick }: MonthViewProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1), { weekStartsOn: 1 });
