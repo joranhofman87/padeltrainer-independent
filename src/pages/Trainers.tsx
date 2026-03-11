@@ -82,10 +82,6 @@ export default function Trainers() {
   const sortBy = (searchParams.get('sort') as SortOption) || 'rating';
   const filters: TrainerFiltersState = useMemo(() => ({
     locationId: searchParams.get('locationId') || 'all',
-    priceRange: [
-      Number(searchParams.get('minPrice')) || 0,
-      Number(searchParams.get('maxPrice')) || 200
-    ] as [number, number],
     minRating: Number(searchParams.get('minRating')) || 0,
     minExperience: Number(searchParams.get('minExperience')) || 0,
     specializations: searchParams.get('specializations')?.split(',').filter(Boolean) || [],
