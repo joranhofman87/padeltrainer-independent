@@ -205,7 +205,7 @@ export async function deleteCertification(id: string): Promise<void> {
     .eq('id', id);
   
   if (error) {
-    console.error('Error deleting certification:', error);
+    logger.error('Error deleting certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
 }
