@@ -325,7 +325,7 @@ function FeaturedAcademiesSection({ academies, getInitials, localizePath, naviga
           </Button>
         </div>
 
-        <div className="overflow-x-auto pb-4 -mx-4 px-4">
+        <div className="overflow-x-auto overscroll-contain-x pb-4 -mx-4 px-4">
           <div className="flex gap-4 min-w-max lg:grid lg:grid-cols-4 lg:min-w-0">
             {academies.map((academy, index) => (
               <div
