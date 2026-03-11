@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { format } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro, GraduationCap } from "lucide-react";
+
+const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 import { formatSlotRating } from "./SlotRatingPicker";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -110,7 +113,8 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
 }
 
 export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durationHours = 1, startOffset = 0, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const navigate = useNavigate();
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
@@ -162,7 +166,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
         )}
       </div>
       {!compact && slot.cyclus_name && (
-        <div className="text-foreground/80 truncate mt-0.5">
+        <div className="text-[10px] text-foreground/60 truncate mt-0.5 italic">
           {slot.cyclus_name}
         </div>
       )}
@@ -208,7 +212,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
               {startTime} - {endTime}
             </div>
             <div className="text-sm text-muted-foreground">
-              {format(new Date(slot.start_time), "EEEE, MMMM d")}
+              {format(new Date(slot.start_time), "EEEE d MMMM", { locale: dfLocale })}
             </div>
           </div>
 

@@ -1,11 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subDays, isToday, isBefore, isSameDay } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CalendarSlotCard, SlotWithBookings } from "./CalendarSlotCard";
 import { DayViewSlotCard } from "./DayViewSlotCard";
 import { useTranslation } from "react-i18next";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 interface TrainerCalendarGridProps {
   slots: SlotWithBookings[];
   currentDate: Date;
@@ -39,7 +42,8 @@ export function TrainerCalendarGrid({
   showTrainerInfo,
   onSlotClick,
 }: TrainerCalendarGridProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const [mobileSelectedDate, setMobileSelectedDate] = useState(currentDate);
 
   // Sync mobile selected date when currentDate changes
@@ -175,6 +179,7 @@ export function TrainerCalendarGrid({
           onDateChange={handleMobileDateChange}
           slotsByHour={mobileDaySlots}
           weekDays={weekDays}
+          dateLocale={dfLocale}
           onCellClick={onCellClick}
           onBookForPlayer={onBookForPlayer}
           onDuplicateCyclus={onDuplicateCyclus}
@@ -201,7 +206,7 @@ export function TrainerCalendarGrid({
                 )}
               >
                 <div className="text-xs text-muted-foreground">
-                  {format(day, "EEE")}
+                  {format(day, "EEE", { locale: dfLocale })}
                 </div>
                 <div
                   className={cn(
@@ -295,6 +300,7 @@ interface MobileDayViewProps {
   onDateChange: (date: Date) => void;
   slotsByHour: Record<number, SlotWithBookings[]>;
   weekDays: Date[];
+  dateLocale: typeof enUS;
   onCellClick?: (date: Date, hour: number) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;
   onDuplicateCyclus?: (cyclusId: string) => void;
@@ -310,6 +316,7 @@ function MobileDayView({
   onDateChange,
   slotsByHour,
   weekDays,
+  dateLocale: dfLocale,
   onCellClick,
   onBookForPlayer,
   onDuplicateCyclus,
@@ -331,11 +338,11 @@ function MobileDayView({
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="text-center">
-          <div className={cn("font-semibold text-lg", isToday(selectedDate) && "text-primary")}>
-            {format(selectedDate, "EEEE")}
+           <div className={cn("font-semibold text-lg", isToday(selectedDate) && "text-primary")}>
+            {format(selectedDate, "EEEE", { locale: dfLocale })}
           </div>
           <div className="text-sm text-muted-foreground">
-            {format(selectedDate, "MMM d, yyyy")}
+            {format(selectedDate, "d MMM yyyy", { locale: dfLocale })}
           </div>
         </div>
         <Button
@@ -362,7 +369,7 @@ function MobileDayView({
                 : "bg-muted/50 hover:bg-muted"
             )}
           >
-            <span className="text-xs font-medium">{format(day, "EEE")}</span>
+            <span className="text-xs font-medium">{format(day, "EEE", { locale: dfLocale })}</span>
             <span className="text-lg font-bold">{format(day, "d")}</span>
           </button>
         ))}
@@ -452,7 +459,8 @@ function DayView({
   showTrainerInfo,
   onSlotClick,
 }: DayViewProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
 
   // Filter slots for the current day
   const daySlots = useMemo(() => {
@@ -497,10 +505,10 @@ function DayView({
         </Button>
         <div className="text-center">
           <div className={cn("font-semibold text-xl", isToday(currentDate) && "text-primary")}>
-            {format(currentDate, "EEEE")}
+            {format(currentDate, "EEEE", { locale: dfLocale })}
           </div>
           <div className="text-muted-foreground">
-            {format(currentDate, "MMMM d, yyyy")}
+            {format(currentDate, "d MMMM yyyy", { locale: dfLocale })}
           </div>
         </div>
         <Button
@@ -584,7 +592,8 @@ interface MonthViewProps {
 }
 
 function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onDeleteSlot, onEditBooking, onToggleMarkedFull, showTrainerInfo, onSlotClick }: MonthViewProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1), { weekStartsOn: 1 });
@@ -605,7 +614,10 @@ function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onD
     return map;
   }, [slots]);
 
-  const weekDayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekDayLabels = Array.from({ length: 7 }, (_, i) => {
+    const day = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i);
+    return format(day, "EEE", { locale: dfLocale });
+  });
 
   return (
     <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">

@@ -8,6 +8,7 @@ import {
   addWeeks,
   subWeeks,
 } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -53,7 +54,9 @@ interface Trainer {
 }
 
 export default function ClubCalendar() {
-  const { t } = useTranslation("club");
+  const { t, i18n } = useTranslation("club");
+  const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   
@@ -176,7 +179,7 @@ export default function ClubCalendar() {
   const getDateRangeLabel = () => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
     const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-    return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    return `${format(start, "d MMM", { locale: dfLocale })} - ${format(end, "d MMM yyyy", { locale: dfLocale })}`;
   };
 
   const handleSlotClick = (slot: SlotWithBookings) => {
