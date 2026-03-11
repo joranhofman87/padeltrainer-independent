@@ -206,7 +206,7 @@ export function QuickBookDialog({
   const { finalAmount, discountAmount: calculatedDiscount } = applyDiscount(subtotal, discountType, discountValue);
 
   const handleBook = async () => {
-    if (!selectedSlotId || !selectedSlot) return;
+    if (isLoading || !selectedSlotId || !selectedSlot) return;
 
     setIsLoading(true);
     try {

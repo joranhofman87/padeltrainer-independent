@@ -183,6 +183,7 @@ export default function CycleApplicationForm({
   });
 
   const onSubmit = async (values: FormValues) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       // Convert availability to TimeWindow[] format
