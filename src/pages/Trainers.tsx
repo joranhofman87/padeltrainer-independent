@@ -432,10 +432,6 @@ export default function Trainers() {
       switch (sortBy) {
         case 'rating':
           return b.averageRating - a.averageRating;
-        case 'price-low':
-          return (a.hourly_rate || 0) - (b.hourly_rate || 0);
-        case 'price-high':
-          return (b.hourly_rate || 0) - (a.hourly_rate || 0);
         case 'experience':
           return (b.experience_years || 0) - (a.experience_years || 0);
         default:
