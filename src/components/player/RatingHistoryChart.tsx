@@ -64,7 +64,7 @@ export function RatingHistoryChart({
         .order('scraped_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching rating history:', error);
+        logger.error('Error fetching rating history', error instanceof Error ? error : new Error(String(error)), { component: 'RatingHistoryChart' });
       } else {
         setHistory(data || []);
       }
