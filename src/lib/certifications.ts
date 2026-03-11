@@ -150,7 +150,7 @@ export async function getAllSpecializations(): Promise<Specialization[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching all specializations:', error);
+    logger.error('Error fetching all specializations', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
