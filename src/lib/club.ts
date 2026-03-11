@@ -430,7 +430,7 @@ export async function removeClubManager(managerId: string): Promise<boolean> {
 }
 
 // Get all pending club claims (for admin)
-export async function getPendingClubClaims(): Promise<(ClubProfile & { location: any; owner: any })[]> {
+export async function getPendingClubClaims(): Promise<(ClubProfile & { location: Location | null; owner: { full_name: string; email: string } | null })[]> {
   const { data, error } = await supabase
     .from('club_profiles')
     .select(`
