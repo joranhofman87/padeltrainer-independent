@@ -335,11 +335,11 @@ function MobileDayView({
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="text-center">
-          <div className={cn("font-semibold text-lg", isToday(selectedDate) && "text-primary")}>
-            {format(selectedDate, "EEEE")}
+           <div className={cn("font-semibold text-lg", isToday(selectedDate) && "text-primary")}>
+            {format(selectedDate, "EEEE", { locale: dfLocale })}
           </div>
           <div className="text-sm text-muted-foreground">
-            {format(selectedDate, "MMM d, yyyy")}
+            {format(selectedDate, "d MMM yyyy", { locale: dfLocale })}
           </div>
         </div>
         <Button
