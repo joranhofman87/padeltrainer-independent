@@ -78,6 +78,16 @@ serve(async (req) => {
   }
 
   try {
+    // Authenticate: only allow calls with service role key
+    const authHeader = req.headers.get("Authorization");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!authHeader || authHeader !== `Bearer ${serviceKey}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const webhookUrl = Deno.env.get("SLACK_WEBHOOK_URL");
     if (!webhookUrl) {
       console.error("[SLACK-NOTIFY] SLACK_WEBHOOK_URL not configured");
