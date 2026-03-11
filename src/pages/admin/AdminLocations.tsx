@@ -50,6 +50,7 @@ import {
 import { SortableTableHead } from '@/components/admin/SortableTableHead';
 import { useTableSort } from '@/hooks/useTableSort';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 // Extended type to include computed fields for sorting
 interface LocationWithComputedFields extends Location {
