@@ -165,7 +165,7 @@ export default function CycleApplicationForm({
       
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
-      lesson_types: ['group'] as typeof LESSON_TYPES[number][],
+      lesson_types: ['group'] as string[],
       preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
       sessions_per_week: 1,
       availability: {},
