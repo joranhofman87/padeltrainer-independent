@@ -309,7 +309,9 @@ export default function CycleApplicationForm({
     );
   }
 
-  const allowedLessonTypes = (cycle.settings.lesson_types as typeof LESSON_TYPES[number][] | undefined) || [...LESSON_TYPES];
+  const standardAllowed = (cycle.settings.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+  const customTypes = (cycle.settings.custom_lesson_types as string[] | undefined) || [];
+  const allowedLessonTypes = [...standardAllowed, ...customTypes];
   const showTrainerPreference = cycle.settings.show_preferred_trainer && trainers.length > 0;
 
   return (
