@@ -1352,6 +1352,25 @@ export default function CycleForm({
                     ))}
                   </div>
                   <FormMessage />
+                  {isRegistration && (
+                    <div className="mt-3 space-y-2">
+                      <Label className="text-sm text-muted-foreground">{t('form.customLessonTypes')}</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder={t('form.customLessonTypePlaceholder', { number: 1 })}
+                          value={customLessonType1}
+                          onChange={(e) => setCustomLessonType1(e.target.value)}
+                          maxLength={30}
+                        />
+                        <Input
+                          placeholder={t('form.customLessonTypePlaceholder', { number: 2 })}
+                          value={customLessonType2}
+                          onChange={(e) => setCustomLessonType2(e.target.value)}
+                          maxLength={30}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </FormItem>
               )}
             />

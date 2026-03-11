@@ -531,7 +531,9 @@ export default function CycleApplicationForm({
                             onCheckedChange={toggle}
                           />
                           <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
-                            {t(`application.form.lessonTypes.${type}`)}
+                            {(STANDARD_LESSON_TYPES as readonly string[]).includes(type)
+                              ? t(`application.form.lessonTypes.${type}`)
+                              : type.charAt(0).toUpperCase() + type.slice(1)}
                           </span>
                         </label>
                       );

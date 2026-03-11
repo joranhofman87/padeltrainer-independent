@@ -52,7 +52,7 @@ const formSchema = z.object({
   phone: z.string().optional(),
   rating_system: z.string().default('knltb'),
   rating: z.coerce.number().optional(),
-  lesson_types: z.array(z.enum(['private', 'duo', 'group', 'kids'])).min(1, 'Select at least one lesson type'),
+  lesson_types: z.array(z.string()).min(1, 'Select at least one lesson type'),
   preferred_duration_minutes: z.coerce.number().default(60),
   sessions_per_week: z.coerce.number().min(1).max(7).default(1),
   preferred_trainer_id: z.string().optional(),
