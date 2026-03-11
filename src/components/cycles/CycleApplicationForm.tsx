@@ -165,6 +165,7 @@ export default function CycleApplicationForm({
       full_name: playerName || '',
       email: playerEmail || '',
       phone: playerPhone || '',
+      birth_date: playerBirthDate || '',
       
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
