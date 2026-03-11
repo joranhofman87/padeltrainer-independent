@@ -60,15 +60,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
 
       if (profileError) throw profileError;
 
-      // Update hourly rate on trainer_profiles
-      const rate = hourlyRate ? parseFloat(hourlyRate) : null;
-      const { error: trainerError } = await supabase
-        .from('trainer_profiles')
-        .update({ hourly_rate: rate })
-        .eq('user_id', user.id);
-
-      if (trainerError) throw trainerError;
-
       onNext();
     } catch (error: any) {
       logger.error('Error saving profile', error as Error, { component: 'OnboardingStep1Profile' });
