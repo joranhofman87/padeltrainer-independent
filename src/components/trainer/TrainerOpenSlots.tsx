@@ -196,7 +196,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
 
       setDayGroups(groups);
     } catch (error) {
-      console.error('Error fetching open slots:', error);
+      logger.error('Error fetching open slots', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerOpenSlots' });
     } finally {
       setLoading(false);
     }
