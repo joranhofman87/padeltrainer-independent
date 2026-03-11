@@ -450,9 +450,9 @@ export async function getPendingClubClaims(): Promise<(ClubProfile & { location:
     return [];
   }
 
-  return (data || []).map((claim: any) => ({
+  return (data || []).map((claim: Record<string, any>) => ({
     ...claim,
-    owner: claim.managers?.find((m: any) => m.role === 'owner')?.profile || null,
+    owner: claim.managers?.find((m: { role: string }) => m.role === 'owner')?.profile || null,
   }));
 }
 

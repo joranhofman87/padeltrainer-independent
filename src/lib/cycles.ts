@@ -208,7 +208,11 @@ export interface CycleInput {
 }
 
 // Helper to convert DB row to typed object
-function toCycle(row: any): Cycle {
+type CycleRow = Omit<Cycle, 'settings' | 'price_table'> & { settings: Json; price_table: Json };
+type IntakeRow = Omit<IntakeRequest, 'preferred_time_windows'> & { preferred_time_windows: Json };
+type AssignmentRow = Omit<ProposedAssignment, 'rationale'> & { rationale: Json };
+
+function toCycle(row: CycleRow): Cycle {
   return {
     ...row,
     settings: (row.settings || {}) as CycleSettings,
@@ -216,14 +220,14 @@ function toCycle(row: any): Cycle {
   };
 }
 
-function toIntakeRequest(row: any): IntakeRequest {
+function toIntakeRequest(row: IntakeRow): IntakeRequest {
   return {
     ...row,
     preferred_time_windows: (row.preferred_time_windows || []) as TimeWindow[],
   };
 }
 
-function toProposedAssignment(row: any): ProposedAssignment {
+function toProposedAssignment(row: AssignmentRow): ProposedAssignment {
   return {
     ...row,
     rationale: (row.rationale || null) as RationaleItem[] | null,
