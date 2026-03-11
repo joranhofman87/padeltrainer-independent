@@ -54,6 +54,7 @@ interface IntakeRequestDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onStatusChange?: () => void;
+  cycleId?: string;
 }
 
 export default function IntakeRequestDetailSheet({
