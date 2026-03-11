@@ -711,9 +711,6 @@ export default function Trainers() {
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      {trainer.hourly_rate && (
-                        <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                      )}
                       {trainer.hasAvailability && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 gap-0.5">
                           <CalendarCheck className="h-3 w-3" />
