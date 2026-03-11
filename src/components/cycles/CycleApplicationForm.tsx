@@ -53,6 +53,7 @@ interface CycleApplicationFormProps {
   playerPhone?: string;
   playerRating?: number;
   playerRatingSystem?: string;
+  playerBirthDate?: string;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   isGuest?: boolean;
