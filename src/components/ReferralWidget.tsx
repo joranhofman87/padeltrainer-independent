@@ -22,7 +22,7 @@ export function ReferralWidget() {
       try {
         const { data, error } = await supabase.functions.invoke('reditus-referral-token');
         if (error || !data?.token) {
-          console.error('Failed to get referral token:', error);
+          logger.error('Failed to get referral token', error instanceof Error ? error : new Error(String(error)), { component: 'ReferralWidget' });
           return;
         }
 
