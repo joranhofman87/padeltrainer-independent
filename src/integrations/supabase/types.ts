@@ -2840,6 +2840,7 @@ export type Database = {
           billing_btw_number: string | null
           billing_business_name: string | null
           bio: string | null
+          birth_date: string | null
           created_at: string
           email: string | null
           full_name: string | null
@@ -2859,6 +2860,7 @@ export type Database = {
           billing_btw_number?: string | null
           billing_business_name?: string | null
           bio?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -2878,6 +2880,7 @@ export type Database = {
           billing_btw_number?: string | null
           billing_business_name?: string | null
           bio?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
