@@ -14,10 +14,14 @@ import "@/i18n";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,       // data stays fresh for 60 seconds
-      gcTime: 10 * 60 * 1000,  // keep unused cache for 10 minutes
+      staleTime: 60_000,
+      gcTime: 10 * 60 * 1000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10_000),
+    },
+    mutations: {
+      retry: 0,
     },
   },
 });
