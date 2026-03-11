@@ -2,47 +2,35 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 import { logger } from '@/lib/logger';
 
 export function useFollowClub(clubProfileId: string | null) {
-  const { user, role } = useAuth();
+  const { user, role, profile } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation('common');
   
   const [isFollowing, setIsFollowing] = useState(false);
   const [followId, setFollowId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playerProfileId, setPlayerProfileId] = useState<string | null>(null);
+
+  const playerProfileId = profile?.id ?? null;
 
   useEffect(() => {
-    if (user && role === 'player' && clubProfileId) {
+    if (user && role === 'player' && clubProfileId && playerProfileId) {
       checkFollowStatus();
     } else {
       setLoading(false);
     }
-  }, [user, role, clubProfileId]);
+  }, [user, role, clubProfileId, playerProfileId]);
 
   const checkFollowStatus = async () => {
     try {
-      // Get player's profile ID
-      const { data: playerProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user!.id)
-        .single();
-
-      if (!playerProfile) {
-        setLoading(false);
-        return;
-      }
-
-      setPlayerProfileId(playerProfile.id);
-
-      // Check if following
       const { data: follow } = await supabase
         .from('club_followers')
         .select('id')
-        .eq('player_id', playerProfile.id)
-        .eq('club_profile_id', clubProfileId)
+        .eq('player_id', playerProfileId!)
+        .eq('club_profile_id', clubProfileId!)
         .maybeSingle();
 
       setIsFollowing(!!follow);
@@ -57,8 +45,8 @@ export function useFollowClub(clubProfileId: string | null) {
   const toggleFollow = async () => {
     if (!user || role !== 'player' || !clubProfileId || !playerProfileId) {
       toast({
-        title: 'Sign in required',
-        description: 'Please sign in as a player to follow clubs',
+        title: t('locations.signInRequired', 'Sign in required'),
+        description: t('locations.signInToFollowClub', 'Please sign in as a player to follow clubs'),
         variant: 'destructive',
       });
       return;
@@ -66,7 +54,6 @@ export function useFollowClub(clubProfileId: string | null) {
 
     try {
       if (isFollowing && followId) {
-        // Unfollow
         const { error } = await supabase
           .from('club_followers')
           .delete()
@@ -76,9 +63,8 @@ export function useFollowClub(clubProfileId: string | null) {
 
         setIsFollowing(false);
         setFollowId(null);
-        toast({ title: 'Unfollowed club' });
+        toast({ title: t('locations.unfollowedClub', 'Unfollowed club') });
       } else {
-        // Follow
         const { data, error } = await supabase
           .from('club_followers')
           .insert({
@@ -94,13 +80,13 @@ export function useFollowClub(clubProfileId: string | null) {
         setIsFollowing(true);
         setFollowId(data.id);
         toast({
-          title: 'Following club!',
-          description: "You'll be notified when they add new availability",
+          title: t('locations.followingClub', 'Following club!'),
+          description: t('locations.notifyClubUpdates', "You'll be notified when they add new availability"),
         });
       }
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: t('error', 'Error'),
         description: error.message,
         variant: 'destructive',
       });

@@ -2,47 +2,35 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 import { logger } from '@/lib/logger';
 
 export function useFollowTrainer(trainerProfileId: string | null) {
-  const { user, role } = useAuth();
+  const { user, role, profile } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation('player');
   
   const [isFollowing, setIsFollowing] = useState(false);
   const [followId, setFollowId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playerProfileId, setPlayerProfileId] = useState<string | null>(null);
+
+  const playerProfileId = profile?.id ?? null;
 
   useEffect(() => {
-    if (user && role === 'player' && trainerProfileId) {
+    if (user && role === 'player' && trainerProfileId && playerProfileId) {
       checkFollowStatus();
     } else {
       setLoading(false);
     }
-  }, [user, role, trainerProfileId]);
+  }, [user, role, trainerProfileId, playerProfileId]);
 
   const checkFollowStatus = async () => {
     try {
-      // Get player's profile ID
-      const { data: playerProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user!.id)
-        .single();
-
-      if (!playerProfile) {
-        setLoading(false);
-        return;
-      }
-
-      setPlayerProfileId(playerProfile.id);
-
-      // Check if following
       const { data: follow } = await supabase
         .from('trainer_followers')
         .select('id')
-        .eq('player_id', playerProfile.id)
-        .eq('trainer_id', trainerProfileId)
+        .eq('player_id', playerProfileId!)
+        .eq('trainer_id', trainerProfileId!)
         .maybeSingle();
 
       setIsFollowing(!!follow);
@@ -57,8 +45,8 @@ export function useFollowTrainer(trainerProfileId: string | null) {
   const toggleFollow = async () => {
     if (!user || role !== 'player' || !trainerProfileId || !playerProfileId) {
       toast({
-        title: 'Sign in required',
-        description: 'Please sign in as a player to follow trainers',
+        title: t('followingList.signInRequired', 'Sign in required'),
+        description: t('followingList.signInToFollow', 'Please sign in as a player to follow trainers'),
         variant: 'destructive',
       });
       return;
@@ -66,7 +54,6 @@ export function useFollowTrainer(trainerProfileId: string | null) {
 
     try {
       if (isFollowing && followId) {
-        // Unfollow
         const { error } = await supabase
           .from('trainer_followers')
           .delete()
@@ -76,9 +63,8 @@ export function useFollowTrainer(trainerProfileId: string | null) {
 
         setIsFollowing(false);
         setFollowId(null);
-        toast({ title: 'Unfollowed trainer' });
+        toast({ title: t('followingList.unfollowed', 'Unfollowed trainer') });
       } else {
-        // Follow
         const { data, error } = await supabase
           .from('trainer_followers')
           .insert({
@@ -94,13 +80,13 @@ export function useFollowTrainer(trainerProfileId: string | null) {
         setIsFollowing(true);
         setFollowId(data.id);
         toast({
-          title: 'Following trainer!',
-          description: "You'll be notified when they add new availability",
+          title: t('followingList.followingTrainer', 'Following trainer!'),
+          description: t('followingList.notifyAvailability', "You'll be notified when they add new availability"),
         });
       }
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: t('common:error', 'Error'),
         description: error.message,
         variant: 'destructive',
       });

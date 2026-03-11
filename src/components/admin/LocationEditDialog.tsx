@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { supabase as supabaseTyped } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -118,7 +117,7 @@ export function LocationEditDialog({
     if (open) {
       setFormData(getInitialFormData(location));
       if (location?.id) {
-        supabaseTyped
+        supabase
           .from('club_profiles')
           .select('id, is_verified, subscription_status, subscription_tier, trial_ends_at, description, contact_email, phone, social_instagram, social_facebook, social_tiktok, social_youtube, social_linkedin')
           .eq('location_id', location.id)
@@ -209,7 +208,7 @@ export function LocationEditDialog({
 
       // Update linked club profile if present
       if (clubData && clubFormData) {
-        const { error: clubError } = await supabaseTyped
+        const { error: clubError } = await supabase
           .from('club_profiles')
           .update({
             is_verified: clubFormData.is_verified,

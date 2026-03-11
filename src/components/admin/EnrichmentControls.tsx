@@ -3,7 +3,7 @@ import { Play, Square, Loader2, Zap, RotateCcw, AlertTriangle } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 export function EnrichmentControls() {
   const { toast } = useToast();
