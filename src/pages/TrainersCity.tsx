@@ -225,8 +225,6 @@ export default function TrainersCity() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
-  const minRate = trainers.length > 0 ? Math.min(...trainers.map(t => t.hourly_rate || 50)) : 30;
-  const maxRate = trainers.length > 0 ? Math.max(...trainers.map(t => t.hourly_rate || 50)) : 50;
 
   // SEO structured data
   const structuredData = {
