@@ -5,6 +5,7 @@ import { Trash2, AlertTriangle, Loader2, Bell, Calendar } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { sendBookingCancellation } from "@/lib/email";
+import { logger } from "@/lib/logger";
 import {
   AlertDialog,
   AlertDialogContent,
