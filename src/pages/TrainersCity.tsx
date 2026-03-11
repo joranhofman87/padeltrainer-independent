@@ -446,11 +446,6 @@ export default function TrainersCity() {
                   )}
 
                   <div className="flex items-center justify-between text-sm">
-                    {trainer.hourly_rate && (
-                      <span className="font-semibold text-primary">
-                        €{trainer.hourly_rate}{t('cityPage.perHour')}
-                      </span>
-                    )}
                     <div className="flex items-center gap-3 text-muted-foreground">
                       {trainer.profile?.skill_rating && trainer.profile?.rating_system && (
                         <span className="font-medium text-foreground">
