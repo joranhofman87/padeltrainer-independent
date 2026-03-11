@@ -141,7 +141,7 @@ export default function CycleApplicationForm({
     password: z.string().optional(),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
-    lesson_types: isEvent ? z.array(z.enum(LESSON_TYPES)).optional().default([]) : z.array(z.enum(LESSON_TYPES)).min(1, t('application.form.lessonTypeRequired')),
+    lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
     sessions_per_week: z.coerce.number().min(1).max(7).default(1),
     group_notes: z.string().optional(),
