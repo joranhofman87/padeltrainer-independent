@@ -163,7 +163,7 @@ export function EditClubTrainerDialog({
         });
       }
     } catch (error) {
-      console.error('Error fetching trainer data:', error);
+      logger.error('Error fetching trainer data', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
     } finally {
       setLoading(false);
     }
