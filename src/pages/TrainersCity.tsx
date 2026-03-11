@@ -309,7 +309,7 @@ export default function TrainersCity() {
     <MarketingLayout>
       <SEO
         title={t('cityPage.title', { city: displayCity })}
-        description={t('cityPage.description', { city: displayCity, count: trainers.length, minRate })}
+        description={t('cityPage.description', { city: displayCity, count: trainers.length })}
         url={`/trainers/${city}`}
         image="https://padeltrainer.ai/og-trainers.png"
         structuredData={[structuredData, faqStructuredData, breadcrumbData]}

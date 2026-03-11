@@ -464,7 +464,7 @@ export default function TrainerProfile() {
           avatarUrl={profile.avatar_url}
           location={profile.location}
           isVerified={trainer.is_verified}
-          hourlyRate={trainer.hourly_rate}
+          
           experienceYears={trainer.experience_years}
           averageRating={averageRating}
           reviewCount={reviewCount}
