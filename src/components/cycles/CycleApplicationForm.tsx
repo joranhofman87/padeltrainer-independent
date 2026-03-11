@@ -232,6 +232,7 @@ export default function CycleApplicationForm({
           full_name: values.full_name,
           email: values.email,
           phone: values.phone,
+          birth_date: values.birth_date || undefined,
           rating: values.rating,
           rating_system: values.rating_system,
           lesson_types: values.lesson_types,
