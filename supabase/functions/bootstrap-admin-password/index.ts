@@ -12,9 +12,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // 1. Check if bootstrap is enabled
+    const bootstrapEnabled = Deno.env.get("BOOTSTRAP_ENABLED");
+    if (bootstrapEnabled === "false") {
+      return new Response(
+        JSON.stringify({ error: "Bootstrap endpoint is disabled" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { secret, email, new_password } = await req.json();
 
-    // Verify bootstrap secret
+    // 2. Verify bootstrap secret
     const bootstrapSecret = Deno.env.get("BOOTSTRAP_SECRET");
     if (!bootstrapSecret || secret !== bootstrapSecret) {
       return new Response(
@@ -44,29 +53,40 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Find user by email
-    const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    
-    if (listError) {
-      console.error("Error listing users:", listError);
-      return new Response(
-        JSON.stringify({ error: "Failed to find user" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // 3. Find user by email using admin API (no listUsers)
+    const { data: usersResponse, error: listError } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id, email")
+      .eq("email", email)
+      .single();
 
-    const targetUser = users.users.find(u => u.email === email);
-    
-    if (!targetUser) {
+    if (listError || !usersResponse) {
       return new Response(
         JSON.stringify({ error: "User not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Update the password
+    const targetUserId = usersResponse.user_id;
+
+    // 4. Block admin account resets
+    const { data: adminCheck } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", targetUserId)
+      .eq("role", "admin")
+      .single();
+
+    if (adminCheck) {
+      return new Response(
+        JSON.stringify({ error: "Cannot reset admin passwords via this endpoint" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 5. Update the password
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      targetUser.id,
+      targetUserId,
       { password: new_password }
     );
 
@@ -78,13 +98,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Password reset for ${email} at ${new Date().toISOString()}`);
+    // 6. Write audit log
+    await supabaseAdmin.from("admin_impersonation_logs").insert({
+      admin_user_id: targetUserId, // bootstrap has no caller identity
+      target_user_id: targetUserId,
+      action: "bootstrap_password_reset",
+      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+      user_agent: req.headers.get("user-agent"),
+      expires_at: new Date().toISOString(),
+      details: { source: "bootstrap-admin-password" },
+    });
+
+    console.log(`Bootstrap password reset for ${email} at ${new Date().toISOString()}`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message: "Password updated successfully",
-        email: targetUser.email 
+        email,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
