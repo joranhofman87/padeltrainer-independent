@@ -176,7 +176,13 @@
   "notFound": {
     "title": "Pagina Niet Gevonden",
     "description": "De pagina die je zoekt bestaat niet of is verplaatst.",
-    "goHome": "Naar Home"
+    "goHome": "Naar Home",
+    "suggestions": {
+      "heading": "Misschien zocht je naar:",
+      "findTrainer": "Vind een trainer",
+      "browseAcademies": "Bekijk academies",
+      "readBlog": "Lees onze blog"
+    }
   },
   "deleteAccount": {
     "title": "Account Verwijderen",
