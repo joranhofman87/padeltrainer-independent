@@ -10,6 +10,27 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
 };
 
+async function notifySlackError(functionName: string, errorMessage: string, context?: Record<string, unknown>) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) return;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    await supabase.functions.invoke("slack-notify", {
+      body: {
+        event: "edge_function_error",
+        data: {
+          function: functionName,
+          error: errorMessage.slice(0, 500),
+          ...context,
+        },
+      },
+    });
+  } catch (_) {
+    // Silent
+  }
+}
+
 async function refreshTokenIfNeeded(
   supabaseClient: any,
   accountData: any,
@@ -248,6 +269,7 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    await notifySlackError("verify-mollie-payment", message);
     return new Response(
       JSON.stringify({ error: message, paid: false }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
