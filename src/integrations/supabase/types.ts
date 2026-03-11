@@ -1845,6 +1845,7 @@ export type Database = {
       }
       intake_requests: {
         Row: {
+          birth_date: string | null
           consent_given: boolean
           created_at: string
           cycle_id: string
@@ -1868,6 +1869,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          birth_date?: string | null
           consent_given?: boolean
           created_at?: string
           cycle_id: string
@@ -1891,6 +1893,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          birth_date?: string | null
           consent_given?: boolean
           created_at?: string
           cycle_id?: string
