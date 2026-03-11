@@ -37,15 +37,6 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
         setBio(profile.bio || '');
       }
 
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('hourly_rate')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-
-      if (trainerProfile?.hourly_rate) {
-        setHourlyRate(String(trainerProfile.hourly_rate));
-      }
     } catch (e) {
       logger.error('Failed to load profile data', e as Error, { component: 'OnboardingStep1Profile' });
     } finally {
