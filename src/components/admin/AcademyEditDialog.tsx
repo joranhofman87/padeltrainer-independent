@@ -603,7 +603,7 @@ export function AcademyEditDialog({
       if (error) throw error;
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating trainer:", error);
+      logger.error("Error updating trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update trainer.", variant: "destructive" });
     }
   };
