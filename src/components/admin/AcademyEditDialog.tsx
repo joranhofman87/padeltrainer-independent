@@ -662,7 +662,7 @@ export function AcademyEditDialog({
       toast({ title: "Role updated", description: `Manager role changed to ${newRole}.` });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating manager role:", error);
+      logger.error("Error updating manager role", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update role.", variant: "destructive" });
     }
   };
