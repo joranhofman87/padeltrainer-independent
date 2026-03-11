@@ -61,17 +61,19 @@ export default function Home() {
       />
       <HeroSection />
       <SocialProofStrip />
-      <PadelRealitiesSection />
-      <SolutionOverview />
-      <HowItWorksSection />
-      <JobsToBeDoneSection />
-      <PricingPreview />
-      <FAQSection />
-      <FinalCTASection />
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <SponsorBanner placementSlug="marketing-homepage" />
-      </div>
-      <HomeFeaturedSections />
+      <Suspense fallback={null}>
+        <PadelRealitiesSection />
+        <SolutionOverview />
+        <HowItWorksSection />
+        <JobsToBeDoneSection />
+        <PricingPreview />
+        <FAQSection />
+        <FinalCTASection />
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          <SponsorBanner placementSlug="marketing-homepage" />
+        </div>
+        <HomeFeaturedSections />
+      </Suspense>
     </MarketingLayout>
   );
 }
