@@ -55,7 +55,7 @@ export function EditPlayerDialog({
         const systems = await getRatingSystems();
         setRatingSystems(systems);
       } catch (error) {
-        console.error("Error fetching rating systems:", error);
+        logger.error("Error fetching rating systems", error instanceof Error ? error : new Error(String(error)), { component: 'EditPlayerDialog' });
       } finally {
         setLoadingRatingSystems(false);
       }
