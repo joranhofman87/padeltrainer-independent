@@ -150,18 +150,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchSubscription]);
 
   useEffect(() => {
-    let hasTriggeredWelcomeEmails = false;
+    // Use sessionStorage to deduplicate welcome emails across page refreshes
+    const welcomeEmailsKey = 'hasTriggeredWelcomeEmails';
 
-    // Safety timeout: if auth hasn't resolved in 10 seconds, force loading=false
+    // Safety timeout: if auth hasn't resolved in 5 seconds, force loading=false
     // This prevents the app from being stuck on skeleton loaders forever
     const safetyTimeout = setTimeout(() => {
       setLoading((current) => {
         if (current) {
-          logger.warn('Auth loading safety timeout triggered after 10s', { component: 'useAuth' });
+          logger.warn('Auth loading safety timeout triggered after 5s', { component: 'useAuth' });
         }
         return false;
       });
-    }, 10_000);
+    }, 5_000);
 
     // Single source of truth: onAuthStateChange handles INITIAL_SESSION + all state changes
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
