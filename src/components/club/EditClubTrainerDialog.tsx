@@ -223,7 +223,7 @@ export function EditClubTrainerDialog({
         description: 'The trainer\'s profile picture has been updated.',
       });
     } catch (error: any) {
-      console.error('Avatar upload error:', error);
+      logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditClubTrainerDialog' });
       toast({
         title: t('createTrainer.error'),
         description: error.message || 'Failed to upload avatar',
