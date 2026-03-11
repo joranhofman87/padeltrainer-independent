@@ -456,7 +456,8 @@ function DayView({
   showTrainerInfo,
   onSlotClick,
 }: DayViewProps) {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = dateFnsLocales[i18n.language] || enUS;
 
   // Filter slots for the current day
   const daySlots = useMemo(() => {
