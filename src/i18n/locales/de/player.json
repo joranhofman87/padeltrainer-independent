@@ -21,6 +21,7 @@
     "emailChangeDescription": "Bitte überprüfe deine neue E-Mail-Adresse, um die Änderung zu bestätigen."
   },
   "badge": "Spieler",
+  "birthDate": "Geburtsdatum",
   "ratingSystem": {
     "label": "Bewertungssystem",
     "knltb": "KNLTB",

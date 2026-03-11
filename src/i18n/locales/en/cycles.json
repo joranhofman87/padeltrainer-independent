@@ -197,6 +197,8 @@
       "customTimes": "Or set specific times",
       
       "additional": "More information about your padel experience",
+      "birthDate": "Date of birth",
+      "birthDateRequired": "Please enter your date of birth",
       "notes": "Experience",
       "notesPlaceholder": "How long have you played padel? Did you already have lessons before? Do you have a tennis background?",
       "experienceRequired": "Please tell us about your experience",

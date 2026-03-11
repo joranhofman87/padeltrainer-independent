@@ -21,6 +21,7 @@
     "emailChangeDescription": "Controleer je nieuwe e-mailadres om de wijziging te bevestigen."
   },
   "badge": "Speler",
+  "birthDate": "Geboortedatum",
   "ratingSystem": {
     "label": "Beoordelingssysteem",
     "knltb": "KNLTB",

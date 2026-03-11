@@ -21,6 +21,7 @@
     "emailChangeDescription": "Veuillez vérifier votre nouvelle adresse e-mail pour confirmer le changement."
   },
   "badge": "Joueur",
+  "birthDate": "Date de naissance",
   "ratingSystem": {
     "label": "Système de classement",
     "knltb": "KNLTB",

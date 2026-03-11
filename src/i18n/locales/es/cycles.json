@@ -188,6 +188,8 @@
       },
       "customTimes": "O establece horarios específicos",
       "additional": "Más información sobre tu experiencia con el pádel",
+      "birthDate": "Fecha de nacimiento",
+      "birthDateRequired": "Por favor introduce tu fecha de nacimiento",
       "notes": "Experiencia",
       "notesPlaceholder": "¿Cuánto tiempo llevas jugando pádel? ¿Ya has tenido clases antes? ¿Tienes experiencia en tenis?",
       "experienceRequired": "Por favor cuéntanos sobre tu experiencia",

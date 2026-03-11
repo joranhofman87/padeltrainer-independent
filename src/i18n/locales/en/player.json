@@ -21,6 +21,7 @@
     "emailChangeDescription": "Please check your new email address to confirm the change."
   },
   "badge": "Player",
+  "birthDate": "Date of birth",
   "ratingSystem": {
     "label": "Rating System",
     "knltb": "KNLTB",
