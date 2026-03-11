@@ -89,7 +89,9 @@ export default function TrainerIntakeRequests() {
     if (selectedCycleId !== 'all') {
       filtered = filtered.filter(r => r.cycle_id === selectedCycleId);
     }
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'skipped') {
+      filtered = filtered.filter(r => r.status === 'new' && r.skip_reason);
+    } else if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
     setFilteredRequests(filtered);
