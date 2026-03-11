@@ -205,7 +205,7 @@ export function TrainerCalendarGrid({
                 )}
               >
                 <div className="text-xs text-muted-foreground">
-                  {format(day, "EEE")}
+                  {format(day, "EEE", { locale: dfLocale })}
                 </div>
                 <div
                   className={cn(
