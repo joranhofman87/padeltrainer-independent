@@ -174,6 +174,7 @@ export interface IntakeRequestInput {
   full_name: string;
   email: string;
   phone?: string;
+  birth_date?: string;
   rating?: number;
   rating_system?: string;
   lesson_types: string[];
@@ -627,6 +628,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     full_name: input.full_name,
     email: input.email,
     phone: input.phone || null,
+    birth_date: input.birth_date || null,
     rating: input.rating || null,
     rating_system: input.rating_system || 'knltb',
     lesson_type: input.lesson_types,

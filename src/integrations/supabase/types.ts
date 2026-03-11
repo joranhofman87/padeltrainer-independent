@@ -1845,6 +1845,7 @@ export type Database = {
       }
       intake_requests: {
         Row: {
+          birth_date: string | null
           consent_given: boolean
           created_at: string
           cycle_id: string
@@ -1868,6 +1869,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          birth_date?: string | null
           consent_given?: boolean
           created_at?: string
           cycle_id: string
@@ -1891,6 +1893,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          birth_date?: string | null
           consent_given?: boolean
           created_at?: string
           cycle_id?: string
@@ -2840,6 +2843,7 @@ export type Database = {
           billing_btw_number: string | null
           billing_business_name: string | null
           bio: string | null
+          birth_date: string | null
           created_at: string
           email: string | null
           full_name: string | null
@@ -2859,6 +2863,7 @@ export type Database = {
           billing_btw_number?: string | null
           billing_business_name?: string | null
           bio?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -2878,6 +2883,7 @@ export type Database = {
           billing_btw_number?: string | null
           billing_business_name?: string | null
           bio?: string | null
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null

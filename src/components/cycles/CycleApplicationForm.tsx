@@ -53,6 +53,7 @@ interface CycleApplicationFormProps {
   playerPhone?: string;
   playerRating?: number;
   playerRatingSystem?: string;
+  playerBirthDate?: string;
   trainers?: TrainerOption[];
   locations?: LocationOption[];
   isGuest?: boolean;
@@ -73,6 +74,7 @@ export default function CycleApplicationForm({
   playerPhone,
   playerRating,
   playerRatingSystem = 'knltb',
+  playerBirthDate,
   trainers = [],
   locations = [],
   isGuest = false,
@@ -139,6 +141,7 @@ export default function CycleApplicationForm({
     email: z.string().email(),
     phone: z.string().optional(),
     password: z.string().optional(),
+    birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1, t('application.form.lessonTypeRequired')),
@@ -162,6 +165,7 @@ export default function CycleApplicationForm({
       full_name: playerName || '',
       email: playerEmail || '',
       phone: playerPhone || '',
+      birth_date: playerBirthDate || '',
       
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
@@ -202,6 +206,7 @@ export default function CycleApplicationForm({
             email: values.email,
             fullName: values.full_name,
             phone: values.phone,
+            birthDate: values.birth_date || null,
             rating: values.rating,
             ratingSystem: values.rating_system,
             cycleId: cycle.id,
@@ -227,6 +232,7 @@ export default function CycleApplicationForm({
           full_name: values.full_name,
           email: values.email,
           phone: values.phone,
+          birth_date: values.birth_date || undefined,
           rating: values.rating,
           rating_system: values.rating_system,
           lesson_types: values.lesson_types,
@@ -240,7 +246,7 @@ export default function CycleApplicationForm({
           consent_given: values.consent,
         });
 
-        // Update player profile if rating/phone changed
+        // Update player profile if rating/phone/birth_date changed
         const profileUpdates: Record<string, any> = {};
         if (values.rating && values.rating !== playerRating) {
           profileUpdates.skill_rating = values.rating;
@@ -248,6 +254,9 @@ export default function CycleApplicationForm({
         }
         if (values.phone && values.phone !== playerPhone) {
           profileUpdates.phone = values.phone;
+        }
+        if (values.birth_date && values.birth_date !== playerBirthDate) {
+          profileUpdates.birth_date = values.birth_date;
         }
         if (Object.keys(profileUpdates).length > 0) {
           await supabase

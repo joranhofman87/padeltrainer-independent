@@ -1,0 +1,1 @@
+ALTER TABLE public.intake_requests ADD COLUMN birth_date date;

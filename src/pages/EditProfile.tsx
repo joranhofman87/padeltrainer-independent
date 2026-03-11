@@ -67,6 +67,7 @@ export default function EditProfile() {
     skill_rating: '',
     rating_system: 'knltb',
     rating_member_id: '',
+    birth_date: '',
   });
   
   const [trainerData, setTrainerData] = useState<TrainerProfileData>({
@@ -141,6 +142,7 @@ export default function EditProfile() {
         skill_rating: profile.skill_rating?.toString() || '',
         rating_system: (profile as any).rating_system || 'knltb',
         rating_member_id: (profile as any).rating_member_id || '',
+        birth_date: (profile as any).birth_date || '',
       });
       setAvatarUrl(profile.avatar_url || null);
     }
@@ -364,6 +366,7 @@ export default function EditProfile() {
             skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
             rating_system: formData.rating_system,
             rating_member_id: formData.rating_member_id,
+            birth_date: formData.birth_date || null,
           },
         });
 
@@ -386,6 +389,7 @@ export default function EditProfile() {
             skill_rating: formData.skill_rating ? parseFloat(formData.skill_rating) : null,
             rating_system: formData.rating_system,
             rating_member_id: formData.rating_member_id,
+            birth_date: formData.birth_date || null,
           })
           .eq('user_id', user.id);
         
@@ -646,6 +650,16 @@ export default function EditProfile() {
                 <CardDescription>Your padel skill information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="birth_date">{t('birthDate', 'Date of birth')}</Label>
+                  <Input
+                    id="birth_date"
+                    type="date"
+                    value={formData.birth_date}
+                    onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="rating_system">{t('ratingSystem.label')}</Label>
                   <Select

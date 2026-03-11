@@ -44,6 +44,7 @@ interface IntakeRequest {
   cycle_id: string;
   player_id: string;
   full_name: string;
+  birth_date: string | null;
   rating: number | null;
   rating_system: string;
   lesson_type: string;
