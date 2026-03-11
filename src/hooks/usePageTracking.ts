@@ -8,12 +8,5 @@ export function usePageTracking() {
   useEffect(() => {
     const path = location.pathname + location.search;
     trackPostHogPageView(path);
-
-    // Also fire GA pageview if available
-    if ((window as any).gtag) {
-      (window as any).gtag('event', 'page_view', {
-        page_path: path,
-      });
-    }
   }, [location.pathname, location.search]);
 }
