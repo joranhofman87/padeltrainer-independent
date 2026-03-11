@@ -190,7 +190,7 @@ export async function updateCertification(
     .single();
   
   if (error) {
-    console.error('Error updating certification:', error);
+    logger.error('Error updating certification', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     throw error;
   }
   
