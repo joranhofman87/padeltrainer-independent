@@ -224,6 +224,11 @@ export default function AcademyIntakeRequests() {
             <TabsTrigger value="new">
               {t('intakeRequests.filters.new')} ({newCount})
             </TabsTrigger>
+            {skippedCount > 0 && (
+              <TabsTrigger value="skipped">
+                {t('intakeRequests.filters.skipped')} ({skippedCount})
+              </TabsTrigger>
+            )}
             <TabsTrigger value="proposed">
               {t('intakeRequests.filters.proposed')} ({proposedCount})
             </TabsTrigger>
@@ -245,6 +250,26 @@ export default function AcademyIntakeRequests() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+
+      {/* Skipped reasons summary */}
+      {statusFilter === 'skipped' && Object.keys(skippedReasonCounts).length > 0 && (
+        <Alert variant="default" className="bg-yellow-500/5 border-yellow-500/30">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription>
+            <p className="font-medium mb-2">
+              {t('intakeRequests.skippedSummary', { count: filteredRequests.length })}
+            </p>
+            <ul className="space-y-1">
+              {Object.entries(skippedReasonCounts).map(([reason, count]) => (
+                <li key={reason} className="flex items-center justify-between text-sm max-w-sm">
+                  <span>{t(`skipReasons.${reason}.title`)}</span>
+                  <span className="text-muted-foreground font-medium">{count}</span>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Requests Table or Schedule Grid */}
       {viewMode === 'list' ? (
