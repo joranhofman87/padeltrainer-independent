@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Clock, ExternalLink, Info } from 'lucide-react';
 import { getMarketingPath } from '@/lib/domains';
+import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
