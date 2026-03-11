@@ -32,8 +32,11 @@
 - [x] HTML sanitization for user inputs
 - [x] SECURITY DEFINER functions use `search_path = public`
 - [x] Security scan findings reviewed and all documented (2026-03-11)
-  - All 15 findings reviewed — 0 actionable issues remaining
+  - All findings reviewed — 0 actionable issues remaining
   - All findings documented with ignore reasons
+  - admin_impersonation_logs INSERT tightened to is_admin() check
+  - Mollie verification fields protected by database trigger
+  - slack-notify endpoint secured with service role key auth
 
 ### Payments (Mollie)
 - [x] create-mollie-payment function deployed
