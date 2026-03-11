@@ -807,10 +807,6 @@ export async function getProposedAssignmentForRequest(
       *,
       slot:availability_slots(
         id, start_time, end_time, location_id, cyclus_name, max_participants
-      ),
-      trainer:trainer_profiles(
-        id,
-        profile:profiles!trainer_profiles_user_id_fkey(full_name, avatar_url)
       )
     `)
     .eq('intake_request_id', requestId)
@@ -818,7 +814,41 @@ export async function getProposedAssignmentForRequest(
     .maybeSingle();
 
   if (error) throw error;
-  return data ? toProposedAssignment(data) as EnrichedProposedAssignment : null;
+  if (!data) return null;
+
+  // Resolve trainer profile via separate queries
+  let trainerData: { id: string; profile: { full_name: string; avatar_url: string | null } } | null = null;
+  if (data.trainer_id) {
+    const { data: tp } = await supabase
+      .from('trainer_profiles')
+      .select('id, user_id')
+      .eq('id', data.trainer_id)
+      .single();
+
+    if (tp) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('user_id', tp.user_id)
+        .single();
+
+      trainerData = {
+        id: tp.id,
+        profile: {
+          full_name: profile?.full_name || 'Unknown',
+          avatar_url: profile?.avatar_url || null,
+        },
+      };
+    }
+  }
+
+  // Attach trainer data to the result before converting
+  const enrichedData = {
+    ...data,
+    trainer: trainerData,
+  };
+
+  return toProposedAssignment(enrichedData) as EnrichedProposedAssignment;
 }
 
 export async function createProposedAssignment(
