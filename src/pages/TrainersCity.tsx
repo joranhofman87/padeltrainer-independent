@@ -32,7 +32,6 @@ interface TrainerWithProfile {
   id: string;
   user_id: string;
   slug: string | null;
-  hourly_rate: number | null;
   experience_years: number | null;
   certifications: string[] | null;
   specializations: string[] | null;
