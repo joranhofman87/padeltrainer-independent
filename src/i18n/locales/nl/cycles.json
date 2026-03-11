@@ -227,6 +227,7 @@
     "title": "Aanmeldingen",
     "noRequests": "Nog geen aanmeldingen",
     "noRequestsDescription": "Aanmeldingen verschijnen hier wanneer spelers zich aanmelden",
+    "selectCycleHint": "Selecteer hierboven een specifieke inschrijving om voorstellen te genereren of acties uit te voeren.",
     "addManual": "Registratie toevoegen",
     "addManualTitle": "Handmatige registratie",
     "addManualDescription": "Registreer een speler die zich telefonisch, per e-mail of persoonlijk heeft aangemeld",

@@ -216,6 +216,7 @@
     "title": "Aufnahmeanfragen",
     "noRequests": "Noch keine Aufnahmeanfragen",
     "noRequestsDescription": "Anfragen erscheinen hier, wenn Spieler sich bewerben",
+    "selectCycleHint": "Wählen Sie oben eine bestimmte Anmeldung aus, um Vorschläge zu generieren oder Aktionen durchzuführen.",
     "addManual": "Anmeldung hinzufügen",
     "addManualTitle": "Manuelle Anmeldung",
     "addManualDescription": "Registriere einen Spieler, der sich per Telefon, E-Mail oder persönlich angemeldet hat",

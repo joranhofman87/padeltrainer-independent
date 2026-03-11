@@ -7,7 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Sparkles, CheckCheck, UserPlus, List, CalendarDays, RotateCcw } from 'lucide-react';
+import { Sparkles, CheckCheck, UserPlus, List, CalendarDays, RotateCcw, Info } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
@@ -154,7 +155,7 @@ export default function AcademyIntakeRequests() {
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex gap-2 items-center">
             <Select value={selectedCycleId} onValueChange={handleCycleChange}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className={`w-[200px] ${selectedCycleId === 'all' && cycles.length > 0 ? 'border-primary ring-1 ring-primary/30' : ''}`}>
                 <SelectValue placeholder="Select cycle" />
               </SelectTrigger>
               <SelectContent>
@@ -193,6 +194,14 @@ export default function AcademyIntakeRequests() {
           </div>
         </div>
       </div>
+
+      {/* Cycle selection hint */}
+      {selectedCycleId === 'all' && cycles.length > 0 && (
+        <Alert variant="default" className="bg-muted/50 border-dashed">
+          <Info className="h-4 w-4" />
+          <AlertDescription>{t('intakeRequests.selectCycleHint')}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

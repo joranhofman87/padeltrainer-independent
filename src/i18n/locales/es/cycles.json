@@ -216,6 +216,7 @@
     "title": "Solicitudes de admisión",
     "noRequests": "Aún no hay solicitudes de admisión",
     "noRequestsDescription": "Las solicitudes aparecerán aquí cuando los jugadores soliciten",
+    "selectCycleHint": "Seleccione una inscripción específica arriba para generar propuestas o realizar acciones.",
     "addManual": "Añadir inscripción",
     "addManualTitle": "Inscripción manual",
     "addManualDescription": "Registra a un jugador que se inscribió por teléfono, email o en persona",
