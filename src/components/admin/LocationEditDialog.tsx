@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { supabase as supabaseTyped } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
