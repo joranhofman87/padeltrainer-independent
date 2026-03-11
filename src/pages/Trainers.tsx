@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -63,14 +64,6 @@ type SortOption = 'rating' | 'experience';
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [trainers, setTrainers] = useState<TrainerWithProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [clubLocations, setClubLocations] = useState<Location[]>([]);
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Map<string, string[]>>(new Map());
-  const [allSpecializations, setAllSpecializations] = useState<string[]>([]);
-  const [allCertifications, setAllCertifications] = useState<string[]>([]);
-  const [popularCities, setPopularCities] = useState<CityWithTrainerCount[]>([]);
-  const [ratingSystems, setRatingSystems] = useState<RatingSystem[]>([]);
   const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -204,28 +197,31 @@ export default function Trainers() {
     setSearchParams({}, { replace: true });
   };
 
-  useEffect(() => {
-    fetchTrainers();
-    fetchRatingSystems();
-    getPopularCities(8).then(setPopularCities);
-  }, []);
+  // Fetch rating systems
+  const { data: ratingSystems = [] } = useQuery({
+    queryKey: ['rating-systems'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('rating_systems')
+        .select('code, name, min_rating, max_rating, lower_is_better, step')
+        .eq('is_active', true)
+        .order('display_order');
+      return data || [];
+    },
+    staleTime: 10 * 60 * 1000,
+  });
 
-  const fetchRatingSystems = async () => {
-    const { data } = await supabase
-      .from('rating_systems')
-      .select('code, name, min_rating, max_rating, lower_is_better, step')
-      .eq('is_active', true)
-      .order('display_order');
-    if (data) {
-      setRatingSystems(data);
-    }
-  };
+  // Fetch popular cities
+  const { data: popularCities = [] } = useQuery({
+    queryKey: ['popular-cities'],
+    queryFn: () => getPopularCities(8),
+    staleTime: 10 * 60 * 1000,
+  });
 
-  const fetchTrainers = async () => {
-    setLoading(true);
-    
-    try {
-      // Fetch all public trainer profiles first (we'll filter by subscription/academy after)
+  // Main trainers data query
+  const { data: trainersData, isLoading: loading } = useQuery({
+    queryKey: ['trainers-page-data'],
+    queryFn: async () => {
       const now = new Date().toISOString();
       const { data: allPublicTrainers, error: trainerError } = await supabase
         .from('trainer_profiles_safe')
@@ -234,49 +230,34 @@ export default function Trainers() {
       
       if (trainerError) {
         logger.error('Error fetching trainers', new Error(trainerError.message), { component: 'Trainers' });
-        return;
+        return { trainers: [], clubLocations: [], trainerLocationMap: new Map<string, string[]>(), allSpecializations: [], allCertifications: [] };
       }
 
-      // Check which trainers are in paid academies
       const allTrainerIds = allPublicTrainers.map(t => t.id);
       const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
 
-      // Filter: subscription_status='active' OR trial_ends_at > now() OR in paid academy
       const trainerProfiles = allPublicTrainers.filter(t =>
         t.subscription_status === 'active' ||
         (t.trial_ends_at && t.trial_ends_at > now) ||
         paidAcademyTrainerIds.has(t.id)
       );
 
-      // Fetch profiles for all trainers (using public view to protect PII)
       const userIds = trainerProfiles.map(t => t.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles_public')
-        .select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system')
-        .in('user_id', userIds);
-
-      if (profilesError) {
-        logger.error('Error fetching profiles', new Error(profilesError.message), { component: 'Trainers' });
-      }
-
-      // Fetch trainer locations (which clubs they teach at)
       const trainerIds = trainerProfiles.map(t => t.id);
-      const { data: trainerLocationData, error: tlError } = await supabase
-        .from('trainer_locations')
-        .select(`
-          trainer_id,
-          location:locations(id, name, city, country, slug)
-        `)
-        .in('trainer_id', trainerIds);
 
-      if (tlError) {
-        logger.error('Error fetching trainer locations', new Error(tlError.message), { component: 'Trainers' });
-      }
+      const [profilesResult, trainerLocationResult, ratingsMap, availabilityResult] = await Promise.all([
+        supabase.from('profiles_public').select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system').in('user_id', userIds),
+        supabase.from('trainer_locations').select('trainer_id, location:locations(id, name, city, country, slug)').in('trainer_id', trainerIds),
+        getBatchTrainerRatings(trainerIds),
+        supabase.from('availability_slots').select('trainer_id').in('trainer_id', trainerIds).gt('start_time', new Date().toISOString()).eq('is_public', true),
+      ]);
 
-      // Build a map of trainer_id -> location_ids
+      const profiles = profilesResult.data;
+      const trainerLocationData = trainerLocationResult.data;
+
+      // Build location map
       const locationMap = new Map<string, string[]>();
       const uniqueLocationsMap = new Map<string, Location>();
-      
       trainerLocationData?.forEach(tl => {
         if (tl.location) {
           const loc = tl.location as unknown as Location;
@@ -286,30 +267,10 @@ export default function Trainers() {
           uniqueLocationsMap.set(loc.id, loc);
         }
       });
-      
-      setTrainerLocationMap(locationMap);
-      setClubLocations(Array.from(uniqueLocationsMap.values()).sort((a, b) => 
-        a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
-      ));
 
-      // Batch fetch ratings for all trainers (single query instead of N+1)
-      const ratingsMap = await getBatchTrainerRatings(trainerIds);
+      const trainersWithAvailability = new Set(availabilityResult.data?.map(a => a.trainer_id) || []);
 
-      // Fetch availability data to check which trainers have upcoming open slots
-      const availabilityNow = new Date().toISOString();
-      const { data: availabilityData } = await supabase
-        .from('availability_slots')
-        .select('trainer_id')
-        .in('trainer_id', trainerIds)
-        .gt('start_time', availabilityNow)
-        .eq('is_public', true);
-
-      // Build a Set of trainer IDs with availability
-      const trainersWithAvailability = new Set(
-        availabilityData?.map(a => a.trainer_id) || []
-      );
-
-      const trainersWithRatings = trainerProfiles.map(trainer => {
+      const trainers = trainerProfiles.map(trainer => {
         const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
         return {
           ...trainer,
@@ -320,22 +281,25 @@ export default function Trainers() {
         };
       });
 
-      setTrainers(trainersWithRatings);
-
-      // Extract unique specializations and certifications
       const specs = trainerProfiles.flatMap(t => t.specializations || []);
-      const uniqueSpecs = [...new Set(specs)].sort();
-      setAllSpecializations(uniqueSpecs);
-      
       const certs = trainerProfiles.flatMap(t => t.certifications || []);
-      const uniqueCerts = [...new Set(certs)].sort();
-      setAllCertifications(uniqueCerts);
-    } catch (err) {
-      logger.error('Unexpected error fetching trainers', err instanceof Error ? err : new Error(String(err)), { component: 'Trainers' });
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      return {
+        trainers,
+        clubLocations: Array.from(uniqueLocationsMap.values()).sort((a, b) => a.city.localeCompare(b.city) || a.name.localeCompare(b.name)),
+        trainerLocationMap: locationMap,
+        allSpecializations: [...new Set(specs)].sort(),
+        allCertifications: [...new Set(certs)].sort(),
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const trainers = trainersData?.trainers || [];
+  const clubLocations = trainersData?.clubLocations || [];
+  const trainerLocationMap = trainersData?.trainerLocationMap || new Map<string, string[]>();
+  const allSpecializations = trainersData?.allSpecializations || [];
+  const allCertifications = trainersData?.allCertifications || [];
 
   const activeFilterCount = useMemo(() => {
     let count = 0;

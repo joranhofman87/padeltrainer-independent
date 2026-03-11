@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -122,7 +122,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             {/* Mobile Menu Button */}
             <button
-              className="md:hidden p-2"
+              className="md:hidden p-2 min-h-[48px] min-w-[48px] flex items-center justify-center"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -130,6 +130,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           </div>
 
           {/* Mobile Menu */}
+          <AnimatePresence>
           {mobileMenuOpen && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -186,6 +187,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               </nav>
             </motion.div>
           )}
+          </AnimatePresence>
         </div>
       </header>
 

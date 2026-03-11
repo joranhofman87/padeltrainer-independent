@@ -1,19 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
 import { trackEvent } from '@/lib/tracking';
 import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
-import { SolutionOverview } from '@/components/home/SolutionOverview';
-import { HowItWorksSection } from '@/components/home/HowItWorksSection';
-import { PadelRealitiesSection } from '@/components/home/PadelRealitiesSection';
-import { JobsToBeDoneSection } from '@/components/home/JobsToBeDoneSection';
-import { PricingPreview } from '@/components/home/PricingPreview';
-import { FAQSection } from '@/components/home/FAQSection';
-import { FinalCTASection } from '@/components/home/FinalCTASection';
-import { HomeFeaturedSections } from '@/components/home/HomeFeaturedSections';
 import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+
+// Lazy-load below-fold sections to reduce initial JS parsing on mobile
+const SolutionOverview = lazy(() => import('@/components/home/SolutionOverview').then(m => ({ default: m.SolutionOverview })));
+const HowItWorksSection = lazy(() => import('@/components/home/HowItWorksSection').then(m => ({ default: m.HowItWorksSection })));
+const PadelRealitiesSection = lazy(() => import('@/components/home/PadelRealitiesSection').then(m => ({ default: m.PadelRealitiesSection })));
+const JobsToBeDoneSection = lazy(() => import('@/components/home/JobsToBeDoneSection').then(m => ({ default: m.JobsToBeDoneSection })));
+const PricingPreview = lazy(() => import('@/components/home/PricingPreview').then(m => ({ default: m.PricingPreview })));
+const FAQSection = lazy(() => import('@/components/home/FAQSection').then(m => ({ default: m.FAQSection })));
+const FinalCTASection = lazy(() => import('@/components/home/FinalCTASection').then(m => ({ default: m.FinalCTASection })));
+const HomeFeaturedSections = lazy(() => import('@/components/home/HomeFeaturedSections').then(m => ({ default: m.HomeFeaturedSections })));
 
 export default function Home() {
   const { t } = useTranslation('marketing');
@@ -59,17 +61,19 @@ export default function Home() {
       />
       <HeroSection />
       <SocialProofStrip />
-      <PadelRealitiesSection />
-      <SolutionOverview />
-      <HowItWorksSection />
-      <JobsToBeDoneSection />
-      <PricingPreview />
-      <FAQSection />
-      <FinalCTASection />
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <SponsorBanner placementSlug="marketing-homepage" />
-      </div>
-      <HomeFeaturedSections />
+      <Suspense fallback={null}>
+        <PadelRealitiesSection />
+        <SolutionOverview />
+        <HowItWorksSection />
+        <JobsToBeDoneSection />
+        <PricingPreview />
+        <FAQSection />
+        <FinalCTASection />
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          <SponsorBanner placementSlug="marketing-homepage" />
+        </div>
+        <HomeFeaturedSections />
+      </Suspense>
     </MarketingLayout>
   );
 }
