@@ -55,7 +55,7 @@ interface Trainer {
 
 export default function ClubCalendar() {
   const { t, i18n } = useTranslation("club");
-  const dateFnsLocales: Record<string, Locale> = { nl, en: enUS, es, de, fr };
+  const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
   const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();

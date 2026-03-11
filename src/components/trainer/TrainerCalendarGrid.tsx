@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const dateFnsLocales: Record<string, Locale> = { nl, en: enUS, es, de, fr };
+const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 interface TrainerCalendarGridProps {
   slots: SlotWithBookings[];
   currentDate: Date;
