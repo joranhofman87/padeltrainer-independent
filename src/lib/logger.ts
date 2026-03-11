@@ -1,8 +1,9 @@
 /**
  * Centralized logging utility for production error tracking and monitoring.
- * Provides structured logging with context, severity levels, and optional
- * integration points for external monitoring services.
+ * Sends errors and warnings to PostHog as $exception events.
  */
+
+import posthog from 'posthog-js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -61,21 +62,32 @@ function createLogEntry(
 }
 
 /**
- * Send log to monitoring service (placeholder for future integration)
- * Could integrate with services like Sentry, LogRocket, DataDog, etc.
+ * Send log to PostHog as a $exception event.
+ * Falls back to sessionStorage in dev or when PostHog isn't active.
  */
-async function sendToMonitoring(entry: LogEntry): Promise<void> {
-  // TODO: Integrate with monitoring service
-  // Examples:
-  // - Sentry.captureMessage(entry.message, { level: entry.level, extra: entry.context });
-  // - await fetch('/api/logs', { method: 'POST', body: JSON.stringify(entry) });
-  
-  // For now, we store critical errors in sessionStorage for debugging
+function sendToMonitoring(entry: LogEntry): void {
+  // Send to PostHog if available (production only)
+  try {
+    const ph = posthog;
+    if (ph && typeof ph.capture === 'function' && ph._isIdentified !== undefined) {
+      ph.capture('$exception', {
+        $exception_message: entry.error?.message || entry.message,
+        $exception_type: entry.error?.name || (entry.level === 'warn' ? 'Warning' : 'Error'),
+        $exception_stack_trace_raw: entry.error?.stack,
+        $exception_source: 'logger',
+        $exception_level: entry.level,
+        ...(entry.context || {}),
+      });
+    }
+  } catch {
+    // Silently ignore — PostHog may not be initialized
+  }
+
+  // Keep sessionStorage fallback for dev debugging
   if (entry.level === 'error') {
     try {
       const storedErrors = JSON.parse(sessionStorage.getItem('app_errors') || '[]');
       storedErrors.push(entry);
-      // Keep only last 50 errors
       if (storedErrors.length > 50) storedErrors.shift();
       sessionStorage.setItem('app_errors', JSON.stringify(storedErrors));
     } catch {
