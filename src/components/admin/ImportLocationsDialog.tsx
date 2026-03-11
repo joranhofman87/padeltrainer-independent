@@ -507,7 +507,7 @@ export function ImportLocationsDialog({
           .select("id");
 
         if (error) {
-          console.error("Batch insert error:", error);
+          logger.error("Batch insert error", error instanceof Error ? error : new Error(String(error)), { component: 'ImportLocationsDialog' });
           // Try individual inserts for this batch
           for (const loc of insertData) {
             try {
