@@ -593,9 +593,6 @@ export default function Trainers() {
                       </CardHeader>
                       <CardContent className="pt-0">
                         <div className="flex items-center justify-between text-sm">
-                          {trainer.hourly_rate && (
-                            <span className="font-semibold text-primary">€{trainer.hourly_rate}/hr</span>
-                          )}
                           {trainer.experience_years && (
                             <span className="text-muted-foreground text-xs">
                               {trainer.experience_years}y exp
