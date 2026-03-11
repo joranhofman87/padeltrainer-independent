@@ -188,8 +188,9 @@
       },
       "customTimes": "Ou définir des horaires précis",
       "additional": "Plus d'informations sur votre expérience de padel",
-      "notes": "Expérience (facultatif)",
-      "notesPlaceholder": "Parlez-nous de votre expérience au padel ou dans d'autres sports de raquette. Cela nous aide à vous placer dans le bon groupe si vous n'avez pas encore de classement.",
+      "notes": "Expérience",
+      "notesPlaceholder": "Depuis combien de temps jouez-vous au padel ? Avez-vous déjà pris des cours ? Avez-vous un passé tennistique ?",
+      "experienceRequired": "Veuillez nous parler de votre expérience",
       "consent": "J'accepte d'être contacté concernant ma candidature et je consens au traitement de mes données.",
       "consentRequired": "Vous devez accepter pour continuer",
 
