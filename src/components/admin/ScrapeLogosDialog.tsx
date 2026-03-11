@@ -92,7 +92,7 @@ export function ScrapeLogosDialog({
       const status = await getBackgroundLogoJobStatus();
       setBackgroundStatus(status);
     } catch (error) {
-      console.error("Error fetching background status:", error);
+      logger.error("Error fetching background status", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
     }
   }
 
