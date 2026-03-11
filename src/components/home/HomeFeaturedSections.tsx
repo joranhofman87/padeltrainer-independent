@@ -297,7 +297,7 @@ function FeaturedTrainersSection({ trainers, getInitials, localizePath, navigate
 }
 
 interface AcademiesSectionProps {
-  academies: AcademyProfile[];
+  academies: Partial<AcademyProfile>[];
   getInitials: (name: string | null) => string;
   localizePath: (path: string) => string;
   navigate: (path: string) => void;
