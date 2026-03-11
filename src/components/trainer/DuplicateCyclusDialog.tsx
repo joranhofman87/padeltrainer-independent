@@ -246,7 +246,7 @@ export function DuplicateCyclusDialog({
             .insert(bookingsToCreate);
 
           if (bookingsError) {
-            console.error("Error copying bookings:", bookingsError);
+            logger.error("Error copying bookings", bookingsError instanceof Error ? bookingsError : new Error(String(bookingsError)), { component: 'DuplicateCyclusDialog' });
             // Don't fail completely, just warn
             toast.warning("Cyclus created but some bookings could not be copied");
           }
