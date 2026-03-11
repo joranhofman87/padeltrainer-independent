@@ -12,7 +12,6 @@ test.describe('Dashboard Access Control', () => {
       await page.goto(ROUTES.playerDashboard);
       await waitForNavigation(page);
       
-      // Should redirect to auth or show unauthorized
       const currentUrl = page.url();
       expect(currentUrl).toMatch(/auth|login|unauthorized/i);
     });
@@ -42,7 +41,7 @@ test.describe('Dashboard Access Control', () => {
     });
 
     test('should redirect admin dashboard to auth when not logged in', async ({ page }) => {
-      await page.goto('/admin');
+      await page.goto(ROUTES.admin);
       await waitForNavigation(page);
       
       const currentUrl = page.url();
@@ -52,27 +51,22 @@ test.describe('Dashboard Access Control', () => {
 
   test.describe('Onboarding Routes', () => {
     test('should display player onboarding page', async ({ page }) => {
-      await page.goto('/onboarding/player');
+      await page.goto('/app/onboarding/player');
       await waitForNavigation(page);
       
-      // Should show onboarding form or redirect to auth
       await expect(page.locator('body')).toBeVisible();
     });
 
     test('should display trainer onboarding page', async ({ page }) => {
-      await page.goto('/onboarding/trainer');
+      await page.goto('/app/onboarding/trainer');
       await waitForNavigation(page);
       
       await expect(page.locator('body')).toBeVisible();
     });
   });
-
 });
 
 test.describe('Dashboard UI Elements (when accessible)', () => {
-  // These tests verify UI structure without requiring actual authentication
-  // They're useful for smoke testing the application structure
-  
   test('player dashboard route exists', async ({ page }) => {
     const response = await page.goto(ROUTES.playerDashboard, { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBeLessThan(500);

@@ -14,11 +14,11 @@ export async function waitForNavigation(page: Page, timeout = 10000) {
 export async function login(page: Page, email: string, password: string) {
   await page.goto(ROUTES.auth);
   await page.waitForSelector('#signin-email');
-  
+
   await page.fill('#signin-email', email);
   await page.fill('#signin-password', password);
   await page.click('button[type="submit"]');
-  
+
   await waitForNavigation(page);
 }
 
@@ -63,24 +63,22 @@ export async function clickAndWait(page: Page, selector: string) {
  */
 export async function expectDashboardRedirect(page: Page, role: 'player' | 'trainer' | 'club' | 'academy' | 'admin') {
   const dashboardRoutes = {
-    player: '/player',
-    trainer: '/trainer',
-    club: '/club',
-    academy: '/academy',
-    admin: '/admin',
+    player: '/app/player',
+    trainer: '/app/trainer',
+    club: '/app/club',
+    academy: '/app/academy',
+    admin: '/app/admin',
   };
-  
+
   await expect(page).toHaveURL(new RegExp(dashboardRoutes[role]));
 }
 
 /**
- * Helper to dismiss cookie consent if present
+ * Helper to dismiss cookie consent if present (no-op since cookie banner was removed)
  */
-export async function dismissCookieConsent(page: Page) {
-  const consentButton = page.locator('button:has-text("Accept")');
-  if (await consentButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await consentButton.click();
-  }
+export async function dismissCookieConsent(_page: Page) {
+  // Cookie consent banner has been removed (cookieless PostHog).
+  // Kept as a no-op so existing tests don't break.
 }
 
 /**

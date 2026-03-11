@@ -1,5 +1,6 @@
 import { test, expect } from '../playwright-fixture';
 import { dismissCookieConsent, waitForNavigation } from './fixtures/helpers';
+import { ROUTES } from './fixtures/test-data';
 
 test.describe('Error Handling', () => {
   test.beforeEach(async ({ page }) => {
@@ -58,7 +59,7 @@ test.describe('Error Handling', () => {
 
   test.describe('Form Error States', () => {
     test('login should show error for empty submission', async ({ page }) => {
-      await page.goto('/auth');
+      await page.goto(ROUTES.auth);
       
       // Click submit without filling form
       await page.click('button[type="submit"]');
@@ -70,7 +71,7 @@ test.describe('Error Handling', () => {
     });
 
     test('signup should validate email format', async ({ page }) => {
-      await page.goto('/signup/player');
+      await page.goto(ROUTES.playerSignup);
       
       const emailInput = page.locator('input[type="email"]');
       if (await emailInput.isVisible()) {
@@ -84,7 +85,7 @@ test.describe('Error Handling', () => {
     });
 
     test('signup should validate password requirements', async ({ page }) => {
-      await page.goto('/signup/player');
+      await page.goto(ROUTES.playerSignup);
       
       const passwordInput = page.locator('input[type="password"]');
       if (await passwordInput.isVisible()) {
@@ -146,7 +147,7 @@ test.describe('Error Handling', () => {
         }
       });
       
-      await page.goto('/auth');
+      await page.goto(ROUTES.auth);
       await waitForNavigation(page);
       
       const criticalErrors = errors.filter(e => 

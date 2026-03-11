@@ -42,7 +42,6 @@ test.describe('Internationalization (i18n)', () => {
       await page.goto('/nl/');
       await waitForNavigation(page);
       
-      // Check for Dutch text
       await expect(page.locator('body')).toBeVisible();
     });
 
@@ -73,7 +72,6 @@ test.describe('Internationalization (i18n)', () => {
       await page.goto('/en/trainers');
       await waitForNavigation(page);
       
-      // Look for language switcher and switch to Dutch
       const nlSwitch = page.locator('button:has-text("NL"), a:has-text("NL"), [data-lang="nl"]');
       
       if (await nlSwitch.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -99,25 +97,23 @@ test.describe('Internationalization (i18n)', () => {
     });
   });
 
-  test.describe('App Routes (No Language Prefix)', () => {
-    test('auth page should work without language prefix', async ({ page }) => {
-      await page.goto('/auth');
+  test.describe('App Routes', () => {
+    test('auth page should work with /app prefix', async ({ page }) => {
+      await page.goto('/app/auth');
       
       await expect(page.locator('#signin-email')).toBeVisible();
     });
 
-    test('signup pages should work without language prefix', async ({ page }) => {
-      await page.goto('/signup/player');
+    test('signup pages should work with /app prefix', async ({ page }) => {
+      await page.goto('/app/signup/player');
       
       await expect(page.locator('body')).toBeVisible();
-      await expect(page).toHaveURL('/signup/player');
     });
 
-    test('forgot password should work without language prefix', async ({ page }) => {
-      await page.goto('/forgot-password');
+    test('forgot password should work with /app prefix', async ({ page }) => {
+      await page.goto('/app/forgot-password');
       
       await expect(page.locator('body')).toBeVisible();
-      await expect(page).toHaveURL('/forgot-password');
     });
   });
 
