@@ -231,7 +231,7 @@ export default function TrainersCity() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": t('cityPage.heroTitle', { city: displayCity }),
-    "description": t('cityPage.description', { city: displayCity, count: trainers.length, minRate }),
+    "description": t('cityPage.description', { city: displayCity, count: trainers.length }),
     "numberOfItems": filteredAndSortedTrainers.length,
     "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
