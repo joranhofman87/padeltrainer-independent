@@ -679,7 +679,7 @@ export function AcademyEditDialog({
       toast({ title: "Manager removed", description: "User removed as academy manager." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing manager:", error);
+      logger.error("Error removing manager", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove manager.", variant: "destructive" });
     }
   };
