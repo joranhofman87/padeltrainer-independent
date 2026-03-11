@@ -1,6 +1,6 @@
 # PadelTrainer.ai Pre-Launch Checklist
 
-**Last Updated:** 2026-02-03  
+**Last Updated:** 2026-03-11  
 **Status:** Ready for Production
 
 ---
@@ -12,16 +12,17 @@
 - [x] Translation files complete for EN and NL
 - [x] **COMPLETE** No production console.error/warn statements (all migrated to logger)
   - Core libraries: 10 files migrated
-  - Pages: 29 files migrated (final 3: TrainersCity, AdminRatingSystems, AdminBlogEditor — 2026-03-08)
-  - Components: 28 files migrated (booking, payment, signup, onboarding flows — 2026-03-08)
+  - Pages: 29 files migrated
+  - Components: 28 files migrated
   - Hooks: 6 files migrated
-  - ~22 lower-priority admin/internal components remaining (non-blocking)
-  - Hooks: 6 files migrated
+  - All remaining admin/internal components migrated (2026-03-11)
 - [x] Error boundaries implemented for graceful failure
 - [x] SEO component added to all marketing pages
 - [x] Structured data (JSON-LD) on key pages
 - [x] data-testid attributes on critical UI elements
 - [x] Image lazy loading implemented
+- [x] Deprecated `isAppPage` SEO prop removed (2026-03-11)
+- [x] All files migrated to unified Supabase client (`@/lib/supabaseClient`) (2026-03-11)
 
 ### Security
 - [x] RLS policies on all sensitive tables
@@ -30,7 +31,9 @@
 - [x] Rate limiting on contact forms (3 requests/hour)
 - [x] HTML sanitization for user inputs
 - [x] SECURITY DEFINER functions use `search_path = public`
-- [x] Security scan findings reviewed and false positives documented
+- [x] Security scan findings reviewed and all documented (2026-03-11)
+  - All 15 findings reviewed — 0 actionable issues remaining
+  - All findings documented with ignore reasons
 
 ### Payments (Mollie)
 - [x] create-mollie-payment function deployed
@@ -58,6 +61,15 @@
 - [x] Twitter cards
 - [x] Structured data on 9+ pages
 
+### Observability (2026-03-11)
+- [x] Structured logger with PostHog exception tracking
+- [x] Global error/unhandledrejection handlers in main.tsx
+- [x] FeatureErrorBoundary on all critical user flows
+- [x] Cookieless PostHog (GDPR-compliant, production-only)
+- [x] Health-check edge function for uptime monitoring
+- [x] Slack error alerting on critical payment functions (mollie-webhook, create-mollie-payment, verify-mollie-payment)
+- [x] `edge_function_error` event type added to slack-notify
+
 ### E2E Tests
 - [x] Authentication flows
 - [x] Navigation
@@ -67,6 +79,7 @@
 - [x] Accessibility basics
 - [x] Performance thresholds
 - [x] Error handling
+- [x] All tests updated to current route structure (2026-03-11)
 
 ---
 
@@ -77,6 +90,8 @@
 | profiles_public uses security_invoker=off | Intentional for public trainer profiles | Low |
 | pg_net extension in public schema | Cannot be moved (Supabase limitation) | None |
 | Leaked password protection disabled | Requires Supabase dashboard toggle | Low |
+| subscription_payments & notification_queue have no RLS policies | Intentionally service-role-only tables | None |
+| admin_impersonation_logs INSERT uses USING(true) | Service-role-only inserts during impersonation | None |
 
 ---
 
@@ -118,6 +133,7 @@
 6. [ ] Submit sitemap to Google Search Console
 7. [ ] Verify Mollie webhooks receiving events
 8. [ ] Test one real payment (small amount)
+9. [ ] Set up uptime monitoring (UptimeRobot/BetterStack) pointing to health-check endpoint
 
 ---
 
@@ -128,6 +144,7 @@
 - [ ] Track Core Web Vitals in Search Console
 - [ ] Monitor payment success rates in Mollie dashboard
 - [ ] Review user signup funnel analytics
+- [ ] Build PostHog dashboard for signup → booking → payment funnel
 
 ---
 
@@ -139,6 +156,7 @@
 | Slot picker for proposals | `src/components/cycles/ProposalCard.tsx` | Button disabled until feature is built |
 | Plan placeholder values | `src/components/admin/PlanEditDialog.tsx` | Admin-only, cosmetic |
 | TrainerDashboard refactoring | `src/pages/TrainerDashboard.tsx` | Components extracted but file still large |
+| Legacy redirect routes | `src/components/DomainRouter.tsx` | ~12 routes for old path compatibility — keep for now, add usage logging later |
 
 ---
 
@@ -147,3 +165,4 @@
 - **Preview URL:** https://id-preview--f04c6cfe-e2a8-41a5-974c-e82c2372539e.lovable.app
 - **Production URL:** https://padeltrainer.ai
 - **App URL:** https://app.padeltrainer.ai
+- **Health Check:** `POST /functions/v1/health-check`
