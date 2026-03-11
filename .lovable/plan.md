@@ -1,248 +1,72 @@
 
+Root cause confirmed from the current backend data and code:
 
-# Growth Hacks & Quick Wins Plan
+1) “Reset proposals” is not fully resetting for academy owners.
+- `intake_requests.status` is set back to `new`, but old rows in `proposed_assignments` remain.
+- This happens because academy RLS policies exist for `cycles`/`intake_requests`, but not for `proposed_assignments` management.
 
-## Current State Analysis
+2) Proposal generation skips those rows silently.
+- In `generate-proposals`, requests with an existing `proposed_assignments` row are skipped (`existingProposalRequestIds`) without assigning a `skip_reason`.
+- Since reset leaves stale proposals behind, only truly “proposal-free” rows get regenerated (your “only 1 generated” behavior).
 
-I've examined the codebase and identified several untapped growth opportunities:
+3) Why UI looks broken:
+- Rows stay `new` with `skip_reason = null`, so they look untouched.
+- Grouped skipped reasons remain empty because no reason was written.
 
-**Strengths:**
-- Solid SEO foundation with sitemap, structured data, hreflang
-- PostHog analytics and event tracking in place
-- Social sharing on trainer profiles (WhatsApp, LinkedIn, Twitter)
-- Follow functionality for trainers
-- PWA manifest exists
-- Referral system integrated (Reditus)
-- Sponsor banner system just implemented
+Implementation plan
 
-**Gaps:**
-- No review request flow after bookings
-- Google Reviews data exists but not displayed
-- No email capture on marketing pages
-- No exit-intent capture
-- BookingSuccess page doesn't ask for reviews or encourage shares
-- No viral referral mechanics in booking flow
-- PWA not optimized for app-like experience
-- No social proof widgets (live booking feed, counter)
-- Newsletter/lead magnets missing
+1. Add missing academy proposal permissions (database migration)
+- Add academy manager RLS policies on `proposed_assignments` for SELECT and ALL (or explicit INSERT/UPDATE/DELETE), aligned with existing academy ownership checks.
+- This unblocks academy users from properly resetting/managing proposal rows.
 
----
+2. Data repair migration for existing inconsistent rows
+- Remove stale `proposed_assignments` linked to `intake_requests.status = 'new'` (currently present in your cycle).
+- This restores consistency immediately so next generation is clean.
 
-## Recommended Growth Hacks (by impact)
+3. Harden `resetProposals` in `src/lib/cycles.ts`
+- Reset should always:
+  - delete all `proposed_assignments` for the cycle first
+  - reset applicable intake rows to `status='new'`
+  - clear `skip_reason` as part of reset
+- Add a defensive post-check (if proposals still exist for the cycle after reset, throw and surface error).
 
-### 1. **Post-Booking Review Request** (HIGH IMPACT)
-**Problem:** After a successful booking, players see a generic success page. No review collection, no social sharing prompt.
+4. Harden `generate-proposals` backend function
+- Before assignment loop, defensively delete stale proposals for the “new” request IDs being processed.
+- Remove/replace the silent “already has proposal -> skip” path so every non-generated request ends with a meaningful state.
+- Ensure early no-slot path writes skip reasons for all impacted requests (not only return `{ skipped }`).
 
-**Solution:**
-- Add a "How was your experience?" card to `BookingSuccess.tsx` 
-- For first booking: Ask for Google/platform review with direct link
-- For return bookings: Show trainer-specific review form
-- Include social share buttons: "I just booked a padel lesson with [Trainer]!"
-- Add referral incentive: "Get €5 off your next lesson when a friend books"
+5. Improve generation feedback in intake pages
+- In `AcademyIntakeRequests.tsx` and `TrainerIntakeRequests.tsx`, show a result toast including both generated and skipped counts (not just generated).
+- If skipped > 0, include hint to open the “Skipped” tab for grouped reasons.
 
-**Implementation:**
-- Modify `BookingSuccess.tsx` to include review CTA
-- Add review dialog component
-- Create edge function `request-review-email` (7-day follow-up)
-- Track conversion with PostHog
+Technical details (implementation-focused)
 
----
+Files to update:
+- `supabase/migrations/<new>.sql`
+  - Add academy RLS policies for `proposed_assignments`
+  - One-time cleanup delete for stale proposal rows linked to `status='new'`
+- `src/lib/cycles.ts`
+  - Strengthen `resetProposals` reset logic and verification
+- `supabase/functions/generate-proposals/index.ts`
+  - Defensive cleanup + guaranteed skip reason assignment paths
+- `src/pages/academy/AcademyIntakeRequests.tsx`
+- `src/pages/TrainerIntakeRequests.tsx`
+  - improved generated/skipped toast messaging
 
-### 2. **Display Google Reviews on Location Pages** (HIGH IMPACT)
-**Problem:** The database stores `google_rating` and `google_review_count` for 1400+ locations but this social proof isn't displayed anywhere.
+Validation plan
 
-**Solution:**
-- Show Google rating stars + review count on `LocationDetail.tsx`
-- Add "Read reviews on Google" link with UTM tracking
-- Show top review snippets if available
-- Include in location cards on `Trainers.tsx` search results
+1) For cycle `09b9d410-a77f-45ba-9cae-2c76b0928d34`:
+- Run Reset proposals.
+- Verify there are zero `proposed_assignments` for this cycle afterward.
+- Verify all visible rows are `new` and `skip_reason` cleared.
 
-**Files:** `src/pages/LocationDetail.tsx`, `src/components/locations/LocationCard.tsx`
+2) Run Generate proposals again:
+- Expect all registrations to end as either:
+  - `proposed`, or
+  - `new` with `skip_reason` populated.
+- “Skipped” tab must appear when skipped > 0.
+- Grouped skip reason banner should show counts.
 
----
-
-### 3. **Exit-Intent Email Capture** (MEDIUM-HIGH IMPACT)
-**Problem:** Marketing pages have no email capture. Visitors leave without any follow-up mechanism.
-
-**Solution:**
-- Add exit-intent modal on `/nl`, `/en`, `/trainers` pages
-- Offer lead magnet: "Free Padel Training Guide" or "€10 off first lesson"
-- Simple form: email + language preference
-- Store in new `email_subscribers` table with double opt-in
-- Send weekly newsletter with new trainers, tips, promotions
-
-**Implementation:**
-- Create `<ExitIntentModal>` component with `beforeunload` / mouse-leave detection
-- Add `email_subscribers` table with RLS
-- Create `subscribe-newsletter` edge function
-- Add to `Home.tsx`, `Trainers.tsx`, `TrainersCity.tsx`
-
----
-
-### 4. **Live Social Proof Widget** (MEDIUM IMPACT)
-**Problem:** Static testimonials don't create urgency or FOMO.
-
-**Solution:**
-- Add floating toast notification: "Anna just booked a lesson in Amsterdam" (real-time)
-- Show counter: "1,234 lessons booked this month"
-- Display on homepage and trainer directory
-- Use `banner_events` table impressions + clicks OR create new `social_proof_events` stream
-
-**Implementation:**
-- Create `<LiveBookingToast>` component with Supabase Realtime subscription to `bookings` table
-- Add aggregate query for monthly booking count
-- Show on `Home.tsx` and `Trainers.tsx`
-
----
-
-### 5. **Enhanced PWA with Install Prompt** (MEDIUM IMPACT)
-**Problem:** PWA manifest exists but no install prompts or app-like features.
-
-**Solution:**
-- Add "Install App" banner for mobile users (iOS + Android)
-- Improve manifest: better icons, shortcuts, categories
-- Add offline fallback page
-- Push notifications for followed trainers' new slots (requires user opt-in)
-
-**Implementation:**
-- Create `<InstallPWAPrompt>` component with `beforeinstallprompt` event
-- Update `manifest.json` with shortcuts (bookings, trainers, account)
-- Add service worker for offline support
-- Request notification permission after first booking
-
----
-
-### 6. **Booking Success Viral Loop** (MEDIUM IMPACT)
-**Problem:** BookingSuccess page has "Book Another Lesson" but no social/referral mechanics.
-
-**Solution:**
-- Add prominent "Share & Get €5 Off" card
-- Pre-filled social share: "I just booked a padel lesson with [Trainer] on @padeltrainer! 🎾"
-- Show referral code: "Your friends get €10 off, you get €5 off"
-- Gamify: "Invite 3 friends → 1 free lesson"
-
-**Files:** `src/pages/BookingSuccess.tsx`
-
----
-
-### 7. **Trainer Profile QR Codes** (LOW-MEDIUM IMPACT)
-**Problem:** Trainers can't easily share their profiles offline (courts, clubs, flyers).
-
-**Solution:**
-- Add "Download QR Code" button on `TrainerProfile.tsx` (trainer view)
-- Generate QR with profile URL + UTM params
-- Include in confirmation emails: "Share your profile with players at the club!"
-
-**Implementation:**
-- Add QR generation library (`qrcode.react`)
-- Create download function with canvas → PNG
-- Add to trainer settings page
-
----
-
-### 8. **Content Hub with SEO Blog** (HIGH LONG-TERM)
-**Already exists** (`/blog`) but not heavily promoted:
-- Add blog CTA on homepage
-- Link to articles from trainer profiles ("Read about padel techniques")
-- Create content series: "Beginner's Guide to Padel in [City]"
-- Internal linking from city pages to relevant blog posts
-
-**Quick Win:** Add blog link to footer + marketing nav
-
----
-
-### 9. **Waitlist Viral Mechanics** (LOW-MEDIUM IMPACT)
-**Problem:** Waitlist exists for cycles but no referral incentive.
-
-**Solution:**
-- "Move up the waitlist by inviting friends"
-- Show position: "You're #12 in line. Share to jump ahead!"
-- Track referrals and bump positions
-
-**Files:** `src/pages/TrainerWaitingList.tsx`, `src/pages/CycleRegistration.tsx`
-
----
-
-### 10. **Google My Business Integration** (MEDIUM IMPACT)
-**Problem:** Location pages have Google Maps URLs but no GMB API integration.
-
-**Solution:**
-- Fetch reviews via Google Places API
-- Display on `LocationDetail.tsx`
-- Auto-update `google_rating` weekly via cron edge function
-
-**Implementation:**
-- Add Google Places API key to secrets
-- Create `sync-google-reviews` edge function
-- Schedule with `pg_cron` or external cron job
-
----
-
-## Priority Matrix
-
-| Priority | Effort | Impact | Feature |
-|----------|--------|--------|---------|
-| P0 | Low | High | Post-Booking Review Request |
-| P0 | Low | High | Display Google Reviews |
-| P1 | Medium | High | Exit-Intent Email Capture |
-| P2 | Medium | Medium | Live Social Proof Widget |
-| P2 | Medium | Medium | Booking Success Viral Loop |
-| P3 | Low | Medium | Enhanced PWA Install |
-| P3 | Low | Low | Trainer QR Codes |
-| P4 | High | High | Google Places API Integration |
-
----
-
-## Quick Wins (Next 2 Hours)
-
-1. **Display Google Reviews** — Already in DB, just render on location pages
-2. **Post-Booking Review CTA** — Add 1 card to `BookingSuccess.tsx`
-3. **Blog Promo** — Add blog links to footer + nav
-4. **Social Share Buttons** — Enhance `BookingSuccess.tsx` with pre-filled tweets
-
----
-
-## Implementation Order
-
-**Phase 1 (Week 1):**
-1. Display Google Reviews on location pages
-2. Post-booking review request flow
-3. Blog promotion on homepage
-
-**Phase 2 (Week 2):**
-4. Exit-intent email capture
-5. Booking success viral loop
-6. Live social proof widget
-
-**Phase 3 (Week 3):**
-7. Enhanced PWA with install prompts
-8. Trainer QR codes
-9. Google Places API sync
-
----
-
-## Files to Create/Modify
-
-**New Components:**
-- `src/components/growth/ExitIntentModal.tsx`
-- `src/components/growth/LiveBookingToast.tsx`
-- `src/components/growth/ReviewRequestCard.tsx`
-- `src/components/growth/InstallPWAPrompt.tsx`
-- `src/components/growth/SocialShareCard.tsx`
-
-**Modify:**
-- `src/pages/BookingSuccess.tsx` (review + share CTAs)
-- `src/pages/LocationDetail.tsx` (Google reviews display)
-- `src/pages/marketing/Home.tsx` (exit-intent, live proof)
-- `src/components/locations/LocationCard.tsx` (rating stars)
-- `src/components/marketing/MarketingLayout.tsx` (blog links)
-
-**Database:**
-- `email_subscribers` table (email, locale, subscribed_at, confirmed, source)
-- `review_requests` table (booking_id, requested_at, completed_at, rating)
-
-**Edge Functions:**
-- `supabase/functions/subscribe-newsletter/index.ts`
-- `supabase/functions/request-review-email/index.ts`
-- `supabase/functions/sync-google-reviews/index.ts` (optional)
-
+3) Regression:
+- Confirm trainer/club flows still reset/generate normally.
+- Confirm no duplicate/stale proposal rows remain after multiple reset/generate cycles.
