@@ -587,7 +587,7 @@ export function AcademyEditDialog({
       toast({ title: "Trainer removed", description: "Trainer unlinked from academy." });
       await loadRelatedData();
     } catch (error) {
-      console.error("Error removing trainer:", error);
+      logger.error("Error removing trainer", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to remove trainer.", variant: "destructive" });
     }
   };
