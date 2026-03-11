@@ -809,7 +809,7 @@ export function AcademyEditDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error updating academy:", error);
+      logger.error("Error updating academy", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({
         title: "Error",
         description: "Failed to update academy. Please try again.",
