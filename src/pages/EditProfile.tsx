@@ -142,6 +142,7 @@ export default function EditProfile() {
         skill_rating: profile.skill_rating?.toString() || '',
         rating_system: (profile as any).rating_system || 'knltb',
         rating_member_id: (profile as any).rating_member_id || '',
+        birth_date: (profile as any).birth_date || '',
       });
       setAvatarUrl(profile.avatar_url || null);
     }
