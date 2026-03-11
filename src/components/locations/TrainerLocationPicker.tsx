@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Check, ChevronsUpDown, MapPin, X, Building2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { logger } from '@/lib/logger';
 import {
   Command,
   CommandEmpty,
