@@ -493,7 +493,7 @@ export function AcademyEditDialog({
       await loadRelatedData();
       setLocationOpen(false);
     } catch (error) {
-      console.error("Error adding location:", error);
+      logger.error("Error adding location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to add location.", variant: "destructive" });
     } finally {
       setAddingLocation(false);
