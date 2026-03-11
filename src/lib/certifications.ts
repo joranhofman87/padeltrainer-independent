@@ -61,7 +61,7 @@ export async function getAllCertifications(): Promise<Certification[]> {
     .order('display_order');
   
   if (error) {
-    console.error('Error fetching all certifications:', error);
+    logger.error('Error fetching all certifications', error instanceof Error ? error : new Error(String(error)), { component: 'certifications' });
     return [];
   }
   
