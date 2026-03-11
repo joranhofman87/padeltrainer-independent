@@ -227,6 +227,7 @@
     "title": "Intake Requests",
     "noRequests": "No intake requests yet",
     "noRequestsDescription": "Requests will appear here when players apply",
+    "selectCycleHint": "Select a specific registration above to generate proposals or take actions.",
     "addManual": "Add Registration",
     "addManualTitle": "Manual Registration",
     "addManualDescription": "Register a player who signed up via phone, email, or in-person",
