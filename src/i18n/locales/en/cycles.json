@@ -154,7 +154,7 @@
       "lessonTypes": {
         "private": "Private (1:1)",
         "duo": "Duo (2 players)",
-        "group": "Group (3+ players)",
+        "group": "Group (3 or 4 players)",
         "kids": "Kids Training"
       },
       "preferredDuration": "Preferred Duration",

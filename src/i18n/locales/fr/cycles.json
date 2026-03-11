@@ -147,7 +147,7 @@
       "lessonTypes": {
         "private": "Privé (1:1)",
         "duo": "Duo (2 joueurs)",
-        "group": "Groupe (3+ joueurs)",
+        "group": "Groupe (3 ou 4 joueurs)",
         "kids": "Entraînement enfants"
       },
       "preferredDuration": "Durée préférée",
