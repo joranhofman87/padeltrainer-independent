@@ -356,7 +356,7 @@ export default function Trainers() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.locationId !== 'all') count++;
-    if (filters.priceRange[0] > 0 || filters.priceRange[1] < 200) count++;
+    
     if (filters.minRating > 0) count++;
     if (filters.minExperience > 0) count++;
     if (filters.specializations.length > 0) count++;
