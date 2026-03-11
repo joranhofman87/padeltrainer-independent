@@ -1,5 +1,10 @@
 /**
  * Test data constants for E2E tests
+ * 
+ * Route structure:
+ * - Marketing pages: /:lang/* (e.g., /en/trainers, /nl/locations)
+ * - App pages: /app/* (e.g., /app/auth, /app/trainer)
+ * - Signup pages: /app/signup/* (e.g., /app/signup/player)
  */
 
 export const TEST_USERS = {
@@ -36,69 +41,70 @@ export const TEST_LOCATIONS = {
 export const ROUTES = {
   // Marketing / Public
   home: '/',
-  auth: '/auth',
   trainers: '/en/trainers',
   locations: '/en/locations',
   pricing: '/en/pricing',
   about: '/en/about',
   academies: '/en/academies',
-  forgotPassword: '/forgot-password',
-  
-  // Signup
-  playerSignup: '/signup/player',
-  trainerSignup: '/signup/trainer',
-  clubSignup: '/signup/club',
-  academySignup: '/signup/academy',
-  
+
+  // Auth (app routes)
+  auth: '/app/auth',
+  forgotPassword: '/app/forgot-password',
+
+  // Signup (app routes)
+  playerSignup: '/app/signup/player',
+  trainerSignup: '/app/signup/trainer',
+  clubSignup: '/app/signup/club',
+  academySignup: '/app/signup/academy',
+
   // Player Dashboard
-  playerDashboard: '/player',
-  playerBookings: '/player/bookings',
-  playerFollowing: '/player/following',
-  playerSettings: '/player/settings',
-  
+  playerDashboard: '/app/player',
+  playerBookings: '/app/player/bookings',
+  playerFollowing: '/app/player/following',
+  playerSettings: '/app/player/settings',
+
   // Trainer Dashboard
-  trainerDashboard: '/trainer',
-  trainerCalendar: '/trainer/calendar',
-  trainerPlayers: '/trainer/players',
-  trainerCycles: '/trainer/cycles',
-  trainerIntakeRequests: '/trainer/intake-requests',
-  trainerSettings: '/trainer/settings',
-  trainerSubscription: '/trainer/subscription',
-  trainerEarnings: '/trainer/earnings',
-  trainerAnalytics: '/trainer/analytics',
-  
+  trainerDashboard: '/app/trainer',
+  trainerCalendar: '/app/trainer/calendar',
+  trainerPlayers: '/app/trainer/players',
+  trainerCycles: '/app/trainer/cycles',
+  trainerIntakeRequests: '/app/trainer/intake-requests',
+  trainerSettings: '/app/trainer/settings',
+  trainerSubscription: '/app/trainer/subscription',
+  trainerEarnings: '/app/trainer/earnings',
+  trainerAnalytics: '/app/trainer/analytics',
+
   // Club Dashboard
-  clubDashboard: '/club',
-  clubCalendar: '/club/calendar',
-  clubPlayers: '/club/players',
-  clubTrainers: '/club/trainers',
-  clubCycles: '/club/cycles',
-  clubIntakeRequests: '/club/intake-requests',
-  clubTournaments: '/club/tournaments',
-  clubProfile: '/club/profile',
-  clubSettings: '/club/settings',
-  clubSubscription: '/club/subscription',
-  
-  
+  clubDashboard: '/app/club',
+  clubCalendar: '/app/club/calendar',
+  clubPlayers: '/app/club/players',
+  clubTrainers: '/app/club/trainers',
+  clubCycles: '/app/club/cycles',
+  clubIntakeRequests: '/app/club/intake-requests',
+  clubTournaments: '/app/club/tournaments',
+  clubProfile: '/app/club/profile',
+  clubSettings: '/app/club/settings',
+  clubSubscription: '/app/club/subscription',
+
   // Academy Dashboard
-  academyDashboard: '/academy',
-  academyTrainers: '/academy/trainers',
-  academyLocations: '/academy/locations',
-  academyCycles: '/academy/cycles',
-  academyProfile: '/academy/profile',
-  academySettings: '/academy/settings',
-  
+  academyDashboard: '/app/academy',
+  academyTrainers: '/app/academy/trainers',
+  academyLocations: '/app/academy/locations',
+  academyCycles: '/app/academy/cycles',
+  academyProfile: '/app/academy/profile',
+  academySettings: '/app/academy/settings',
+
   // Admin Dashboard
-  admin: '/admin',
-  adminUsers: '/admin/users',
-  adminTrainers: '/admin/trainers',
-  adminClubs: '/admin/clubs',
-  adminAcademies: '/admin/academies',
-  adminLocations: '/admin/locations',
-  adminCertifications: '/admin/certifications',
-  adminClubClaims: '/admin/club-claims',
-  adminPricing: '/admin/pricing',
-  adminRatingSystems: '/admin/rating-systems',
+  admin: '/app/admin',
+  adminUsers: '/app/admin/users',
+  adminTrainers: '/app/admin/trainers',
+  adminClubs: '/app/admin/clubs',
+  adminAcademies: '/app/admin/academies',
+  adminLocations: '/app/admin/locations',
+  adminCertifications: '/app/admin/certifications',
+  adminClubClaims: '/app/admin/club-claims',
+  adminPricing: '/app/admin/pricing',
+  adminRatingSystems: '/app/admin/rating-systems',
 };
 
 export const ADMIN_ROUTES = [
