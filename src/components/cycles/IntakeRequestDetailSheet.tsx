@@ -61,7 +61,8 @@ export default function IntakeRequestDetailSheet({
   request,
   open,
   onOpenChange,
-  onStatusChange
+  onStatusChange,
+  cycleId
 }: IntakeRequestDetailSheetProps) {
   const { t } = useTranslation('cycles');
   const [proposal, setProposal] = useState<EnrichedProposedAssignment | null>(null);
