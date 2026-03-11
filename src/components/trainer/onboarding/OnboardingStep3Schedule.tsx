@@ -91,7 +91,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setSessionCreated(true);
       toast.success('Training session settings saved!');
     } catch (error: any) {
-      console.error('Error saving session settings:', error);
+      logger.error('Error saving session settings', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
       toast.error('Failed to save training session settings');
     } finally {
       setCreatingSession(false);
