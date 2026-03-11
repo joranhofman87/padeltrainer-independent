@@ -49,7 +49,7 @@ interface TrainerWithProfile {
   reviewCount: number;
 }
 
-type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
+type SortOption = 'rating' | 'experience';
 
 export default function TrainersCity() {
   const { city } = useParams<{ city: string }>();
