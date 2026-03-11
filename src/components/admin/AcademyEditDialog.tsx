@@ -421,7 +421,7 @@ export function AcademyEditDialog({
         setManagers([]);
       }
     } catch (error) {
-      console.error("Error loading related data:", error);
+      logger.error("Error loading related data", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     } finally {
       setLoadingRelated(false);
     }
