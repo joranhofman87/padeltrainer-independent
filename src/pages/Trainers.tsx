@@ -423,7 +423,7 @@ export default function Trainers() {
       // Availability filter
       const matchesAvailability = !filters.hasAvailability || trainer.hasAvailability;
       
-      return matchesSearch && matchesLocation && matchesPrice && matchesRating && 
+      return matchesSearch && matchesLocation && matchesRating && 
              matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified && matchesAvailability;
     });
 
