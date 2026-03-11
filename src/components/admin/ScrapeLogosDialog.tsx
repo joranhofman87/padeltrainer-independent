@@ -139,7 +139,7 @@ export function ScrapeLogosDialog({
       }
       await fetchBackgroundStatus();
     } catch (error) {
-      console.error("Error toggling background job:", error);
+      logger.error("Error toggling background job", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to toggle background job",
