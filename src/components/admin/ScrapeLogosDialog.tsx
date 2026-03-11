@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { logger } from "@/lib/logger";
 import { Loader2, Image, AlertCircle, CheckCircle2, XCircle, Play, Square, RefreshCw, Clock } from "lucide-react";
 import {
   Dialog,
