@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { format } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro, GraduationCap } from "lucide-react";
+
+const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 import { formatSlotRating } from "./SlotRatingPicker";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
