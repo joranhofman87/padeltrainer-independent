@@ -527,7 +527,7 @@ export function AcademyEditDialog({
       if (error) throw error;
       await loadRelatedData();
     } catch (error) {
-      console.error("Error updating location:", error);
+      logger.error("Error updating location", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
       toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
     }
   };
