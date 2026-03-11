@@ -108,6 +108,12 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [customLessonType1, setCustomLessonType1] = useState<string>(
+    (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
+  );
+  const [customLessonType2, setCustomLessonType2] = useState<string>(
+    (cycle?.settings as any)?.custom_lesson_types?.[1] ?? ''
+  );
   const isEdit = !!cycle;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
