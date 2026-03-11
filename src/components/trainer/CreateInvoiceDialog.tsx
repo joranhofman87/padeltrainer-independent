@@ -204,7 +204,7 @@ export function CreateInvoiceDialog({
           });
           
           if (pdfError) {
-            console.error('PDF generation error:', pdfError);
+            logger.error('PDF generation error', pdfError instanceof Error ? pdfError : new Error(String(pdfError)), { component: 'CreateInvoiceDialog' });
             toast({
               title: 'Factuur aangemaakt',
               description: 'PDF genereren mislukt, maar de factuur is opgeslagen.',
