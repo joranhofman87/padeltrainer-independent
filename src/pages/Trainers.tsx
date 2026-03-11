@@ -145,17 +145,6 @@ export default function Trainers() {
       newParams.delete('locationId');
     }
     
-    // Price range
-    if (newFilters.priceRange[0] > 0) {
-      newParams.set('minPrice', String(newFilters.priceRange[0]));
-    } else {
-      newParams.delete('minPrice');
-    }
-    if (newFilters.priceRange[1] < 200) {
-      newParams.set('maxPrice', String(newFilters.priceRange[1]));
-    } else {
-      newParams.delete('maxPrice');
-    }
     
     // Rating
     if (newFilters.minRating > 0) {

@@ -360,8 +360,6 @@ export default function TrainersCity() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="rating">{t('cityPage.sortTopRated')}</SelectItem>
-              <SelectItem value="price-low">{t('cityPage.sortPriceLow')}</SelectItem>
-              <SelectItem value="price-high">{t('cityPage.sortPriceHigh')}</SelectItem>
               <SelectItem value="experience">{t('cityPage.sortExperience')}</SelectItem>
             </SelectContent>
           </Select>

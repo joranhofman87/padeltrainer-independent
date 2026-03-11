@@ -151,12 +151,6 @@ export function ProfileHeroCard({
                     {location}
                   </span>
                 )}
-                {hourlyRate && (
-                  <span className="flex items-center gap-1">
-                    <span className="font-bold text-xl text-primary">€{hourlyRate}</span>
-                    <span className="text-muted-foreground">/hour</span>
-                  </span>
-                )}
                 {experienceYears && (
                   <span className="text-muted-foreground flex items-center gap-1">
                     <Clock className="h-4 w-4" />

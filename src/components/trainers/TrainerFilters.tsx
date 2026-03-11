@@ -275,34 +275,6 @@ export function TrainerFilters({
               </Popover>
             </div>
 
-            {/* Price Range */}
-            <div className="flex-1 min-w-[140px] max-w-[180px] space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
-                Price (€{filters.priceRange[0]}-€{filters.priceRange[1]})
-              </Label>
-              <div className="flex gap-1.5">
-                <Input
-                  type="number"
-                  value={filters.priceRange[0]}
-                  onChange={(e) => onChange({
-                    ...filters,
-                    priceRange: [Number(e.target.value), filters.priceRange[1]]
-                  })}
-                  className="h-9 text-sm w-16"
-                  placeholder="Min"
-                />
-                <Input
-                  type="number"
-                  value={filters.priceRange[1]}
-                  onChange={(e) => onChange({
-                    ...filters,
-                    priceRange: [filters.priceRange[0], Number(e.target.value)]
-                  })}
-                  className="h-9 text-sm w-16"
-                  placeholder="Max"
-                />
-              </div>
-            </div>
 
             {/* Min Review Rating */}
             <div className="space-y-1.5">
