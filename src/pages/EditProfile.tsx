@@ -651,6 +651,16 @@ export default function EditProfile() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="birth_date">{t('birthDate', 'Date of birth')}</Label>
+                  <Input
+                    id="birth_date"
+                    type="date"
+                    value={formData.birth_date}
+                    onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="rating_system">{t('ratingSystem.label')}</Label>
                   <Select
                     value={formData.rating_system}

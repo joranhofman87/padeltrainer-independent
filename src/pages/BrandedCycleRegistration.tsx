@@ -346,6 +346,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   playerPhone={profile.phone || ''}
                   playerRating={profile.skill_rating ?? undefined}
                   playerRatingSystem={profile.rating_system || 'knltb'}
+                  playerBirthDate={(profile as any).birth_date || ''}
                   trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
                   locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
                   onSuccess={handleSuccess}

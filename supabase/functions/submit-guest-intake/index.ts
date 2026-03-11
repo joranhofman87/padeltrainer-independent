@@ -172,6 +172,7 @@ Deno.serve(async (req) => {
         full_name: fullName,
         email,
         phone: phone || null,
+        birth_date: birthDate || null,
         rating: rating || null,
         rating_system: ratingSystem || "knltb",
         lesson_type: lessonTypes || [],
