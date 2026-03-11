@@ -289,6 +289,8 @@ export default function IntakeRequestDetailSheet({
             ) : proposal ? (
               <ProposalCard 
                 proposal={proposal} 
+                cycleId={cycleId}
+                playerName={request.full_name}
                 onStatusChange={onStatusChange}
               />
             ) : request.skip_reason ? (
