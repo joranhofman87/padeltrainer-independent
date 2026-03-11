@@ -141,6 +141,7 @@ export default function CycleApplicationForm({
     email: z.string().email(),
     phone: z.string().optional(),
     password: z.string().optional(),
+    birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1, t('application.form.lessonTypeRequired')),
