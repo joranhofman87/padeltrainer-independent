@@ -162,7 +162,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, durati
         )}
       </div>
       {!compact && slot.cyclus_name && (
-        <div className="text-foreground/80 truncate mt-0.5">
+        <div className="text-[10px] text-foreground/60 truncate mt-0.5 italic">
           {slot.cyclus_name}
         </div>
       )}

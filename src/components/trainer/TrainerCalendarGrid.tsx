@@ -611,7 +611,10 @@ function MonthView({ slots, currentDate, onBookForPlayer, onDuplicateCyclus, onD
     return map;
   }, [slots]);
 
-  const weekDayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekDayLabels = Array.from({ length: 7 }, (_, i) => {
+    const day = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), i);
+    return format(day, "EEE", { locale: dfLocale });
+  });
 
   return (
     <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">

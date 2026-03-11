@@ -179,7 +179,7 @@ export default function ClubCalendar() {
   const getDateRangeLabel = () => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 });
     const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-    return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+    return `${format(start, "d MMM", { locale: dfLocale })} - ${format(end, "d MMM yyyy", { locale: dfLocale })}`;
   };
 
   const handleSlotClick = (slot: SlotWithBookings) => {
