@@ -161,7 +161,7 @@ export function ScrapeLogosDialog({
       await fetchBackgroundStatus();
       await fetchLocationsWithoutLogos();
     } catch (error) {
-      console.error("Error resetting:", error);
+      logger.error("Error resetting", error instanceof Error ? error : new Error(String(error)), { component: 'ScrapeLogosDialog' });
       toast({
         title: "Error",
         description: "Failed to reset locations for retry",
