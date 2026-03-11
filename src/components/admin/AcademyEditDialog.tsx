@@ -326,7 +326,7 @@ export function AcademyEditDialog({
         setAvailableUsers(profiles as AvailableUser[]);
       }
     } catch (error) {
-      console.error("Error loading users:", error);
+      logger.error("Error loading users", error instanceof Error ? error : new Error(String(error)), { component: 'AcademyEditDialog' });
     }
   };
 
