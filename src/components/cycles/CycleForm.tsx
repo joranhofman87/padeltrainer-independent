@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
