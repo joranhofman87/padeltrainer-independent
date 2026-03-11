@@ -67,6 +67,7 @@ export default function EditProfile() {
     skill_rating: '',
     rating_system: 'knltb',
     rating_member_id: '',
+    birth_date: '',
   });
   
   const [trainerData, setTrainerData] = useState<TrainerProfileData>({
