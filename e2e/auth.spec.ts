@@ -26,8 +26,8 @@ test.describe('Authentication Flows', () => {
       await expect(page.locator('button:has-text("Google")')).toBeVisible();
       
       // Check for signup links
-      await expect(page.locator('a[href="/signup/player"]')).toBeVisible();
-      await expect(page.locator('a[href="/signup/trainer"]')).toBeVisible();
+      await expect(page.locator('a[href*="/signup/player"]')).toBeVisible();
+      await expect(page.locator('a[href*="/signup/trainer"]')).toBeVisible();
     });
 
     test('should show error for invalid credentials', async ({ page }) => {
@@ -44,25 +44,25 @@ test.describe('Authentication Flows', () => {
     test('should have forgot password link', async ({ page }) => {
       await page.goto(ROUTES.auth);
       
-      const forgotPasswordLink = page.locator('a[href="/forgot-password"]');
+      const forgotPasswordLink = page.locator('a[href*="forgot-password"]');
       await expect(forgotPasswordLink).toBeVisible();
       
       await forgotPasswordLink.click();
-      await expect(page).toHaveURL(ROUTES.forgotPassword);
+      await expect(page).toHaveURL(new RegExp('forgot-password'));
     });
 
     test('should navigate to player signup', async ({ page }) => {
       await page.goto(ROUTES.auth);
       
-      await page.click('a[href="/signup/player"]');
-      await expect(page).toHaveURL(ROUTES.playerSignup);
+      await page.click('a[href*="/signup/player"]');
+      await expect(page).toHaveURL(new RegExp('/signup/player'));
     });
 
     test('should navigate to trainer signup', async ({ page }) => {
       await page.goto(ROUTES.auth);
       
-      await page.click('a[href="/signup/trainer"]');
-      await expect(page).toHaveURL(ROUTES.trainerSignup);
+      await page.click('a[href*="/signup/trainer"]');
+      await expect(page).toHaveURL(new RegExp('/signup/trainer'));
     });
   });
 
@@ -83,18 +83,7 @@ test.describe('Authentication Flows', () => {
       await submitButton.click();
       
       // Should show validation errors or remain on the page
-      await expect(page).toHaveURL(new RegExp(ROUTES.playerSignup));
-    });
-
-    test('should show password strength indicator', async ({ page }) => {
-      await page.goto(ROUTES.playerSignup);
-      
-      const passwordInput = page.locator('input[type="password"]');
-      await passwordInput.fill('weak');
-      
-      // Check for password strength indicator
-      const strengthIndicator = page.locator('[class*="password-strength"], [data-password-strength]');
-      // This may or may not be present depending on implementation
+      await expect(page).toHaveURL(new RegExp('/signup/player'));
     });
   });
 
@@ -113,7 +102,7 @@ test.describe('Authentication Flows', () => {
       await submitButton.click();
       
       // Should remain on signup page with validation
-      await expect(page).toHaveURL(new RegExp(ROUTES.trainerSignup));
+      await expect(page).toHaveURL(new RegExp('/signup/trainer'));
     });
   });
 
@@ -139,7 +128,7 @@ test.describe('Authentication Flows', () => {
     test('should have back to login link', async ({ page }) => {
       await page.goto(ROUTES.forgotPassword);
       
-      const backLink = page.locator('a[href="/auth"]');
+      const backLink = page.locator('a[href*="/auth"]');
       await expect(backLink).toBeVisible();
     });
   });

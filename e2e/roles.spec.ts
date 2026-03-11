@@ -57,36 +57,6 @@ test.describe('Academy Flows', () => {
         await expect(page.locator('h1, h2').first()).toBeVisible();
       }
     });
-
-    test('should show trainers affiliated with academy', async ({ page }) => {
-      await page.goto(ROUTES.academies);
-      await waitForNavigation(page);
-      
-      const academyLink = page.locator('a[href*="/academies/"]').first();
-      
-      if (await academyLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await academyLink.click();
-        await waitForNavigation(page);
-        
-        // Look for trainers section
-        const trainersSection = page.locator('[data-trainers], text=/trainer/i');
-      }
-    });
-
-    test('should show locations where academy operates', async ({ page }) => {
-      await page.goto(ROUTES.academies);
-      await waitForNavigation(page);
-      
-      const academyLink = page.locator('a[href*="/academies/"]').first();
-      
-      if (await academyLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await academyLink.click();
-        await waitForNavigation(page);
-        
-        // Look for locations section
-        const locationsSection = page.locator('[data-locations], text=/location/i, text=/locatie/i');
-      }
-    });
   });
 
   test.describe('Academy Dashboard Access', () => {
@@ -118,11 +88,11 @@ test.describe('Academy Flows', () => {
 
   test.describe('Academy Invitation Flow', () => {
     test('should handle invalid invitation token gracefully', async ({ page }) => {
-      await page.goto('/academy/invitation/invalid-token-12345');
+      await page.goto('/app/academy/invitation/invalid-token-12345');
       await waitForNavigation(page);
       
       // Should not crash - show error or redirect
-      const response = await page.goto('/academy/invitation/invalid-token-12345');
+      const response = await page.goto('/app/academy/invitation/invalid-token-12345');
       expect(response?.status()).toBeLessThan(500);
     });
   });
@@ -171,10 +141,10 @@ test.describe('Club Flows', () => {
 
   test.describe('Club Invitation Flow', () => {
     test('should handle invalid invitation token gracefully', async ({ page }) => {
-      await page.goto('/club/invitation/invalid-token-12345');
+      await page.goto('/app/club/invitation/invalid-token-12345');
       await waitForNavigation(page);
       
-      const response = await page.goto('/club/invitation/invalid-token-12345');
+      const response = await page.goto('/app/club/invitation/invalid-token-12345');
       expect(response?.status()).toBeLessThan(500);
     });
   });
