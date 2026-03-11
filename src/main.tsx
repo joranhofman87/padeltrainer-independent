@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { logger } from "./lib/logger";
+import { initializePostHog } from "./lib/posthog";
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
@@ -24,7 +25,6 @@ window.addEventListener('unhandledrejection', (event) => {
     action: 'unhandled_rejection',
   });
 });
-import { initializePostHog } from "./lib/posthog";
 
 // Initialize PostHog and Reditus after critical rendering
 function initDeferred() {
