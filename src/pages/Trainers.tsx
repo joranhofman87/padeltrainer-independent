@@ -59,7 +59,7 @@ interface TrainerWithProfile {
   hasAvailability: boolean;
 }
 
-type SortOption = 'rating' | 'price-low' | 'price-high' | 'experience';
+type SortOption = 'rating' | 'experience';
 
 export default function Trainers() {
   const { t } = useTranslation(['trainer', 'common']);
