@@ -311,6 +311,14 @@
       "changeSlot": "Change Slot",
       "changeTrainer": "Change Trainer"
     },
+    "reassign": {
+      "title": "Move {{name}}",
+      "description": "Select a different slot to move this player to",
+      "current": "Current assignment",
+      "noSlots": "No other slots available",
+      "confirm": "Move Player",
+      "success": "{{name}} has been moved"
+    },
     "confirmDialog": {
       "title": "Confirm Assignment",
       "message": "This will add the player to the slot and send them a confirmation email.",
