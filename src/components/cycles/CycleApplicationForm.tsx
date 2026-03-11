@@ -61,7 +61,7 @@ interface CycleApplicationFormProps {
 }
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
+const STANDARD_LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
 const DURATIONS = [30, 45, 60, 90, 120] as const;
 
 export default function CycleApplicationForm({
