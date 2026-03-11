@@ -317,7 +317,7 @@ export function ClubBulkCreateSheet({
   const generateCyclusName = (trainerId: string, startDate: Date, startTime: string, _lessonId: string | null) => {
     if (!trainerId) return "";
     const trainer = trainers.find((t) => t.id === trainerId);
-    const dayName = format(startDate, "EEEE");
+    const dayName = format(startDate, "EEEE"); // No locale — always English for DB storage
     const trainerName = trainer?.name || "Trainer";
     return `${trainerName} - ${dayName} ${startTime}`;
   };

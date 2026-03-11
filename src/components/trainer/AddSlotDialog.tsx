@@ -462,8 +462,8 @@ export function BulkCreateSheet({
   };
 
   const generateCyclusName = (startDate: Date, startTime: string) => {
-    const dayName = format(startDate, "EEEE");
-    return `${t("calendar.cyclus")} ${dayName} ${startTime}`;
+    const dayName = format(startDate, "EEEE"); // No locale — always English for DB storage
+    return `Cyclus ${dayName} ${startTime}`;
   };
 
   const createDefaultSlotConfig = (startDate: Date, startTime: string, duration: number, weeks: number, tId: string | null): BulkSlotConfig => {
