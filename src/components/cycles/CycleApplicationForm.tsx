@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
 import { getTermsForCycleOwner } from '@/lib/terms';
+import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
