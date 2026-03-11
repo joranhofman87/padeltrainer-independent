@@ -39,7 +39,7 @@ export function ProfileHeroCard({
   avatarAlt,
   location,
   isVerified,
-  hourlyRate,
+  
   experienceYears,
   averageRating,
   reviewCount = 0,
