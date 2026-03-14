@@ -404,15 +404,16 @@ export function ImportLocationsDialog({
       }
     }
 
-    // Check for duplicates within the file itself (coordinate-based first, then slug)
+    // Check for duplicates within the file itself (coordinates → Google Maps URL → slug)
     const seenCoords: Array<{ lat: number; lng: number; name: string }> = [];
+    const seenGoogleUrls = new Map<string, string>();
     const seenSlugs = new Set<string>();
 
     for (const location of locations) {
       if (!location.isValid || location.isDuplicate) continue;
 
+      // Layer 1: Coordinate proximity within file
       if (location.latitude !== null && location.longitude !== null) {
-        // Check against already-seen coordinates in this file
         for (const seen of seenCoords) {
           const distance = calculateDistance(
             location.latitude,
@@ -434,8 +435,27 @@ export function ImportLocationsDialog({
         if (!location.isDuplicate) {
           seenCoords.push({ lat: location.latitude, lng: location.longitude, name: location.name });
         }
-      } else {
-        // Fallback: slug check within file
+      }
+
+      // Layer 2: Google Maps URL within file
+      if (!location.isDuplicate && location.google_maps_url) {
+        const normalizedUrl = location.google_maps_url.trim().toLowerCase();
+        const matchName = seenGoogleUrls.get(normalizedUrl);
+        if (matchName) {
+          location.isDuplicate = true;
+          location.errors.push(
+            t("locations.import.errors.googleMapsMatch",
+              `Matches "{{name}}" (same Google Maps link)`,
+              { name: matchName }
+            )
+          );
+        } else {
+          seenGoogleUrls.set(normalizedUrl, location.name);
+        }
+      }
+
+      // Layer 3: Slug fallback within file
+      if (!location.isDuplicate && location.latitude === null && location.longitude === null && !location.google_maps_url) {
         if (seenSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateInFile", "Duplicate in file"));
