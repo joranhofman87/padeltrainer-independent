@@ -96,6 +96,9 @@
     "successMessage": "Erfolgsmeldung",
     "successMessagePlaceholder": "z.B. Danke für deine Anmeldung! Wir melden uns innerhalb von 2 Tagen.",
     "successMessageHelp": "Eigene Nachricht, die Spieler nach dem Absenden des Formulars sehen. Leer lassen für die Standardnachricht.",
+    "confirmationEmailText": "Bestätigungsmail-Text",
+    "confirmationEmailTextPlaceholder": "z.B. Das Training beginnt am 1. März. Bitte eigenen Schläger mitbringen.",
+    "confirmationEmailTextHelp": "Dieser Text wird in die Bestätigungsmail aufgenommen, die Spieler nach der Anmeldung erhalten. Leer lassen für eine Standardbestätigung.",
     "registrationAssignedTrainerHelp": "Der Trainer, der die Stunden für diese Anmeldung gibt",
     "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können"
   },
