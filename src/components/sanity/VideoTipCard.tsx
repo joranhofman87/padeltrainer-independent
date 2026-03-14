@@ -1,8 +1,8 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { LocalizedLink } from '@/components/LocalizedLink';
-import { ExternalLink, Play, User } from 'lucide-react';
+import { Play, User } from 'lucide-react';
+import { parseVideoUrl } from '@/lib/videoEmbed';
 
 export interface VideoTip {
   _id: string;
