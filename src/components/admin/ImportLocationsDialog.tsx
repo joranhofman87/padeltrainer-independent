@@ -353,11 +353,11 @@ export function ImportLocationsDialog({
 
     const PROXIMITY_THRESHOLD_METERS = 50; // Same venue if < 50m away
 
-    // Check for duplicates: coordinate-based first, then slug fallback
+    // Check for duplicates: coordinates → Google Maps URL → slug fallback
     for (const location of locations) {
       if (!location.isValid || location.isDuplicate) continue;
 
-      // If imported location has coordinates, check proximity
+      // Layer 1: If imported location has coordinates, check proximity
       if (location.latitude !== null && location.longitude !== null) {
         for (const existing of existingWithCoords) {
           const distance = calculateDistance(
@@ -378,8 +378,25 @@ export function ImportLocationsDialog({
             break;
           }
         }
-      } else {
-        // Fallback: slug-based check if no coordinates
+      }
+
+      // Layer 2: Google Maps URL match
+      if (!location.isDuplicate && location.google_maps_url) {
+        const normalizedUrl = location.google_maps_url.trim().toLowerCase();
+        const matchName = existingGoogleUrls.get(normalizedUrl);
+        if (matchName) {
+          location.isDuplicate = true;
+          location.errors.push(
+            t("locations.import.errors.googleMapsMatch",
+              `Matches "{{name}}" (same Google Maps link)`,
+              { name: matchName }
+            )
+          );
+        }
+      }
+
+      // Layer 3: Slug fallback (only if no coordinates and no Google Maps URL match)
+      if (!location.isDuplicate && location.latitude === null && location.longitude === null && !location.google_maps_url) {
         if (existingSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateSlug", "Already exists (by name)"));
