@@ -271,12 +271,31 @@ export default function CycleApplicationForm({
             }
           }
         } catch {}
+        // Resolve location name for the email
+        let locationName: string | undefined;
+        try {
+          const locId = cycle.location_id || values.location_id;
+          if (locId) {
+            const { data: locData } = await supabase.from('locations').select('name').eq('id', locId).single();
+            locationName = locData?.name || undefined;
+          }
+        } catch {}
         sendEmail('intake_registration_confirmation', values.email, {
           playerName: values.full_name,
           cycleName: cycle.name,
           ownerName,
           confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
           language: i18n.language,
+          startDate: cycle.start_date,
+          endDate: cycle.end_date,
+          enrollmentDeadline: cycle.enrollment_deadline || undefined,
+          locationName,
+          lessonTypes: values.lesson_types,
+          preferredDurationMinutes: values.preferred_duration_minutes,
+          sessionsPerWeek: values.sessions_per_week,
+          rating: values.rating,
+          ratingSystem: values.rating_system,
+          notes: values.notes || undefined,
         }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
 
         // Update player profile if rating/phone/birth_date changed

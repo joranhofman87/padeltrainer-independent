@@ -66,6 +66,16 @@ interface EmailRequest {
     // Intake registration confirmation fields
     confirmationText?: string;
     isNewUser?: boolean;
+    startDate?: string;
+    endDate?: string;
+    enrollmentDeadline?: string;
+    lessonTypes?: string[];
+    preferredDurationMinutes?: number;
+    sessionsPerWeek?: number;
+    locationName?: string;
+    rating?: number;
+    ratingSystem?: string;
+    notes?: string;
   };
 }
 
@@ -619,13 +629,30 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
 
     case "intake_registration_confirmation": {
       const lang = language || 'en';
-      const translations: Record<string, { subject: string; greeting: string; intro: string; footer: string; regards: string }> = {
+      const translations: Record<string, {
+        subject: string; greeting: string; intro: string; footer: string; regards: string;
+        detailsTitle: string; startDate: string; endDate: string; deadline: string;
+        yourRegistration: string; lessonType: string; duration: string; sessionsWeek: string;
+        location: string; level: string; notes: string; min: string;
+      }> = {
         en: {
           subject: `Registration Confirmed: ${data.cycleName || 'Training'} 🎾`,
           greeting: `Hi ${data.playerName},`,
           intro: `Your registration for <strong>${data.cycleName || 'training'}</strong>${data.ownerName ? ` at <strong>${data.ownerName}</strong>` : ''} has been received.`,
           footer: `If you have any questions, ${data.ownerName ? `contact ${data.ownerName} directly` : 'contact your trainer or academy directly'}.`,
           regards: 'Best regards,',
+          detailsTitle: 'Registration Details',
+          startDate: 'Start Date',
+          endDate: 'End Date',
+          deadline: 'Registration Deadline',
+          yourRegistration: 'What You Registered For',
+          lessonType: 'Lesson Type',
+          duration: 'Duration',
+          sessionsWeek: 'Sessions/Week',
+          location: 'Location',
+          level: 'Level',
+          notes: 'Notes',
+          min: 'min',
         },
         nl: {
           subject: `Inschrijving bevestigd: ${data.cycleName || 'Training'} 🎾`,
@@ -633,6 +660,18 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           intro: `Je inschrijving voor <strong>${data.cycleName || 'training'}</strong>${data.ownerName ? ` bij <strong>${data.ownerName}</strong>` : ''} is ontvangen.`,
           footer: `Heb je vragen? ${data.ownerName ? `Neem dan contact op met ${data.ownerName}` : 'Neem contact op met je trainer of academy'}.`,
           regards: 'Met sportieve groet,',
+          detailsTitle: 'Registratiegegevens',
+          startDate: 'Startdatum',
+          endDate: 'Einddatum',
+          deadline: 'Inschrijfdeadline',
+          yourRegistration: 'Jouw inschrijving',
+          lessonType: 'Lestype',
+          duration: 'Duur',
+          sessionsWeek: 'Sessies/week',
+          location: 'Locatie',
+          level: 'Niveau',
+          notes: 'Opmerkingen',
+          min: 'min',
         },
         es: {
           subject: `Inscripción confirmada: ${data.cycleName || 'Entrenamiento'} 🎾`,
@@ -640,6 +679,18 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           intro: `Tu inscripción para <strong>${data.cycleName || 'entrenamiento'}</strong>${data.ownerName ? ` en <strong>${data.ownerName}</strong>` : ''} ha sido recibida.`,
           footer: `Si tienes preguntas, ${data.ownerName ? `contacta con ${data.ownerName} directamente` : 'contacta con tu entrenador o academia'}.`,
           regards: 'Un saludo,',
+          detailsTitle: 'Detalles de registro',
+          startDate: 'Fecha de inicio',
+          endDate: 'Fecha de fin',
+          deadline: 'Fecha límite',
+          yourRegistration: 'Tu registro',
+          lessonType: 'Tipo de clase',
+          duration: 'Duración',
+          sessionsWeek: 'Sesiones/semana',
+          location: 'Ubicación',
+          level: 'Nivel',
+          notes: 'Notas',
+          min: 'min',
         },
         de: {
           subject: `Anmeldung bestätigt: ${data.cycleName || 'Training'} 🎾`,
@@ -647,6 +698,18 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           intro: `Deine Anmeldung für <strong>${data.cycleName || 'Training'}</strong>${data.ownerName ? ` bei <strong>${data.ownerName}</strong>` : ''} wurde empfangen.`,
           footer: `Bei Fragen ${data.ownerName ? `wende dich direkt an ${data.ownerName}` : 'wende dich an deinen Trainer oder deine Akademie'}.`,
           regards: 'Sportliche Grüße,',
+          detailsTitle: 'Anmeldedetails',
+          startDate: 'Startdatum',
+          endDate: 'Enddatum',
+          deadline: 'Anmeldefrist',
+          yourRegistration: 'Deine Anmeldung',
+          lessonType: 'Unterrichtsart',
+          duration: 'Dauer',
+          sessionsWeek: 'Sitzungen/Woche',
+          location: 'Standort',
+          level: 'Niveau',
+          notes: 'Anmerkungen',
+          min: 'Min',
         },
         fr: {
           subject: `Inscription confirmée : ${data.cycleName || 'Entraînement'} 🎾`,
@@ -654,12 +717,72 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           intro: `Votre inscription pour <strong>${data.cycleName || 'entraînement'}</strong>${data.ownerName ? ` chez <strong>${data.ownerName}</strong>` : ''} a été reçue.`,
           footer: `Si vous avez des questions, ${data.ownerName ? `contactez ${data.ownerName} directement` : 'contactez votre entraîneur ou académie'}.`,
           regards: 'Cordialement,',
+          detailsTitle: 'Détails d\'inscription',
+          startDate: 'Date de début',
+          endDate: 'Date de fin',
+          deadline: 'Date limite',
+          yourRegistration: 'Votre inscription',
+          lessonType: 'Type de cours',
+          duration: 'Durée',
+          sessionsWeek: 'Séances/semaine',
+          location: 'Lieu',
+          level: 'Niveau',
+          notes: 'Remarques',
+          min: 'min',
         },
       };
       const t = translations[lang] || translations.en;
+
+      // Confirmation text from the academy/club (shown first, above details)
       const confirmationSection = data.confirmationText
-        ? `<div style="background: #fff7ed; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${BRAND_ORANGE};">
+        ? `<div style="background: #fff7ed; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid ${BRAND_ORANGE};">
              <p style="margin: 0; white-space: pre-line;">${data.confirmationText}</p>
+           </div>`
+        : '';
+
+      // Format dates nicely
+      const formatDate = (dateStr?: string) => {
+        if (!dateStr) return null;
+        try {
+          const d = new Date(dateStr);
+          return d.toLocaleDateString(lang === 'nl' ? 'nl-NL' : lang === 'de' ? 'de-DE' : lang === 'fr' ? 'fr-FR' : lang === 'es' ? 'es-ES' : 'en-GB', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          });
+        } catch { return dateStr; }
+      };
+
+      // Build cycle info rows
+      const infoRows: string[] = [];
+      if (data.startDate) infoRows.push(`<p style="margin: 4px 0;"><strong>${t.startDate}:</strong> ${formatDate(data.startDate)}</p>`);
+      if (data.endDate) infoRows.push(`<p style="margin: 4px 0;"><strong>${t.endDate}:</strong> ${formatDate(data.endDate)}</p>`);
+      if (data.enrollmentDeadline) infoRows.push(`<p style="margin: 4px 0;"><strong>${t.deadline}:</strong> ${formatDate(data.enrollmentDeadline)}</p>`);
+      if (data.locationName) infoRows.push(`<p style="margin: 4px 0;"><strong>${t.location}:</strong> ${data.locationName}</p>`);
+
+      const detailsBlock = infoRows.length > 0
+        ? `<div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 16px 0;">
+             <h3 style="margin-top: 0; margin-bottom: 12px;">${t.detailsTitle}</h3>
+             ${data.cycleName ? `<p style="margin: 4px 0; font-size: 16px; font-weight: bold;">${data.cycleName}</p>` : ''}
+             ${data.ownerName ? `<p style="margin: 4px 0; color: #6b7280;">${data.ownerName}</p>` : ''}
+             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 12px 0;" />
+             ${infoRows.join('')}
+           </div>`
+        : `<div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 16px 0;">
+             ${data.cycleName ? `<h3 style="margin-top: 0;">${data.cycleName}</h3>` : ''}
+             ${data.ownerName ? `<p><strong>${data.ownerName}</strong></p>` : ''}
+           </div>`;
+
+      // Build registration summary (what they filled out)
+      const summaryRows: string[] = [];
+      if (data.lessonTypes && data.lessonTypes.length > 0) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.lessonType}:</strong> ${data.lessonTypes.join(', ')}</p>`);
+      if (data.preferredDurationMinutes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.duration}:</strong> ${data.preferredDurationMinutes} ${t.min}</p>`);
+      if (data.sessionsPerWeek) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.sessionsWeek}:</strong> ${data.sessionsPerWeek}</p>`);
+      if (data.rating) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.level}:</strong> ${data.rating}${data.ratingSystem ? ` (${data.ratingSystem.toUpperCase()})` : ''}</p>`);
+      if (data.notes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.notes}:</strong> ${data.notes}</p>`);
+
+      const summaryBlock = summaryRows.length > 0
+        ? `<div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e5e7eb;">
+             <h4 style="margin-top: 0; margin-bottom: 8px; color: #374151;">${t.yourRegistration}</h4>
+             ${summaryRows.join('')}
            </div>`
         : '';
 
@@ -668,16 +791,13 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             ${EMAIL_LOGO}
-            <h1 style="color: ${BRAND_ORANGE};">🎾</h1>
             <p>${t.greeting}</p>
             <p>${t.intro}</p>
-            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              ${data.cycleName ? `<h3 style="margin-top: 0;">${data.cycleName}</h3>` : ''}
-              ${data.ownerName ? `<p><strong>${data.ownerName}</strong></p>` : ''}
-            </div>
             ${confirmationSection}
+            ${detailsBlock}
+            ${summaryBlock}
             <p>${t.footer}</p>
-            <p>${t.regards}<br>PadelTrainer.ai Team</p>
+            <p>${t.regards}<br><a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE}; text-decoration: none;">PadelTrainer.ai</a> Team</p>
           </div>
         `,
       };
