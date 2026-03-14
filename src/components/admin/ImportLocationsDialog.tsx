@@ -230,7 +230,8 @@ export function ImportLocationsDialog({
     }
 
     const headerLine = lines[0];
-    const headers = parseCSVLine(headerLine);
+    const delimiter = detectDelimiter(headerLine);
+    const headers = parseCSVLine(headerLine, delimiter);
 
     // Find column indices
     const indices: Record<string, number> = {};
