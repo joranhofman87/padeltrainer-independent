@@ -1,34 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix: Submit Button Disabled Due to Terms Component Crash
+## Status: ✅ COMPLETED
 
-## Root Cause
+Implemented on 2026-03-14.
 
-The same `dangerouslySetInnerHTML` issue we fixed in `CycleDetailDisplay` also exists in `TermsAcceptance.tsx` (line 37). Third-party scripts (Reditus) modify the DOM, causing a React reconciliation crash.
+## Problem
 
-When `TermsAcceptance` crashes:
-1. The terms acceptance checkbox never renders
-2. `termsAccepted` stays `false`
-3. The submit button stays disabled (`disabled={isSubmitting || (!!cycleTerms && !termsAccepted)}` — line 750)
-4. The user sees the button but cannot click it
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-The console confirms: "Uncaught TypeError: Cannot read properties of undefined (reading 'q')" and "Unhandled error | components='global'".
+## Solution
 
-## Fix
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
 
-**`src/components/booking/TermsAcceptance.tsx`** — Replace `dangerouslySetInnerHTML` with the same ref-based `SafeHTML` pattern used in `CycleDetailDisplay`:
-
-```tsx
-function SafeHTML({ html, className }: { html: string; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.innerHTML = html;
-  }, [html]);
-  return <div ref={ref} className={className} />;
-}
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-Replace line 35-38's `<div dangerouslySetInnerHTML={{ __html: terms }} />` with `<SafeHTML html={terms} className="..." />`.
+## Changes
 
-Single file change, same proven pattern.
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)
