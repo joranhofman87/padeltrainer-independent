@@ -499,6 +499,14 @@ Deno.serve(async (req) => {
           const dayIndex = WEEKDAYS.indexOf(window.day.toLowerCase());
           if (dayIndex === -1) continue;
 
+          // Determine session duration from cycle settings (default 60 min)
+          const sessionDuration = cycle.settings?.default_duration_minutes || 60;
+          
+          const [windowStartH, windowStartM] = window.start.split(":").map(Number);
+          const [windowEndH, windowEndM] = window.end.split(":").map(Number);
+          const windowStartMinutes = windowStartH * 60 + (windowStartM || 0);
+          const windowEndMinutes = windowEndH * 60 + (windowEndM || 0);
+
           let current = new Date(effectiveStartDate);
           // Find the first occurrence of this day
           while (current.getDay() !== dayIndex) {
@@ -506,27 +514,32 @@ Deno.serve(async (req) => {
           }
 
           while (current <= cycleEndDate) {
-            const startDateTime = new Date(current);
-            const [startH, startM] = window.start.split(":").map(Number);
-            startDateTime.setHours(startH, startM, 0, 0);
+            // Split the availability window into individual session-length slots
+            let slotStartMinutes = windowStartMinutes;
+            while (slotStartMinutes + sessionDuration <= windowEndMinutes) {
+              const startDateTime = new Date(current);
+              startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
 
-            const endDateTime = new Date(current);
-            const [endH, endM] = window.end.split(":").map(Number);
-            endDateTime.setHours(endH, endM, 0, 0);
+              const endMinutes = slotStartMinutes + sessionDuration;
+              const endDateTime = new Date(current);
+              endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
 
-            slotsToInsert.push({
-              trainer_id: ta.trainerId,
-              start_time: startDateTime.toISOString(),
-              end_time: endDateTime.toISOString(),
-              is_marked_full: false,
-              is_public: false,
-              is_recurring: false,
-              cyclus_id: cycleId,
-              max_participants: cycle.settings?.max_group_size || 4,
-              min_participants: cycle.settings?.min_group_size || null,
-              academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
-              location_id: cycle.location_id || null,
-            });
+              slotsToInsert.push({
+                trainer_id: ta.trainerId,
+                start_time: startDateTime.toISOString(),
+                end_time: endDateTime.toISOString(),
+                is_marked_full: false,
+                is_public: false,
+                is_recurring: false,
+                cyclus_id: cycleId,
+                max_participants: cycle.settings?.max_group_size || 4,
+                min_participants: cycle.settings?.min_group_size || null,
+                academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+                location_id: cycle.location_id || null,
+              });
+
+              slotStartMinutes += sessionDuration;
+            }
 
             current.setDate(current.getDate() + 7);
           }
