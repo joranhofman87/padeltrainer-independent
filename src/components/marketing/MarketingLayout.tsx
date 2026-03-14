@@ -44,6 +44,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const pricingPath = useLocalizedPath('/pricing');
   const aboutPath = useLocalizedPath('/about');
   const blogPath = useLocalizedPath('/blog');
+  const rulesPath = useLocalizedPath('/rules');
   const trainersPath = useLocalizedPath('/trainers');
   const locationsPath = useLocalizedPath('/locations');
   const partnerPath = useLocalizedPath('/partner');
