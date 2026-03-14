@@ -131,7 +131,7 @@ export default function Blog() {
       '@type': 'BlogPosting',
       headline: a.title,
       description: a.excerpt,
-      datePublished: a.published_at,
+      datePublished: a.publishedAt,
       url: `${MARKETING_DOMAIN}/blog/${a.slug}`
     }))
   } : undefined;
