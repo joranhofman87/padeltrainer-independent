@@ -239,7 +239,7 @@ export default function Blog() {
                 <h2 className="text-2xl font-bold mb-8">{t('blog.recentArticles')}</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {recentPosts.map((article, index) => (
-                    <ArticleCard key={article.id} article={article} dateLocale={dateLocale} index={index} />
+                    <ArticleCard key={article._id} article={article} dateLocale={dateLocale} index={index} />
                   ))}
                 </div>
               </div>
