@@ -752,8 +752,20 @@ export default function CycleApplicationForm({
 
         {/* Validation error summary near submit button */}
         {Object.keys(form.formState.errors).length > 0 && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-            {t('application.form.validationErrors', 'Please fill in all required fields above before submitting.')}
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive space-y-1">
+            <p className="font-medium">{t('application.form.validationSummary', 'Please fix the following:')}</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {form.formState.errors.full_name && <li>{t('application.form.name')}</li>}
+              {form.formState.errors.email && <li>{t('application.form.email')}</li>}
+              {form.formState.errors.birth_date && <li>{t('application.form.birthDate')}</li>}
+              {form.formState.errors.notes && <li>{t('application.form.notes')}</li>}
+              {form.formState.errors.lesson_types && <li>{t('application.form.lessonType')}</li>}
+              {form.formState.errors.availability && <li>{t('application.form.availabilityLabel')}</li>}
+              {form.formState.errors.consent && <li>{t('application.form.consent')}</li>}
+              {form.formState.errors.rating && <li>{t('application.form.rating')}</li>}
+              {form.formState.errors.phone && <li>{t('application.form.phone')}</li>}
+              {form.formState.errors.password && <li>{t('application.form.password')}</li>}
+            </ul>
           </div>
         )}
 
