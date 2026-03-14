@@ -897,3 +897,85 @@ function renderFallback(path: string, lang: string): string {
     body: `<h1>PadelTrainer.ai</h1><p>Find and book padel trainers in the Netherlands.</p><p><a href="${SITE_URL}/${lang}">Go to homepage</a></p>`
   });
 }
+
+// ─── Sanity CMS Helpers ─────────────────────────────────────────
+
+const SANITY_PROJECT_ID = 'ru3aqhjn';
+const SANITY_DATASET = 'production';
+
+async function sanityFetch(query: string, params: Record<string, string> = {}): Promise<any> {
+  const qs = new URLSearchParams({ query });
+  for (const [k, v] of Object.entries(params)) {
+    qs.set(`$${k}`, `"${v}"`);
+  }
+  const url = `https://${SANITY_PROJECT_ID}.api.sanity.io/v2024-01-01/data/query/${SANITY_DATASET}?${qs.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.result;
+}
+
+async function renderSanityArticle(type: string, slug: string, lang: string, basePath: string): Promise<string> {
+  // Build a flexible query that works for all content types
+  const nameField = type === 'trainer' ? 'name' : 'title';
+  const descFields: Record<string, string> = {
+    blogPost: 'excerpt',
+    rulesArticle: 'intro',
+    stroke: 'shortDescription',
+    trainer: 'bio',
+    videoTip: 'shortSummary',
+  };
+  const descField = descFields[type] || 'excerpt';
+
+  const query = `*[_type == "${type}" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+    ${nameField},
+    h1,
+    ${descField},
+    seo,
+    "slug": slug.current
+  }`;
+
+  const doc = await sanityFetch(query, { slug });
+  if (!doc) return renderNotFound(lang);
+
+  const title = doc.seo?.titleTag || doc.h1 || doc[nameField] || slug;
+  const description = doc.seo?.metaDescription || doc[descField] || `Learn about ${title} on PadelTrainer.ai`;
+
+  const body = `
+    <div class="breadcrumb">
+      <a href="${SITE_URL}/${lang}">Home</a><span>›</span>
+      <a href="${SITE_URL}/${lang}${basePath}">${escHtml(basePath.replace(/^\//, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</a><span>›</span>
+      <strong>${escHtml(title)}</strong>
+    </div>
+    <h1>${escHtml(title)}</h1>
+    <p>${escHtml(typeof description === 'string' ? description : '')}</p>
+  `;
+
+  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `${basePath}/${slug}`, lang, body });
+}
+
+async function renderBlogListing(lang: string): Promise<string> {
+  const query = `*[_type == "blogPost" && !(_id in path("drafts.**"))] | order(datePublished desc) [0...10] {
+    title, "slug": slug.current, excerpt, category, datePublished
+  }`;
+  const posts = await sanityFetch(query) || [];
+
+  const title = 'Padel Blog — Tips, Guides & Training Advice';
+  const description = 'Read the latest padel tips, training guides, and expert advice. Improve your game with insights from top coaches and players.';
+
+  const postsHtml = posts.map((p: any) => `
+    <div class="card">
+      <h3><a href="${SITE_URL}/${lang}/blog/${p.slug}">${escHtml(p.title)}</a></h3>
+      ${p.category ? `<span class="badge">${escHtml(p.category)}</span>` : ''}
+      ${p.excerpt ? `<p>${escHtml(p.excerpt.slice(0, 120))}</p>` : ''}
+    </div>
+  `).join('');
+
+  const body = `
+    <h1>Padel Blog</h1>
+    <p>${escHtml(description)}</p>
+    <div class="grid">${postsHtml}</div>
+  `;
+
+  return htmlDoc({ title, description, url: '/blog', lang, body });
+}
