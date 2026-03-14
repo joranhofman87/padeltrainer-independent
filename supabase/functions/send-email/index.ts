@@ -13,6 +13,7 @@ interface EmailRequest {
   type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation";
   to: string;
   userId?: string;
+  language?: string;
   data: {
     playerName?: string;
     playerEmail?: string;
@@ -62,6 +63,9 @@ interface EmailRequest {
     totalAmount?: number;
     unpaidSessions?: string;
     cycleName?: string;
+    // Intake registration confirmation fields
+    confirmationText?: string;
+    isNewUser?: boolean;
   };
 }
 
