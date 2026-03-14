@@ -83,7 +83,7 @@ export default function RulesPage() {
           <h1 className="text-2xl font-bold mb-4">{t('rules.notFound', 'Rule not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('rules.notFoundDescription', 'This rules page could not be found.')}</p>
           <Button asChild>
-            <LocalizedLink to="/rules">{t('rules.backToRules', 'Back to Rules')}</LocalizedLink>
+            <LocalizedLink to="/padel-rules">{t('rules.backToRules', 'Back to Rules')}</LocalizedLink>
           </Button>
         </div>
       </MarketingLayout>
