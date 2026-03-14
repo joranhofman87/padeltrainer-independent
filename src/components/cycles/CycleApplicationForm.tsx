@@ -377,7 +377,6 @@ export default function CycleApplicationForm({
               )}
             />
 
-
             <FormField
               control={form.control}
               name="phone"
@@ -391,6 +390,21 @@ export default function CycleApplicationForm({
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name="birth_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('application.form.birthDate')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
