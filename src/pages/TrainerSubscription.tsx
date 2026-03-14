@@ -121,14 +121,14 @@ export default function TrainerSubscription() {
     setProcessingPlan(plan.id);
 
     try {
-      logger.info('Starting Mollie checkout for subscription', { 
+      logger.info('Starting Stripe checkout for subscription', { 
         component: 'TrainerSubscription', 
-        planId, 
+        planId: plan.tier, 
         billingCycle 
       });
 
-      const { data, error } = await supabase.functions.invoke('create-mollie-subscription', {
-        body: { planId },
+      const { data, error } = await supabase.functions.invoke('create-stripe-checkout', {
+        body: { type: 'trainer', planId: plan.tier, billingCycle },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
