@@ -1,34 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix "Unknown" Trainer Names in Generate Proposals Wizard
+## Status: ✅ COMPLETED
 
-## Root Cause
+Implemented on 2026-03-14.
 
-The `profiles` table has restrictive RLS policies. An academy manager can only read their **own** profile row. When `loadTrainers()` in `GenerateProposalsWizard` queries `profiles` for trainer names via `user_id`, the RLS blocks all rows except the logged-in user's own profile. That's why only "Rene Lindenbergh" (the logged-in user) shows a name — the other 5 return empty and fall back to "Unknown".
+## Problem
 
-## Fix
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-Add an RLS SELECT policy on `profiles` allowing academy managers to view profiles of their academy's trainers:
+## Solution
 
-```sql
-CREATE POLICY "Academy managers can view their trainers profiles"
-ON public.profiles
-FOR SELECT
-TO authenticated
-USING (
-  user_id IN (
-    SELECT tp.user_id
-    FROM trainer_profiles tp
-    JOIN academy_trainers at ON at.trainer_profile_id = tp.id
-    JOIN academy_managers am ON am.academy_profile_id = at.academy_profile_id
-    WHERE am.user_id = auth.uid()
-      AND at.status = 'active'
-  )
-);
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
+
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-This is a single database migration. No code changes needed — the existing query logic in `GenerateProposalsWizard` is correct; it just can't read the data due to missing RLS permissions.
+## Changes
 
-## Files
-- **Database migration only** — one new RLS policy on `profiles` table
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)
