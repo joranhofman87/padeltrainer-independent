@@ -209,7 +209,7 @@ export default function RulesPage() {
             <h2 className="text-2xl font-bold mb-6">{t('rules.relatedRules', 'Related Rules')}</h2>
             <div className="grid md:grid-cols-2 gap-4">
               {article.relatedRules.map(rule => (
-                <LocalizedLink key={rule._id} to={`/rules/${rule.slug}`}>
+                <LocalizedLink key={rule._id} to={`/padel-rules/${rule.slug}`}>
                   <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                     <CardContent className="p-4">
                       <CardTitle className="text-base mb-1 hover:text-primary transition-colors">{rule.h1}</CardTitle>

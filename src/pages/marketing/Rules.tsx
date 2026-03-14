@@ -41,7 +41,7 @@ export default function Rules() {
       <SEO
         title={t('rules.title', 'Padel Rules & Regulations')}
         description={t('rules.subtitle', 'Learn the official rules of padel, scoring, court dimensions, and more.')}
-        url="/rules"
+        url="/padel-rules"
       />
 
       {/* Hero */}
@@ -92,7 +92,7 @@ export default function Rules() {
                         viewport={{ once: true }}
                         transition={{ delay: index * 0.1 }}
                       >
-                        <LocalizedLink to={`/rules/${article.slug}`}>
+                        <LocalizedLink to={`/padel-rules/${article.slug}`}>
                           <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                             <CardContent className="p-6">
                               <Badge variant="secondary" className="mb-3">{t('rules.guide', 'Guide')}</Badge>
@@ -123,7 +123,7 @@ export default function Rules() {
                         viewport={{ once: true }}
                         transition={{ delay: index * 0.05 }}
                       >
-                        <LocalizedLink to={`/rules/${article.slug}`}>
+                        <LocalizedLink to={`/padel-rules/${article.slug}`}>
                           <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                             <CardContent className="p-6">
                               <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">{article.h1}</CardTitle>
