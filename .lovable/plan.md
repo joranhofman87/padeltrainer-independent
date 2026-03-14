@@ -1,48 +1,78 @@
 
-# Migrate Platform Subscriptions from Mollie to Stripe
 
-## Status: ✅ COMPLETED
+# Plan: Maximize Stripe for Platform Payments
 
-Migration completed on 2026-03-14.
+## Summary
 
-## What was done
+Three changes to fully leverage Stripe's payment infrastructure for platform subscriptions while keeping Mollie for booking fees:
 
-### Phase 1: Stripe Products & Prices ✅
-Created all missing Stripe products and prices:
-- **Starter**: prod_U96I8IfrCKG4LU (€9/mo: price_1TAo5cPxAlHS6UZHBS3lZ5lo, €75.60/yr: price_1TAo67PxAlHS6UZHgmn9Tq4x)
-- **Professional**: prod_TnaKMqklQL0csZ (€29/mo: price_1Spz9VPxAlHS6UZH9wmgdECd, €278/yr: price_1Spz9uPxAlHS6UZHMaZfUTBY)
-- **Academy**: prod_TnaKlteqteiFWb (€79/mo: price_1SpzA8PxAlHS6UZHKsoY94qK, €758/yr: price_1SpzAdPxAlHS6UZHKjhjq8Ey)
-- **Club**: prod_TpSG6xKQWRccLA + prod_U96IiK6uDt4WHZ (€19/mo: price_1TAo6KPxAlHS6UZHg228uEB9, €2388/yr: price_1SrnLWPxAlHS6UZHnPt93ego)
+1. **Create Stripe customer on signup** — so every user has a Stripe Customer ID from day one
+2. **Add "Manage Subscription" button** using Stripe Customer Portal — for self-service billing management  
+3. **Use Stripe Coupons natively** — replace the custom `user_discounts` coupon-creation logic with Stripe Promotion Codes
 
-### Phase 2: Database Changes ✅
-- Added `stripe_customer_id` to `trainer_profiles`, `club_profiles`, `academy_profiles`
-- Added `stripe_price_id_monthly` and `stripe_price_id_yearly` to `subscription_plans`
-- Populated all Stripe price IDs in the subscription_plans table
+---
 
-### Phase 3: Edge Functions ✅
-Created 5 new Stripe-based edge functions:
-1. **`create-stripe-checkout`** — Unified checkout for trainers, clubs, academies
-2. **`check-stripe-subscription`** — Checks subscription status via Stripe API
-3. **`cancel-stripe-subscription`** — Cancels at period end via Stripe
-4. **`stripe-subscription-webhook`** — Handles checkout.session.completed, invoice.paid/failed, subscription.deleted
-5. **`customer-portal`** — Stripe Customer Portal for self-service management
+## 1. Create Stripe Customer on Signup
 
-### Phase 4: Frontend Updates ✅
-Updated all frontend files to call Stripe functions:
-- `src/hooks/useAuth.tsx` → `check-stripe-subscription`
-- `src/pages/TrainerSubscription.tsx` → `create-stripe-checkout` + `cancel-stripe-subscription`
-- `src/lib/clubSubscription.ts` → `create-stripe-checkout` + `check-stripe-subscription` + `cancel-stripe-subscription`
-- `src/lib/academySubscription.ts` → same
+**Where:** `supabase/functions/signup-user/index.ts`
 
-## What stays unchanged
-- **Mollie Connect** for player payments (lesson bookings)
-- **Trial logic** — same durations
-- **Admin overrides** — manual `subscription_status = 'active'`
-- Old Mollie subscription functions kept for backward compatibility
+After user creation (line ~139), create a Stripe customer using their email and name, then store the customer ID on the `profiles` table.
 
-## TODO (post-migration)
-- [ ] Set up Stripe webhook endpoint URL in Stripe Dashboard pointing to `stripe-subscription-webhook`
-- [ ] Configure Stripe Customer Portal settings in Stripe Dashboard
-- [ ] Add STRIPE_WEBHOOK_SECRET for signature verification
-- [ ] Monitor and deprecate old Mollie subscription functions after transition period
-- [ ] Update `reconcile-subscriptions` cron job or retire it
+- Add `stripe_customer_id` column to the `profiles` table (migration)
+- In `signup-user`, after `supabase.auth.admin.createUser()`:
+  - Call `stripe.customers.create({ email, name: fullName, metadata: { user_id } })`
+  - Save the returned customer ID to `profiles.stripe_customer_id`
+- Update `create-stripe-checkout` to check `profiles.stripe_customer_id` first before creating a new customer, and copy it to the entity-specific profile (`trainer_profiles`, etc.) if not already set
+
+**Database migration:**
+```sql
+ALTER TABLE public.profiles ADD COLUMN stripe_customer_id TEXT;
+```
+
+## 2. Leverage Stripe Customer Portal
+
+**Where:** `TrainerSubscription.tsx`, `clubSubscription.ts`, `academySubscription.ts`
+
+The `customer-portal` edge function already exists and works. The frontend just never calls it.
+
+- **TrainerSubscription.tsx**: Replace the "Cancel Subscription" button with a "Manage Subscription" button that opens the Stripe Customer Portal (where users can cancel, change payment method, view invoices, etc.)
+- **Club/Academy subscription pages**: Add the same "Manage Subscription" button pattern
+- The portal handles cancellation, plan changes, payment method updates, and invoice history — no need for the separate `cancel-stripe-subscription` function from the frontend
+
+## 3. Use Stripe Coupon Codes Natively
+
+**Where:** `supabase/functions/create-stripe-checkout/index.ts`
+
+The current flow already creates a Stripe coupon from `user_discounts` data (lines 131-148). This works, but creates a new Stripe coupon object every checkout attempt.
+
+- Instead, when an admin creates a discount in `AdminUsers.tsx`, also create a persistent Stripe Coupon and store the coupon ID in `user_discounts.stripe_coupon_id`
+- In `create-stripe-checkout`, reference the existing coupon ID instead of creating a new one each time
+- Optionally support Stripe Promotion Codes so users can enter coupon codes at checkout
+
+**Database migration:**
+```sql
+ALTER TABLE public.user_discounts ADD COLUMN stripe_coupon_id TEXT;
+```
+
+---
+
+## Technical Details
+
+### Edge function changes
+| Function | Change |
+|---|---|
+| `signup-user` | Add Stripe customer creation after user creation |
+| `create-stripe-checkout` | Use `profiles.stripe_customer_id` as fallback; use stored coupon ID |
+| `customer-portal` | No changes needed — already complete |
+| `cancel-stripe-subscription` | Keep for API use but remove from main UI (portal handles it) |
+
+### Frontend changes
+| File | Change |
+|---|---|
+| `TrainerSubscription.tsx` | Replace "Cancel" with "Manage Subscription" → calls `customer-portal` |
+| Club/Academy subscription pages | Add "Manage Subscription" button |
+| `AdminUsers.tsx` | When creating discount, also create Stripe coupon and store ID |
+
+### Mollie stays unchanged
+All Mollie Connect logic for player booking payments (application fees) remains untouched.
+
