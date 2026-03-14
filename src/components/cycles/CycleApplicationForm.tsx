@@ -251,10 +251,30 @@ export default function CycleApplicationForm({
         });
 
         // Send registration confirmation email (non-blocking)
+        // Resolve owner name for the email
+        let ownerName: string | undefined;
+        try {
+          if (cycle.owner_type === 'academy') {
+            const { data: academy } = await supabase.from('academy_profiles').select('name').eq('id', cycle.owner_id).single();
+            ownerName = academy?.name || undefined;
+          } else if (cycle.owner_type === 'club') {
+            const { data: club } = await supabase.from('club_profiles').select('location_id').eq('id', cycle.owner_id).single();
+            if (club?.location_id) {
+              const { data: loc } = await supabase.from('locations').select('name').eq('id', club.location_id).single();
+              ownerName = loc?.name || undefined;
+            }
+          } else if (cycle.owner_type === 'trainer') {
+            const { data: tp } = await supabase.from('trainer_profiles').select('user_id').eq('id', cycle.owner_id).single();
+            if (tp?.user_id) {
+              const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', tp.user_id).single();
+              ownerName = prof?.full_name || undefined;
+            }
+          }
+        } catch {}
         sendEmail('intake_registration_confirmation', values.email, {
           playerName: values.full_name,
           cycleName: cycle.name,
-          ownerName: (cycle as any)._ownerName || undefined,
+          ownerName,
           confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
           language: i18n.language,
         }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
