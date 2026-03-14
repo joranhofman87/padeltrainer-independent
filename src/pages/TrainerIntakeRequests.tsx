@@ -117,10 +117,10 @@ export default function TrainerIntakeRequests() {
 
   // Auto-switch to schedule view when viewing proposed requests
   useEffect(() => {
-    if (statusFilter === 'proposed' && proposedCount > 0) {
+    if (statusFilter === 'proposed' && filteredRequests.some(r => r.status === 'proposed')) {
       setViewMode('schedule');
     }
-  }, [statusFilter]);
+  }, [statusFilter, filteredRequests]);
 
   const handleCycleChange = (value: string) => {
     setSelectedCycleId(value);
