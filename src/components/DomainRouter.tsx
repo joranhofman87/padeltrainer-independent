@@ -298,8 +298,15 @@ export function DomainRouter() {
           <Route path="about" element={<About />} />
           <Route path="blog" element={<Blog />} />
           <Route path="blog/:slug" element={<BlogPost />} />
-          <Route path="rules" element={<Rules />} />
-          <Route path="rules/:slug" element={<RulesPage />} />
+          <Route path="rules" element={<Navigate to="padel-rules" replace />} />
+          <Route path="rules/:slug" element={<Navigate to="../padel-rules/:slug" replace />} />
+          <Route path="padel-rules" element={<Rules />} />
+          <Route path="padel-rules/:slug" element={<RulesPage />} />
+          <Route path="padel-strokes" element={<Strokes />} />
+          <Route path="padel-strokes/:slug" element={<StrokePage />} />
+          <Route path="padel-coaches" element={<Coaches />} />
+          <Route path="padel-coaches/:slug" element={<CoachPage />} />
+          <Route path="video-tips/:slug" element={<VideoTipPage />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="terms" element={<Terms />} />
           <Route path="partner" element={<Partner />} />
