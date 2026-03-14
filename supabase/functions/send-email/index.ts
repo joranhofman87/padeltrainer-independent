@@ -72,7 +72,7 @@ interface EmailRequest {
 const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
 const BRAND_ORANGE = "#f45d25";
 
-const getEmailContent = (type: string, data: EmailRequest["data"]) => {
+const getEmailContent = (type: string, data: EmailRequest["data"], language?: string) => {
   switch (type) {
     case "booking_confirmation":
       return {
