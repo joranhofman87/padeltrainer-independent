@@ -239,6 +239,30 @@ export const VIDEO_TIPS_BY_TRAINER_QUERY = `*[_type == "videoTip" && trainer._re
   }
 }`;
 
+export const VIDEO_TIPS_LIST_QUERY = `*[_type == "videoTip" && !(_id in path("drafts.**"))] | order(isFeatured desc, datePublished desc) {
+  _id,
+  title,
+  "slug": slug.current,
+  videoUrl,
+  platform,
+  shortSummary,
+  thumbnailUrl,
+  isFeatured,
+  skillLevel,
+  tags,
+  datePublished,
+  "trainer": trainer-> {
+    _id,
+    name,
+    "slug": slug.current
+  },
+  "strokes": strokes[]-> {
+    _id,
+    title,
+    "slug": slug.current
+  }
+}`;
+
 export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
   _id,
   title,
