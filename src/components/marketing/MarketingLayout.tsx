@@ -201,9 +201,9 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
       {/* Footer */}
       <footer className="border-t bg-muted text-foreground">
         <div className="container mx-auto px-4 py-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
             {/* Brand */}
-            <div className="col-span-2 md:col-span-1">
+            <div className="col-span-2 md:col-span-3 lg:col-span-1">
               <LocalizedLink to="/" className="flex items-center gap-2 mb-4">
                 <Logo className="h-6" />
               </LocalizedLink>
@@ -231,6 +231,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               </div>
             </div>
 
+            {/* Platform */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.platform')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
@@ -238,36 +239,49 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/locations" className="hover:text-primary transition-colors">{t('footer.locations')}</LocalizedLink></li>
                 <li><LocalizedLink to="/academies" className="hover:text-primary transition-colors">{t('footer.academies', 'Academies')}</LocalizedLink></li>
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
-                <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
-                <li><LocalizedLink to="/padel-rules" className="hover:text-primary transition-colors">{t('nav.rules', 'Rules')}</LocalizedLink></li>
-                <li><LocalizedLink to="/padel-strokes" className="hover:text-primary transition-colors">{t('nav.strokes', 'Strokes')}</LocalizedLink></li>
-                <li><LocalizedLink to="/padel-coaches" className="hover:text-primary transition-colors">{t('footer.coaches', 'Coaches')}</LocalizedLink></li>
-                <li>
-                  <Link to={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link>
-                </li>
               </ul>
             </div>
 
+            {/* Learn Padel */}
+            <div>
+              <h4 className="font-semibold mb-4">{t('footer.learnPadel', 'Learn Padel')}</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><LocalizedLink to="/padel-rules" className="hover:text-primary transition-colors">{t('nav.rules', 'Rules')}</LocalizedLink></li>
+                <li><LocalizedLink to="/padel-strokes" className="hover:text-primary transition-colors">{t('nav.strokes', 'Strokes')}</LocalizedLink></li>
+                <li><LocalizedLink to="/padel-coaches" className="hover:text-primary transition-colors">{t('footer.coaches', 'Coaches')}</LocalizedLink></li>
+                <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
+              </ul>
+            </div>
+
+            {/* Popular Cities */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.popularCities')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><LocalizedLink to="/trainers/amsterdam" className="hover:text-primary transition-colors">Amsterdam</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/madrid" className="hover:text-primary transition-colors">Madrid</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/barcelona" className="hover:text-primary transition-colors">Barcelona</LocalizedLink></li>
                 <li><LocalizedLink to="/trainers/rotterdam" className="hover:text-primary transition-colors">Rotterdam</LocalizedLink></li>
-                <li><LocalizedLink to="/trainers/den-haag" className="hover:text-primary transition-colors">Den Haag</LocalizedLink></li>
-                <li><LocalizedLink to="/trainers/utrecht" className="hover:text-primary transition-colors">Utrecht</LocalizedLink></li>
-                <li><LocalizedLink to="/trainers/eindhoven" className="hover:text-primary transition-colors">Eindhoven</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/antwerpen" className="hover:text-primary transition-colors">Antwerpen</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/munchen" className="hover:text-primary transition-colors">München</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/koln" className="hover:text-primary transition-colors">Köln</LocalizedLink></li>
+                <li><LocalizedLink to="/trainers/valencia" className="hover:text-primary transition-colors">Valencia</LocalizedLink></li>
               </ul>
             </div>
 
+            {/* Company */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.company')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><LocalizedLink to="/about" className="hover:text-primary transition-colors">{t('footer.aboutUs')}</LocalizedLink></li>
                 <li><LocalizedLink to="/partner" className="hover:text-primary transition-colors">{t('footer.becomePartner')}</LocalizedLink></li>
                 <li><a href="mailto:hello@padeltrainer.ai" className="hover:text-primary transition-colors">{t('footer.contact')}</a></li>
+                <li>
+                  <Link to={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link>
+                </li>
               </ul>
             </div>
 
+            {/* Legal */}
             <div>
               <h4 className="font-semibold mb-4">{t('footer.legal')}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
