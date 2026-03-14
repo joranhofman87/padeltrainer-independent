@@ -119,19 +119,24 @@ export default function ClubSubscription() {
     }
   };
 
-  const handleCancelSubscription = async () => {
+  const handleManageSubscription = async () => {
     if (!activeClub) return;
     
     setActionLoading(true);
     try {
-      const result = await cancelClubSubscription(activeClub.id);
-      toast({
-        title: t("subscription.canceledTitle"),
-        description: result.message,
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      
+      const response = await supabase.functions.invoke("customer-portal", {
+        body: { type: "club", profileId: activeClub.id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      // Refresh subscription status
-      const sub = await checkClubSubscription(activeClub.id);
-      setSubscription(sub);
+      
+      if (response.error) throw new Error(response.error.message);
+      
+      if (response.data?.url) {
+        window.open(response.data.url, '_blank');
+      }
     } catch (error: any) {
       toast({
         title: t("common:error"),
