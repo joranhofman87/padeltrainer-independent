@@ -301,8 +301,11 @@ export default function AcademyIntakeRequests() {
         />
       ) : (
         <ProposalScheduleGrid
-          requests={filteredRequests}
-          onBlockClick={setSelectedRequest}
+          slots={scheduleSlots}
+          onPlayerClick={(intakeRequestId) => {
+            const req = requests.find(r => r.id === intakeRequestId);
+            if (req) setSelectedRequest(req);
+          }}
         />
       )}
 
