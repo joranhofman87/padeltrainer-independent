@@ -72,7 +72,7 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
         <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
           <div className="aspect-video bg-muted">
             <img
-              src={article.cover_image_url ? `${article.cover_image_url}?v=${article.cover_image_generated_at ? new Date(article.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'}
+              src={getImageUrl(article.mainImage, 600, 340)}
               alt={article.title}
               className="w-full h-full object-cover"
               loading="lazy"
@@ -89,8 +89,8 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
               {article.excerpt}
             </CardDescription>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
-              <span>{calculateReadTime(article.body_html)}</span>
+              <span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
+              <span>{calculateReadTime(article.body)}</span>
             </div>
           </CardContent>
         </Card>
