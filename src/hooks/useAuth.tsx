@@ -94,8 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Check trainer subscription status via Mollie
-      const { data, error } = await supabase.functions.invoke('check-mollie-subscription', {
+      // Check trainer subscription status via Stripe
+      const { data, error } = await supabase.functions.invoke('check-stripe-subscription', {
         body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session.access_token}`,

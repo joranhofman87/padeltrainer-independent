@@ -169,7 +169,7 @@ export default function TrainerSubscription() {
     setLoadingPortal(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('cancel-mollie-subscription', {
+      const { data, error } = await supabase.functions.invoke('cancel-stripe-subscription', {
         body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
