@@ -85,7 +85,7 @@ export default function AcademyIntakeRequests() {
   }, [requests, selectedCycleId, statusFilter]);
 
   useEffect(() => {
-    if (viewMode === 'grid' && selectedCycleId && selectedCycleId !== 'all') {
+    if (viewMode === 'schedule' && selectedCycleId && selectedCycleId !== 'all') {
       getAvailableSlotsForCycle(selectedCycleId)
         .then(setScheduleSlots)
         .catch(() => setScheduleSlots([]));
