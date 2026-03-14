@@ -14,10 +14,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
+  getAvailableSlotsForCycle,
   generateProposals,
   resetProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
+  type SlotWithOccupancy,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';

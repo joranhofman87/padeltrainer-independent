@@ -74,6 +74,32 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
 
   const [selectedDay, setSelectedDay] = useState<string>(availableDays[0] || '');
 
+  // Keep selectedDay in sync when availableDays changes
+  useMemo(() => {
+    if (availableDays.length > 0 && !availableDays.includes(selectedDay)) {
+      setSelectedDay(availableDays[0]);
+    }
+  }, [availableDays]);
+
+  const daySlots = dayGroups.get(selectedDay) || [];
+
+  // Group by trainer within the day
+  const trainerGroups = useMemo(() => {
+    const groups = new Map<string, { trainer: { id: string; name: string; avatar: string | null }; slots: SlotWithOccupancy[] }>();
+    daySlots.forEach(slot => {
+      const existing = groups.get(slot.trainer_id);
+      if (existing) {
+        existing.slots.push(slot);
+      } else {
+        groups.set(slot.trainer_id, {
+          trainer: { id: slot.trainer_id, name: slot.trainer_name, avatar: slot.trainer_avatar },
+          slots: [slot],
+        });
+      }
+    });
+    return Array.from(groups.values());
+  }, [daySlots]);
+
   if (slots.length === 0) {
     return (
       <Card>
