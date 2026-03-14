@@ -14,10 +14,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
+  getAvailableSlotsForCycle,
   generateProposals,
   resetProposals,
   type Cycle, 
   type IntakeRequestWithProposal,
+  type SlotWithOccupancy,
 } from '@/lib/cycles';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
@@ -47,6 +49,7 @@ export default function TrainerIntakeRequests() {
   const [viewMode, setViewMode] = useState<string>('list');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
 
   useEffect(() => {
     const fetchTrainerId = async () => {
@@ -96,6 +99,17 @@ export default function TrainerIntakeRequests() {
     }
     setFilteredRequests(filtered);
   }, [requests, selectedCycleId, statusFilter]);
+
+  // Fetch slots when switching to grid view for a selected cycle
+  useEffect(() => {
+    if (viewMode === 'grid' && selectedCycleId && selectedCycleId !== 'all') {
+      getAvailableSlotsForCycle(selectedCycleId)
+        .then(setScheduleSlots)
+        .catch(() => setScheduleSlots([]));
+    } else {
+      setScheduleSlots([]);
+    }
+  }, [viewMode, selectedCycleId, requests]);
 
   const handleCycleChange = (value: string) => {
     setSelectedCycleId(value);
@@ -309,8 +323,11 @@ export default function TrainerIntakeRequests() {
         />
       ) : (
         <ProposalScheduleGrid
-          requests={filteredRequests}
-          onBlockClick={setSelectedRequest}
+          slots={scheduleSlots}
+          onPlayerClick={(intakeRequestId) => {
+            const req = requests.find(r => r.id === intakeRequestId);
+            if (req) setSelectedRequest(req);
+          }}
         />
       )}
 
