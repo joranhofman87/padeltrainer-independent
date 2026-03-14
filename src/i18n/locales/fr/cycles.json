@@ -96,6 +96,9 @@
     "successMessage": "Message de succès",
     "successMessagePlaceholder": "ex. Merci pour votre inscription ! Nous vous contacterons dans les 2 jours.",
     "successMessageHelp": "Message personnalisé affiché aux joueurs après l'envoi du formulaire. Laissez vide pour le message par défaut.",
+    "confirmationEmailText": "Texte de l'e-mail de confirmation",
+    "confirmationEmailTextPlaceholder": "ex. L'entraînement commence le 1er mars. Apportez votre propre raquette.",
+    "confirmationEmailTextHelp": "Ce texte est inclus dans l'e-mail de confirmation envoyé aux joueurs après leur inscription. Laissez vide pour une confirmation standard.",
     "registrationAssignedTrainerHelp": "L'entraîneur qui donnera les cours pour cette inscription",
     "registrationApplicableTrainersHelp": "Quels entraîneurs peuvent être assignés à cette inscription"
   },

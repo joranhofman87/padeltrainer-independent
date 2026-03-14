@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
       locationId,
       notes,
       consentGiven,
+      language,
     } = await req.json();
 
     if (!email || !fullName || !cycleId) {
@@ -198,12 +199,15 @@ Deno.serve(async (req) => {
     }
 
     // Auto-follow and add to student list (non-blocking)
+    let cycleData: any = null;
     try {
       const { data: cycle } = await adminClient
         .from("cycles")
-        .select("owner_type, owner_id")
+        .select("owner_type, owner_id, name, settings")
         .eq("id", cycleId)
         .single();
+
+      cycleData = cycle;
 
       if (cycle) {
         if (cycle.owner_type === "trainer") {
@@ -267,6 +271,84 @@ Deno.serve(async (req) => {
         }
       } catch (emailErr) {
         console.error("Welcome email failed (non-blocking):", emailErr);
+      }
+    }
+
+    // Send registration confirmation email (non-blocking)
+    if (RESEND_API_KEY && cycleData) {
+      try {
+        // Resolve owner name
+        let ownerName = '';
+        if (cycleData.owner_type === 'academy') {
+          const { data: academy } = await adminClient
+            .from("academy_profiles")
+            .select("name")
+            .eq("id", cycleData.owner_id)
+            .single();
+          ownerName = academy?.name || '';
+        } else if (cycleData.owner_type === 'club') {
+          const { data: club } = await adminClient
+            .from("club_profiles")
+            .select("location_id")
+            .eq("id", cycleData.owner_id)
+            .single();
+          if (club?.location_id) {
+            const { data: location } = await adminClient
+              .from("locations")
+              .select("name")
+              .eq("id", club.location_id)
+              .single();
+            ownerName = location?.name || '';
+          }
+        } else if (cycleData.owner_type === 'trainer') {
+          const { data: trainer } = await adminClient
+            .from("trainer_profiles")
+            .select("user_id")
+            .eq("id", cycleData.owner_id)
+            .single();
+          if (trainer?.user_id) {
+            const { data: profile } = await adminClient
+              .from("profiles")
+              .select("full_name")
+              .eq("user_id", trainer.user_id)
+              .single();
+            ownerName = profile?.full_name || '';
+          }
+        }
+
+        const settings = cycleData.settings || {};
+        const confirmationText = settings.confirmation_email_text || '';
+
+        // Invoke send-email edge function using service role
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+        const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            type: "intake_registration_confirmation",
+            to: email,
+            language: language || 'en',
+            data: {
+              playerName: fullName,
+              cycleName: cycleData.name,
+              ownerName,
+              confirmationText,
+            },
+          }),
+        });
+
+        if (!sendRes.ok) {
+          console.error("Registration confirmation email failed:", await sendRes.text());
+        } else {
+          console.log(`Registration confirmation email sent to ${email}`);
+        }
+      } catch (confErr) {
+        console.error("Confirmation email failed (non-blocking):", confErr);
       }
     }
 

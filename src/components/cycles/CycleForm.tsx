@@ -153,6 +153,7 @@ export default function CycleForm({
     total_price: z.coerce.number().min(0).optional().or(z.literal('')),
     currency: z.string().default('EUR'),
     success_message: z.string().optional().default(''),
+    confirmation_email_text: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
     message: 'Min group size must be ≤ max group size',
     path: ['min_group_size'],
@@ -185,6 +186,7 @@ export default function CycleForm({
       total_price: cycle?.total_price ?? '',
       currency: cycle?.currency || 'EUR',
       success_message: (cycle?.settings as any)?.success_message || '',
+      confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
     },
   });
 
@@ -214,6 +216,7 @@ export default function CycleForm({
         total_price: cycle?.total_price ?? '',
         currency: cycle?.currency || 'EUR',
         success_message: (cycle?.settings as any)?.success_message || '',
+        confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       const settings = cycle?.settings as any;
@@ -312,6 +315,7 @@ export default function CycleForm({
         payment_methods: isEvent ? eventPaymentMethod : undefined,
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
         success_message: values.success_message?.trim() || undefined,
+        confirmation_email_text: values.confirmation_email_text?.trim() || undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -456,6 +460,30 @@ export default function CycleForm({
                     </FormControl>
                     <FormDescription className="text-xs">
                       {t('form.successMessageHelp', 'Custom message shown to players after they submit the form. Leave empty for the default message.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Confirmation email text - included in registration confirmation email */}
+            {(isRegistration || isEvent) && (
+              <FormField
+                control={form.control}
+                name="confirmation_email_text"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.confirmationEmailText', 'Confirmation Email Text')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder={t('form.confirmationEmailTextPlaceholder', 'e.g. Training starts on March 1st. Please bring your own racket.')}
+                        rows={3}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.confirmationEmailTextHelp', 'This text is included in the confirmation email sent to players after they register. Leave empty to send a standard confirmation.')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

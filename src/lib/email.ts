@@ -24,7 +24,8 @@ export type EmailType =
   | "academy_trainer_invitation_accepted"
   | "partner_inquiry"
   | "location_request"
-  | "payment_reminder";
+  | "payment_reminder"
+  | "intake_registration_confirmation";
 
 export interface EmailData {
   playerName?: string;
@@ -68,6 +69,10 @@ export interface EmailData {
   // Payment reminder fields
   totalAmount?: number;
   unpaidSessions?: string;
+  // Intake registration confirmation fields
+  cycleName?: string;
+  confirmationText?: string;
+  language?: string;
 }
 
 /**
@@ -89,7 +94,7 @@ export const sendEmail = async (
     }
 
     const { data: response, error } = await supabase.functions.invoke("send-email", {
-      body: { type, to, data },
+      body: { type, to, data, language: data.language },
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },

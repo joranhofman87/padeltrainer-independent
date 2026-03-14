@@ -32,6 +32,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
 import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod } from '@/lib/cycles';
+import { sendEmail } from '@/lib/email';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -82,7 +83,7 @@ export default function CycleApplicationForm({
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<{ code: string; name: string }[]>([]);
@@ -221,6 +222,7 @@ export default function CycleApplicationForm({
             locationId: values.location_id || null,
             notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
+            language: i18n.language,
           },
         });
 
@@ -247,6 +249,35 @@ export default function CycleApplicationForm({
           notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
         });
+
+        // Send registration confirmation email (non-blocking)
+        // Resolve owner name for the email
+        let ownerName: string | undefined;
+        try {
+          if (cycle.owner_type === 'academy') {
+            const { data: academy } = await supabase.from('academy_profiles').select('name').eq('id', cycle.owner_id).single();
+            ownerName = academy?.name || undefined;
+          } else if (cycle.owner_type === 'club') {
+            const { data: club } = await supabase.from('club_profiles').select('location_id').eq('id', cycle.owner_id).single();
+            if (club?.location_id) {
+              const { data: loc } = await supabase.from('locations').select('name').eq('id', club.location_id).single();
+              ownerName = loc?.name || undefined;
+            }
+          } else if (cycle.owner_type === 'trainer') {
+            const { data: tp } = await supabase.from('trainer_profiles').select('user_id').eq('id', cycle.owner_id).single();
+            if (tp?.user_id) {
+              const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', tp.user_id).single();
+              ownerName = prof?.full_name || undefined;
+            }
+          }
+        } catch {}
+        sendEmail('intake_registration_confirmation', values.email, {
+          playerName: values.full_name,
+          cycleName: cycle.name,
+          ownerName,
+          confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
+          language: i18n.language,
+        }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
 
         // Update player profile if rating/phone/birth_date changed
         const profileUpdates: Record<string, any> = {};

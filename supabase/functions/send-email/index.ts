@@ -13,6 +13,7 @@ interface EmailRequest {
   type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation";
   to: string;
   userId?: string;
+  language?: string;
   data: {
     playerName?: string;
     playerEmail?: string;
@@ -62,13 +63,16 @@ interface EmailRequest {
     totalAmount?: number;
     unpaidSessions?: string;
     cycleName?: string;
+    // Intake registration confirmation fields
+    confirmationText?: string;
+    isNewUser?: boolean;
   };
 }
 
 const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
 const BRAND_ORANGE = "#f45d25";
 
-const getEmailContent = (type: string, data: EmailRequest["data"]) => {
+const getEmailContent = (type: string, data: EmailRequest["data"], language?: string) => {
   switch (type) {
     case "booking_confirmation":
       return {
@@ -613,30 +617,71 @@ const getEmailContent = (type: string, data: EmailRequest["data"]) => {
         `,
       };
 
-    case "intake_registration_confirmation":
+    case "intake_registration_confirmation": {
+      const lang = language || 'en';
+      const translations: Record<string, { subject: string; greeting: string; intro: string; footer: string; regards: string }> = {
+        en: {
+          subject: `Registration Confirmed: ${data.cycleName || 'Training'} 🎾`,
+          greeting: `Hi ${data.playerName},`,
+          intro: `Your registration for <strong>${data.cycleName || 'training'}</strong>${data.ownerName ? ` at <strong>${data.ownerName}</strong>` : ''} has been received.`,
+          footer: `If you have any questions, ${data.ownerName ? `contact ${data.ownerName} directly` : 'contact your trainer or academy directly'}.`,
+          regards: 'Best regards,',
+        },
+        nl: {
+          subject: `Inschrijving bevestigd: ${data.cycleName || 'Training'} 🎾`,
+          greeting: `Hoi ${data.playerName},`,
+          intro: `Je inschrijving voor <strong>${data.cycleName || 'training'}</strong>${data.ownerName ? ` bij <strong>${data.ownerName}</strong>` : ''} is ontvangen.`,
+          footer: `Heb je vragen? ${data.ownerName ? `Neem dan contact op met ${data.ownerName}` : 'Neem contact op met je trainer of academy'}.`,
+          regards: 'Met sportieve groet,',
+        },
+        es: {
+          subject: `Inscripción confirmada: ${data.cycleName || 'Entrenamiento'} 🎾`,
+          greeting: `Hola ${data.playerName},`,
+          intro: `Tu inscripción para <strong>${data.cycleName || 'entrenamiento'}</strong>${data.ownerName ? ` en <strong>${data.ownerName}</strong>` : ''} ha sido recibida.`,
+          footer: `Si tienes preguntas, ${data.ownerName ? `contacta con ${data.ownerName} directamente` : 'contacta con tu entrenador o academia'}.`,
+          regards: 'Un saludo,',
+        },
+        de: {
+          subject: `Anmeldung bestätigt: ${data.cycleName || 'Training'} 🎾`,
+          greeting: `Hallo ${data.playerName},`,
+          intro: `Deine Anmeldung für <strong>${data.cycleName || 'Training'}</strong>${data.ownerName ? ` bei <strong>${data.ownerName}</strong>` : ''} wurde empfangen.`,
+          footer: `Bei Fragen ${data.ownerName ? `wende dich direkt an ${data.ownerName}` : 'wende dich an deinen Trainer oder deine Akademie'}.`,
+          regards: 'Sportliche Grüße,',
+        },
+        fr: {
+          subject: `Inscription confirmée : ${data.cycleName || 'Entraînement'} 🎾`,
+          greeting: `Bonjour ${data.playerName},`,
+          intro: `Votre inscription pour <strong>${data.cycleName || 'entraînement'}</strong>${data.ownerName ? ` chez <strong>${data.ownerName}</strong>` : ''} a été reçue.`,
+          footer: `Si vous avez des questions, ${data.ownerName ? `contactez ${data.ownerName} directement` : 'contactez votre entraîneur ou académie'}.`,
+          regards: 'Cordialement,',
+        },
+      };
+      const t = translations[lang] || translations.en;
+      const confirmationSection = data.confirmationText
+        ? `<div style="background: #fff7ed; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${BRAND_ORANGE};">
+             <p style="margin: 0; white-space: pre-line;">${data.confirmationText}</p>
+           </div>`
+        : '';
+
       return {
-        subject: `Registration Confirmed${data.cycleName ? `: ${data.cycleName}` : ''} 🎾`,
+        subject: t.subject,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             ${EMAIL_LOGO}
-            <h1 style="color: ${BRAND_ORANGE};">You've Been Registered! 🎾</h1>
-            <p>Hi ${data.playerName},</p>
-            <p>You have been registered for a training program${data.cycleName ? `: <strong>${data.cycleName}</strong>` : ''}.</p>
+            <h1 style="color: ${BRAND_ORANGE};">🎾</h1>
+            <p>${t.greeting}</p>
+            <p>${t.intro}</p>
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               ${data.cycleName ? `<h3 style="margin-top: 0;">${data.cycleName}</h3>` : ''}
-              <p>Your registration has been submitted and you'll be contacted with further details about your training schedule.</p>
+              ${data.ownerName ? `<p><strong>${data.ownerName}</strong></p>` : ''}
             </div>
-            ${(data as any).isNewUser ? `
-              <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${BRAND_ORANGE};">
-                <p style="margin: 0 0 8px 0; font-weight: bold;">An account has been created for you</p>
-                <p style="margin: 0;">You can log in at <a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE};">padeltrainer.ai</a> using your email address. Use "Forgot password" to set your own password.</p>
-              </div>
-            ` : ''}
-            <p>If you have any questions, please contact your trainer or academy directly.</p>
-            <p>Best regards,<br>PadelTrainer.ai Team</p>
+            ${confirmationSection}
+            <p>${t.footer}</p>
+            <p>${t.regards}<br>PadelTrainer.ai Team</p>
           </div>
         `,
       };
+    }
 
     default:
       return {
@@ -792,7 +837,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     // Verify authentication (except for partner_inquiry which is public)
     const authHeader = req.headers.get("Authorization");
-    const { type, to, data }: EmailRequest = await req.json();
+    const { type, to, data, language }: EmailRequest = await req.json();
     
     // Allow partner_inquiry and location_request without auth (public forms)
     const isPublicForm = type === "partner_inquiry" || type === "location_request";
@@ -963,7 +1008,7 @@ const handler = async (req: Request): Promise<Response> => {
             .insert({
               user_id: recipientUserId,
               notification_type: prefColumn,
-              payload: { type, to, data, subject: getEmailContent(type, data).subject },
+              payload: { type, to, data, language, subject: getEmailContent(type, data, language).subject },
               scheduled_for: frequency,
             });
 
@@ -981,7 +1026,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    const { subject, html: emailHtml } = getEmailContent(type, data);
+    const { subject, html: emailHtml } = getEmailContent(type, data, language);
 
     // Add manage notifications footer (except for system emails)
     let finalHtml = emailHtml;

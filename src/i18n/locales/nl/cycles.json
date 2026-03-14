@@ -98,6 +98,9 @@
     "successMessage": "Succesbericht",
     "successMessagePlaceholder": "bijv. Bedankt voor je aanmelding! We nemen binnen 2 dagen contact met je op.",
     "successMessageHelp": "Eigen bericht dat spelers zien nadat ze het formulier hebben ingestuurd. Laat leeg voor het standaard bericht.",
+    "confirmationEmailText": "Bevestigingsmail tekst",
+    "confirmationEmailTextPlaceholder": "bijv. De training begint op 1 maart. Neem je eigen racket mee.",
+    "confirmationEmailTextHelp": "Deze tekst wordt opgenomen in de bevestigingsmail die spelers ontvangen na inschrijving. Laat leeg voor een standaard bevestiging.",
     "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
     "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving"
   },
