@@ -239,6 +239,9 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/academies" className="hover:text-primary transition-colors">{t('footer.academies', 'Academies')}</LocalizedLink></li>
                 <li><LocalizedLink to="/pricing" className="hover:text-primary transition-colors">{t('nav.pricing')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
+                <li><LocalizedLink to="/padel-rules" className="hover:text-primary transition-colors">{t('nav.rules', 'Rules')}</LocalizedLink></li>
+                <li><LocalizedLink to="/padel-strokes" className="hover:text-primary transition-colors">{t('nav.strokes', 'Strokes')}</LocalizedLink></li>
+                <li><LocalizedLink to="/padel-coaches" className="hover:text-primary transition-colors">{t('footer.coaches', 'Coaches')}</LocalizedLink></li>
                 <li>
                   <Link to={getAppUrl('/signup/club')} className="hover:text-primary transition-colors">{t('footer.registerClub', 'Register your club')}</Link>
                 </li>
