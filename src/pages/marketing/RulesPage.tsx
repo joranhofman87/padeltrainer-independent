@@ -118,7 +118,7 @@ export default function RulesPage() {
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
         <Button variant="ghost" asChild>
-          <LocalizedLink to="/rules" className="flex items-center gap-2">
+          <LocalizedLink to="/padel-rules" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t('rules.backToRules', 'Back to Rules')}
           </LocalizedLink>
