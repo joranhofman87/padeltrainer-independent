@@ -740,6 +740,13 @@ export default function CycleApplicationForm({
           onAcceptChange={setTermsAccepted}
         />
 
+        {/* Validation error summary near submit button */}
+        {Object.keys(form.formState.errors).length > 0 && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {t('application.form.validationErrors', 'Please fill in all required fields above before submitting.')}
+          </div>
+        )}
+
         {/* Submit */}
         <div className="flex gap-3">
           {onCancel && (
