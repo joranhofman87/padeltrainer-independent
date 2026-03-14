@@ -27,6 +27,8 @@ const Pricing = lazy(() => import('@/pages/marketing/Pricing'));
 const About = lazy(() => import('@/pages/marketing/About'));
 const Blog = lazy(() => import('@/pages/marketing/Blog'));
 const BlogPost = lazy(() => import('@/pages/marketing/BlogPost'));
+const Rules = lazy(() => import('@/pages/marketing/Rules'));
+const RulesPage = lazy(() => import('@/pages/marketing/RulesPage'));
 const Privacy = lazy(() => import('@/pages/marketing/Privacy'));
 const Terms = lazy(() => import('@/pages/marketing/Terms'));
 const Partner = lazy(() => import('@/pages/marketing/Partner'));
