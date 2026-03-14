@@ -7,14 +7,17 @@ const corsHeaders = {
 
 const SITE_URL = 'https://padeltrainer.ai';
 const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
+const SITEMAP_BASE_URL = `${SITE_URL}/sitemaps`;
+const LOCATIONS_PER_PAGE = 5000; // 5000 locations × 5 langs = 25000 URLs per file (under 50K limit)
+const CITIES_PER_PAGE = 5000;
 
-// Helper to fetch all rows (handles >1000 limit)
 // deno-lint-ignore no-explicit-any
 async function fetchAllRows<T>(
   supabase: any,
   table: string,
   selectColumns: string,
-  filters?: { column: string; operator: string; value: boolean | string | number }[]
+  filters?: { column: string; operator: string; value: boolean | string | number }[],
+  orderBy?: string
 ): Promise<T[]> {
   const allRows: T[] = [];
   const pageSize = 1000;
@@ -35,13 +38,12 @@ async function fetchAllRows<T>(
       }
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(`Error fetching ${table}:`, error);
-      break;
+    if (orderBy) {
+      query = query.order(orderBy);
     }
 
+    const { data, error } = await query;
+    if (error) { console.error(`Error fetching ${table}:`, error); break; }
     if (data) {
       allRows.push(...(data as T[]));
       hasMore = data.length === pageSize;
@@ -50,8 +52,58 @@ async function fetchAllRows<T>(
       hasMore = false;
     }
   }
-
   return allRows;
+}
+
+function xmlHeader(): string {
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n';
+}
+
+function generateUrlEntry(path: string, lastmod: string, changefreq: string, priority: string): string {
+  let entry = '';
+  for (const lang of LANGUAGES) {
+    const fullUrl = `${SITE_URL}/${lang}${path}`;
+    entry += '  <url>\n';
+    entry += `    <loc>${fullUrl}</loc>\n`;
+    entry += `    <lastmod>${lastmod}</lastmod>\n`;
+    entry += `    <changefreq>${changefreq}</changefreq>\n`;
+    entry += `    <priority>${priority}</priority>\n`;
+    for (const altLang of LANGUAGES) {
+      entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${path}"/>\n`;
+    }
+    entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${path}"/>\n`;
+    entry += '  </url>\n';
+  }
+  return entry;
+}
+
+function generateBlogEntries(blogArticles: { slug: string; locale: string; canonical_id: string; published_at: string | null; updated_at: string | null }[], today: string): string {
+  let xml = '';
+  const articlesByCanonical = new Map<string, typeof blogArticles>();
+  for (const article of blogArticles) {
+    const group = articlesByCanonical.get(article.canonical_id) || [];
+    group.push(article);
+    articlesByCanonical.set(article.canonical_id, group);
+  }
+
+  for (const [, group] of articlesByCanonical) {
+    for (const article of group) {
+      const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
+      const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
+      xml += '  <url>\n';
+      xml += `    <loc>${articleUrl}</loc>\n`;
+      xml += `    <lastmod>${lastmod}</lastmod>\n`;
+      xml += `    <changefreq>weekly</changefreq>\n`;
+      xml += `    <priority>0.7</priority>\n`;
+      for (const alt of group) {
+        xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${alt.slug}"/>\n`;
+      }
+      const nlVersion = group.find(a => a.locale === 'nl') || group[0];
+      xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${nlVersion.slug}"/>\n`;
+      xml += '  </url>\n';
+    }
+  }
+  return xml;
 }
 
 Deno.serve(async (req) => {
@@ -60,192 +112,183 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const url = new URL(req.url);
+    const type = url.searchParams.get('type') || 'index';
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Static pages with their priorities and change frequencies
-    const staticPages = [
-      { path: '', priority: '1.0', changefreq: 'daily' },
-      { path: '/about', priority: '0.8', changefreq: 'monthly' },
-      { path: '/pricing', priority: '0.9', changefreq: 'weekly' },
-      { path: '/trainers', priority: '0.9', changefreq: 'daily' },
-      { path: '/locations', priority: '0.8', changefreq: 'daily' },
-      { path: '/academies', priority: '0.8', changefreq: 'weekly' },
-      { path: '/blog', priority: '0.7', changefreq: 'weekly' },
-      { path: '/partner', priority: '0.6', changefreq: 'monthly' },
-      { path: '/terms', priority: '0.3', changefreq: 'yearly' },
-      { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
-    ];
-
-    // Fetch all trainers with public profiles (use slug for SEO-friendly URLs)
-    const { data: trainers, error: trainersError } = await supabase
-      .from('trainer_profiles')
-      .select('user_id, slug, updated_at');
-
-    if (trainersError) {
-      console.error('Error fetching trainers:', trainersError);
-    }
-
-    // Fetch all active locations (with pagination for >1000 rows)
-    const locations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
-      supabase,
-      'locations',
-      'slug, city, updated_at',
-      [{ column: 'is_active', operator: 'eq', value: true }]
-    );
-
-    // Fetch all verified public academies
-    const { data: academies, error: academiesError } = await supabase
-      .from('academy_profiles')
-      .select('slug, updated_at')
-      .eq('is_verified', true)
-      .eq('is_public', true);
-
-    if (academiesError) {
-      console.error('Error fetching academies:', academiesError);
-    }
-
-    // Extract unique cities and create slugs (deduplicated, case-insensitive)
-    // URL-encode special characters like apostrophes
-    const cityMap = new Map<string, string>();
-    locations?.forEach(loc => {
-      const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
-      if (!cityMap.has(citySlug)) {
-        cityMap.set(citySlug, loc.city);
-      }
-    });
-    const uniqueCitySlugs = Array.from(cityMap.keys());
-
     const today = new Date().toISOString().split('T')[0];
+    let xml = '';
 
-    // Build sitemap XML with xhtml namespace for hreflang
-    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n';
+    if (type === 'index') {
+      // Count locations and cities to determine pagination
+      const locations = await fetchAllRows<{ slug: string; city: string }>(
+        supabase, 'locations', 'slug, city', [{ column: 'is_active', operator: 'eq', value: true }]
+      );
+      const cityMap = new Map<string, boolean>();
+      locations.forEach(loc => {
+        const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
+        cityMap.set(citySlug, true);
+      });
 
-    // Helper function to generate URL entry with hreflang links
-    const generateUrlEntry = (path: string, lastmod: string, changefreq: string, priority: string) => {
-      let entry = '';
-      for (const lang of LANGUAGES) {
-        const fullUrl = `${SITE_URL}/${lang}${path}`;
-        entry += '  <url>\n';
-        entry += `    <loc>${fullUrl}</loc>\n`;
-        entry += `    <lastmod>${lastmod}</lastmod>\n`;
-        entry += `    <changefreq>${changefreq}</changefreq>\n`;
-        entry += `    <priority>${priority}</priority>\n`;
-        // Add hreflang links for all languages
-        for (const altLang of LANGUAGES) {
-          entry += `    <xhtml:link rel="alternate" hreflang="${altLang}" href="${SITE_URL}/${altLang}${path}"/>\n`;
+      const locationPages = Math.ceil(locations.length / LOCATIONS_PER_PAGE);
+      const cityPages = Math.ceil(cityMap.size / CITIES_PER_PAGE);
+
+      xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      xml += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+      // Static sitemap (static pages + trainers + academies + blog)
+      xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-static.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
+
+      // Location sitemaps (paginated)
+      for (let i = 1; i <= locationPages; i++) {
+        xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-locations-${i}.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
+      }
+
+      // City sitemaps (paginated)
+      for (let i = 1; i <= cityPages; i++) {
+        xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-cities-${i}.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
+      }
+
+      // Provinces sitemap
+      xml += `  <sitemap>\n    <loc>${SITEMAP_BASE_URL}/sitemap-provinces.xml</loc>\n    <lastmod>${today}</lastmod>\n  </sitemap>\n`;
+
+      xml += '</sitemapindex>';
+
+    } else if (type === 'static') {
+      xml = xmlHeader();
+
+      const staticPages = [
+        { path: '', priority: '1.0', changefreq: 'daily' },
+        { path: '/about', priority: '0.8', changefreq: 'monthly' },
+        { path: '/pricing', priority: '0.9', changefreq: 'weekly' },
+        { path: '/trainers', priority: '0.9', changefreq: 'daily' },
+        { path: '/locations', priority: '0.8', changefreq: 'daily' },
+        { path: '/academies', priority: '0.8', changefreq: 'weekly' },
+        { path: '/blog', priority: '0.7', changefreq: 'weekly' },
+        { path: '/partner', priority: '0.6', changefreq: 'monthly' },
+        { path: '/terms', priority: '0.3', changefreq: 'yearly' },
+        { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
+      ];
+
+      for (const p of staticPages) {
+        xml += generateUrlEntry(p.path, today, p.changefreq, p.priority);
+      }
+
+      // Trainers
+      const { data: trainers } = await supabase
+        .from('trainer_profiles')
+        .select('user_id, slug, updated_at');
+
+      if (trainers) {
+        for (const trainer of trainers) {
+          const lastmod = trainer.updated_at ? new Date(trainer.updated_at).toISOString().split('T')[0] : today;
+          xml += generateUrlEntry(`/trainer/${trainer.slug || trainer.user_id}`, lastmod, 'weekly', '0.7');
         }
-        // Add x-default pointing to Dutch
-        entry += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${path}"/>\n`;
-        entry += '  </url>\n';
       }
-      return entry;
-    };
 
-    // Add static pages (for each language)
-    for (const page of staticPages) {
-      xml += generateUrlEntry(page.path, today, page.changefreq, page.priority);
-    }
+      // Academies
+      const { data: academies } = await supabase
+        .from('academy_profiles')
+        .select('slug, updated_at')
+        .eq('is_verified', true)
+        .eq('is_public', true);
 
-    // Add trainer profile pages (for each language)
-    if (trainers) {
-      for (const trainer of trainers) {
-        const lastmod = trainer.updated_at 
-          ? new Date(trainer.updated_at).toISOString().split('T')[0] 
-          : today;
-        xml += generateUrlEntry(`/trainer/${trainer.slug || trainer.user_id}`, lastmod, 'weekly', '0.7');
+      if (academies) {
+        for (const academy of academies) {
+          const lastmod = academy.updated_at ? new Date(academy.updated_at).toISOString().split('T')[0] : today;
+          xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
+        }
       }
-    }
 
-    // Add location pages (for each language)
-    if (locations) {
-      for (const location of locations) {
-        const lastmod = location.updated_at 
-          ? new Date(location.updated_at).toISOString().split('T')[0] 
-          : today;
+      // Blog
+      const { data: blogArticles } = await supabase
+        .from('articles')
+        .select('slug, locale, canonical_id, published_at, updated_at')
+        .eq('status', 'published');
+
+      if (blogArticles) {
+        xml += generateBlogEntries(blogArticles, today);
+      }
+
+      xml += '</urlset>';
+
+    } else if (type === 'locations') {
+      xml = xmlHeader();
+
+      const allLocations = await fetchAllRows<{ slug: string; city: string; updated_at: string }>(
+        supabase, 'locations', 'slug, city, updated_at',
+        [{ column: 'is_active', operator: 'eq', value: true }],
+        'slug'
+      );
+
+      const start = (page - 1) * LOCATIONS_PER_PAGE;
+      const pageLocations = allLocations.slice(start, start + LOCATIONS_PER_PAGE);
+
+      for (const location of pageLocations) {
+        const lastmod = location.updated_at ? new Date(location.updated_at).toISOString().split('T')[0] : today;
         xml += generateUrlEntry(`/locations/${location.slug}`, lastmod, 'weekly', '0.6');
       }
-    }
 
-    // Add city landing pages for SEO (for each language)
-    for (const citySlug of uniqueCitySlugs) {
-      xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
-    }
+      xml += '</urlset>';
 
-    // Province/region landing pages
-    const provinceSlugs = [
-      'noord-holland', 'zuid-holland', 'noord-brabant', 'gelderland', 'utrecht',
-      'overijssel', 'limburg', 'friesland', 'groningen', 'drenthe', 'flevoland', 'zeeland',
-      'antwerpen', 'vlaams-brabant', 'oost-vlaanderen', 'west-vlaanderen',
-      'cataluna', 'comunidad-de-madrid', 'comunidad-valenciana', 'andalucia',
-      'nordrhein-westfalen', 'bayern', 'baden-wurttemberg'
-    ];
-    for (const provinceSlug of provinceSlugs) {
-      xml += generateUrlEntry(`/trainers/region/${provinceSlug}`, today, 'weekly', '0.7');
-    }
+    } else if (type === 'cities') {
+      xml = xmlHeader();
 
-    // Add academy profile pages (for each language)
-    if (academies) {
-      for (const academy of academies) {
-        const lastmod = academy.updated_at 
-          ? new Date(academy.updated_at).toISOString().split('T')[0] 
-          : today;
-        xml += generateUrlEntry(`/academies/${academy.slug}`, lastmod, 'weekly', '0.7');
-      }
-    }
+      const allLocations = await fetchAllRows<{ city: string }>(
+        supabase, 'locations', 'city',
+        [{ column: 'is_active', operator: 'eq', value: true }]
+      );
 
-    // Fetch published blog articles for sitemap
-    const { data: blogArticles } = await supabase
-      .from('articles')
-      .select('slug, locale, canonical_id, published_at, updated_at')
-      .eq('status', 'published');
+      const cityMap = new Map<string, string>();
+      allLocations.forEach(loc => {
+        const citySlug = encodeURIComponent(loc.city.toLowerCase().replace(/\s+/g, '-'));
+        if (!cityMap.has(citySlug)) cityMap.set(citySlug, loc.city);
+      });
 
-    if (blogArticles) {
-      // Group articles by canonical_id to generate hreflang links between translations
-      const articlesByCanonical = new Map<string, typeof blogArticles>();
-      for (const article of blogArticles) {
-        const group = articlesByCanonical.get(article.canonical_id) || [];
-        group.push(article);
-        articlesByCanonical.set(article.canonical_id, group);
+      const allCitySlugs = Array.from(cityMap.keys()).sort();
+      const start = (page - 1) * CITIES_PER_PAGE;
+      const pageCities = allCitySlugs.slice(start, start + CITIES_PER_PAGE);
+
+      for (const citySlug of pageCities) {
+        xml += generateUrlEntry(`/trainers/${citySlug}`, today, 'weekly', '0.8');
       }
 
-      for (const [, group] of articlesByCanonical) {
-        for (const article of group) {
-          const lastmod = (article.updated_at || article.published_at || today).split('T')[0];
-          const articleUrl = `${SITE_URL}/${article.locale}/blog/${article.slug}`;
-          xml += '  <url>\n';
-          xml += `    <loc>${articleUrl}</loc>\n`;
-          xml += `    <lastmod>${lastmod}</lastmod>\n`;
-          xml += `    <changefreq>weekly</changefreq>\n`;
-          xml += `    <priority>0.7</priority>\n`;
-          // Add hreflang links to all translations of this article
-          for (const alt of group) {
-            xml += `    <xhtml:link rel="alternate" hreflang="${alt.locale}" href="${SITE_URL}/${alt.locale}/blog/${alt.slug}"/>\n`;
-          }
-          // x-default points to Dutch version if available, otherwise first
-          const nlVersion = group.find(a => a.locale === 'nl') || group[0];
-          xml += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.locale}/blog/${nlVersion.slug}"/>\n`;
-          xml += '  </url>\n';
-        }
-      }
-    }
+      xml += '</urlset>';
 
-    xml += '</urlset>';
+    } else if (type === 'provinces') {
+      xml = xmlHeader();
+
+      const provinceSlugs = [
+        'noord-holland', 'zuid-holland', 'noord-brabant', 'gelderland', 'utrecht',
+        'overijssel', 'limburg', 'friesland', 'groningen', 'drenthe', 'flevoland', 'zeeland',
+        'antwerpen', 'vlaams-brabant', 'oost-vlaanderen', 'west-vlaanderen',
+        'cataluna', 'comunidad-de-madrid', 'comunidad-valenciana', 'andalucia',
+        'nordrhein-westfalen', 'bayern', 'baden-wurttemberg'
+      ];
+
+      for (const provinceSlug of provinceSlugs) {
+        xml += generateUrlEntry(`/trainers/region/${provinceSlug}`, today, 'weekly', '0.7');
+      }
+
+      xml += '</urlset>';
+
+    } else {
+      return new Response('Invalid type parameter', { status: 400, headers: corsHeaders });
+    }
 
     return new Response(xml, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/xml',
-        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+        'Cache-Control': 'public, max-age=3600',
       },
     });
   } catch (error) {
     console.error('Error generating sitemap:', error);
-    return new Response('Error generating sitemap', {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return new Response('Error generating sitemap', { status: 500, headers: corsHeaders });
   }
 });
