@@ -307,6 +307,7 @@ export function DomainRouter() {
           <Route path="padel-strokes/:slug" element={<StrokePage />} />
           <Route path="padel-coaches" element={<Coaches />} />
           <Route path="padel-coaches/:slug" element={<CoachPage />} />
+          <Route path="video-tips" element={<VideoTips />} />
           <Route path="video-tips/:slug" element={<VideoTipPage />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="terms" element={<Terms />} />

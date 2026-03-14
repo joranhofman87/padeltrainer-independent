@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
         { path: '/padel-rules', priority: '0.7', changefreq: 'weekly' },
         { path: '/padel-strokes', priority: '0.7', changefreq: 'weekly' },
         { path: '/padel-coaches', priority: '0.7', changefreq: 'weekly' },
+        { path: '/video-tips', priority: '0.7', changefreq: 'weekly' },
         { path: '/terms', priority: '0.3', changefreq: 'yearly' },
         { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
       ];

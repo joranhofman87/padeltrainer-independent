@@ -249,6 +249,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/padel-rules" className="hover:text-primary transition-colors">{t('nav.rules', 'Rules')}</LocalizedLink></li>
                 <li><LocalizedLink to="/padel-strokes" className="hover:text-primary transition-colors">{t('nav.strokes', 'Strokes')}</LocalizedLink></li>
                 <li><LocalizedLink to="/padel-coaches" className="hover:text-primary transition-colors">{t('footer.coaches', 'Coaches')}</LocalizedLink></li>
+                <li><LocalizedLink to="/video-tips" className="hover:text-primary transition-colors">{t('footer.videoTips', 'Video Tips')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
               </ul>
             </div>

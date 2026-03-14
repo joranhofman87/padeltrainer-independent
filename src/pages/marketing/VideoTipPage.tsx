@@ -96,15 +96,34 @@ export default function VideoTipPage() {
             {video.tags?.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}
           </div>
 
-          {/* Thumbnail + watch */}
-          {video.thumbnailUrl && (
-            <div className="aspect-video bg-muted rounded-xl overflow-hidden mb-6">
-              <img src={video.thumbnailUrl} alt={video.title} className="w-full h-full object-cover" />
-            </div>
-          )}
+          {/* Embedded Video Player */}
+          {(() => {
+            const embedInfo = video.videoUrl ? parseVideoUrl(video.videoUrl) : null;
+            if (embedInfo) {
+              return (
+                <div className="aspect-video bg-muted rounded-xl overflow-hidden mb-6">
+                  <iframe
+                    src={embedInfo.embedUrl}
+                    title={video.title}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              );
+            }
+            if (video.thumbnailUrl) {
+              return (
+                <div className="aspect-video bg-muted rounded-xl overflow-hidden mb-6">
+                  <img src={video.thumbnailUrl} alt={video.title} className="w-full h-full object-cover" />
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {video.videoUrl && (
-            <Button className="mb-6" asChild>
+            <Button variant="outline" className="mb-6" asChild>
               <a href={video.videoUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Watch on {video.platform || 'external site'}
