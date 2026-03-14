@@ -94,7 +94,7 @@ export const sendEmail = async (
     }
 
     const { data: response, error } = await supabase.functions.invoke("send-email", {
-      body: { type, to, data },
+      body: { type, to, data, language: data.language },
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
