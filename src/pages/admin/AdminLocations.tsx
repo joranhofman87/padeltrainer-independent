@@ -439,10 +439,10 @@ export default function AdminLocations() {
         }}
       />
 
-      {/* Scrape Logos Dialog */}
-      <ScrapeLogosDialog
-        open={scrapeLogosDialogOpen}
-        onOpenChange={setScrapeLogosDialogOpen}
+      {/* Data Processing Dialog */}
+      <DataProcessingDialog
+        open={dataProcessingOpen}
+        onOpenChange={setDataProcessingOpen}
         onSuccess={async () => {
           const locationsData = await getAllLocations();
           setLocations(locationsData);
