@@ -115,7 +115,7 @@ export default function TrainerSubscription() {
       return;
     }
 
-    const planId = billingCycle === 'monthly' ? plan.tier : `${plan.tier}_yearly`;
+    // planId no longer needed - Stripe checkout uses tier + billingCycle
 
     trackEvent('subscription_checkout_started', { plan: plan.tier, billing_cycle: billingCycle });
     setProcessingPlan(plan.id);
