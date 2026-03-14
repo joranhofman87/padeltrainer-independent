@@ -52,12 +52,28 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const privacyPath = useLocalizedPath('/privacy');
   const termsPath = useLocalizedPath('/terms');
 
-  const navLinks = [
+  const [playersMenuOpen, setPlayersMenuOpen] = useState(false);
+
+  const navLinksBefore = [
     { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
+  ];
+
+  const navLinksAfter = [
     { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
     { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
     { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
   ];
+
+  const playerSubLinks = [
+    { to: '/trainers', label: t('footer.findTrainers', 'Find Trainers') },
+    { to: '/locations', label: t('footer.locations', 'Find Club') },
+    { to: '/padel-strokes', label: t('nav.strokes', 'Padel Strokes') },
+    { to: '/padel-rules', label: t('nav.rules', 'Padel Rules') },
+    { to: '/video-tips', label: t('footer.videoTips', 'Video Tips') },
+    { to: '/padel-coaches', label: t('footer.coaches', 'Coaches') },
+  ];
+
+  const allNavLinks = [...navLinksBefore, ...navLinksAfter];
 
   // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
