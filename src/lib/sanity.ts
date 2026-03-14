@@ -10,6 +10,7 @@ export const sanityClient = createClient({
   dataset: SANITY_DATASET,
   apiVersion: '2024-01-01',
   useCdn: true,
+  perspective: 'published',
 });
 
 type SanityImageSource = Parameters<ReturnType<typeof imageUrlBuilder>['image']>[0];
