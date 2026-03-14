@@ -66,6 +66,16 @@ interface EmailRequest {
     // Intake registration confirmation fields
     confirmationText?: string;
     isNewUser?: boolean;
+    startDate?: string;
+    endDate?: string;
+    enrollmentDeadline?: string;
+    lessonTypes?: string[];
+    preferredDurationMinutes?: number;
+    sessionsPerWeek?: number;
+    locationName?: string;
+    rating?: number;
+    ratingSystem?: string;
+    notes?: string;
   };
 }
 
