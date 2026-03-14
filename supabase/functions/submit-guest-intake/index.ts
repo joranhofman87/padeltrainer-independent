@@ -319,6 +319,17 @@ Deno.serve(async (req) => {
         const settings = cycleData.settings || {};
         const confirmationText = settings.confirmation_email_text || '';
 
+        // Resolve location name
+        let cycleLocationName = '';
+        if (cycleData.location_id) {
+          const { data: locData } = await adminClient
+            .from("locations")
+            .select("name")
+            .eq("id", cycleData.location_id)
+            .single();
+          cycleLocationName = locData?.name || '';
+        }
+
         // Invoke send-email edge function using service role
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -338,6 +349,16 @@ Deno.serve(async (req) => {
               cycleName: cycleData.name,
               ownerName,
               confirmationText,
+              startDate: cycleData.start_date,
+              endDate: cycleData.end_date,
+              enrollmentDeadline: cycleData.enrollment_deadline,
+              locationName: cycleLocationName || undefined,
+              lessonTypes: lessonTypes || [],
+              preferredDurationMinutes: preferredDurationMinutes || undefined,
+              sessionsPerWeek: sessionsPerWeek || undefined,
+              rating: rating || undefined,
+              ratingSystem: ratingSystem || undefined,
+              notes: notes || undefined,
             },
           }),
         });
