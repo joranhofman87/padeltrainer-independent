@@ -250,11 +250,12 @@ export default function AcademySubscription() {
               {(isActive || subscription?.isSubscribed) && (
                 <Button 
                   variant="outline" 
-                  onClick={handleCancelSubscription}
+                  onClick={handleManageSubscription}
                   disabled={actionLoading}
                   className="flex-1"
                 >
-                  {t("subscription.cancelSubscription")}
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  {t("subscription.manageSubscription", "Manage Subscription")}
                 </Button>
               )}
             </div>
