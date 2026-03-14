@@ -154,9 +154,10 @@ export default function AcademyIntakeRequests() {
   };
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
-  const newCount = requests.filter(r => r.status === 'new' && !r.skip_reason).length;
-  const skippedCount = requests.filter(r => r.status === 'new' && r.skip_reason).length;
-  const proposedCount = requests.filter(r => r.status === 'proposed').length;
+  const newCount = filteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
+  const skippedCount = filteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
+  const proposedCount = filteredRequests.filter(r => r.status === 'proposed').length;
+  const confirmedCount = filteredRequests.filter(r => r.status === 'confirmed').length;
 
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
