@@ -221,7 +221,7 @@ export default function Blog() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            {calculateReadTime(featuredPost.body_html)}
+                            {calculateReadTime(featuredPost.body)}
                           </span>
                         </div>
                       </CardContent>
