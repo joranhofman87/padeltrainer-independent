@@ -1,63 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix: Missing RLS INSERT Policy for Academy Intake Requests
+## Status: ✅ COMPLETED
 
-## Root Cause
+Implemented on 2026-03-14.
 
-The `intake_requests` table has an INSERT policy for **club managers** to create intake requests for club cycles, but there is **no equivalent INSERT policy for academy managers**. The cycle `8c8cdf92-0189-4111-9f84-adca26fbd448` is owned by an academy (`rl-padel-performance`).
+## Problem
 
-**Existing INSERT policies:**
-1. "Players can create intake requests" — works for logged-in players inserting their own `player_id`
-2. "Club managers can create intake requests for club cycles" — only matches `owner_type = 'club'`
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-**Missing:** Academy managers inserting intake requests for academy cycles (e.g., manual registration from dashboard, or testing their own form while logged in).
+## Solution
 
-When an academy manager is logged in and either:
-- Tests their own registration form (their `player_id` matches, so policy #1 *should* work — but if they use manual registration from the dashboard, the `player_id` is the new player's, not theirs)
-- Adds a manual registration via `AddIntakeRequestDialog` → `createManualIntakeRequest` → client-side insert with another player's `player_id` → **no matching policy** → RLS error
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
 
-## Fix
-
-Add a single database migration with an INSERT policy for academy managers, mirroring the existing club manager policy:
-
-```sql
-CREATE POLICY "Academy managers can create intake requests for academy cycles"
-ON public.intake_requests
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM cycles c
-    JOIN academy_managers am ON am.academy_profile_id = c.owner_id
-    WHERE c.id = intake_requests.cycle_id
-      AND c.owner_type = 'academy'
-      AND am.user_id = auth.uid()
-  )
-);
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-**No code changes needed** — only this one migration.
+## Changes
 
-## Also: Trainer INSERT policy is missing too
-
-For consistency, trainers creating manual registrations for their own cycles would hit the same issue. Add:
-
-```sql
-CREATE POLICY "Trainers can create intake requests for their cycles"
-ON public.intake_requests
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  cycle_id IN (
-    SELECT c.id FROM cycles c
-    WHERE c.owner_type = 'trainer'
-      AND c.owner_id IN (
-        SELECT tp.id FROM trainer_profiles tp WHERE tp.user_id = auth.uid()
-      )
-  )
-);
-```
-
-## Files to Change
-- **Database migration only** — two new INSERT policies
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)
