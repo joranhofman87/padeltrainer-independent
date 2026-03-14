@@ -178,31 +178,56 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               className="md:hidden py-4 border-t"
             >
               <nav className="flex flex-col gap-4">
-                {navLinks.map((link) => 
-                  link.isAnchor ? (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-                    >
-                      {link.label}
-                    </a>
-                  ) : (
-                    <Link
-                      key={link.href}
-                      to={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`text-sm font-medium transition-colors hover:text-primary ${
-                        isActive(link.path)
-                          ? 'text-primary'
-                          : 'text-muted-foreground'
-                      }`}
-                    >
-                      {link.label}
-                    </Link>
-                  )
-                )}
+                {navLinksBefore.map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+
+                {/* Players accordion */}
+                <div>
+                  <button
+                    onClick={() => setPlayersMenuOpen(!playersMenuOpen)}
+                    className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    {t('nav.players', 'Players')}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${playersMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {playersMenuOpen && (
+                    <div className="mt-2 flex flex-col gap-2 pl-4">
+                      {playerSubLinks.map((item) => (
+                        <LocalizedLink
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => { setMobileMenuOpen(false); setPlayersMenuOpen(false); }}
+                          className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                        >
+                          {item.label}
+                        </LocalizedLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {navLinksAfter.map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
                     <LanguageSwitcher />
