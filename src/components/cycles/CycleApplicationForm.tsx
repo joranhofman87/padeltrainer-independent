@@ -250,6 +250,15 @@ export default function CycleApplicationForm({
           consent_given: values.consent,
         });
 
+        // Send registration confirmation email (non-blocking)
+        sendEmail('intake_registration_confirmation', values.email, {
+          playerName: values.full_name,
+          cycleName: cycle.name,
+          ownerName: (cycle as any)._ownerName || undefined,
+          confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
+          language: i18n.language,
+        }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
+
         // Update player profile if rating/phone/birth_date changed
         const profileUpdates: Record<string, any> = {};
         if (values.rating && values.rating !== playerRating) {
