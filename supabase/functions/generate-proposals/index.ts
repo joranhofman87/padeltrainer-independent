@@ -51,6 +51,7 @@ interface IntakeRequest {
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_trainer_ids: string[];
+  preferred_duration_minutes: number | null;
   location_id: string | null;
   sessions_per_week: number;
   created_at: string;
@@ -117,11 +118,6 @@ function getMinutes(dateString: string): number {
   return new Date(dateString).getMinutes();
 }
 
-function isWeekend(dateString: string): boolean {
-  const day = getDayOfWeek(dateString);
-  return day === "saturday" || day === "sunday";
-}
-
 // Convert "13:00" or "13:30" to minutes from midnight
 function timeToMinutes(time: string): number {
   const [hours, mins] = time.split(':').map(Number);
@@ -133,6 +129,13 @@ function slotToMinutes(slotStart: string): number {
   const hour = getHour(slotStart);
   const minutes = getMinutes(slotStart);
   return hour * 60 + minutes;
+}
+
+// Get slot duration in minutes
+function slotDurationMinutes(slot: AvailabilitySlot): number {
+  const start = new Date(slot.start_time).getTime();
+  const end = new Date(slot.end_time).getTime();
+  return Math.round((end - start) / 60000);
 }
 
 function matchesTimeWindow(slotStart: string, timeWindow: TimeWindow): boolean {
@@ -162,7 +165,6 @@ function calculateTimeScore(
   request: IntakeRequest,
   maxScore: number
 ): { score: number; detail: string } {
-  // Find the matching time window (should exist due to pre-filtering)
   const matchingWindow = request.preferred_time_windows.find((tw) =>
     matchesTimeWindow(slot.start_time, tw)
   );
@@ -179,7 +181,6 @@ function calculateTimeScore(
     };
   }
 
-  // Should not reach here if pre-filtering is done correctly
   return { score: 0, detail: "No availability match" };
 }
 
@@ -191,7 +192,6 @@ function calculateTrainerScore(
   const preferredIds = request.preferred_trainer_ids || [];
   
   if (preferredIds.length === 0) {
-    // No preference, give partial score
     return { score: maxScore * 0.5, detail: "No trainer preference specified" };
   }
 
@@ -211,11 +211,10 @@ function calculateLevelScore(
   ratingSpreadSystem: string | null,
   maxScore: number
 ): { score: number; detail: string; breakdown: { trainerRange: number; groupSpread: number } } {
-  let trainerRangeScore = maxScore * 0.5; // Half for trainer range
-  let groupSpreadScore = maxScore * 0.5; // Half for group spread
+  let trainerRangeScore = maxScore * 0.5;
+  let groupSpreadScore = maxScore * 0.5;
   const details: string[] = [];
 
-  // If player has no rating, give partial score
   if (!request.rating) {
     return { 
       score: maxScore * 0.5, 
@@ -224,7 +223,6 @@ function calculateLevelScore(
     };
   }
 
-  // Check 1: Trainer preference match
   if (trainerProfile?.preferred_min_rating !== null && 
       trainerProfile?.preferred_max_rating !== null &&
       trainerProfile?.preferred_rating_system === request.rating_system) {
@@ -233,22 +231,18 @@ function calculateLevelScore(
     if (inRange) {
       details.push(`Rating ${request.rating} in trainer range (${trainerProfile.preferred_min_rating}-${trainerProfile.preferred_max_rating})`);
     } else {
-      // Player rating outside trainer's preferred range - significant penalty
       trainerRangeScore = 0;
       details.push(`Rating ${request.rating} outside trainer range (${trainerProfile.preferred_min_rating}-${trainerProfile.preferred_max_rating})`);
     }
   } else {
-    // Trainer has no preference or different rating system
     details.push("Trainer has no rating preference");
   }
 
-  // Check 2: Group compatibility (max spread) - only for group lessons
   if (maxRatingSpread !== null && 
       ratingSpreadSystem === request.rating_system &&
       request.lesson_type !== 'private' &&
       existingPlayersInSlot.length > 0) {
     
-    // Get ratings from players in the same rating system
     const otherRatings = existingPlayersInSlot
       .filter(p => p.rating !== null && p.rating_system === request.rating_system)
       .map(p => p.rating as number);
@@ -262,7 +256,6 @@ function calculateLevelScore(
       if (spread <= maxRatingSpread) {
         details.push(`Group spread ${spread.toFixed(2)} within limit ${maxRatingSpread}`);
       } else {
-        // Spread exceeded - give zero score for group compatibility
         groupSpreadScore = 0;
         details.push(`Group spread ${spread.toFixed(2)} exceeds limit ${maxRatingSpread}`);
       }
@@ -283,7 +276,6 @@ function calculatePriorityScore(
   totalRequests: number,
   maxScore: number
 ): { score: number; detail: string } {
-  // Earlier registrations get higher scores
   const position = registrationOrder + 1;
   const score = Math.round(maxScore * (1 - registrationOrder / totalRequests));
   return {
@@ -317,13 +309,19 @@ function calculateSessionsScore(
   sessionsPerWeek: number,
   maxScore: number
 ): { score: number; detail: string } {
-  // Players wanting fewer sessions get higher scores
-  // 1 session = 100%, 7 sessions = ~14%
   const score = Math.round(maxScore * (1 / sessionsPerWeek));
   return {
     score,
     detail: `${sessionsPerWeek}× per week`,
   };
+}
+
+// Check if two time ranges overlap
+function rangesOverlap(
+  startA: number, endA: number,
+  startB: number, endB: number
+): boolean {
+  return startA < endB && startB < endA;
 }
 
 Deno.serve(async (req) => {
@@ -354,12 +352,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use provided weights or defaults
     const weights = inputWeights || DEFAULT_WEIGHTS;
     const maxRatingSpread = ratingSpread?.maxSpread ?? null;
     const ratingSpreadSystem = ratingSpread?.ratingSystem ?? null;
 
-    // Normalize weights to percentages
     const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
     const normalizedWeights: ScoringWeights = totalWeight > 0
       ? {
@@ -470,10 +466,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine the effective start date for slot generation
     const effectiveStartDate = startDate || cycle.start_date;
 
-    // If trainerAvailability is provided, auto-create availability slots
+    // ===== STEP 0: Delete old cycle slots before creating new ones =====
+    console.log(`Cleaning up old slots for cycle ${cycleId}...`);
+    const { error: deleteOldSlotsError, count: deletedCount } = await supabase
+      .from("availability_slots")
+      .delete()
+      .eq("cyclus_id", cycleId)
+      .select("id", { count: "exact", head: true });
+
+    if (deleteOldSlotsError) {
+      console.error("Error deleting old slots:", deleteOldSlotsError);
+    } else {
+      console.log(`Deleted old cycle slots for cycle ${cycleId}`);
+    }
+
+    // ===== STEP 1: Generate new slots from trainer availability =====
     let slotsCreated = 0;
     if (trainerAvailability && trainerAvailability.length > 0) {
       // Update trainer profiles with provided rating ranges
@@ -489,56 +498,106 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Generate slots from trainer availability windows
+      // Collect unique durations requested by intake forms (strict match)
+      const requestedDurations = [...new Set(
+        requests.map(r => r.preferred_duration_minutes || 60)
+      )];
+      console.log(`Requested durations: ${requestedDurations.join(', ')} minutes`);
+
+      // Fetch existing non-cycle slots for conflict checking
+      const trainerIds = trainerAvailability.map(ta => ta.trainerId);
+      const { data: existingSlots } = await supabase
+        .from("availability_slots")
+        .select("id, trainer_id, start_time, end_time")
+        .in("trainer_id", trainerIds)
+        .is("cyclus_id", null)
+        .gte("start_time", effectiveStartDate)
+        .lte("start_time", cycle.end_date);
+
+      // Build conflict map: trainerId -> array of { start, end } in epoch ms
+      const conflictMap = new Map<string, { start: number; end: number }[]>();
+      (existingSlots || []).forEach(s => {
+        const existing = conflictMap.get(s.trainer_id) || [];
+        existing.push({
+          start: new Date(s.start_time).getTime(),
+          end: new Date(s.end_time).getTime(),
+        });
+        conflictMap.set(s.trainer_id, existing);
+      });
+
+      // Also check existing bookings on those slots
+      const existingSlotIds = (existingSlots || []).map(s => s.id);
+      if (existingSlotIds.length > 0) {
+        const BATCH_SIZE = 200;
+        for (let i = 0; i < existingSlotIds.length; i += BATCH_SIZE) {
+          const batch = existingSlotIds.slice(i, i + BATCH_SIZE);
+          const { data: bookedSlots } = await supabase
+            .from("bookings")
+            .select("slot_id")
+            .in("slot_id", batch)
+            .in("status", ["pending", "confirmed"]);
+          // The slots themselves are already in conflictMap, so bookings don't add new conflicts
+          // but the existing slot times already block the window
+        }
+      }
+
       const cycleEndDate = new Date(cycle.end_date);
       const slotsToInsert: any[] = [];
 
       for (const ta of trainerAvailability) {
+        const trainerConflicts = conflictMap.get(ta.trainerId) || [];
+
         for (const window of ta.windows) {
-          // Generate weekly recurring slots from startDate to cycle end
           const dayIndex = WEEKDAYS.indexOf(window.day.toLowerCase());
           if (dayIndex === -1) continue;
 
-          // Determine session duration from cycle settings (default 60 min)
-          const sessionDuration = cycle.settings?.default_duration_minutes || 60;
-          
           const [windowStartH, windowStartM] = window.start.split(":").map(Number);
           const [windowEndH, windowEndM] = window.end.split(":").map(Number);
           const windowStartMinutes = windowStartH * 60 + (windowStartM || 0);
           const windowEndMinutes = windowEndH * 60 + (windowEndM || 0);
 
           let current = new Date(effectiveStartDate);
-          // Find the first occurrence of this day
           while (current.getDay() !== dayIndex) {
             current.setDate(current.getDate() + 1);
           }
 
           while (current <= cycleEndDate) {
-            // Split the availability window into individual session-length slots
-            let slotStartMinutes = windowStartMinutes;
-            while (slotStartMinutes + sessionDuration <= windowEndMinutes) {
-              const startDateTime = new Date(current);
-              startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
+            // For each requested duration, generate slots
+            for (const duration of requestedDurations) {
+              let slotStartMinutes = windowStartMinutes;
+              while (slotStartMinutes + duration <= windowEndMinutes) {
+                const startDateTime = new Date(current);
+                startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
 
-              const endMinutes = slotStartMinutes + sessionDuration;
-              const endDateTime = new Date(current);
-              endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+                const endMinutes = slotStartMinutes + duration;
+                const endDateTime = new Date(current);
+                endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
 
-              slotsToInsert.push({
-                trainer_id: ta.trainerId,
-                start_time: startDateTime.toISOString(),
-                end_time: endDateTime.toISOString(),
-                is_marked_full: false,
-                is_public: false,
-                is_recurring: false,
-                cyclus_id: cycleId,
-                max_participants: cycle.settings?.max_group_size || 4,
-                min_participants: cycle.settings?.min_group_size || null,
-                academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
-                location_id: cycle.location_id || null,
-              });
+                // Check for conflicts with existing non-cycle slots
+                const startMs = startDateTime.getTime();
+                const endMs = endDateTime.getTime();
+                const hasConflict = trainerConflicts.some(c =>
+                  rangesOverlap(startMs, endMs, c.start, c.end)
+                );
 
-              slotStartMinutes += sessionDuration;
+                if (!hasConflict) {
+                  slotsToInsert.push({
+                    trainer_id: ta.trainerId,
+                    start_time: startDateTime.toISOString(),
+                    end_time: endDateTime.toISOString(),
+                    is_marked_full: false,
+                    is_public: false,
+                    is_recurring: false,
+                    cyclus_id: cycleId,
+                    max_participants: cycle.settings?.max_group_size || 4,
+                    min_participants: cycle.settings?.min_group_size || null,
+                    academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+                    location_id: cycle.location_id || null,
+                  });
+                }
+
+                slotStartMinutes += duration;
+              }
             }
 
             current.setDate(current.getDate() + 7);
@@ -560,7 +619,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get trainer IDs to include (from wizard config, cycle settings, or owner)
+    // Get trainer IDs to include
     const trainerIds: string[] = trainerAvailability?.map(ta => ta.trainerId) 
       || cycle.settings?.applicable_trainer_ids 
       || [];
@@ -568,12 +627,11 @@ Deno.serve(async (req) => {
       trainerIds.push(cycle.owner_id);
     }
 
-    // Fetch availability slots within cycle date range
+    // Fetch availability slots for THIS CYCLE only (cyclus_id match)
     let slotsQuery = supabase
       .from("availability_slots")
       .select("*, max_participants")
-      .gte("start_time", effectiveStartDate)
-      .lte("start_time", cycle.end_date)
+      .eq("cyclus_id", cycleId)
       .eq("is_marked_full", false);
 
     if (trainerIds.length > 0) {
@@ -590,6 +648,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log(`Found ${slots.length} cycle slots to match against`);
+
     // Fetch trainer profiles for rating preference checks
     const slotTrainerIds = [...new Set(slots.map(s => s.trainer_id))];
     const { data: trainerProfiles } = await supabase
@@ -597,13 +657,12 @@ Deno.serve(async (req) => {
       .select("id, preferred_min_rating, preferred_max_rating, preferred_rating_system")
       .in("id", slotTrainerIds);
 
-    // Create a map for quick lookup
     const trainerProfileMap: Record<string, TrainerProfile> = {};
     (trainerProfiles || []).forEach((tp) => {
       trainerProfileMap[tp.id] = tp as TrainerProfile;
     });
 
-    // Fetch existing bookings to check capacity (batched to avoid URL length limits)
+    // Fetch existing bookings to check capacity (batched)
     const slotIds = slots.map((s) => s.id);
     const BATCH_SIZE = 200;
     const allBookings: { slot_id: string }[] = [];
@@ -618,13 +677,12 @@ Deno.serve(async (req) => {
       if (data) allBookings.push(...data);
     }
 
-    // Count bookings per slot
     const bookingCounts: Record<string, number> = {};
     allBookings.forEach((b) => {
       bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
     });
 
-    // Defensively clean up any stale proposals for these "new" requests
+    // Defensively clean up stale proposals for these "new" requests
     const requestIds = requests.map((r) => r.id);
     const { data: staleProposals } = await supabase
       .from("proposed_assignments")
@@ -643,10 +701,10 @@ Deno.serve(async (req) => {
     let skipped = 0;
     const errors: string[] = [];
 
-    // Track which requests have been assigned to which slots (for group spread calculation)
+    // Track which requests have been assigned to which slots
     const slotAssignments: Record<string, IntakeRequest[]> = {};
 
-    // Clear old skip reasons before regenerating
+    // Clear old skip reasons
     await supabase
       .from("intake_requests")
       .update({ skip_reason: null })
@@ -655,24 +713,26 @@ Deno.serve(async (req) => {
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
+      const requestDuration = request.preferred_duration_minutes || 60;
 
-      // Filter slots - all available slots can be considered
-      // Lesson type matching is flexible since slots may be generic
-      const lessonTypeSlots = slots;
+      // STRICT DURATION FILTER: Only consider slots matching the player's preferred duration
+      const durationMatchedSlots = slots.filter(slot => {
+        const duration = slotDurationMinutes(slot);
+        return duration === requestDuration;
+      });
 
-      if (lessonTypeSlots.length === 0) {
+      if (durationMatchedSlots.length === 0) {
         skipped++;
         await supabase
           .from("intake_requests")
-          .update({ skip_reason: "no_available_trainers" })
+          .update({ skip_reason: "no_matching_slots" })
           .eq("id", request.id);
-        errors.push(`No slots matching lesson type for request ${request.id}`);
+        errors.push(`No slots matching ${requestDuration}min duration for request ${request.id}`);
         continue;
       }
 
       // STRICT AVAILABILITY FILTER: Only consider slots that match player's time windows
-      const matchingSlots = lessonTypeSlots.filter((slot) => {
-        // At least one time window must match
+      const matchingSlots = durationMatchedSlots.filter((slot) => {
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );
@@ -689,15 +749,14 @@ Deno.serve(async (req) => {
       }
 
       // Check if player's rating is compatible with any trainer's preferences
-      // This is a pre-filter to detect rating_outside_trainer_range early
       if (request.rating && maxRatingSpread !== null) {
         const hasCompatibleTrainer = matchingSlots.some((slot) => {
           const trainerProfile = trainerProfileMap[slot.trainer_id];
           if (!trainerProfile?.preferred_min_rating || !trainerProfile?.preferred_max_rating) {
-            return true; // Trainer has no preference, compatible
+            return true;
           }
           if (trainerProfile.preferred_rating_system !== request.rating_system) {
-            return true; // Different rating systems, compatible
+            return true;
           }
           return request.rating! >= trainerProfile.preferred_min_rating &&
                  request.rating! <= trainerProfile.preferred_max_rating;
@@ -720,99 +779,39 @@ Deno.serve(async (req) => {
         const trainerProfile = trainerProfileMap[slot.trainer_id] || null;
         const existingPlayersInSlot = slotAssignments[slot.id] || [];
 
-        // Time match
-        const timeResult = calculateTimeScore(
-          slot,
-          request,
-          normalizedWeights.time_match
-        );
-        rationale.push({
-          type: "time_match",
-          score: timeResult.score,
-          detail: timeResult.detail,
-        });
+        const timeResult = calculateTimeScore(slot, request, normalizedWeights.time_match);
+        rationale.push({ type: "time_match", score: timeResult.score, detail: timeResult.detail });
 
-        // Trainer preference
-        const trainerResult = calculateTrainerScore(
-          slot,
-          request,
-          normalizedWeights.preferred_trainer
-        );
-        rationale.push({
-          type: "preferred_trainer",
-          score: trainerResult.score,
-          detail: trainerResult.detail,
-        });
+        const trainerResult = calculateTrainerScore(slot, request, normalizedWeights.preferred_trainer);
+        rationale.push({ type: "preferred_trainer", score: trainerResult.score, detail: trainerResult.detail });
 
-        // Level compatibility - enhanced with trainer range and group spread checks
         const levelResult = calculateLevelScore(
-          slot,
-          request,
-          trainerProfile,
-          existingPlayersInSlot,
-          maxRatingSpread,
-          ratingSpreadSystem,
-          normalizedWeights.level_compatible
+          slot, request, trainerProfile, existingPlayersInSlot,
+          maxRatingSpread, ratingSpreadSystem, normalizedWeights.level_compatible
         );
-        rationale.push({
-          type: "level_compatible",
-          score: levelResult.score,
-          detail: levelResult.detail,
-        });
+        rationale.push({ type: "level_compatible", score: levelResult.score, detail: levelResult.detail });
 
-        // Priority bonus
-        const priorityResult = calculatePriorityScore(
-          i,
-          requests.length,
-          normalizedWeights.priority_bonus
-        );
-        rationale.push({
-          type: "priority_bonus",
-          score: priorityResult.score,
-          detail: priorityResult.detail,
-        });
+        const priorityResult = calculatePriorityScore(i, requests.length, normalizedWeights.priority_bonus);
+        rationale.push({ type: "priority_bonus", score: priorityResult.score, detail: priorityResult.detail });
 
-        // Capacity
         const currentBookings = bookingCounts[slot.id] || 0;
         const maxParticipants = slot.max_participants || 4;
-        const capacityResult = calculateCapacityScore(
-          currentBookings,
-          maxParticipants,
-          normalizedWeights.capacity_available
-        );
-        rationale.push({
-          type: "capacity_available",
-          score: capacityResult.score,
-          detail: capacityResult.detail,
-        });
+        const capacityResult = calculateCapacityScore(currentBookings, maxParticipants, normalizedWeights.capacity_available);
+        rationale.push({ type: "capacity_available", score: capacityResult.score, detail: capacityResult.detail });
 
-        // Sessions per week scoring - players wanting fewer sessions get higher scores
-        const sessionsResult = calculateSessionsScore(
-          request.sessions_per_week || 1,
-          normalizedWeights.sessions_per_week
-        );
-        rationale.push({
-          type: "sessions_per_week",
-          score: sessionsResult.score,
-          detail: sessionsResult.detail,
-        });
+        const sessionsResult = calculateSessionsScore(request.sessions_per_week || 1, normalizedWeights.sessions_per_week);
+        rationale.push({ type: "sessions_per_week", score: sessionsResult.score, detail: sessionsResult.detail });
 
         const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);
 
-        return {
-          slot,
-          score: Math.round(totalScore),
-          rationale,
-        };
+        return { slot, score: Math.round(totalScore), rationale };
       });
 
-      // Sort by score descending and pick the best
       scoredSlots.sort((a, b) => b.score - a.score);
       const bestMatch = scoredSlots[0];
 
       if (!bestMatch || bestMatch.score === 0) {
         skipped++;
-        // Check specific skip reasons
         const allFull = scoredSlots.every(s => 
           s.rationale.find(r => r.type === 'capacity_available')?.score === 0
         );
@@ -847,13 +846,11 @@ Deno.serve(async (req) => {
         errors.push(`Failed to create proposal for ${request.id}: ${insertError.message}`);
         skipped++;
       } else {
-        // Track this assignment for group spread calculations
         if (!slotAssignments[bestMatch.slot.id]) {
           slotAssignments[bestMatch.slot.id] = [];
         }
         slotAssignments[bestMatch.slot.id].push(request);
 
-        // Update intake request status
         await supabase
           .from("intake_requests")
           .update({ status: "proposed" })
