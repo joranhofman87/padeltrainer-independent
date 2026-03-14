@@ -340,6 +340,7 @@
         "timeFocused": "Enfocado en horarios",
         "levelFocused": "Enfocado en nivel"
       },
+      "customize": "Personalizar pesos",
       "ratingSettings": "Compatibilidad de nivel",
       "maxRatingSpread": "Diferencia máxima de nivel",
       "maxRatingSpreadHelp": "Diferencia máxima de nivel permitida entre jugadores del mismo grupo",

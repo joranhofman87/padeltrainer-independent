@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Info, Zap, Clock, Users, TrendingUp, LayoutGrid, CalendarDays, Gauge } from 'lucide-react';
+import { Info, Zap, Clock, Users, TrendingUp, LayoutGrid, CalendarDays, Gauge, ChevronRight } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import type { ScoringWeights } from '@/lib/cycles';
@@ -55,6 +56,12 @@ function WeightSlider({ label, helpText, value, onChange, icon }: WeightSliderPr
   );
 }
 
+function isPresetMatch(weights: ScoringWeights): boolean {
+  return Object.values(PRESETS).some(preset =>
+    Object.keys(preset).every(key => preset[key as keyof ScoringWeights] === weights[key as keyof ScoringWeights])
+  );
+}
+
 interface ScoringWeightsPanelProps {
   weights: ScoringWeights;
   onWeightsChange: (weights: ScoringWeights) => void;
@@ -66,6 +73,7 @@ export function ScoringWeightsPanel({ weights, onWeightsChange, showRatingSpread
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [ratingSpread, setRatingSpread] = useState({ maxSpread: null as number | null, ratingSystem: 'knltb' });
+  const [customizeOpen, setCustomizeOpen] = useState(!isPresetMatch(weights));
 
   useEffect(() => { getRatingSystems().then(setRatingSystems); }, []);
 
@@ -80,6 +88,7 @@ export function ScoringWeightsPanel({ weights, onWeightsChange, showRatingSpread
   const applyPreset = (presetKey: string) => {
     onWeightsChange(PRESETS[presetKey]);
     setActivePreset(presetKey);
+    setCustomizeOpen(false);
   };
 
   return (
@@ -97,21 +106,27 @@ export function ScoringWeightsPanel({ weights, onWeightsChange, showRatingSpread
         </Button>
       </div>
 
-      {/* Weight sliders */}
-      <div className="space-y-5">
-        <WeightSlider label={t('proposals.weights.timeMatch')} helpText={t('proposals.weights.timeMatchHelp')} value={weights.time_match} onChange={(v) => updateWeight('time_match', v)} icon={<Clock className="h-4 w-4 text-muted-foreground" />} />
-        <WeightSlider label={t('proposals.weights.preferredTrainer')} helpText={t('proposals.weights.preferredTrainerHelp')} value={weights.preferred_trainer} onChange={(v) => updateWeight('preferred_trainer', v)} icon={<Users className="h-4 w-4 text-muted-foreground" />} />
-        <WeightSlider label={t('proposals.weights.levelCompatible')} helpText={t('proposals.weights.levelCompatibleHelp')} value={weights.level_compatible} onChange={(v) => updateWeight('level_compatible', v)} icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />} />
-        <WeightSlider label={t('proposals.weights.priorityBonus')} helpText={t('proposals.weights.priorityBonusHelp')} value={weights.priority_bonus} onChange={(v) => updateWeight('priority_bonus', v)} icon={<Zap className="h-4 w-4 text-muted-foreground" />} />
-        <WeightSlider label={t('proposals.weights.capacityAvailable')} helpText={t('proposals.weights.capacityAvailableHelp')} value={weights.capacity_available} onChange={(v) => updateWeight('capacity_available', v)} icon={<LayoutGrid className="h-4 w-4 text-muted-foreground" />} />
-        <WeightSlider label={t('proposals.weights.sessionsPerWeek')} helpText={t('proposals.weights.sessionsPerWeekHelp')} value={weights.sessions_per_week} onChange={(v) => updateWeight('sessions_per_week', v)} icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />} />
-      </div>
+      {/* Collapsible weight sliders */}
+      <Collapsible open={customizeOpen} onOpenChange={setCustomizeOpen}>
+        <CollapsibleTrigger className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+          <ChevronRight className={cn("h-4 w-4 transition-transform", customizeOpen && "rotate-90")} />
+          {t('proposals.weights.customize')}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-4 space-y-5">
+          <WeightSlider label={t('proposals.weights.timeMatch')} helpText={t('proposals.weights.timeMatchHelp')} value={weights.time_match} onChange={(v) => updateWeight('time_match', v)} icon={<Clock className="h-4 w-4 text-muted-foreground" />} />
+          <WeightSlider label={t('proposals.weights.preferredTrainer')} helpText={t('proposals.weights.preferredTrainerHelp')} value={weights.preferred_trainer} onChange={(v) => updateWeight('preferred_trainer', v)} icon={<Users className="h-4 w-4 text-muted-foreground" />} />
+          <WeightSlider label={t('proposals.weights.levelCompatible')} helpText={t('proposals.weights.levelCompatibleHelp')} value={weights.level_compatible} onChange={(v) => updateWeight('level_compatible', v)} icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />} />
+          <WeightSlider label={t('proposals.weights.priorityBonus')} helpText={t('proposals.weights.priorityBonusHelp')} value={weights.priority_bonus} onChange={(v) => updateWeight('priority_bonus', v)} icon={<Zap className="h-4 w-4 text-muted-foreground" />} />
+          <WeightSlider label={t('proposals.weights.capacityAvailable')} helpText={t('proposals.weights.capacityAvailableHelp')} value={weights.capacity_available} onChange={(v) => updateWeight('capacity_available', v)} icon={<LayoutGrid className="h-4 w-4 text-muted-foreground" />} />
+          <WeightSlider label={t('proposals.weights.sessionsPerWeek')} helpText={t('proposals.weights.sessionsPerWeekHelp')} value={weights.sessions_per_week} onChange={(v) => updateWeight('sessions_per_week', v)} icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />} />
 
-      {/* Total indicator */}
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-        <span className="text-sm font-medium">{t('proposals.weights.total')}</span>
-        <span className={cn('text-lg font-bold', totalWeight === 0 ? 'text-destructive' : 'text-primary')}>{totalWeight}</span>
-      </div>
+          {/* Total indicator */}
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+            <span className="text-sm font-medium">{t('proposals.weights.total')}</span>
+            <span className={cn('text-lg font-bold', totalWeight === 0 ? 'text-destructive' : 'text-primary')}>{totalWeight}</span>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {showRatingSpread && (
         <>

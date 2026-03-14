@@ -352,6 +352,7 @@
         "timeFocused": "Time-focused",
         "levelFocused": "Level-focused"
       },
+      "customize": "Customize weights",
       "ratingSettings": "Rating Compatibility",
       "maxRatingSpread": "Max Rating Difference",
       "maxRatingSpreadHelp": "Maximum rating difference allowed between players in the same group",

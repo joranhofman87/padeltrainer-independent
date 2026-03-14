@@ -340,6 +340,7 @@
         "timeFocused": "Zeitfokussiert",
         "levelFocused": "Niveaufokussiert"
       },
+      "customize": "Gewichte anpassen",
       "ratingSettings": "Niveaukompatibilität",
       "maxRatingSpread": "Max. Niveauunterschied",
       "maxRatingSpreadHelp": "Maximal erlaubter Niveauunterschied zwischen Spielern in derselben Gruppe",
