@@ -94,29 +94,50 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-8">
-              {navLinks.map((link) => 
-                link.isAnchor ? (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-                  >
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                      isActive(link.path)
-                        ? 'text-primary'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                )
-              )}
+              {navLinksBefore.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`text-sm font-medium transition-colors hover:text-primary ${
+                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+
+              {/* Players Dropdown */}
+              <div className="group relative">
+                <button className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+                  {t('nav.players', 'Players')}
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
+                </button>
+                <div className="invisible absolute left-1/2 top-full z-50 -translate-x-1/2 pt-2 opacity-0 transition-all group-hover:visible group-hover:opacity-100">
+                  <div className="min-w-[180px] rounded-md border bg-popover p-1.5 shadow-md">
+                    {playerSubLinks.map((item) => (
+                      <LocalizedLink
+                        key={item.to}
+                        to={item.to}
+                        className="block rounded-sm px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                      >
+                        {item.label}
+                      </LocalizedLink>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {navLinksAfter.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`text-sm font-medium transition-colors hover:text-primary ${
+                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
