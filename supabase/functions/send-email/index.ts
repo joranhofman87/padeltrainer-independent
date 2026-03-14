@@ -1008,7 +1008,7 @@ const handler = async (req: Request): Promise<Response> => {
             .insert({
               user_id: recipientUserId,
               notification_type: prefColumn,
-              payload: { type, to, data, subject: getEmailContent(type, data).subject },
+              payload: { type, to, data, language, subject: getEmailContent(type, data, language).subject },
               scheduled_for: frequency,
             });
 
