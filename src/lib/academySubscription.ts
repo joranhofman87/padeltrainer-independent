@@ -52,8 +52,8 @@ export async function createAcademyCheckout(academyProfileId: string): Promise<s
   }
 
   // Use the same pattern as clubs - create a checkout for academy
-  const response = await supabase.functions.invoke("create-academy-mollie-subscription", {
-    body: { academyProfileId },
+  const response = await supabase.functions.invoke("create-stripe-checkout", {
+    body: { type: "academy", profileId: academyProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
