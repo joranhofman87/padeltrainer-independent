@@ -212,7 +212,8 @@
       "passwordMin": "Wachtwoord moet minimaal 6 tekens bevatten",
 
       "submit": "Aanmelding Indienen",
-      "submitting": "Bezig met indienen..."
+      "submitting": "Bezig met indienen...",
+      "validationSummary": "Controleer de volgende velden:"
     },
     
     "success": {

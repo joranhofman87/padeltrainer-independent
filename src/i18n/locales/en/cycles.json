@@ -212,7 +212,8 @@
       "passwordMin": "Password must be at least 6 characters",
 
       "submit": "Submit Application",
-      "submitting": "Submitting..."
+      "submitting": "Submitting...",
+      "validationSummary": "Please fix the following:"
     },
     
     "success": {

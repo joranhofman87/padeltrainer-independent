@@ -203,7 +203,8 @@
       "passwordMin": "Le mot de passe doit contenir au moins 6 caractères",
 
       "submit": "Soumettre la candidature",
-      "submitting": "Soumission en cours..."
+      "submitting": "Soumission en cours...",
+      "validationSummary": "Veuillez corriger les éléments suivants :"
     },
     "success": {
       "title": "Candidature soumise !",

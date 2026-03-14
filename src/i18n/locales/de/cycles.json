@@ -203,7 +203,8 @@
       "passwordMin": "Passwort muss mindestens 6 Zeichen haben",
 
       "submit": "Bewerbung einreichen",
-      "submitting": "Wird eingereicht..."
+      "submitting": "Wird eingereicht...",
+      "validationSummary": "Bitte korrigiere folgende Felder:"
     },
     "success": {
       "title": "Bewerbung eingereicht!",
