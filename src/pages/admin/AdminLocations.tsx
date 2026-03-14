@@ -11,13 +11,11 @@ import {
   ToggleRight,
   Upload,
   CheckCircle2,
-  Image,
   AlertTriangle,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
-import { ScrapeLogosDialog } from '@/components/admin/ScrapeLogosDialog';
-import { EnrichmentControls } from '@/components/admin/EnrichmentControls';
+import { DataProcessingDialog, DataProcessingBadge } from '@/components/admin/DataProcessingDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,7 +70,7 @@ export default function AdminLocations() {
   const [verifiedFilter, setVerifiedFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [scrapeLogosDialogOpen, setScrapeLogosDialogOpen] = useState(false);
+  const [dataProcessingOpen, setDataProcessingOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   // Get verified location IDs from club_profiles
@@ -210,11 +208,7 @@ export default function AdminLocations() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <EnrichmentControls />
-          <Button variant="outline" onClick={() => setScrapeLogosDialogOpen(true)}>
-            <Image className="h-4 w-4 mr-2" />
-            Fetch Logos
-          </Button>
+          <DataProcessingBadge onClick={() => setDataProcessingOpen(true)} />
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
@@ -444,10 +438,10 @@ export default function AdminLocations() {
         }}
       />
 
-      {/* Scrape Logos Dialog */}
-      <ScrapeLogosDialog
-        open={scrapeLogosDialogOpen}
-        onOpenChange={setScrapeLogosDialogOpen}
+      {/* Data Processing Dialog */}
+      <DataProcessingDialog
+        open={dataProcessingOpen}
+        onOpenChange={setDataProcessingOpen}
         onSuccess={async () => {
           const locationsData = await getAllLocations();
           setLocations(locationsData);
