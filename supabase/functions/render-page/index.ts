@@ -20,9 +20,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Strip language prefix
-    const cleanPath = path.replace(/^\/(en|nl)/, '') || '/';
-    const lang = path.startsWith('/nl') ? 'nl' : 'en';
+    // Strip language prefix (supports all 5 languages)
+    const langMatch = path.match(/^\/(en|nl|es|de|fr)/);
+    const lang = langMatch ? langMatch[1] : 'en';
+    const cleanPath = path.replace(/^\/(en|nl|es|de|fr)/, '') || '/';
 
     // Route to the appropriate renderer
     let html: string;
@@ -58,6 +59,56 @@ Deno.serve(async (req) => {
       cacheMaxAge = 86400;
     } else if (cleanPath === '/pricing') {
       html = renderStaticPage('Pricing - PadelTrainer.ai', 'Explore our flexible pricing plans for padel trainers and academies. Start with a free trial.', lang, '/pricing');
+      cacheMaxAge = 86400;
+    // ─── Blog routes ───
+    } else if (cleanPath === '/blog') {
+      html = await renderBlogListing(lang);
+      cacheMaxAge = 1800;
+    } else if (/^\/blog\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/blog\/([^/]+)$/)![1];
+      html = await renderSanityArticle('blogPost', slug, lang, '/blog');
+      cacheMaxAge = 1800;
+    // ─── Rules routes ───
+    } else if (cleanPath === '/padel-rules') {
+      html = renderStaticPage('Padel Rules — Complete Guide to the Rules of Padel', 'Learn all the official padel rules, scoring, serving, and match play. A complete guide for beginners and advanced players.', lang, '/padel-rules');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-rules\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-rules\/([^/]+)$/)![1];
+      html = await renderSanityArticle('rulesArticle', slug, lang, '/padel-rules');
+      cacheMaxAge = 3600;
+    // ─── Strokes routes ───
+    } else if (cleanPath === '/padel-strokes') {
+      html = renderStaticPage('Padel Strokes — Master Every Shot in Padel', 'Explore all padel strokes and techniques. Learn the bandeja, vibora, smash, and more with tips from top coaches.', lang, '/padel-strokes');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-strokes\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-strokes\/([^/]+)$/)![1];
+      html = await renderSanityArticle('stroke', slug, lang, '/padel-strokes');
+      cacheMaxAge = 3600;
+    // ─── Coaches routes ───
+    } else if (cleanPath === '/padel-coaches') {
+      html = renderStaticPage('Padel Coaches — Expert Coaching Tips & Techniques', 'Discover expert padel coaches and their training tips, techniques, and video lessons.', lang, '/padel-coaches');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-coaches\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-coaches\/([^/]+)$/)![1];
+      html = await renderSanityArticle('trainer', slug, lang, '/padel-coaches');
+      cacheMaxAge = 3600;
+    // ─── Video Tips routes ───
+    } else if (cleanPath === '/video-tips') {
+      html = renderStaticPage('Padel Video Tips — Watch & Learn from Top Coaches', 'Watch curated padel video tips from top coaches. Improve your technique with visual guides for every skill level.', lang, '/video-tips');
+      cacheMaxAge = 86400;
+    } else if (/^\/video-tips\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/video-tips\/([^/]+)$/)![1];
+      html = await renderSanityArticle('videoTip', slug, lang, '/video-tips');
+      cacheMaxAge = 3600;
+    // ─── Other static pages ───
+    } else if (cleanPath === '/partner') {
+      html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
+      cacheMaxAge = 86400;
+    } else if (cleanPath === '/privacy') {
+      html = renderStaticPage('Privacy Policy — PadelTrainer.ai', 'Read the PadelTrainer.ai privacy policy. Learn how we collect, use, and protect your personal data.', lang, '/privacy');
+      cacheMaxAge = 86400;
+    } else if (cleanPath === '/terms') {
+      html = renderStaticPage('Terms of Service — PadelTrainer.ai', 'Read the PadelTrainer.ai terms of service. Understand the rules and guidelines for using our platform.', lang, '/terms');
       cacheMaxAge = 86400;
     } else {
       // Fallback: return minimal HTML with meta redirect to SPA
