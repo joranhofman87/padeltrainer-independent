@@ -35,9 +35,9 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
 
       {/* Description */}
       {hasDescription && (
-        <div
+        <SafeHTML
+          html={cycle.description!}
           className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: cycle.description! }}
         />
       )}
 
