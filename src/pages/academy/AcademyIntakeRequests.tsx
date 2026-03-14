@@ -84,6 +84,16 @@ export default function AcademyIntakeRequests() {
     setFilteredRequests(filtered);
   }, [requests, selectedCycleId, statusFilter]);
 
+  useEffect(() => {
+    if (viewMode === 'grid' && selectedCycleId && selectedCycleId !== 'all') {
+      getAvailableSlotsForCycle(selectedCycleId)
+        .then(setScheduleSlots)
+        .catch(() => setScheduleSlots([]));
+    } else {
+      setScheduleSlots([]);
+    }
+  }, [viewMode, selectedCycleId, requests]);
+
   const handleCycleChange = (value: string) => {
     setSelectedCycleId(value);
     if (value === 'all') {
