@@ -8,7 +8,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
-import { getPublishedArticles, getAllTags, calculateReadTime } from '@/lib/blog';
+import { getPublishedArticles, getAllTags, calculateReadTime, getImageUrl } from '@/lib/blog';
 import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
@@ -72,7 +72,7 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
         <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
           <div className="aspect-video bg-muted">
             <img
-              src={article.cover_image_url ? `${article.cover_image_url}?v=${article.cover_image_generated_at ? new Date(article.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'}
+              src={getImageUrl(article.mainImage, 600, 340)}
               alt={article.title}
               className="w-full h-full object-cover"
               loading="lazy"
@@ -89,8 +89,8 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
               {article.excerpt}
             </CardDescription>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
-              <span>{calculateReadTime(article.body_html)}</span>
+              <span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
+              <span>{calculateReadTime(article.body)}</span>
             </div>
           </CardContent>
         </Card>
@@ -131,7 +131,7 @@ export default function Blog() {
       '@type': 'BlogPosting',
       headline: a.title,
       description: a.excerpt,
-      datePublished: a.published_at,
+      datePublished: a.publishedAt,
       url: `${MARKETING_DOMAIN}/blog/${a.slug}`
     }))
   } : undefined;
@@ -208,7 +208,7 @@ export default function Blog() {
                   <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
                     <div className="grid md:grid-cols-2">
                       <div className="aspect-video md:aspect-auto bg-muted">
-                        <img src={featuredPost.cover_image_url ? `${featuredPost.cover_image_url}?v=${featuredPost.cover_image_generated_at ? new Date(featuredPost.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'} alt={featuredPost.title} className="w-full h-full object-cover" loading="lazy" />
+                        <img src={getImageUrl(featuredPost.mainImage, 800, 450)} alt={featuredPost.title} className="w-full h-full object-cover" loading="lazy" />
                       </div>
                       <CardContent className="p-8 flex flex-col justify-center">
                         {featuredPost.tags?.[0] && <Badge className="w-fit mb-4">{featuredPost.tags[0]}</Badge>}
@@ -217,11 +217,11 @@ export default function Blog() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
-                            {featuredPost.published_at && new Date(featuredPost.published_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {featuredPost.publishedAt && new Date(featuredPost.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            {calculateReadTime(featuredPost.body_html)}
+                            {calculateReadTime(featuredPost.body)}
                           </span>
                         </div>
                       </CardContent>
@@ -239,7 +239,7 @@ export default function Blog() {
                 <h2 className="text-2xl font-bold mb-8">{t('blog.recentArticles')}</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {recentPosts.map((article, index) => (
-                    <ArticleCard key={article.id} article={article} dateLocale={dateLocale} index={index} />
+                    <ArticleCard key={article._id} article={article} dateLocale={dateLocale} index={index} />
                   ))}
                 </div>
               </div>

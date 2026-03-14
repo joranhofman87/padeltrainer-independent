@@ -1,37 +1,50 @@
-import { supabase } from '@/lib/supabaseClient';
+import { sanityClient, BLOG_POSTS_QUERY, BLOG_POSTS_COUNT_QUERY, BLOG_POSTS_BY_TAG_QUERY, BLOG_POSTS_BY_TAG_COUNT_QUERY, BLOG_POST_BY_SLUG_QUERY, RELATED_POSTS_QUERY, ALL_TAGS_QUERY, urlFor } from '@/lib/sanity';
+import type { PortableTextBlock } from '@portabletext/react';
 
 export interface Article {
-  id: string;
-  canonical_id: string;
-  locale: string;
+  _id: string;
   title: string;
   slug: string;
   excerpt: string | null;
-  body_html: string | null;
-  status: string;
-  published_at: string | null;
-  author_name: string;
-  cover_image_url: string | null;
-  cover_image_alt: string | null;
-  cover_image_generated_at: string | null;
+  body: PortableTextBlock[] | null;
+  mainImage: any | null;
+  publishedAt: string | null;
   tags: string[] | null;
-  primary_keyword: string | null;
-  meta_title: string | null;
-  meta_description: string | null;
-  created_at: string;
-  updated_at: string;
+  locale: string;
+  author: { name: string; image?: any } | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  primaryKeyword: string | null;
 }
 
 export interface ArticleWithTranslations extends Article {
+  _updatedAt: string;
+  canonicalRef: string | null;
   translations: { locale: string; slug: string }[];
 }
 
 const ARTICLES_PER_PAGE = 12;
 
-function calculateReadTime(html: string | null): string {
-  if (!html) return '1 min read';
-  const text = html.replace(/<[^>]*>/g, '');
-  const words = text.split(/\s+/).filter(Boolean).length;
+export function getImageUrl(image: any, width = 800, height?: number): string {
+  if (!image) return '/placeholder.svg';
+  let builder = urlFor(image).width(width).auto('format').quality(80);
+  if (height) builder = builder.height(height);
+  return builder.url();
+}
+
+function calculateReadTime(body: PortableTextBlock[] | null): string {
+  if (!body) return '1 min read';
+  // Estimate words from portable text blocks
+  let words = 0;
+  for (const block of body) {
+    if (block._type === 'block' && Array.isArray(block.children)) {
+      for (const child of block.children as any[]) {
+        if (child.text) {
+          words += child.text.split(/\s+/).filter(Boolean).length;
+        }
+      }
+    }
+  }
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }
@@ -43,25 +56,28 @@ export async function getPublishedArticles(
   page: number = 1,
   tag?: string
 ) {
-  let query = (supabase as any)
-    .from('articles')
-    .select('*', { count: 'exact' })
-    .eq('locale', locale)
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+  const start = (page - 1) * ARTICLES_PER_PAGE;
+  const end = start + ARTICLES_PER_PAGE;
+
+  let articles: Article[];
+  let totalCount: number;
 
   if (tag) {
-    query = query.contains('tags', [tag]);
+    [articles, totalCount] = await Promise.all([
+      sanityClient.fetch<Article[]>(BLOG_POSTS_BY_TAG_QUERY, { locale, tag, start, end } as any),
+      sanityClient.fetch<number>(BLOG_POSTS_BY_TAG_COUNT_QUERY, { locale, tag } as any),
+    ]);
+  } else {
+    [articles, totalCount] = await Promise.all([
+      sanityClient.fetch<Article[]>(BLOG_POSTS_QUERY, { locale, start, end } as any),
+      sanityClient.fetch<number>(BLOG_POSTS_COUNT_QUERY, { locale } as any),
+    ]);
   }
 
-  const { data, error, count } = await query;
-  if (error) throw error;
-
   return {
-    articles: (data || []) as Article[],
-    totalCount: count || 0,
-    totalPages: Math.ceil((count || 0) / ARTICLES_PER_PAGE),
+    articles: articles || [],
+    totalCount: totalCount || 0,
+    totalPages: Math.ceil((totalCount || 0) / ARTICLES_PER_PAGE),
     currentPage: page,
   };
 }
@@ -70,28 +86,8 @@ export async function getArticleBySlug(
   slug: string,
   locale: string
 ): Promise<ArticleWithTranslations | null> {
-  const { data, error } = await (supabase as any)
-    .from('articles')
-    .select('*')
-    .eq('slug', slug)
-    .eq('locale', locale)
-    .eq('status', 'published')
-    .maybeSingle();
-
-  if (error || !data) return null;
-
-  // Fetch translations via canonical_id
-  const { data: translations } = await (supabase as any)
-    .from('articles')
-    .select('locale, slug')
-    .eq('canonical_id', data.canonical_id)
-    .eq('status', 'published')
-    .neq('id', data.id);
-
-  return {
-    ...data,
-    translations: translations || [],
-  } as ArticleWithTranslations;
+  const data = await sanityClient.fetch(BLOG_POST_BY_SLUG_QUERY, { slug, locale });
+  return data || null;
 }
 
 export async function getRelatedArticles(
@@ -100,33 +96,27 @@ export async function getRelatedArticles(
   tags: string[] | null,
   limit: number = 3
 ): Promise<Article[]> {
-  let query = (supabase as any)
-    .from('articles')
-    .select('*')
-    .eq('locale', locale)
-    .eq('status', 'published')
-    .neq('id', articleId)
-    .order('published_at', { ascending: false })
-    .limit(limit);
-
-  if (tags && tags.length > 0) {
-    query = query.overlaps('tags', tags);
+  if (!tags || tags.length === 0) {
+    // Fallback: get latest articles
+    const data = await sanityClient.fetch(
+      `*[_type == "post" && locale == $locale && _id != $id && !(_id in path("drafts.**"))] | order(publishedAt desc) [0...$limit] {
+        _id, title, "slug": slug.current, mainImage, publishedAt, tags
+      }`,
+      { locale, id: articleId, limit }
+    );
+    return data || [];
   }
 
-  const { data, error } = await query;
-  if (error) return [];
-  return (data || []) as Article[];
+  const data = await sanityClient.fetch(RELATED_POSTS_QUERY, {
+    locale,
+    id: articleId,
+    tags,
+    limit,
+  });
+  return data || [];
 }
 
 export async function getAllTags(locale: string): Promise<string[]> {
-  const { data } = await (supabase as any)
-    .from('articles')
-    .select('tags')
-    .eq('locale', locale)
-    .eq('status', 'published');
-
-  if (!data) return [];
-  const tagSet = new Set<string>();
-  data.forEach((a: any) => a.tags?.forEach((t: string) => tagSet.add(t)));
-  return Array.from(tagSet).sort();
+  const tags = await sanityClient.fetch(ALL_TAGS_QUERY, { locale });
+  return (tags || []).filter(Boolean).sort();
 }
