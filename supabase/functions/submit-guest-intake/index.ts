@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
       locationId,
       notes,
       consentGiven,
+      language,
     } = await req.json();
 
     if (!email || !fullName || !cycleId) {
