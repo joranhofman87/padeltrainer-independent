@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { MapPin, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow } from '@/lib/cycles';
 
