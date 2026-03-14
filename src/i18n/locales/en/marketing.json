@@ -9,12 +9,13 @@
     "language": "Language"
   },
   "footer": {
-    "tagline": "Your journey to better padel.",
+    "tagline": "Everything you need to improve your padel game.",
     "platform": "Platform",
     "findTrainers": "Find Padel Trainers",
     "locations": "Padel Clubs",
     "academies": "Padel Academies",
-    "popularCities": "Padel Trainers by City",
+    "learnPadel": "Learn Padel",
+    "popularCities": "Popular Cities",
     "registerClub": "Register your club",
     "company": "Company",
     "aboutUs": "About Us",
