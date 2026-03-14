@@ -1,48 +1,63 @@
 
-# Migrate Platform Subscriptions from Mollie to Stripe
 
-## Status: ✅ COMPLETED
+# Plan: Data Cleaning & Validation Hardening for Large Imports
 
-Migration completed on 2026-03-14.
+After reviewing the full import logic, here are the gaps that would cause dirty data at 5,000+ scale, grouped by priority.
 
-## What was done
+## 1. Text Normalization (names, cities)
 
-### Phase 1: Stripe Products & Prices ✅
-Created all missing Stripe products and prices:
-- **Starter**: prod_U96I8IfrCKG4LU (€9/mo: price_1TAo5cPxAlHS6UZHBS3lZ5lo, €75.60/yr: price_1TAo67PxAlHS6UZHgmn9Tq4x)
-- **Professional**: prod_TnaKMqklQL0csZ (€29/mo: price_1Spz9VPxAlHS6UZH9wmgdECd, €278/yr: price_1Spz9uPxAlHS6UZHMaZfUTBY)
-- **Academy**: prod_TnaKlteqteiFWb (€79/mo: price_1SpzA8PxAlHS6UZHKsoY94qK, €758/yr: price_1SpzAdPxAlHS6UZHKjhjq8Ey)
-- **Club**: prod_TpSG6xKQWRccLA + prod_U96IiK6uDt4WHZ (€19/mo: price_1TAo6KPxAlHS6UZHg228uEB9, €2388/yr: price_1SrnLWPxAlHS6UZHnPt93ego)
+Currently names and cities are only `.trim()`-ed. With messy data you'll get entries like `"PADEL CLUB AMSTERDAM"`, `"padel club amsterdam"`, `"  Padel Club  Amsterdam  "`, or `"Amsterdam "` vs `"Amsterdam"`.
 
-### Phase 2: Database Changes ✅
-- Added `stripe_customer_id` to `trainer_profiles`, `club_profiles`, `academy_profiles`
-- Added `stripe_price_id_monthly` and `stripe_price_id_yearly` to `subscription_plans`
-- Populated all Stripe price IDs in the subscription_plans table
+**Add a `normalizeText` helper** that:
+- Collapses multiple spaces into one
+- Converts to Title Case (`padel club amsterdam` → `Padel Club Amsterdam`)
+- Strips leading/trailing whitespace
 
-### Phase 3: Edge Functions ✅
-Created 5 new Stripe-based edge functions:
-1. **`create-stripe-checkout`** — Unified checkout for trainers, clubs, academies
-2. **`check-stripe-subscription`** — Checks subscription status via Stripe API
-3. **`cancel-stripe-subscription`** — Cancels at period end via Stripe
-4. **`stripe-subscription-webhook`** — Handles checkout.session.completed, invoice.paid/failed, subscription.deleted
-5. **`customer-portal`** — Stripe Customer Portal for self-service management
+Apply to `name`, `city`, and `street_address`.
 
-### Phase 4: Frontend Updates ✅
-Updated all frontend files to call Stripe functions:
-- `src/hooks/useAuth.tsx` → `check-stripe-subscription`
-- `src/pages/TrainerSubscription.tsx` → `create-stripe-checkout` + `cancel-stripe-subscription`
-- `src/lib/clubSubscription.ts` → `create-stripe-checkout` + `check-stripe-subscription` + `cancel-stripe-subscription`
-- `src/lib/academySubscription.ts` → same
+## 2. Country Code Normalization
 
-## What stays unchanged
-- **Mollie Connect** for player payments (lesson bookings)
-- **Trial logic** — same durations
-- **Admin overrides** — manual `subscription_status = 'active'`
-- Old Mollie subscription functions kept for backward compatibility
+The file might contain `"Netherlands"`, `"The Netherlands"`, `"nederland"`, `"NL"`, `"Australia"`, `"AU"` etc. Currently it's stored as-is.
 
-## TODO (post-migration)
-- [ ] Set up Stripe webhook endpoint URL in Stripe Dashboard pointing to `stripe-subscription-webhook`
-- [ ] Configure Stripe Customer Portal settings in Stripe Dashboard
-- [ ] Add STRIPE_WEBHOOK_SECRET for signature verification
-- [ ] Monitor and deprecate old Mollie subscription functions after transition period
-- [ ] Update `reconcile-subscriptions` cron job or retire it
+**Add a country normalizer** that maps common full names and variants to their ISO 2-letter code (NL, BE, DE, ES, AU, etc.). Unknown values pass through with a warning badge.
+
+## 3. URL Cleanup
+
+Website, Facebook, Instagram, and Google Maps URLs may be messy (`padelclub.nl` without protocol, trailing spaces, mixed case).
+
+**Add a `normalizeUrl` helper** that:
+- Trims whitespace
+- Prepends `https://` if no protocol is present
+- Removes trailing slashes for consistency
+
+## 4. Email Validation
+
+No validation exists. Invalid emails will be stored as-is.
+
+**Add basic email format check** (regex). Invalid emails get a non-blocking warning (still importable, but flagged in preview).
+
+## 5. Phone Normalization
+
+Phone numbers may have inconsistent formatting (`+31 20 123 4567`, `0201234567`, `+31-20-123-4567`).
+
+**Strip all non-digit characters except leading `+`** for consistent storage.
+
+## 6. Slug Duplicate Check Gap
+
+Currently the slug fallback (Layer 3) only runs when there are no coordinates AND no Google Maps URL. This means two clubs with the same name+city but different (non-matching) coordinates would both be imported as duplicates with conflicting slugs, causing a database unique constraint error caught only at insert time.
+
+**Always check slug uniqueness** as a final layer regardless of whether coords/URL matched. If the slug already exists (in DB or file), append a numeric suffix (`-2`, `-3`).
+
+## 7. Preview Filtering for Large Files
+
+With 5,000+ rows showing only the first 100 is not useful for reviewing problems. 
+
+**Add filter tabs** above the preview table: "All", "Valid", "Duplicates", "Errors" — so you can quickly scan the ~200 problem rows instead of scrolling past 4,800 good ones.
+
+## Files to Edit
+
+- `src/components/admin/ImportLocationsDialog.tsx` — all logic and UI changes
+- `src/i18n/locales/en/admin.json` — new warning/error translation keys
+- `src/i18n/locales/es/admin.json` — same
+- `src/i18n/locales/fr/admin.json` — same
+
