@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
     try {
       const { data: cycle } = await adminClient
         .from("cycles")
-        .select("owner_type, owner_id, name, settings")
+        .select("owner_type, owner_id, name, settings, start_date, end_date, enrollment_deadline, location_id")
         .eq("id", cycleId)
         .single();
 
