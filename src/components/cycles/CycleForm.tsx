@@ -467,6 +467,30 @@ export default function CycleForm({
               />
             )}
 
+            {/* Confirmation email text - included in registration confirmation email */}
+            {(isRegistration || isEvent) && (
+              <FormField
+                control={form.control}
+                name="confirmation_email_text"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('form.confirmationEmailText', 'Confirmation Email Text')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder={t('form.confirmationEmailTextPlaceholder', 'e.g. Training starts on March 1st. Please bring your own racket.')}
+                        rows={3}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {t('form.confirmationEmailTextHelp', 'This text is included in the confirmation email sent to players after they register. Leave empty to send a standard confirmation.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             {isEvent ? (
               /* Event: start date + end date */
               <div className="grid grid-cols-2 gap-4">
