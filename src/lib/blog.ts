@@ -64,8 +64,8 @@ export async function getPublishedArticles(
 
   if (tag) {
     [articles, totalCount] = await Promise.all([
-      sanityClient.fetch(BLOG_POSTS_BY_TAG_QUERY, { locale, tag, start, end }),
-      sanityClient.fetch(BLOG_POSTS_BY_TAG_COUNT_QUERY, { locale, tag }),
+      sanityClient.fetch<Article[]>(BLOG_POSTS_BY_TAG_QUERY, { locale, tag, start, end }),
+      sanityClient.fetch<number>(BLOG_POSTS_BY_TAG_COUNT_QUERY, { locale, tag }),
     ]);
   } else {
     [articles, totalCount] = await Promise.all([
