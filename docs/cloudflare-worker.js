@@ -80,7 +80,7 @@ export default {
     const userAgent = request.headers.get('User-Agent') || '';
     
     // Only intercept GET requests from bots on marketing pages
-    if (request.method === 'GET' && isBot(userAgent) && isMarketingPath(url.pathname)) {
+    if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
       try {
         // Call the render-page Edge Function
         const renderUrl = `${env.RENDER_FUNCTION_URL}?path=${encodeURIComponent(url.pathname)}`;
