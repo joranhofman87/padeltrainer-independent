@@ -1,27 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Collapse Scoring Weights Behind Presets + Collapsible Detail
+## Status: ✅ COMPLETED
 
-## Current State
-Step 2 of the wizard always shows all 6 sliders plus the rating spread section, taking up a lot of vertical space. Users must scroll through it even if they just want "Balanced."
+Implemented on 2026-03-14.
 
-## Proposed UX
-- Show the 3 preset buttons prominently (Balanced, Time-focused, Level-focused) — selecting one sets the weights immediately
-- Below the presets, add a **collapsible section** ("Customize weights") using an accordion/disclosure pattern
-- When expanded, show the 6 sliders + total indicator
-- The rating spread section stays always visible below (it's a separate concern)
-- Default state: collapsed (preset selected = "Balanced")
+## Problem
+
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
+
+## Solution
+
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
+
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
+```
 
 ## Changes
 
-### `src/components/cycles/ScoringWeightsPanel.tsx`
-- Wrap the sliders section in a `Collapsible` (from radix/shadcn)
-- Add a trigger button: "Customize weights ▸" that toggles open/closed
-- Auto-expand when user has customized (i.e. no preset is active)
-- Keep presets, total indicator, and rating spread outside the collapsible
-
-### Translation files (`en`, `nl`, `es`, `de`, `fr`)
-- Add key `proposals.weights.customize` — "Customize weights" / "Gewichten aanpassen" / etc.
-
-No changes needed to `GenerateProposalsWizard.tsx` or `ScoringWeightsDialog.tsx` — the panel handles it internally.
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)

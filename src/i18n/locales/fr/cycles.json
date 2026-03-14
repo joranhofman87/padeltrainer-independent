@@ -340,6 +340,7 @@
         "timeFocused": "Axé sur les horaires",
         "levelFocused": "Axé sur le niveau"
       },
+      "customize": "Personnaliser les poids",
       "ratingSettings": "Compatibilité de classement",
       "maxRatingSpread": "Écart de classement max",
       "maxRatingSpreadHelp": "Différence de classement maximale autorisée entre les joueurs d'un même groupe",
