@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExternalLink, Eye, Pencil } from 'lucide-react';
-import { sanityClient, SANITY_STUDIO_URL, getImageUrl } from '@/lib/sanity';
+import { sanityClient, SANITY_STUDIO_URL } from '@/lib/sanity';
+import { getImageUrl } from '@/lib/blog';
 import { useState } from 'react';
 
 interface SanityPost {
