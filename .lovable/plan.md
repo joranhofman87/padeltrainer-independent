@@ -1,52 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix: Third-Party Script Errors Crashing the App
+## Status: ✅ COMPLETED
+
+Implemented on 2026-03-14.
 
 ## Problem
 
-Three issues visible in the screenshot:
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-1. **Reditus `v2.js` script** throws `TypeError: Cannot read properties of undefined (reading 'q')`. This is a third-party script error that the global error handler in `main.tsx` catches and logs loudly, but it does NOT crash React — it's just noise in the console.
+## Solution
 
-2. **Facebook CDN 403 errors** — Two image requests to `fbcdn.net` returning 403 Forbidden. These are likely trainer/academy social images with expired tokens. Not actionable.
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
 
-3. **The real crash** — The `dangerouslySetInnerHTML` reconciliation issue we've been fixing. The Reditus script modifies DOM nodes that React is tracking, causing React to crash during reconciliation. This triggers the ErrorBoundary, which shows the "Something went wrong" page and effectively reloads the app.
-
-## Root Cause
-
-The Reditus script (`v2.js`) manipulates the DOM globally. When it touches nodes inside React's tree, React crashes on the next render cycle. The global error handler also fires for cross-origin script errors (showing "Script error." with no useful info), adding console noise.
-
-## Fix — Two Changes
-
-### 1. Filter third-party errors from global handler (`src/main.tsx`)
-
-The global `window.addEventListener('error')` handler should ignore errors from third-party scripts (cross-origin "Script error." events and errors from non-app scripts). This stops the noisy logging and prevents PostHog from being flooded with non-actionable exceptions.
-
-```tsx
-window.addEventListener('error', (event) => {
-  // Ignore cross-origin script errors (no useful info) and third-party scripts
-  if (!event.filename || event.message === 'Script error.' 
-      || !event.filename.includes(window.location.hostname)) {
-    return;
-  }
-  logger.error('Unhandled error', ...);
-});
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-### 2. Wrap Reditus script loading with error isolation (`src/main.tsx`)
+## Changes
 
-Add `try/catch` around Reditus initialization and attach an `onerror` handler to silently catch load failures:
-
-```tsx
-s.onerror = () => { /* silently ignore */ };
-s.onload = () => {
-  try {
-    (window as any).gr?.('initCustomer', '...');
-    (window as any).gr?.('track', 'pageview');
-  } catch { /* silently ignore */ }
-};
-```
-
-### Files to change
-- `src/main.tsx` — filter global error handler + wrap Reditus in try/catch
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)

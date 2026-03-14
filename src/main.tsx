@@ -9,6 +9,10 @@ import { initializePostHog } from "./lib/posthog";
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
+  // Ignore cross-origin script errors (no useful info) and third-party scripts
+  if (!event.filename || event.message === 'Script error.' || !event.filename.includes(window.location.hostname)) {
+    return;
+  }
   logger.error('Unhandled error', event.error instanceof Error ? event.error : new Error(event.message || 'Unknown error'), {
     component: 'global',
     action: 'uncaught_error',
@@ -33,9 +37,12 @@ function initDeferred() {
   const s = document.createElement('script');
   s.async = true;
   s.src = 'https://script.getreditus.com/v2.js';
+  s.onerror = () => { /* silently ignore third-party load failures */ };
   s.onload = () => {
-    (window as any).gr?.('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
-    (window as any).gr?.('track', 'pageview');
+    try {
+      (window as any).gr?.('initCustomer', '48a566a2-eb01-4562-932d-ef6886e0282e');
+      (window as any).gr?.('track', 'pageview');
+    } catch { /* silently ignore third-party errors */ }
   };
   document.head.appendChild(s);
 }
