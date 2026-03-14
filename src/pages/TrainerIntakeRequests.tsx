@@ -152,7 +152,10 @@ export default function TrainerIntakeRequests() {
   };
 
   const handleResetProposals = async () => {
-    if (selectedCycleId === 'all') return;
+    if (selectedCycleId === 'all') {
+      toast.error(t('proposals.selectCycleFirst', { defaultValue: 'Please select a specific cycle first' }));
+      return;
+    }
     setIsResetting(true);
     try {
       const result = await resetProposals(selectedCycleId);
