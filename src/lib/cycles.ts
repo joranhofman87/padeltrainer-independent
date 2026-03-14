@@ -981,13 +981,11 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
 
   if (trainerIds.length === 0) return [];
 
-  // 3. Fetch availability slots within cycle date range
+  // 3. Fetch availability slots for this specific cycle
   const { data: slots, error: slotsError } = await supabase
     .from('availability_slots')
     .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name')
-    .in('trainer_id', trainerIds)
-    .gte('start_time', cycle.start_date)
-    .lte('end_time', cycle.end_date + 'T23:59:59')
+    .eq('cyclus_id', cycleId)
     .order('start_time', { ascending: true });
 
   if (slotsError) throw slotsError;

@@ -106,11 +106,21 @@ export default function TrainerIntakeRequests() {
     if (viewMode === 'schedule' && selectedCycleId && selectedCycleId !== 'all') {
       getAvailableSlotsForCycle(selectedCycleId)
         .then(setScheduleSlots)
-        .catch(() => setScheduleSlots([]));
+        .catch((err) => {
+          logger.error('Failed to load schedule slots', err instanceof Error ? err : new Error(String(err)), { component: 'TrainerIntakeRequests', cycleId: selectedCycleId });
+          setScheduleSlots([]);
+        });
     } else {
       setScheduleSlots([]);
     }
   }, [viewMode, selectedCycleId, requests]);
+
+  // Auto-switch to schedule view when viewing proposed requests
+  useEffect(() => {
+    if (statusFilter === 'proposed' && proposedCount > 0) {
+      setViewMode('schedule');
+    }
+  }, [statusFilter]);
 
   const handleCycleChange = (value: string) => {
     setSelectedCycleId(value);
