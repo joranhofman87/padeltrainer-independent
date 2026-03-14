@@ -251,7 +251,7 @@ export function ImportLocationsDialog({
     const locations: ParsedLocation[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]);
+      const values = parseCSVLine(lines[i], delimiter);
       const errors: string[] = [];
 
       const name = values[indices.name]?.trim() || "";
