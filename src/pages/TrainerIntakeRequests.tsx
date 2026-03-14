@@ -100,6 +100,17 @@ export default function TrainerIntakeRequests() {
     setFilteredRequests(filtered);
   }, [requests, selectedCycleId, statusFilter]);
 
+  // Fetch slots when switching to grid view for a selected cycle
+  useEffect(() => {
+    if (viewMode === 'grid' && selectedCycleId && selectedCycleId !== 'all') {
+      getAvailableSlotsForCycle(selectedCycleId)
+        .then(setScheduleSlots)
+        .catch(() => setScheduleSlots([]));
+    } else {
+      setScheduleSlots([]);
+    }
+  }, [viewMode, selectedCycleId, requests]);
+
   const handleCycleChange = (value: string) => {
     setSelectedCycleId(value);
     if (value === 'all') {
