@@ -251,13 +251,15 @@ export default function TrainerSubscription() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={handleCancelSubscription}
+                  onClick={handleManageSubscription}
                   disabled={loadingPortal}
                 >
                   {loadingPortal ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  Cancel Subscription
+                  ) : (
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                  )}
+                  Manage Subscription
                 </Button>
               )}
             </div>
