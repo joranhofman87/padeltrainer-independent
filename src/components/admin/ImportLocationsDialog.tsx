@@ -178,7 +178,17 @@ export function ImportLocationsDialog({
     return parsed;
   };
 
-  const parseCSVLine = (line: string): string[] => {
+  const detectDelimiter = (headerLine: string): string => {
+    let semicolonCount = 0;
+    let inQuotes = false;
+    for (const char of headerLine) {
+      if (char === '"') inQuotes = !inQuotes;
+      if (!inQuotes && char === ';') semicolonCount++;
+    }
+    return semicolonCount > 0 ? ';' : ',';
+  };
+
+  const parseCSVLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
@@ -188,7 +198,7 @@ export function ImportLocationsDialog({
       
       if (char === '"') {
         inQuotes = !inQuotes;
-      } else if ((char === "," || char === ";") && !inQuotes) {
+      } else if (char === delimiter && !inQuotes) {
         result.push(current.trim());
         current = "";
       } else {
@@ -220,7 +230,8 @@ export function ImportLocationsDialog({
     }
 
     const headerLine = lines[0];
-    const headers = parseCSVLine(headerLine);
+    const delimiter = detectDelimiter(headerLine);
+    const headers = parseCSVLine(headerLine, delimiter);
 
     // Find column indices
     const indices: Record<string, number> = {};
@@ -240,7 +251,7 @@ export function ImportLocationsDialog({
     const locations: ParsedLocation[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]);
+      const values = parseCSVLine(lines[i], delimiter);
       const errors: string[] = [];
 
       const name = values[indices.name]?.trim() || "";
