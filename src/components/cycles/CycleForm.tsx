@@ -186,6 +186,7 @@ export default function CycleForm({
       total_price: cycle?.total_price ?? '',
       currency: cycle?.currency || 'EUR',
       success_message: (cycle?.settings as any)?.success_message || '',
+      confirmation_email_text: (cycle?.settings as any)?.confirmation_email_text || '',
     },
   });
 
