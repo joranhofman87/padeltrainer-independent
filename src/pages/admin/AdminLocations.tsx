@@ -10,6 +10,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Upload,
+  Download,
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
@@ -155,6 +156,42 @@ export default function AdminLocations() {
     "name"
   );
 
+  const exportToCsv = () => {
+    const headers = [
+      'Name', 'Street Address', 'Postal Code', 'City', 'Country',
+      'Website', 'Phone', 'Email', 'Indoor Courts', 'Outdoor Courts',
+      'Google Maps URL', 'Google Rating', 'Google Reviews',
+      'Facebook', 'Instagram', 'Latitude', 'Longitude',
+      'Verified', 'Active', 'Trainers', 'Slug', 'Created At',
+    ];
+
+    const escCsv = (val: unknown) => {
+      if (val == null) return '';
+      const s = String(val);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows = sortedData.map(loc => [
+      loc.name, loc.street_address, loc.postal_code, loc.city, loc.country,
+      loc.website_url, loc.phone, loc.email,
+      loc.indoor_courts, loc.outdoor_courts,
+      loc.google_maps_url, loc.google_rating, loc.google_review_count,
+      loc.facebook_url, loc.instagram_url, loc.latitude, loc.longitude,
+      loc._isVerified ? 'Yes' : 'No', loc.is_active ? 'Yes' : 'No',
+      loc._trainerCount, loc.slug, loc.created_at,
+    ].map(escCsv).join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `locations-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const openAddDialog = () => {
     setEditingLocation(null);
     setDialogOpen(true);
@@ -209,6 +246,10 @@ export default function AdminLocations() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DataProcessingBadge onClick={() => setDataProcessingOpen(true)} />
+          <Button variant="outline" onClick={exportToCsv}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
