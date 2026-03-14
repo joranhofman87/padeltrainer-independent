@@ -154,7 +154,7 @@ export default function TrainerSubscription() {
     } catch (err) {
       logger.error('Subscription checkout failed', err as Error, { 
         component: 'TrainerSubscription', 
-        planId 
+        plan: plan.tier 
       });
       toast({
         title: 'Error',
