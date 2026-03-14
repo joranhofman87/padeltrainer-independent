@@ -336,7 +336,16 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria }: RequestBody = await req.json();
+    let body: RequestBody;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid or empty request body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const { cycleId, weights: inputWeights, ratingSpread, startDate, trainerAvailability, additionalCriteria } = body;
 
     if (!cycleId) {
       return new Response(
@@ -581,19 +590,24 @@ Deno.serve(async (req) => {
       trainerProfileMap[tp.id] = tp as TrainerProfile;
     });
 
-    // Fetch existing bookings to check capacity
+    // Fetch existing bookings to check capacity (batched to avoid URL length limits)
     const slotIds = slots.map((s) => s.id);
-    const { data: existingBookings, error: bookingsError } = await supabase
-      .from("bookings")
-      .select("slot_id")
-      .in("slot_id", slotIds)
-      .in("status", ["pending", "confirmed"]);
-
-    if (bookingsError) throw bookingsError;
+    const BATCH_SIZE = 200;
+    const allBookings: { slot_id: string }[] = [];
+    for (let i = 0; i < slotIds.length; i += BATCH_SIZE) {
+      const batch = slotIds.slice(i, i + BATCH_SIZE);
+      const { data, error: bookingsError } = await supabase
+        .from("bookings")
+        .select("slot_id")
+        .in("slot_id", batch)
+        .in("status", ["pending", "confirmed"]);
+      if (bookingsError) throw bookingsError;
+      if (data) allBookings.push(...data);
+    }
 
     // Count bookings per slot
     const bookingCounts: Record<string, number> = {};
-    (existingBookings || []).forEach((b) => {
+    allBookings.forEach((b) => {
       bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
     });
 
