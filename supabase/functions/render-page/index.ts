@@ -20,9 +20,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Strip language prefix
-    const cleanPath = path.replace(/^\/(en|nl)/, '') || '/';
-    const lang = path.startsWith('/nl') ? 'nl' : 'en';
+    // Strip language prefix (supports all 5 languages)
+    const langMatch = path.match(/^\/(en|nl|es|de|fr)/);
+    const lang = langMatch ? langMatch[1] : 'en';
+    const cleanPath = path.replace(/^\/(en|nl|es|de|fr)/, '') || '/';
 
     // Route to the appropriate renderer
     let html: string;
@@ -58,6 +59,56 @@ Deno.serve(async (req) => {
       cacheMaxAge = 86400;
     } else if (cleanPath === '/pricing') {
       html = renderStaticPage('Pricing - PadelTrainer.ai', 'Explore our flexible pricing plans for padel trainers and academies. Start with a free trial.', lang, '/pricing');
+      cacheMaxAge = 86400;
+    // ─── Blog routes ───
+    } else if (cleanPath === '/blog') {
+      html = await renderBlogListing(lang);
+      cacheMaxAge = 1800;
+    } else if (/^\/blog\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/blog\/([^/]+)$/)![1];
+      html = await renderSanityArticle('blogPost', slug, lang, '/blog');
+      cacheMaxAge = 1800;
+    // ─── Rules routes ───
+    } else if (cleanPath === '/padel-rules') {
+      html = renderStaticPage('Padel Rules — Complete Guide to the Rules of Padel', 'Learn all the official padel rules, scoring, serving, and match play. A complete guide for beginners and advanced players.', lang, '/padel-rules');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-rules\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-rules\/([^/]+)$/)![1];
+      html = await renderSanityArticle('rulesArticle', slug, lang, '/padel-rules');
+      cacheMaxAge = 3600;
+    // ─── Strokes routes ───
+    } else if (cleanPath === '/padel-strokes') {
+      html = renderStaticPage('Padel Strokes — Master Every Shot in Padel', 'Explore all padel strokes and techniques. Learn the bandeja, vibora, smash, and more with tips from top coaches.', lang, '/padel-strokes');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-strokes\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-strokes\/([^/]+)$/)![1];
+      html = await renderSanityArticle('stroke', slug, lang, '/padel-strokes');
+      cacheMaxAge = 3600;
+    // ─── Coaches routes ───
+    } else if (cleanPath === '/padel-coaches') {
+      html = renderStaticPage('Padel Coaches — Expert Coaching Tips & Techniques', 'Discover expert padel coaches and their training tips, techniques, and video lessons.', lang, '/padel-coaches');
+      cacheMaxAge = 86400;
+    } else if (/^\/padel-coaches\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/padel-coaches\/([^/]+)$/)![1];
+      html = await renderSanityArticle('trainer', slug, lang, '/padel-coaches');
+      cacheMaxAge = 3600;
+    // ─── Video Tips routes ───
+    } else if (cleanPath === '/video-tips') {
+      html = renderStaticPage('Padel Video Tips — Watch & Learn from Top Coaches', 'Watch curated padel video tips from top coaches. Improve your technique with visual guides for every skill level.', lang, '/video-tips');
+      cacheMaxAge = 86400;
+    } else if (/^\/video-tips\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/video-tips\/([^/]+)$/)![1];
+      html = await renderSanityArticle('videoTip', slug, lang, '/video-tips');
+      cacheMaxAge = 3600;
+    // ─── Other static pages ───
+    } else if (cleanPath === '/partner') {
+      html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
+      cacheMaxAge = 86400;
+    } else if (cleanPath === '/privacy') {
+      html = renderStaticPage('Privacy Policy — PadelTrainer.ai', 'Read the PadelTrainer.ai privacy policy. Learn how we collect, use, and protect your personal data.', lang, '/privacy');
+      cacheMaxAge = 86400;
+    } else if (cleanPath === '/terms') {
+      html = renderStaticPage('Terms of Service — PadelTrainer.ai', 'Read the PadelTrainer.ai terms of service. Understand the rules and guidelines for using our platform.', lang, '/terms');
       cacheMaxAge = 86400;
     } else {
       // Fallback: return minimal HTML with meta redirect to SPA
@@ -845,4 +896,86 @@ function renderFallback(path: string, lang: string): string {
     lang,
     body: `<h1>PadelTrainer.ai</h1><p>Find and book padel trainers in the Netherlands.</p><p><a href="${SITE_URL}/${lang}">Go to homepage</a></p>`
   });
+}
+
+// ─── Sanity CMS Helpers ─────────────────────────────────────────
+
+const SANITY_PROJECT_ID = 'ru3aqhjn';
+const SANITY_DATASET = 'production';
+
+async function sanityFetch(query: string, params: Record<string, string> = {}): Promise<any> {
+  const qs = new URLSearchParams({ query });
+  for (const [k, v] of Object.entries(params)) {
+    qs.set(`$${k}`, `"${v}"`);
+  }
+  const url = `https://${SANITY_PROJECT_ID}.api.sanity.io/v2024-01-01/data/query/${SANITY_DATASET}?${qs.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.result;
+}
+
+async function renderSanityArticle(type: string, slug: string, lang: string, basePath: string): Promise<string> {
+  // Build a flexible query that works for all content types
+  const nameField = type === 'trainer' ? 'name' : 'title';
+  const descFields: Record<string, string> = {
+    blogPost: 'excerpt',
+    rulesArticle: 'intro',
+    stroke: 'shortDescription',
+    trainer: 'bio',
+    videoTip: 'shortSummary',
+  };
+  const descField = descFields[type] || 'excerpt';
+
+  const query = `*[_type == "${type}" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+    ${nameField},
+    h1,
+    ${descField},
+    seo,
+    "slug": slug.current
+  }`;
+
+  const doc = await sanityFetch(query, { slug });
+  if (!doc) return renderNotFound(lang);
+
+  const title = doc.seo?.titleTag || doc.h1 || doc[nameField] || slug;
+  const description = doc.seo?.metaDescription || doc[descField] || `Learn about ${title} on PadelTrainer.ai`;
+
+  const body = `
+    <div class="breadcrumb">
+      <a href="${SITE_URL}/${lang}">Home</a><span>›</span>
+      <a href="${SITE_URL}/${lang}${basePath}">${escHtml(basePath.replace(/^\//, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</a><span>›</span>
+      <strong>${escHtml(title)}</strong>
+    </div>
+    <h1>${escHtml(title)}</h1>
+    <p>${escHtml(typeof description === 'string' ? description : '')}</p>
+  `;
+
+  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `${basePath}/${slug}`, lang, body });
+}
+
+async function renderBlogListing(lang: string): Promise<string> {
+  const query = `*[_type == "blogPost" && !(_id in path("drafts.**"))] | order(datePublished desc) [0...10] {
+    title, "slug": slug.current, excerpt, category, datePublished
+  }`;
+  const posts = await sanityFetch(query) || [];
+
+  const title = 'Padel Blog — Tips, Guides & Training Advice';
+  const description = 'Read the latest padel tips, training guides, and expert advice. Improve your game with insights from top coaches and players.';
+
+  const postsHtml = posts.map((p: any) => `
+    <div class="card">
+      <h3><a href="${SITE_URL}/${lang}/blog/${p.slug}">${escHtml(p.title)}</a></h3>
+      ${p.category ? `<span class="badge">${escHtml(p.category)}</span>` : ''}
+      ${p.excerpt ? `<p>${escHtml(p.excerpt.slice(0, 120))}</p>` : ''}
+    </div>
+  `).join('');
+
+  const body = `
+    <h1>Padel Blog</h1>
+    <p>${escHtml(description)}</p>
+    <div class="grid">${postsHtml}</div>
+  `;
+
+  return htmlDoc({ title, description, url: '/blog', lang, body });
 }

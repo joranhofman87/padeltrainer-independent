@@ -71,17 +71,28 @@ function isMarketingPath(pathname) {
   
   // Marketing routes that should be pre-rendered
   const marketingPatterns = [
-    /^\/(en|nl)\/?$/,                    // Homepage
-    /^\/(en|nl)\/trainers\/?$/,          // Trainers directory
-    /^\/(en|nl)\/trainers\/[^/]+$/,      // City pages
-    /^\/(en|nl)\/trainer\/[^/]+$/,       // Trainer profiles
-    /^\/(en|nl)\/locations\/?$/,         // Locations directory
-    /^\/(en|nl)\/locations\/[^/]+$/,     // Location pages
-    /^\/(en|nl)\/academies\/[^/]+$/,     // Academy pages
-    /^\/(en|nl)\/blog\/[^/]+$/,          // Blog posts
-    /^\/(en|nl)\/about\/?$/,             // About
-    /^\/(en|nl)\/pricing\/?$/,           // Pricing
-    /^\/(en|nl)\/partner\/?$/,           // Partner
+    /^\/(en|nl|es|de|fr)\/?$/,                    // Homepage
+    /^\/(en|nl|es|de|fr)\/trainers\/?$/,          // Trainers directory
+    /^\/(en|nl|es|de|fr)\/trainers\/[^/]+$/,      // City pages
+    /^\/(en|nl|es|de|fr)\/trainer\/[^/]+$/,       // Trainer profiles
+    /^\/(en|nl|es|de|fr)\/locations\/?$/,         // Locations directory
+    /^\/(en|nl|es|de|fr)\/locations\/[^/]+$/,     // Location pages
+    /^\/(en|nl|es|de|fr)\/academies\/[^/]+$/,     // Academy pages
+    /^\/(en|nl|es|de|fr)\/blog\/?$/,              // Blog listing
+    /^\/(en|nl|es|de|fr)\/blog\/[^/]+$/,          // Blog posts
+    /^\/(en|nl|es|de|fr)\/padel-rules\/?$/,       // Rules listing
+    /^\/(en|nl|es|de|fr)\/padel-rules\/[^/]+$/,   // Rules articles
+    /^\/(en|nl|es|de|fr)\/padel-strokes\/?$/,     // Strokes listing
+    /^\/(en|nl|es|de|fr)\/padel-strokes\/[^/]+$/, // Stroke pages
+    /^\/(en|nl|es|de|fr)\/padel-coaches\/?$/,     // Coaches listing
+    /^\/(en|nl|es|de|fr)\/padel-coaches\/[^/]+$/, // Coach pages
+    /^\/(en|nl|es|de|fr)\/video-tips\/?$/,        // Video tips listing
+    /^\/(en|nl|es|de|fr)\/video-tips\/[^/]+$/,    // Video tip pages
+    /^\/(en|nl|es|de|fr)\/about\/?$/,             // About
+    /^\/(en|nl|es|de|fr)\/pricing\/?$/,           // Pricing
+    /^\/(en|nl|es|de|fr)\/partner\/?$/,           // Partner
+    /^\/(en|nl|es|de|fr)\/privacy\/?$/,           // Privacy
+    /^\/(en|nl|es|de|fr)\/terms\/?$/,             // Terms
   ];
   
   return marketingPatterns.some(pattern => pattern.test(pathname));

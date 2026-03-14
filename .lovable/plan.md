@@ -1,51 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Fix Social Sharing Meta Tags (OG/Twitter) for All Pages
+## Status: ✅ COMPLETED
 
-### Root Cause
+Implemented on 2026-03-14.
 
-WhatsApp, Facebook, Twitter, and other social platforms don't run JavaScript. Your app is a React SPA, so the OG meta tags injected by `react-helmet-async` are invisible to these crawlers. 
+## What Changed
 
-You have a **Cloudflare Worker + `render-page` edge function** that pre-renders HTML for bots, but it only handles a limited set of routes:
-- `/`, `/trainers`, `/trainers/:city`, `/trainer/:slug`, `/locations`, `/locations/:slug`, `/academies/:slug`, `/about`, `/pricing`
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-**Everything else falls through to `renderFallback()`**, which returns the generic homepage title/description/image. This includes:
-- `/blog`, `/blog/:slug`
-- `/padel-rules`, `/padel-strokes`, `/padel-coaches`
-- `/video-tips`, `/video-tips/:slug`
-- `/partner`, `/privacy`, `/terms`
+## Sanity Content Types Needed in Studio
 
-Additionally, the language prefix stripping only handles `en|nl`, missing `es|de|fr`.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### Changes to `supabase/functions/render-page/index.ts`
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**1. Fix language prefix regex** (line 24)
-- Change `path.replace(/^\/(en|nl)/, '')` to `path.replace(/^\/(en|nl|es|de|fr)/, '')`
-- Update lang detection to support all 5 languages
+## What Stays Unchanged
 
-**2. Add static page routes** for pages with known meta:
-- `/blog` — "Padel Blog — Tips, Guides & Training Advice"
-- `/padel-rules` — "Padel Rules — Complete Guide to the Rules of Padel"
-- `/padel-strokes` — "Padel Strokes — Master Every Shot in Padel"
-- `/padel-coaches` — "Padel Coaches — Expert Coaching Tips & Techniques"
-- `/video-tips` — "Padel Video Tips — Watch & Learn from Top Coaches"
-- `/partner` — "Become a Partner — PadelTrainer.ai"
-- `/privacy` — "Privacy Policy — PadelTrainer.ai"
-- `/terms` — "Terms of Service — PadelTrainer.ai"
-- `/academies` — "Padel Academies — Find Professional Training Programs"
-
-**3. Add dynamic blog article renderer** (`renderBlogArticle`)
-- Match `/blog/:slug`
-- Fetch the article from Sanity using the Sanity CDN API (HTTP fetch, no npm import needed — just `https://{projectId}.api.sanity.io/v2024-01-01/data/query/{dataset}?query=...`)
-- Extract title, meta description, cover image from the Sanity response
-- Return proper OG tags with article-specific title, description, and image
-
-**4. Add dynamic blog listing renderer** (`renderBlogListing`)
-- Fetch recent articles from Sanity
-- Render a list page with proper meta
-
-### Files to Modify
-- `supabase/functions/render-page/index.ts` — add all missing route handlers
-
-This will ensure every page shared on WhatsApp/social shows its correct title, description, and image instead of the homepage defaults.
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
