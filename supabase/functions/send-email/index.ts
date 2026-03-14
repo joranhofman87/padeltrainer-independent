@@ -1026,7 +1026,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    const { subject, html: emailHtml } = getEmailContent(type, data);
+    const { subject, html: emailHtml } = getEmailContent(type, data, language);
 
     // Add manage notifications footer (except for system emails)
     let finalHtml = emailHtml;
