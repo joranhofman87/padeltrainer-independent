@@ -29,6 +29,11 @@ const Blog = lazy(() => import('@/pages/marketing/Blog'));
 const BlogPost = lazy(() => import('@/pages/marketing/BlogPost'));
 const Rules = lazy(() => import('@/pages/marketing/Rules'));
 const RulesPage = lazy(() => import('@/pages/marketing/RulesPage'));
+const Strokes = lazy(() => import('@/pages/marketing/Strokes'));
+const StrokePage = lazy(() => import('@/pages/marketing/StrokePage'));
+const Coaches = lazy(() => import('@/pages/marketing/Coaches'));
+const CoachPage = lazy(() => import('@/pages/marketing/CoachPage'));
+const VideoTipPage = lazy(() => import('@/pages/marketing/VideoTipPage'));
 const Privacy = lazy(() => import('@/pages/marketing/Privacy'));
 const Terms = lazy(() => import('@/pages/marketing/Terms'));
 const Partner = lazy(() => import('@/pages/marketing/Partner'));
@@ -293,8 +298,15 @@ export function DomainRouter() {
           <Route path="about" element={<About />} />
           <Route path="blog" element={<Blog />} />
           <Route path="blog/:slug" element={<BlogPost />} />
-          <Route path="rules" element={<Rules />} />
+          <Route path="rules" element={<Navigate to="padel-rules" replace />} />
           <Route path="rules/:slug" element={<RulesPage />} />
+          <Route path="padel-rules" element={<Rules />} />
+          <Route path="padel-rules/:slug" element={<RulesPage />} />
+          <Route path="padel-strokes" element={<Strokes />} />
+          <Route path="padel-strokes/:slug" element={<StrokePage />} />
+          <Route path="padel-coaches" element={<Coaches />} />
+          <Route path="padel-coaches/:slug" element={<CoachPage />} />
+          <Route path="video-tips/:slug" element={<VideoTipPage />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="terms" element={<Terms />} />
           <Route path="partner" element={<Partner />} />

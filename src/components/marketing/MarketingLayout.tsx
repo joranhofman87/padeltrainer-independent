@@ -44,7 +44,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const pricingPath = useLocalizedPath('/pricing');
   const aboutPath = useLocalizedPath('/about');
   const blogPath = useLocalizedPath('/blog');
-  const rulesPath = useLocalizedPath('/rules');
+  const rulesPath = useLocalizedPath('/padel-rules');
+  const strokesPath = useLocalizedPath('/padel-strokes');
   const trainersPath = useLocalizedPath('/trainers');
   const locationsPath = useLocalizedPath('/locations');
   const partnerPath = useLocalizedPath('/partner');
@@ -56,7 +57,8 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
     { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
     { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
     { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
-    { href: rulesPath, label: t('nav.rules', 'Rules'), path: '/rules', isAnchor: false },
+    { href: rulesPath, label: t('nav.rules', 'Rules'), path: '/padel-rules', isAnchor: false },
+    { href: strokesPath, label: t('nav.strokes', 'Strokes'), path: '/padel-strokes', isAnchor: false },
   ];
 
   // Check if current path matches (ignoring language prefix)

@@ -65,7 +65,7 @@ export default function RulesPage() {
       <MarketingLayout>
         <div className="container mx-auto px-4 pt-8">
           <Button variant="ghost" asChild>
-            <LocalizedLink to="/rules" className="flex items-center gap-2">
+            <LocalizedLink to="/padel-rules" className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               {t('rules.backToRules', 'Back to Rules')}
             </LocalizedLink>
@@ -83,7 +83,7 @@ export default function RulesPage() {
           <h1 className="text-2xl font-bold mb-4">{t('rules.notFound', 'Rule not found')}</h1>
           <p className="text-muted-foreground mb-6">{t('rules.notFoundDescription', 'This rules page could not be found.')}</p>
           <Button asChild>
-            <LocalizedLink to="/rules">{t('rules.backToRules', 'Back to Rules')}</LocalizedLink>
+            <LocalizedLink to="/padel-rules">{t('rules.backToRules', 'Back to Rules')}</LocalizedLink>
           </Button>
         </div>
       </MarketingLayout>
@@ -110,7 +110,7 @@ export default function RulesPage() {
       <SEO
         title={article.seo?.titleTag || article.h1}
         description={article.seo?.metaDescription || article.intro}
-        url={`/rules/${slug}`}
+        url={`/padel-rules/${slug}`}
         type="article"
         structuredData={structuredData}
       />
@@ -118,7 +118,7 @@ export default function RulesPage() {
       {/* Back Button */}
       <div className="container mx-auto px-4 pt-8">
         <Button variant="ghost" asChild>
-          <LocalizedLink to="/rules" className="flex items-center gap-2">
+          <LocalizedLink to="/padel-rules" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t('rules.backToRules', 'Back to Rules')}
           </LocalizedLink>
@@ -209,7 +209,7 @@ export default function RulesPage() {
             <h2 className="text-2xl font-bold mb-6">{t('rules.relatedRules', 'Related Rules')}</h2>
             <div className="grid md:grid-cols-2 gap-4">
               {article.relatedRules.map(rule => (
-                <LocalizedLink key={rule._id} to={`/rules/${rule.slug}`}>
+                <LocalizedLink key={rule._id} to={`/padel-rules/${rule.slug}`}>
                   <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                     <CardContent className="p-4">
                       <CardTitle className="text-base mb-1 hover:text-primary transition-colors">{rule.h1}</CardTitle>

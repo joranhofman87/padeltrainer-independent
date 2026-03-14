@@ -8,7 +8,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
-import { getPublishedArticles, getAllTags, calculateReadTime, getImageUrl } from '@/lib/blog';
+import { getPublishedArticles, getAllCategories, calculateReadTime } from '@/lib/blog';
 import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
@@ -17,30 +17,12 @@ import { useState } from 'react';
 function BlogPostCardSkeleton() {
   return (
     <Card className="h-full">
-      <Skeleton className="aspect-video w-full" />
       <CardContent className="p-6">
         <Skeleton className="h-5 w-20 mb-3" />
         <Skeleton className="h-6 w-full mb-2" />
         <Skeleton className="h-4 w-full mb-4" />
         <Skeleton className="h-4 w-32" />
       </CardContent>
-    </Card>
-  );
-}
-
-function FeaturedPostSkeleton() {
-  return (
-    <Card className="overflow-hidden border-2">
-      <div className="grid md:grid-cols-2">
-        <Skeleton className="aspect-video md:aspect-auto md:h-full" />
-        <CardContent className="p-8 flex flex-col justify-center">
-          <Skeleton className="h-5 w-24 mb-4" />
-          <Skeleton className="h-8 w-full mb-4" />
-          <Skeleton className="h-4 w-full mb-2" />
-          <Skeleton className="h-4 w-3/4 mb-4" />
-          <Skeleton className="h-4 w-40" />
-        </CardContent>
-      </div>
     </Card>
   );
 }
@@ -70,27 +52,19 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
     >
       <LocalizedLink to={`/blog/${article.slug}`}>
         <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
-          <div className="aspect-video bg-muted">
-            <img
-              src={getImageUrl(article.mainImage, 600, 340)}
-              alt={article.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          </div>
           <CardContent className="p-6">
-            {article.tags?.[0] && (
-              <Badge variant="secondary" className="mb-3">{article.tags[0]}</Badge>
+            {article.category && (
+              <Badge variant="secondary" className="mb-3">{article.category}</Badge>
             )}
             <CardTitle className="text-lg mb-2 hover:text-primary transition-colors line-clamp-2">
-              {article.title}
+              {article.h1 || article.title}
             </CardTitle>
             <CardDescription className="line-clamp-2 mb-4">
               {article.excerpt}
             </CardDescription>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
-              <span>{calculateReadTime(article.body)}</span>
+              <span>{article.datePublished ? new Date(article.datePublished).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
+              <span>{calculateReadTime(article.bodySections)}</span>
             </div>
           </CardContent>
         </Card>
@@ -102,23 +76,23 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
 export default function Blog() {
   const { t, i18n } = useTranslation('marketing');
   const [page, setPage] = useState(1);
-  const [selectedTag, setSelectedTag] = useState<string | undefined>();
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['blog-posts', i18n.language, page, selectedTag],
-    queryFn: () => getPublishedArticles(i18n.language, page, selectedTag),
+    queryKey: ['blog-posts', page, selectedCategory],
+    queryFn: () => getPublishedArticles(page, selectedCategory),
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: tags = [] } = useQuery({
-    queryKey: ['blog-tags', i18n.language],
-    queryFn: () => getAllTags(i18n.language),
+  const { data: categories = [] } = useQuery({
+    queryKey: ['blog-categories'],
+    queryFn: () => getAllCategories(),
     staleTime: 1000 * 60 * 10,
   });
 
   const articles = data?.articles || [];
-  const featuredPost = articles[0];
-  const recentPosts = articles.slice(1);
+  const featuredPost = articles.find(a => a.isFeatured) || articles[0];
+  const recentPosts = articles.filter(a => a !== featuredPost);
   const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
 
   const structuredData = articles.length > 0 ? {
@@ -131,7 +105,7 @@ export default function Blog() {
       '@type': 'BlogPosting',
       headline: a.title,
       description: a.excerpt,
-      datePublished: a.publishedAt,
+      datePublished: a.datePublished,
       url: `${MARKETING_DOMAIN}/blog/${a.slug}`
     }))
   } : undefined;
@@ -154,25 +128,25 @@ export default function Blog() {
         </div>
       </section>
 
-      {/* Tag filters */}
-      {tags.length > 0 && (
+      {/* Category filters */}
+      {categories.length > 0 && (
         <section className="py-4 border-b">
           <div className="container mx-auto px-4 flex flex-wrap gap-2">
             <Badge
-              variant={!selectedTag ? 'default' : 'outline'}
+              variant={!selectedCategory ? 'default' : 'outline'}
               className="cursor-pointer"
-              onClick={() => { setSelectedTag(undefined); setPage(1); }}
+              onClick={() => { setSelectedCategory(undefined); setPage(1); }}
             >
               All
             </Badge>
-            {tags.map(tag => (
+            {categories.map(cat => (
               <Badge
-                key={tag}
-                variant={selectedTag === tag ? 'default' : 'outline'}
+                key={cat}
+                variant={selectedCategory === cat ? 'default' : 'outline'}
                 className="cursor-pointer"
-                onClick={() => { setSelectedTag(tag); setPage(1); }}
+                onClick={() => { setSelectedCategory(cat); setPage(1); }}
               >
-                {tag}
+                {cat}
               </Badge>
             ))}
           </div>
@@ -181,19 +155,13 @@ export default function Blog() {
 
       {/* Content */}
       {isLoading ? (
-        <>
-          <section className="py-12">
-            <div className="container mx-auto px-4"><FeaturedPostSkeleton /></div>
-          </section>
-          <section className="py-12">
-            <div className="container mx-auto px-4">
-              <Skeleton className="h-8 w-48 mb-8" />
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3].map(i => <BlogPostCardSkeleton key={i} />)}
-              </div>
+        <section className="py-12">
+          <div className="container mx-auto px-4">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map(i => <BlogPostCardSkeleton key={i} />)}
             </div>
-          </section>
-        </>
+          </div>
+        </section>
       ) : articles.length === 0 ? (
         <section className="py-12">
           <div className="container mx-auto px-4"><EmptyState /></div>
@@ -201,36 +169,36 @@ export default function Blog() {
       ) : (
         <>
           {/* Featured Post */}
-          <section className="py-12">
-            <div className="container mx-auto px-4">
-              <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-                <LocalizedLink to={`/blog/${featuredPost.slug}`}>
-                  <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
-                    <div className="grid md:grid-cols-2">
-                      <div className="aspect-video md:aspect-auto bg-muted">
-                        <img src={getImageUrl(featuredPost.mainImage, 800, 450)} alt={featuredPost.title} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                      <CardContent className="p-8 flex flex-col justify-center">
-                        {featuredPost.tags?.[0] && <Badge className="w-fit mb-4">{featuredPost.tags[0]}</Badge>}
-                        <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">{featuredPost.title}</CardTitle>
+          {featuredPost && (
+            <section className="py-12">
+              <div className="container mx-auto px-4">
+                <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+                  <LocalizedLink to={`/blog/${featuredPost.slug}`}>
+                    <Card className="overflow-hidden hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
+                      <CardContent className="p-8">
+                        {featuredPost.category && <Badge className="w-fit mb-4">{featuredPost.category}</Badge>}
+                        <CardTitle className="text-2xl md:text-3xl mb-4 hover:text-primary transition-colors">{featuredPost.h1 || featuredPost.title}</CardTitle>
                         <CardDescription className="text-base mb-4">{featuredPost.excerpt}</CardDescription>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
-                            {featuredPost.publishedAt && new Date(featuredPost.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {featuredPost.datePublished && new Date(featuredPost.datePublished).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            {calculateReadTime(featuredPost.body)}
+                            {calculateReadTime(featuredPost.bodySections)}
                           </span>
+                          {featuredPost.authorName && (
+                            <span>by {featuredPost.authorName}</span>
+                          )}
                         </div>
                       </CardContent>
-                    </div>
-                  </Card>
-                </LocalizedLink>
-              </motion.div>
-            </div>
-          </section>
+                    </Card>
+                  </LocalizedLink>
+                </motion.div>
+              </div>
+            </section>
+          )}
 
           {/* Recent Posts Grid */}
           {recentPosts.length > 0 && (

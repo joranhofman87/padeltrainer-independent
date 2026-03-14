@@ -5,22 +5,19 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExternalLink, Eye, Pencil } from 'lucide-react';
 import { sanityClient, SANITY_STUDIO_URL } from '@/lib/sanity';
-import { getImageUrl } from '@/lib/blog';
 import { useState } from 'react';
 
 interface SanityPost {
   _id: string;
   title: string;
   slug: string;
-  locale: string;
-  publishedAt: string | null;
-  mainImage: any | null;
-  tags: string[] | null;
+  category: string | null;
+  datePublished: string | null;
   _updatedAt: string;
 }
 
-const ADMIN_POSTS_QUERY = `*[_type == "post"] | order(_updatedAt desc) {
-  _id, title, "slug": slug.current, locale, publishedAt, mainImage, tags, _updatedAt
+const ADMIN_POSTS_QUERY = `*[_type == "blogPost"] | order(_updatedAt desc) {
+  _id, title, "slug": slug.current, category, datePublished, _updatedAt
 }`;
 
 export default function AdminBlog() {
@@ -53,9 +50,8 @@ export default function AdminBlog() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-16">Cover</TableHead>
             <TableHead>Title</TableHead>
-            <TableHead>Locale</TableHead>
+            <TableHead>Category</TableHead>
             <TableHead>Published</TableHead>
             <TableHead>Updated</TableHead>
             <TableHead>Actions</TableHead>
@@ -63,25 +59,16 @@ export default function AdminBlog() {
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
           ) : filtered.length === 0 ? (
-            <TableRow><TableCell colSpan={6} className="text-center py-8">No articles found</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} className="text-center py-8">No articles found</TableCell></TableRow>
           ) : (
             filtered.map((article) => (
               <TableRow key={article._id}>
-                <TableCell>
-                  <div className="w-14 h-7 rounded overflow-hidden bg-muted flex-shrink-0">
-                    {article.mainImage ? (
-                      <img src={getImageUrl(article.mainImage, 56, 28)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-[10px]">—</div>
-                    )}
-                  </div>
-                </TableCell>
                 <TableCell className="font-medium max-w-xs truncate">{article.title}</TableCell>
-                <TableCell><Badge variant="outline">{article.locale?.toUpperCase()}</Badge></TableCell>
+                <TableCell><Badge variant="outline">{article.category || '—'}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : '—'}
+                  {article.datePublished ? new Date(article.datePublished).toLocaleDateString() : '—'}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(article._updatedAt).toLocaleDateString()}
@@ -89,13 +76,13 @@ export default function AdminBlog() {
                 <TableCell>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" asChild>
-                      <a href={`${SANITY_STUDIO_URL}/structure/post;${article._id}`} target="_blank" rel="noopener noreferrer">
+                      <a href={`${SANITY_STUDIO_URL}/structure/blogPost;${article._id}`} target="_blank" rel="noopener noreferrer">
                         <Pencil className="h-4 w-4" />
                       </a>
                     </Button>
-                    {article.publishedAt && (
+                    {article.datePublished && (
                       <Button variant="ghost" size="icon" asChild>
-                        <a href={`/${article.locale}/blog/${article.slug}`} target="_blank" rel="noopener noreferrer">
+                        <a href={`/en/blog/${article.slug}`} target="_blank" rel="noopener noreferrer">
                           <Eye className="h-4 w-4" />
                         </a>
                       </Button>
