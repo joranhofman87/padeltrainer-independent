@@ -23,7 +23,7 @@ export async function checkClubSubscription(clubProfileId: string): Promise<Club
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("check-mollie-subscription", {
+  const response = await supabase.functions.invoke("check-stripe-subscription", {
     body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
