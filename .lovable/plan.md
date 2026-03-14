@@ -1,29 +1,60 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Footer Redesign Plan
 
-Implemented on 2026-03-14.
+### Current Issues
+1. **"Popular Cities"** only lists 5 Dutch cities — the platform now spans NL, BE, ES, DE
+2. **"Platform"** section is a dumping ground mixing core product links with educational content (Rules, Strokes, Coaches, Blog)
+3. **Tagline** says "Your journey to better padel." — needs updating
+4. **Grid layout** is 4 columns which won't fit the new sections well
 
-## What Changed
+### New Footer Structure (6 columns on desktop, 2 on mobile)
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+```text
+┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+│   Brand     │  Platform   │  Learn      │ Popular     │  Company    │   Legal     │
+│             │             │  Padel      │ Cities      │             │             │
+│  Logo       │ Find        │ Rules       │ Amsterdam   │ About Us    │ Privacy     │
+│  Tagline    │  Trainers   │ Strokes     │ Madrid      │ Partner     │ Terms       │
+│  Socials    │ Clubs       │ Coaches     │ Barcelona   │ Contact     │             │
+│             │ Academies   │ Blog        │ Rotterdam   │ Register    │             │
+│             │ Pricing     │             │ Antwerpen   │  your club  │             │
+│             │ Locations   │             │ München     │             │             │
+│             │             │             │ Köln        │             │             │
+│             │             │             │ Valencia    │             │             │
+└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘
+```
 
-## Sanity Content Types Needed in Studio
+### Changes
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+**1. `src/components/marketing/MarketingLayout.tsx` — Footer section**
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+- Change grid from `grid-cols-2 md:grid-cols-4` to `grid-cols-2 md:grid-cols-3 lg:grid-cols-6`
+- **Platform** column: Keep Find Trainers, Clubs, Academies, Pricing, Locations (core product)
+- **New "Learn Padel"** column: Move Blog, Rules, Strokes, Coaches here (educational/SEO content)
+- **Popular Cities** column: Replace the 5 NL-only cities with 8 international cities — Amsterdam, Madrid, Barcelona, Rotterdam, Antwerpen, München, Köln, Valencia
+- **Company** column: Add "Register your club" here (moved from Platform), keep About Us, Partner, Contact
+- **Legal** column: Stays as-is
 
-## What Stays Unchanged
+**2. Translation files (all 5 locales: en, nl, es, de, fr)**
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+- Update `footer.tagline` from "Your journey to better padel." to "Everything you need to improve your padel game."
+- Add `footer.learnPadel` key: "Learn Padel"
+- Update `footer.popularCities` to "Popular Cities"
+- Localize the new tagline for `nl` ("Alles wat je nodig hebt om je padelspel te verbeteren.")
+- Add localized `footer.learnPadel` for each locale
+
+**3. SEO Best Practices Applied**
+- Educational content grouped under "Learn Padel" — signals topical authority to crawlers
+- International city links improve geographic relevance signals across markets
+- Clean separation of product vs. content vs. company links follows SaaS footer conventions
+- More internal links spread across categories improves crawl distribution
+
+### Files to Modify
+- `src/components/marketing/MarketingLayout.tsx` (footer section, lines 201–287)
+- `src/i18n/locales/en/marketing.json`
+- `src/i18n/locales/nl/marketing.json`
+- `src/i18n/locales/es/marketing.json`
+- `src/i18n/locales/de/marketing.json`
+- `src/i18n/locales/fr/marketing.json`
+
