@@ -1,31 +1,22 @@
 
-# Sitemap Index Architecture
 
-## Status: ✅ COMPLETED
-
-Implemented on 2026-03-14.
+# Show Success Message on Registration Confirmation Page
 
 ## Problem
-
-After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
-
-## Solution
-
-Switched to a **sitemap index** architecture with paginated sub-sitemaps:
-
-```
-sitemap.xml (index)
-├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
-├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
-├── sitemaps/sitemap-locations-2.xml (if needed)
-├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
-├── sitemaps/sitemap-cities-2.xml    (if needed)
-└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
-```
+The cycle settings form has a "Success Message" field (shown in image-298), but the registration success page (image-297) doesn't display it properly. Currently the code at line 339 uses an either/or approach: if `success_message` exists, it replaces the default content including the "What happens next?" steps. The custom message should appear **above** the steps, not replace them.
 
 ## Changes
 
-1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
-2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
-3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
-4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)
+### `src/components/cycles/CycleApplicationForm.tsx` (lines 332-370)
+Restructure the success state to always show:
+1. The check icon + title
+2. **Custom success message** (if configured) — rendered in a styled card similar to `WelcomeMessageCard`, with `whitespace-pre-line`
+3. The default subtitle text ("Thank you for your application...")
+4. The "What happens next?" steps — always visible
+5. The back button
+
+This is a small change — remove the ternary that swaps content, and instead conditionally render the custom message block before the steps block, keeping both visible.
+
+### Files
+- `src/components/cycles/CycleApplicationForm.tsx` — ~15 lines changed in the success render block
+
