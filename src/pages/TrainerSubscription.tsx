@@ -109,8 +109,8 @@ export default function TrainerSubscription() {
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
       toast({
-        title: 'Use Cancel Subscription',
-        description: 'To downgrade, please cancel your current subscription.',
+        title: 'Use Manage Subscription',
+        description: 'To downgrade, please use the Manage Subscription button.',
       });
       return;
     }
@@ -165,11 +165,11 @@ export default function TrainerSubscription() {
     }
   };
 
-  const handleCancelSubscription = async () => {
+  const handleManageSubscription = async () => {
     setLoadingPortal(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('cancel-stripe-subscription', {
+      const { data, error } = await supabase.functions.invoke('customer-portal', {
         body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
@@ -178,20 +178,18 @@ export default function TrainerSubscription() {
 
       if (error) throw error;
 
-      toast({
-        title: 'Subscription Canceled',
-        description: data.message || 'Your subscription has been canceled.',
-      });
-      trackEvent('subscription_canceled');
-      
-      refreshSubscription();
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      } else {
+        throw new Error('No portal URL returned');
+      }
     } catch (err) {
-      logger.error('Subscription cancellation failed', err as Error, { 
+      logger.error('Customer portal failed', err as Error, { 
         component: 'TrainerSubscription' 
       });
       toast({
         title: 'Error',
-        description: 'Failed to cancel subscription. Please try again.',
+        description: 'Failed to open subscription management. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -253,13 +251,15 @@ export default function TrainerSubscription() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={handleCancelSubscription}
+                  onClick={handleManageSubscription}
                   disabled={loadingPortal}
                 >
                   {loadingPortal ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  Cancel Subscription
+                  ) : (
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                  )}
+                  Manage Subscription
                 </Button>
               )}
             </div>

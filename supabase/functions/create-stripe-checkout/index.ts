@@ -105,9 +105,25 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const origin = req.headers.get("origin") || "https://padeltrainer.ai";
 
-    // Find or create Stripe customer
+    // Resolve Stripe customer: check profiles table first, then entity profile, then Stripe
     let customerId = profile.stripe_customer_id;
+
     if (!customerId) {
+      // Check the central profiles table
+      const { data: centralProfile } = await supabase
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (centralProfile?.stripe_customer_id) {
+        customerId = centralProfile.stripe_customer_id;
+        logStep("Customer ID from profiles table", { customerId });
+      }
+    }
+
+    if (!customerId) {
+      // Search Stripe or create new customer
       const customers = await stripe.customers.list({ email: user.email!, limit: 1 });
       if (customers.data.length > 0) {
         customerId = customers.data[0].id;
@@ -119,9 +135,14 @@ serve(async (req) => {
         });
         customerId = customer.id;
       }
-      // Save Stripe customer ID
+      // Save to profiles table
+      await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("user_id", user.id);
+      logStep("Stripe customer saved to profiles", { customerId });
+    }
+
+    // Also ensure entity profile has the customer ID
+    if (!profile.stripe_customer_id) {
       await supabase.from(table).update({ stripe_customer_id: customerId }).eq("id", profile.id);
-      logStep("Stripe customer set", { customerId });
     }
 
     // If switching plans, cancel existing subscription at period end
@@ -134,47 +155,74 @@ serve(async (req) => {
       }
     }
 
-    // Check for active discount
+    // Check for active discount — use stored Stripe coupon ID if available
     let discounts: Stripe.Checkout.SessionCreateParams["discounts"] = undefined;
     const { data: discount } = await supabase
       .from("user_discounts")
-      .select("discount_percent, months_remaining")
+      .select("discount_percent, months_remaining, stripe_coupon_id")
       .eq("user_id", user.id)
       .eq("is_active", true)
       .gt("months_remaining", 0)
       .maybeSingle();
 
     if (discount) {
-      // Create a Stripe coupon for this discount
-      const coupon = await stripe.coupons.create({
-        percent_off: discount.discount_percent,
-        duration: "repeating",
-        duration_in_months: discount.months_remaining,
-        currency: "eur",
-      });
-      discounts = [{ coupon: coupon.id }];
-      logStep("Discount coupon created", { percent: discount.discount_percent, months: discount.months_remaining });
+      let couponId = discount.stripe_coupon_id;
+      
+      if (!couponId) {
+        // Create a Stripe coupon and store it for reuse
+        const coupon = await stripe.coupons.create({
+          percent_off: discount.discount_percent,
+          duration: "repeating",
+          duration_in_months: discount.months_remaining,
+          currency: "eur",
+        });
+        couponId = coupon.id;
+        
+        // Save the coupon ID for future use
+        await supabase
+          .from("user_discounts")
+          .update({ stripe_coupon_id: couponId })
+          .eq("user_id", user.id)
+          .eq("is_active", true);
+        
+        logStep("Stripe coupon created and stored", { couponId });
+      } else {
+        logStep("Using stored Stripe coupon", { couponId });
+      }
+      
+      discounts = [{ coupon: couponId }];
     }
+
+    // Allow Stripe Promotion Codes at checkout
+    const allowPromotionCodes = !discounts;
 
     // Determine redirect URLs
     const successPath = type === "trainer" ? "/app/trainer/subscription" 
       : type === "club" ? "/app/club/subscription" 
       : "/app/academy/subscription";
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}${successPath}?success=true&plan=${tier}`,
       cancel_url: `${origin}${successPath}?canceled=true`,
-      discounts,
       metadata: {
         profile_id: profile.id,
         type,
         tier,
         user_id: user.id,
       },
-    });
+    };
+
+    // Either apply a specific discount or allow promo codes
+    if (discounts) {
+      sessionParams.discounts = discounts;
+    } else {
+      sessionParams.allow_promotion_codes = true;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     logStep("Checkout session created", { sessionId: session.id });
 

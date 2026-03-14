@@ -9,13 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   checkAcademySubscription, 
   createAcademyCheckout, 
-  cancelAcademySubscription,
   getTrialDaysRemaining,
   ACADEMY_SUBSCRIPTION,
   type AcademySubscriptionInfo 
 } from "@/lib/academySubscription";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient";
 import { 
   CheckCircle2, 
   Clock, 
@@ -25,7 +25,8 @@ import {
   Users,
   MapPin,
   BarChart3,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
 import { logger } from "@/lib/logger";
 
@@ -95,19 +96,24 @@ export default function AcademySubscription() {
     }
   };
 
-  const handleCancelSubscription = async () => {
+  const handleManageSubscription = async () => {
     if (!activeAcademy) return;
     
     setActionLoading(true);
     try {
-      const result = await cancelAcademySubscription(activeAcademy.id);
-      toast({
-        title: t("subscription.canceledTitle"),
-        description: result.message,
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      
+      const response = await supabase.functions.invoke("customer-portal", {
+        body: { type: "academy", profileId: activeAcademy.id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      // Refresh subscription status
-      const sub = await checkAcademySubscription(activeAcademy.id);
-      setSubscription(sub);
+      
+      if (response.error) throw new Error(response.error.message);
+      
+      if (response.data?.url) {
+        window.open(response.data.url, '_blank');
+      }
     } catch (error: any) {
       toast({
         title: t("common:error"),
@@ -245,11 +251,12 @@ export default function AcademySubscription() {
               {(isActive || subscription?.isSubscribed) && (
                 <Button 
                   variant="outline" 
-                  onClick={handleCancelSubscription}
+                  onClick={handleManageSubscription}
                   disabled={actionLoading}
                   className="flex-1"
                 >
-                  {t("subscription.cancelSubscription")}
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  {t("subscription.manageSubscription", "Manage Subscription")}
                 </Button>
               )}
             </div>

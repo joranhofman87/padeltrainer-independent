@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import Stripe from "https://esm.sh/stripe@18.5.0";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -75,7 +76,6 @@ const checkRateLimit = async (supabaseAdmin: any, ip: string): Promise<boolean> 
   const identifier = `signup:${ip}`;
   const maxRequests = 5;
 
-  // Count recent signups from this IP
   const { count } = await supabaseAdmin
     .from('rate_limits')
     .select('*', { count: 'exact', head: true })
@@ -83,19 +83,47 @@ const checkRateLimit = async (supabaseAdmin: any, ip: string): Promise<boolean> 
     .gte('created_at', windowStart);
 
   if ((count ?? 0) >= maxRequests) {
-    return false; // Rate limited
+    return false;
   }
 
-  // Record this attempt
   await supabaseAdmin
     .from('rate_limits')
     .insert({ identifier, endpoint: 'signup-user' });
 
-  return true; // Allowed
+  return true;
+};
+
+const createStripeCustomer = async (email: string, fullName: string, userId: string): Promise<string | null> => {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) {
+    console.error("[SIGNUP] STRIPE_SECRET_KEY not set, skipping Stripe customer creation");
+    return null;
+  }
+
+  try {
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    
+    // Check if customer already exists
+    const existing = await stripe.customers.list({ email, limit: 1 });
+    if (existing.data.length > 0) {
+      console.log(`[SIGNUP] Existing Stripe customer found: ${existing.data[0].id}`);
+      return existing.data[0].id;
+    }
+
+    const customer = await stripe.customers.create({
+      email,
+      name: fullName,
+      metadata: { user_id: userId },
+    });
+    console.log(`[SIGNUP] Stripe customer created: ${customer.id}`);
+    return customer.id;
+  } catch (err) {
+    console.error("[SIGNUP] Failed to create Stripe customer (non-fatal):", err);
+    return null;
+  }
 };
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -108,7 +136,6 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Supabase credentials not configured");
     }
 
-    // Create Supabase admin client
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: {
         autoRefreshToken: false,
@@ -125,10 +152,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (!allowed) {
       return new Response(
         JSON.stringify({ error: "Too many signup attempts. Please try again later." }),
-        {
-          status: 429,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
+        { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -145,18 +169,15 @@ const handler = async (req: Request): Promise<Response> => {
     if (existingUser) {
       return new Response(
         JSON.stringify({ error: "User already registered" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Create user using Admin API (does NOT send automatic email)
+    // Create user using Admin API
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm so trainer can proceed to onboarding immediately
+      email_confirm: true,
       user_metadata: {
         full_name: fullName,
         phone: phone,
@@ -171,19 +192,23 @@ const handler = async (req: Request): Promise<Response> => {
     const user = userData.user;
     console.log(`User created: ${user.id}`);
 
-    // Update profile with phone and language if provided
-    if (user && (phone || language)) {
-      const updates: Record<string, string> = {};
-      if (phone) updates.phone = phone;
-      if (language) updates.preferred_language = language;
-      
+    // Create Stripe customer and store ID
+    const stripeCustomerId = await createStripeCustomer(email, fullName, user.id);
+
+    // Update profile with phone, language, and Stripe customer ID
+    const updates: Record<string, string> = {};
+    if (phone) updates.phone = phone;
+    if (language) updates.preferred_language = language;
+    if (stripeCustomerId) updates.stripe_customer_id = stripeCustomerId;
+    
+    if (Object.keys(updates).length > 0) {
       await supabaseAdmin
         .from('profiles')
         .update(updates)
         .eq('user_id', user.id);
     }
 
-    // Generate a welcome link (magiclink type since user is already confirmed)
+    // Generate a welcome link
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
@@ -194,8 +219,6 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (linkError) {
       console.error("Error generating welcome link:", linkError);
-      // Don't fail signup if welcome link generation fails
-      console.error("Failed to generate welcome link, but user was created");
     }
 
     const actionLink = linkData?.properties?.action_link || redirectTo || "https://padeltrainer.ai/app/auth";
@@ -220,7 +243,6 @@ const handler = async (req: Request): Promise<Response> => {
     if (!res.ok) {
       const errorText = await res.text();
       console.error("Resend API error:", errorText);
-      console.error("Failed to send welcome email, but user was created");
     } else {
       console.log(`Welcome email sent to ${email}`);
     }
@@ -246,19 +268,13 @@ const handler = async (req: Request): Promise<Response> => {
           email_confirmed_at: user.email_confirmed_at,
         } 
       }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
     console.error("Error in signup-user function:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 };
