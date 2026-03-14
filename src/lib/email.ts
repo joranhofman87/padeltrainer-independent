@@ -24,7 +24,8 @@ export type EmailType =
   | "academy_trainer_invitation_accepted"
   | "partner_inquiry"
   | "location_request"
-  | "payment_reminder";
+  | "payment_reminder"
+  | "intake_registration_confirmation";
 
 export interface EmailData {
   playerName?: string;
