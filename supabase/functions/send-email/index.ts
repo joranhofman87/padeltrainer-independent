@@ -837,7 +837,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     // Verify authentication (except for partner_inquiry which is public)
     const authHeader = req.headers.get("Authorization");
-    const { type, to, data }: EmailRequest = await req.json();
+    const { type, to, data, language }: EmailRequest = await req.json();
     
     // Allow partner_inquiry and location_request without auth (public forms)
     const isPublicForm = type === "partner_inquiry" || type === "location_request";
