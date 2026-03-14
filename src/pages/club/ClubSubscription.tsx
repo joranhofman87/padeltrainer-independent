@@ -10,12 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   checkClubSubscription, 
   createClubCheckout, 
-  cancelClubSubscription,
   getTrialDaysRemaining,
   CLUB_SUBSCRIPTION,
   type ClubSubscriptionInfo 
 } from "@/lib/clubSubscription";
 import { getUserClubProfiles, type ClubProfile } from "@/lib/club";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
 import { 

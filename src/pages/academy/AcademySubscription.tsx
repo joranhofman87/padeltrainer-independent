@@ -9,13 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   checkAcademySubscription, 
   createAcademyCheckout, 
-  cancelAcademySubscription,
   getTrialDaysRemaining,
   ACADEMY_SUBSCRIPTION,
   type AcademySubscriptionInfo 
 } from "@/lib/academySubscription";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient";
 import { 
   CheckCircle2, 
   Clock, 
@@ -25,7 +25,8 @@ import {
   Users,
   MapPin,
   BarChart3,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
 import { logger } from "@/lib/logger";
 
