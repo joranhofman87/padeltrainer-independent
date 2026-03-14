@@ -27,12 +27,23 @@
       "noDataRows": "No data rows found",
       "missingColumns": "Missing required columns: name, city",
       "csvOnly": "Please select a CSV file",
+      "warningRows": "{{count}} warnings",
+      "filterAll": "All",
+      "filterValid": "Valid",
+      "filterDuplicates": "Duplicates",
+      "filterErrors": "Errors",
+      "showingRows": "Showing first 200 of {{count}} rows",
       "errors": {
         "nameMissing": "Name is required",
         "cityMissing": "City is required",
         "duplicateSlug": "Already exists",
         "duplicateInFile": "Duplicate in file",
-        "googleMapsMatch": "Matches \"{{name}}\" (same Google Maps link)"
+        "googleMapsMatch": "Matches \"{{name}}\" (same Google Maps link)",
+        "nearbyMatch": "Matches \"{{name}}\" ({{distance}}m away)"
+      },
+      "warnings": {
+        "unknownCountry": "Unknown country: {{value}}",
+        "invalidEmail": "Invalid email format"
       }
     }
   },

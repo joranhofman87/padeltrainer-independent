@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
+import { COUNTRIES } from "@/lib/countries";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -61,10 +63,12 @@ interface ParsedLocation {
   slug: string;
   isValid: boolean;
   isDuplicate: boolean;
+  warnings: string[];
   errors: string[];
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
+type PreviewFilter = "all" | "valid" | "duplicates" | "errors";
 
 // Header aliases for flexible column matching
 const HEADER_ALIASES: Record<string, string[]> = {
@@ -89,6 +93,134 @@ const HEADER_ALIASES: Record<string, string[]> = {
   description: ["description", "beschrijving", "omschrijving"],
 };
 
+// --- Data normalization helpers ---
+
+/** Title Case with collapsed whitespace */
+const normalizeText = (text: string): string => {
+  return text
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+};
+
+/** Map country names/variants to ISO 2-letter codes */
+const COUNTRY_NAME_MAP: Record<string, string> = Object.entries(COUNTRIES).reduce(
+  (acc, [code, name]) => {
+    acc[name.toLowerCase()] = code;
+    acc[code.toLowerCase()] = code;
+    return acc;
+  },
+  {} as Record<string, string>
+);
+// Add common variants
+Object.assign(COUNTRY_NAME_MAP, {
+  "the netherlands": "NL",
+  "nederland": "NL",
+  "holland": "NL",
+  "belgique": "BE",
+  "belgië": "BE",
+  "deutschland": "DE",
+  "españa": "ES",
+  "spain": "ES",
+  "france": "FR",
+  "frankrijk": "FR",
+  "italia": "IT",
+  "schweiz": "CH",
+  "suisse": "CH",
+  "svizzera": "CH",
+  "österreich": "AT",
+  "sverige": "SE",
+  "danmark": "DK",
+  "norge": "NO",
+  "suomi": "FI",
+  "polska": "PL",
+  "česko": "CZ",
+  "czech republic": "CZ",
+  "czechia": "CZ",
+  "united states": "US",
+  "usa": "US",
+  "uk": "GB",
+  "england": "GB",
+  "united kingdom": "GB",
+  "great britain": "GB",
+  "ireland": "IE",
+  "ierland": "IE",
+  "canada": "CA",
+  "mexico": "MX",
+  "méxico": "MX",
+  "australia": "AU",
+  "australië": "AU",
+  "philippines": "PH",
+  "filipijnen": "PH",
+  "pakistan": "PK",
+  "ukraine": "UA",
+  "oekraïne": "UA",
+  "chile": "CL",
+  "chili": "CL",
+  "colombia": "CO",
+  "malaysia": "MY",
+  "maleisië": "MY",
+  "uae": "AE",
+  "united arab emirates": "AE",
+  "portugal": "PT",
+});
+
+const normalizeCountryCode = (value: string): { code: string; warning: boolean } => {
+  const trimmed = value.trim();
+  if (!trimmed) return { code: "NL", warning: false };
+  
+  // Already a 2-letter code?
+  if (trimmed.length === 2) {
+    const upper = trimmed.toUpperCase();
+    if (COUNTRIES[upper as keyof typeof COUNTRIES]) {
+      return { code: upper, warning: false };
+    }
+  }
+  
+  const mapped = COUNTRY_NAME_MAP[trimmed.toLowerCase()];
+  if (mapped) return { code: mapped, warning: false };
+  
+  // Unknown — pass through uppercased with warning
+  return { code: trimmed.toUpperCase().slice(0, 2), warning: true };
+};
+
+/** Normalize URL: trim, add protocol, remove trailing slash */
+const normalizeUrl = (url: string | null): string | null => {
+  if (!url) return null;
+  let cleaned = url.trim();
+  if (!cleaned) return null;
+  
+  // Don't touch Google Maps URLs that start with special protocols
+  if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
+    // already has protocol
+  } else if (cleaned.includes(".")) {
+    cleaned = "https://" + cleaned;
+  }
+  
+  // Remove trailing slash
+  cleaned = cleaned.replace(/\/+$/, "");
+  
+  return cleaned || null;
+};
+
+/** Normalize phone: keep leading + and digits only */
+const normalizePhone = (phone: string | null): string | null => {
+  if (!phone) return null;
+  const trimmed = phone.trim();
+  if (!trimmed) return null;
+  
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (!digits) return null;
+  
+  return (hasPlus ? "+" : "") + digits;
+};
+
+/** Basic email format check */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (email: string): boolean => EMAIL_REGEX.test(email.trim());
+
 export function ImportLocationsDialog({
   open,
   onOpenChange,
@@ -105,6 +237,7 @@ export function ImportLocationsDialog({
   const [failedCount, setFailedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewFilter, setPreviewFilter] = useState<PreviewFilter>("all");
 
   const resetState = () => {
     setStep("upload");
@@ -113,6 +246,7 @@ export function ImportLocationsDialog({
     setImportedCount(0);
     setFailedCount(0);
     setSkippedCount(0);
+    setPreviewFilter("all");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -253,9 +387,14 @@ export function ImportLocationsDialog({
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i], delimiter);
       const errors: string[] = [];
+      const warnings: string[] = [];
 
-      const name = values[indices.name]?.trim() || "";
-      const city = values[indices.city]?.trim() || "";
+      const rawName = values[indices.name]?.trim() || "";
+      const rawCity = values[indices.city]?.trim() || "";
+
+      // Normalize text fields
+      const name = rawName ? normalizeText(rawName) : "";
+      const city = rawCity ? normalizeText(rawCity) : "";
 
       // Validation
       if (!name) {
@@ -267,18 +406,38 @@ export function ImportLocationsDialog({
 
       const slug = generateSlug(name, city);
 
-      // Parse optional fields
-      const country = indices.country !== -1 ? values[indices.country]?.trim() || "NL" : "NL";
-      const street_address = indices.street_address !== -1 ? values[indices.street_address]?.trim() || null : null;
-      const postal_code = indices.postal_code !== -1 ? values[indices.postal_code]?.trim() || null : null;
-      const website_url = indices.website_url !== -1 ? values[indices.website_url]?.trim() || null : null;
+      // Parse & normalize optional fields
+      const rawCountry = indices.country !== -1 ? values[indices.country]?.trim() || "" : "";
+      const { code: country, warning: countryWarning } = normalizeCountryCode(rawCountry);
+      if (countryWarning) {
+        warnings.push(t("locations.import.warnings.unknownCountry", "Unknown country: {{value}}", { value: rawCountry }));
+      }
+
+      const rawStreetAddress = indices.street_address !== -1 ? values[indices.street_address]?.trim() || null : null;
+      const street_address = rawStreetAddress ? normalizeText(rawStreetAddress) : null;
+      const postal_code = indices.postal_code !== -1 ? values[indices.postal_code]?.trim()?.toUpperCase() || null : null;
+      
+      // URLs
+      const website_url = normalizeUrl(indices.website_url !== -1 ? values[indices.website_url]?.trim() || null : null);
+      const facebook_url = normalizeUrl(indices.facebook_url !== -1 ? values[indices.facebook_url]?.trim() || null : null);
+      const instagram_url = normalizeUrl(indices.instagram_url !== -1 ? values[indices.instagram_url]?.trim() || null : null);
+      const google_maps_url = normalizeUrl(indices.google_maps_url !== -1 ? values[indices.google_maps_url]?.trim() || null : null);
+
+      // Coordinates
       const latitude = indices.latitude !== -1 ? normalizeCoordinate(values[indices.latitude] || "") : null;
       const longitude = indices.longitude !== -1 ? normalizeCoordinate(values[indices.longitude] || "") : null;
-      const phone = indices.phone !== -1 ? values[indices.phone]?.trim() || null : null;
-      const email = indices.email !== -1 ? values[indices.email]?.trim() || null : null;
-      const facebook_url = indices.facebook_url !== -1 ? values[indices.facebook_url]?.trim() || null : null;
-      const instagram_url = indices.instagram_url !== -1 ? values[indices.instagram_url]?.trim() || null : null;
-      const google_maps_url = indices.google_maps_url !== -1 ? values[indices.google_maps_url]?.trim() || null : null;
+
+      // Phone
+      const rawPhone = indices.phone !== -1 ? values[indices.phone]?.trim() || null : null;
+      const phone = normalizePhone(rawPhone);
+
+      // Email with validation
+      const rawEmail = indices.email !== -1 ? values[indices.email]?.trim() || null : null;
+      const email = rawEmail || null;
+      if (email && !isValidEmail(email)) {
+        warnings.push(t("locations.import.warnings.invalidEmail", "Invalid email format"));
+      }
+
       const description = indices.description !== -1 ? values[indices.description]?.trim() || null : null;
       const opening_hours = indices.opening_hours !== -1 ? values[indices.opening_hours]?.trim() || null : null;
 
@@ -338,6 +497,7 @@ export function ImportLocationsDialog({
         slug,
         isValid: errors.length === 0,
         isDuplicate: false,
+        warnings,
         errors,
       });
     }
@@ -359,12 +519,12 @@ export function ImportLocationsDialog({
       }
     }
 
-    // Build a set of existing slugs for fallback matching
+    // Build a set of existing slugs for fallback matching and slug uniqueness
     const existingSlugs = new Set(existingLocations?.map((loc) => loc.slug) || []);
 
     const PROXIMITY_THRESHOLD_METERS = 50; // Same venue if < 50m away
 
-    // Check for duplicates: coordinates → Google Maps URL → slug fallback
+    // Check for duplicates against DB: coordinates → Google Maps URL → slug fallback
     for (const location of locations) {
       if (!location.isValid || location.isDuplicate) continue;
 
@@ -413,6 +573,20 @@ export function ImportLocationsDialog({
           location.errors.push(t("locations.import.errors.duplicateSlug", "Already exists (by name)"));
         }
       }
+
+      // Layer 4: Ensure slug uniqueness even for non-duplicates — append suffix if needed
+      if (!location.isDuplicate && existingSlugs.has(location.slug)) {
+        let suffix = 2;
+        let candidateSlug = `${location.slug}-${suffix}`;
+        while (existingSlugs.has(candidateSlug)) {
+          suffix++;
+          candidateSlug = `${location.slug}-${suffix}`;
+        }
+        location.slug = candidateSlug;
+      }
+
+      // Track slug for file-internal uniqueness
+      existingSlugs.add(location.slug);
     }
 
     // Check for duplicates within the file itself (coordinates → Google Maps URL → slug)
@@ -470,10 +644,10 @@ export function ImportLocationsDialog({
         if (seenSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateInFile", "Duplicate in file"));
-        } else {
-          seenSlugs.add(location.slug);
         }
       }
+      
+      seenSlugs.add(location.slug);
     }
 
     return locations;
@@ -621,6 +795,23 @@ TC Rotterdam,Tennisweg 5,3011 XY,Rotterdam,NL,https://tcrotterdam.nl,51.9244,4.4
   const validCount = parsedLocations.filter(l => l.isValid && !l.isDuplicate).length;
   const invalidCount = parsedLocations.filter(l => !l.isValid).length;
   const duplicateCount = parsedLocations.filter(l => l.isDuplicate).length;
+  const warningCount = parsedLocations.filter(l => l.warnings.length > 0 && l.isValid && !l.isDuplicate).length;
+
+  // Filter locations based on selected tab
+  const getFilteredLocations = (): ParsedLocation[] => {
+    switch (previewFilter) {
+      case "valid":
+        return parsedLocations.filter(l => l.isValid && !l.isDuplicate);
+      case "duplicates":
+        return parsedLocations.filter(l => l.isDuplicate);
+      case "errors":
+        return parsedLocations.filter(l => !l.isValid);
+      default:
+        return parsedLocations;
+    }
+  };
+
+  const filteredLocations = getFilteredLocations();
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -726,7 +917,31 @@ TC Rotterdam,Tennisweg 5,3011 XY,Rotterdam,NL,https://tcrotterdam.nl,51.9244,4.4
                   {t("locations.import.duplicateRows", "{{count}} duplicates", { count: duplicateCount })}
                 </Badge>
               )}
+              {warningCount > 0 && (
+                <Badge variant="outline" className="gap-1 text-yellow-600 border-yellow-600/30">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t("locations.import.warningRows", "{{count}} warnings", { count: warningCount })}
+                </Badge>
+              )}
             </div>
+
+            {/* Filter tabs */}
+            <Tabs value={previewFilter} onValueChange={(v) => setPreviewFilter(v as PreviewFilter)}>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="all">
+                  {t("locations.import.filterAll", "All")} ({parsedLocations.length})
+                </TabsTrigger>
+                <TabsTrigger value="valid">
+                  {t("locations.import.filterValid", "Valid")} ({validCount})
+                </TabsTrigger>
+                <TabsTrigger value="duplicates">
+                  {t("locations.import.filterDuplicates", "Duplicates")} ({duplicateCount})
+                </TabsTrigger>
+                <TabsTrigger value="errors">
+                  {t("locations.import.filterErrors", "Errors")} ({invalidCount})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             {/* Preview table */}
             <ScrollArea className="flex-1 border rounded-lg">
@@ -742,17 +957,22 @@ TC Rotterdam,Tennisweg 5,3011 XY,Rotterdam,NL,https://tcrotterdam.nl,51.9244,4.4
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {parsedLocations.slice(0, 100).map((location, index) => (
+                  {filteredLocations.slice(0, 200).map((location, index) => (
                     <TableRow 
                       key={index} 
                       className={
                         !location.isValid ? "bg-destructive/5" : 
-                        location.isDuplicate ? "bg-yellow-500/5" : ""
+                        location.isDuplicate ? "bg-yellow-500/5" : 
+                        location.warnings.length > 0 ? "bg-orange-500/5" : ""
                       }
                     >
                       <TableCell>
                         {location.isValid && !location.isDuplicate ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          location.warnings.length > 0 ? (
+                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          )
                         ) : location.isDuplicate ? (
                           <AlertTriangle className="h-4 w-4 text-yellow-600" />
                         ) : (
@@ -765,6 +985,11 @@ TC Rotterdam,Tennisweg 5,3011 XY,Rotterdam,NL,https://tcrotterdam.nl,51.9244,4.4
                           {location.errors.length > 0 && (
                             <div className="text-xs text-destructive">
                               {location.errors.join(", ")}
+                            </div>
+                          )}
+                          {location.warnings.length > 0 && (
+                            <div className="text-xs text-orange-600">
+                              {location.warnings.join(", ")}
                             </div>
                           )}
                         </div>
@@ -784,9 +1009,9 @@ TC Rotterdam,Tennisweg 5,3011 XY,Rotterdam,NL,https://tcrotterdam.nl,51.9244,4.4
                   ))}
                 </TableBody>
               </Table>
-              {parsedLocations.length > 100 && (
+              {filteredLocations.length > 200 && (
                 <div className="p-4 text-center text-sm text-muted-foreground">
-                  Showing first 100 of {parsedLocations.length} rows
+                  {t("locations.import.showingRows", "Showing first 200 of {{count}} rows", { count: filteredLocations.length })}
                 </div>
               )}
             </ScrollArea>
