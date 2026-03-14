@@ -439,11 +439,6 @@ export default function AcademyPublicProfile() {
                               {trainer.avgRating.toFixed(1)}
                             </span>
                           )}
-                          {trainer.trainer_profile?.hourly_rate && (
-                            <span className="text-muted-foreground">
-                              €{trainer.trainer_profile.hourly_rate}/hr
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
