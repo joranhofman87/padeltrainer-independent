@@ -68,6 +68,10 @@ export interface EmailData {
   // Payment reminder fields
   totalAmount?: number;
   unpaidSessions?: string;
+  // Intake registration confirmation fields
+  cycleName?: string;
+  confirmationText?: string;
+  language?: string;
 }
 
 /**

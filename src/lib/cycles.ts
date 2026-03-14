@@ -85,6 +85,8 @@ export interface CycleSettings {
   max_participants?: number;
   // Custom success message shown after registration
   success_message?: string;
+  // Custom text included in the confirmation email sent after registration
+  confirmation_email_text?: string;
   [key: string]: unknown; // Allow for Json compatibility
 }
 
