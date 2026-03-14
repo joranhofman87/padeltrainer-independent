@@ -1,37 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix Calendar View & Add Workflow Steps
+## Status: ✅ COMPLETED
 
-## Bug Fix
-The schedule/calendar view shows "No proposals" because of a **viewMode mismatch**:
-- The toggle button sets `viewMode` to `'schedule'` (line 271)
-- The data-fetching `useEffect` checks for `viewMode === 'grid'` (line 88)
-- They never match, so slots are never loaded
+Implemented on 2026-03-14.
 
-**Fix**: Change the condition on line 88 from `'grid'` to `'schedule'`.
+## Problem
 
-## Workflow Steps
-Replace the scattered action buttons with a clear step-by-step workflow indicator at the top of the page, showing progress through the proposal lifecycle:
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-```text
-① Generate  →  ② Review & Edit  →  ③ Approve  →  ④ Book to Agenda
+## Solution
+
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
+
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-- Each step shows its status (completed/active/upcoming) based on the data state
-- Steps are rendered as a horizontal stepper with numbered circles and connecting lines
-- Active step is highlighted; completed steps show a checkmark
-- Each step has a brief description and the relevant action button inline
+## Changes
 
-**Step logic:**
-1. **Generate** — active when there are `new` requests; button opens the wizard
-2. **Review & Edit** — active when there are `proposed` requests; shows the list/grid toggle
-3. **Approve** — active when reviewing; shows "Approve All" button
-4. **Book to Agenda** — active when there are `confirmed` requests; button to finalize booking
-
-This replaces the current row of buttons with a more guided, contextual flow.
-
-## Files
-- `src/pages/academy/AcademyIntakeRequests.tsx` — fix viewMode bug + add workflow stepper component
-- `src/pages/TrainerIntakeRequests.tsx` — same viewMode bug fix (if present)
-- New: `src/components/cycles/ProposalWorkflowSteps.tsx` — reusable stepper component
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)

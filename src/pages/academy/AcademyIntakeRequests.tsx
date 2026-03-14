@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Sparkles, CheckCheck, UserPlus, List, CalendarDays, RotateCcw, Info, AlertCircle } from 'lucide-react';
+import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
@@ -85,7 +86,7 @@ export default function AcademyIntakeRequests() {
   }, [requests, selectedCycleId, statusFilter]);
 
   useEffect(() => {
-    if (viewMode === 'grid' && selectedCycleId && selectedCycleId !== 'all') {
+    if (viewMode === 'schedule' && selectedCycleId && selectedCycleId !== 'all') {
       getAvailableSlotsForCycle(selectedCycleId)
         .then(setScheduleSlots)
         .catch(() => setScheduleSlots([]));
@@ -153,9 +154,10 @@ export default function AcademyIntakeRequests() {
   };
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
-  const newCount = requests.filter(r => r.status === 'new' && !r.skip_reason).length;
-  const skippedCount = requests.filter(r => r.status === 'new' && r.skip_reason).length;
-  const proposedCount = requests.filter(r => r.status === 'proposed').length;
+  const newCount = filteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
+  const skippedCount = filteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
+  const proposedCount = filteredRequests.filter(r => r.status === 'proposed').length;
+  const confirmedCount = filteredRequests.filter(r => r.status === 'confirmed').length;
 
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
@@ -200,32 +202,6 @@ export default function AcademyIntakeRequests() {
               </SelectContent>
             </Select>
           </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowAddDialog(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              {t('intakeRequests.addManual')}
-            </Button>
-            {proposedCount > 0 && (
-              <Button variant="outline" onClick={() => setShowResetConfirm(true)} disabled={isResetting}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                {t('proposals.reset', { defaultValue: 'Reset proposals' })}
-              </Button>
-            )}
-            {proposedCount > 0 && (
-              <Button variant="outline">
-                <CheckCheck className="mr-2 h-4 w-4" />
-                {t('proposals.approveAll')}
-              </Button>
-            )}
-            <Button 
-              onClick={() => setShowWizard(true)}
-              disabled={selectedCycleId === 'all' || newCount === 0}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              {t('proposals.generateAll')}
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -235,6 +211,22 @@ export default function AcademyIntakeRequests() {
           <Info className="h-4 w-4" />
           <AlertDescription>{t('intakeRequests.selectCycleHint')}</AlertDescription>
         </Alert>
+      )}
+
+      {/* Workflow Steps */}
+      {selectedCycleId !== 'all' && (
+        <ProposalWorkflowSteps
+          newCount={newCount}
+          proposedCount={proposedCount}
+          confirmedCount={confirmedCount}
+          cycleSelected={selectedCycleId !== 'all'}
+          onGenerate={() => setShowWizard(true)}
+          onApproveAll={() => {}}
+          onReset={() => setShowResetConfirm(true)}
+          onAddManual={() => setShowAddDialog(true)}
+          isGenerating={isGenerating}
+          isResetting={isResetting}
+        />
       )}
 
       {/* Status Filter Tabs + View Toggle */}
