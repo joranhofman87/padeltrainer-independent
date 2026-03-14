@@ -11,7 +11,6 @@ import {
   ToggleRight,
   Upload,
   CheckCircle2,
-  Image,
   AlertTriangle,
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
