@@ -98,6 +98,9 @@
     "successMessage": "Success Message",
     "successMessagePlaceholder": "e.g. Thanks for signing up! We will contact you within 2 days.",
     "successMessageHelp": "Custom message shown to players after they submit the form. Leave empty for the default message.",
+    "confirmationEmailText": "Confirmation Email Text",
+    "confirmationEmailTextPlaceholder": "e.g. Training starts on March 1st. Please bring your own racket.",
+    "confirmationEmailTextHelp": "This text is included in the confirmation email sent to players after they register. Leave empty to send a standard confirmation.",
     "registrationAssignedTrainerHelp": "The trainer who will give the lessons for this registration",
     "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration"
   },
