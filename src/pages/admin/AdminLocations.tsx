@@ -209,11 +209,7 @@ export default function AdminLocations() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <EnrichmentControls />
-          <Button variant="outline" onClick={() => setScrapeLogosDialogOpen(true)}>
-            <Image className="h-4 w-4 mr-2" />
-            Fetch Logos
-          </Button>
+          <DataProcessingBadge onClick={() => setDataProcessingOpen(true)} />
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
