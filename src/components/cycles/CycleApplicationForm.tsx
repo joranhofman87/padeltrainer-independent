@@ -82,7 +82,7 @@ export default function CycleApplicationForm({
   onSuccess,
   onCancel,
 }: CycleApplicationFormProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<{ code: string; name: string }[]>([]);
