@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,23 +34,22 @@ function getAvgConfidence(slot: SlotWithOccupancy): number {
 }
 
 function getConfidenceBorder(score: number): string {
-  if (score >= 80) return 'border-emerald-400 dark:border-emerald-700';
-  if (score >= 60) return 'border-amber-400 dark:border-amber-700';
-  if (score > 0) return 'border-red-400 dark:border-red-700';
-  return 'border-border';
+  if (score >= 80) return 'border-l-emerald-500 dark:border-l-emerald-600';
+  if (score >= 60) return 'border-l-amber-500 dark:border-l-amber-600';
+  if (score > 0) return 'border-l-red-500 dark:border-l-red-600';
+  return 'border-l-border';
 }
 
 function getOccupancyColor(current: number, max: number): string {
   if (current === 0) return 'text-muted-foreground';
-  if (current >= max) return 'text-emerald-600 dark:text-emerald-400';
-  if (current >= max * 0.5) return 'text-amber-600 dark:text-amber-400';
+  if (current >= max) return 'text-primary';
   return 'text-muted-foreground';
 }
 
 export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlayer }: ProposalScheduleGridProps) {
   const { t } = useTranslation('cycles');
 
-  // Group by day
+  // Group by day — always computed
   const dayGroups = useMemo(() => {
     const groups = new Map<string, SlotWithOccupancy[]>();
     slots.forEach(slot => {
@@ -59,10 +58,8 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
       existing.push(slot);
       groups.set(day, existing);
     });
-    // Sort slots within each day by time then trainer
-    groups.forEach((daySlots, day) => {
+    groups.forEach((daySlots) => {
       daySlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
-      groups.set(day, daySlots);
     });
     return groups;
   }, [slots]);
@@ -72,18 +69,17 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
     return dayOrder.filter(d => dayGroups.has(d));
   }, [dayGroups]);
 
-  const [selectedDay, setSelectedDay] = useState<string>(availableDays[0] || '');
+  const [selectedDay, setSelectedDay] = useState<string>('');
 
-  // Keep selectedDay in sync when availableDays changes
-  useMemo(() => {
+  // Sync selectedDay when availableDays changes
+  useEffect(() => {
     if (availableDays.length > 0 && !availableDays.includes(selectedDay)) {
       setSelectedDay(availableDays[0]);
     }
-  }, [availableDays]);
+  }, [availableDays, selectedDay]);
 
-  const daySlots = dayGroups.get(selectedDay) || [];
+  const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
-  // Group by trainer within the day
   const trainerGroups = useMemo(() => {
     const groups = new Map<string, { trainer: { id: string; name: string; avatar: string | null }; slots: SlotWithOccupancy[] }>();
     daySlots.forEach(slot => {
@@ -115,7 +111,6 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
       </Card>
     );
   }
-  }, [daySlots]);
 
   return (
     <div className="space-y-4">
@@ -179,12 +174,10 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
                         <span className="text-sm font-semibold">
                           {getTimeRange(slot.start_time, slot.end_time)}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
-                            <Clock className="h-2.5 w-2.5" />
-                            {duration}'
-                          </Badge>
-                        </div>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+                          <Clock className="h-2.5 w-2.5" />
+                          {duration}'
+                        </Badge>
                       </div>
 
                       {/* Occupancy + confidence */}
@@ -208,51 +201,52 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
                       {/* Player chips */}
                       {currentP > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                          {slot.current_assignments.map(assignment => (
-                            <div
-                              key={assignment.id}
-                              className="group flex items-center gap-1 bg-muted rounded-md pl-2 pr-1 py-1 text-xs hover:bg-accent transition-colors"
-                            >
-                              <button
-                                onClick={() => onPlayerClick?.(assignment.intake_request_id)}
-                                className="flex items-center gap-1 cursor-pointer"
+                          {slot.current_assignments.map(assignment => {
+                            const confScore = assignment.confidence_score || 0;
+                            const confClass = confScore >= 80
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : confScore >= 60
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
+
+                            return (
+                              <div
+                                key={assignment.id}
+                                className="group flex items-center gap-1 bg-muted rounded-md pl-2 pr-1 py-1 text-xs hover:bg-accent transition-colors"
                               >
-                                <span className="font-medium truncate max-w-[100px]">
-                                  {assignment.player_name}
-                                </span>
-                                {assignment.player_rating && (
-                                  <span className="text-muted-foreground text-[10px]">
-                                    {assignment.player_rating}
-                                  </span>
-                                )}
-                                {assignment.confidence_score && (
-                                  <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                      'text-[9px] px-1 py-0 h-3.5',
-                                      assignment.confidence_score >= 80 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
-                                      assignment.confidence_score >= 60 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
-                                      'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
-                                    )}
-                                  >
-                                    {assignment.confidence_score}%
-                                  </Badge>
-                                )}
-                              </button>
-                              {onMovePlayer && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onMovePlayer(assignment.id, assignment.intake_request_id);
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-background transition-all"
-                                  title={t('proposals.movePlayer', 'Move player')}
+                                  onClick={() => onPlayerClick?.(assignment.intake_request_id)}
+                                  className="flex items-center gap-1 cursor-pointer"
                                 >
-                                  <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
+                                  <span className="font-medium truncate max-w-[100px]">
+                                    {assignment.player_name}
+                                  </span>
+                                  {assignment.player_rating != null && (
+                                    <span className="text-muted-foreground text-[10px]">
+                                      {assignment.player_rating}
+                                    </span>
+                                  )}
+                                  {confScore > 0 && (
+                                    <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5', confClass)}>
+                                      {confScore}%
+                                    </Badge>
+                                  )}
                                 </button>
-                              )}
-                            </div>
-                          ))}
+                                {onMovePlayer && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onMovePlayer(assignment.id, assignment.intake_request_id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-background transition-all"
+                                    title={t('proposals.movePlayer', 'Move player')}
+                                  >
+                                    <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 
