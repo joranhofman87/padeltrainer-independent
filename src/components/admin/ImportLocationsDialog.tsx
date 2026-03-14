@@ -334,12 +334,19 @@ export function ImportLocationsDialog({
     // Fetch existing locations with coordinates for proximity check
     const { data: existingLocations } = await supabase
       .from("locations")
-      .select("id, name, city, slug, latitude, longitude")
-      .not("latitude", "is", null);
+      .select("id, name, city, slug, latitude, longitude, google_maps_url");
 
-    const existingWithCoords = existingLocations?.filter(
+    const existingWithCoords = (existingLocations || []).filter(
       (loc) => loc.latitude !== null && loc.longitude !== null
-    ) || [];
+    );
+
+    // Build a map of existing Google Maps URLs for matching
+    const existingGoogleUrls = new Map<string, string>();
+    for (const loc of existingLocations || []) {
+      if (loc.google_maps_url) {
+        existingGoogleUrls.set(loc.google_maps_url.trim().toLowerCase(), loc.name);
+      }
+    }
 
     // Build a set of existing slugs for fallback matching
     const existingSlugs = new Set(existingLocations?.map((loc) => loc.slug) || []);
