@@ -17,15 +17,63 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Fetch and save sitemap
+      - name: Create sitemaps directory
+        run: mkdir -p public/sitemaps
+
+      - name: Fetch sitemap index
         run: |
-          curl -s https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap > public/sitemap.xml
-          echo "Sitemap generated with $(grep -c '<url>' public/sitemap.xml) URLs"
+          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index" > public/sitemap.xml
+          echo "Sitemap index generated"
+
+      - name: Fetch static sitemap
+        run: |
+          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" > public/sitemaps/sitemap-static.xml
+          echo "Static: $(grep -c '<url>' public/sitemaps/sitemap-static.xml) URLs"
+
+      - name: Fetch location sitemaps
+        run: |
+          PAGE=1
+          while true; do
+            FILE="public/sitemaps/sitemap-locations-${PAGE}.xml"
+            curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=${PAGE}" > "$FILE"
+            URL_COUNT=$(grep -c '<url>' "$FILE" || echo 0)
+            echo "Locations page ${PAGE}: ${URL_COUNT} URLs"
+            if [ "$URL_COUNT" -eq 0 ]; then
+              rm "$FILE"
+              break
+            fi
+            PAGE=$((PAGE + 1))
+          done
+
+      - name: Fetch city sitemaps
+        run: |
+          PAGE=1
+          while true; do
+            FILE="public/sitemaps/sitemap-cities-${PAGE}.xml"
+            curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=${PAGE}" > "$FILE"
+            URL_COUNT=$(grep -c '<url>' "$FILE" || echo 0)
+            echo "Cities page ${PAGE}: ${URL_COUNT} URLs"
+            if [ "$URL_COUNT" -eq 0 ]; then
+              rm "$FILE"
+              break
+            fi
+            PAGE=$((PAGE + 1))
+          done
+
+      - name: Fetch provinces sitemap
+        run: |
+          curl -s "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" > public/sitemaps/sitemap-provinces.xml
+          echo "Provinces: $(grep -c '<url>' public/sitemaps/sitemap-provinces.xml) URLs"
+
+      - name: Summary
+        run: |
+          TOTAL=$(find public/sitemaps -name '*.xml' -exec grep -c '<url>' {} + | awk -F: '{s+=$2} END {print s}')
+          echo "Total URLs across all sitemaps: $TOTAL"
 
       - name: Commit and push if changed
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add public/sitemap.xml
-          git diff --staged --quiet || git commit -m "chore: regenerate sitemap [skip ci]"
+          git add public/sitemap.xml public/sitemaps/
+          git diff --staged --quiet || git commit -m "chore: regenerate sitemaps [skip ci]"
           git push
