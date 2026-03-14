@@ -1,29 +1,38 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Add "Players" dropdown menu to marketing header
 
-Implemented on 2026-03-14.
+Add a "Players" dropdown/submenu to the desktop and mobile navigation in `MarketingLayout.tsx` with the following items:
 
-## What Changed
+- Find Trainers → `/trainers`
+- Find Club → `/locations`
+- Padel Strokes → `/padel-strokes`
+- Padel Rules → `/padel-rules`
+- Video Tips → `/video-tips`
+- Coaches → `/padel-coaches`
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+### Implementation
 
-## Sanity Content Types Needed in Studio
+**File: `src/components/marketing/MarketingLayout.tsx`**
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+1. **Desktop**: Use a hover-triggered dropdown (CSS group-hover or a lightweight popover). Render a "Players" label in the nav bar that reveals a vertical list of `LocalizedLink` items on hover. No heavy library needed — a `relative` parent with an absolutely positioned dropdown using Tailwind `group` + `group-hover:block` pattern keeps it simple and consistent.
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+2. **Mobile**: In the mobile menu, render "Players" as a collapsible section (toggle with state) that expands to show the same sub-links indented underneath.
 
-## What Stays Unchanged
+3. **Nav structure change**: The `navLinks` array stays for flat links (Home, Pricing, About, Blog). The Players dropdown is rendered separately between Home and Pricing in the desktop nav, and as an expandable group in the mobile menu.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### Desktop dropdown structure (rough)
+```text
+ Home   Players ▾   Pricing   About   Blog
+           ┌──────────────────┐
+           │ Find Trainers    │
+           │ Find Club        │
+           │ Padel Strokes    │
+           │ Padel Rules      │
+           │ Video Tips       │
+           │ Coaches          │
+           └──────────────────┘
+```
+
+Uses Tailwind `group`/`group-hover` for zero-JS hover menu on desktop, and a `useState` toggle for mobile accordion. All links use `LocalizedLink` for proper language prefixing.
+
