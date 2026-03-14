@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
+import { Menu, X, Linkedin, Facebook, Instagram, Youtube, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -52,12 +52,28 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const privacyPath = useLocalizedPath('/privacy');
   const termsPath = useLocalizedPath('/terms');
 
-  const navLinks = [
+  const [playersMenuOpen, setPlayersMenuOpen] = useState(false);
+
+  const navLinksBefore = [
     { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
+  ];
+
+  const navLinksAfter = [
     { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
     { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
     { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
   ];
+
+  const playerSubLinks = [
+    { to: '/trainers', label: t('footer.findTrainers', 'Find Trainers') },
+    { to: '/locations', label: t('footer.locations', 'Find Club') },
+    { to: '/padel-strokes', label: t('nav.strokes', 'Padel Strokes') },
+    { to: '/padel-rules', label: t('nav.rules', 'Padel Rules') },
+    { to: '/video-tips', label: t('footer.videoTips', 'Video Tips') },
+    { to: '/padel-coaches', label: t('footer.coaches', 'Coaches') },
+  ];
+
+  const allNavLinks = [...navLinksBefore, ...navLinksAfter];
 
   // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
@@ -78,29 +94,50 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-8">
-              {navLinks.map((link) => 
-                link.isAnchor ? (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-                  >
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                      isActive(link.path)
-                        ? 'text-primary'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                )
-              )}
+              {navLinksBefore.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`text-sm font-medium transition-colors hover:text-primary ${
+                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+
+              {/* Players Dropdown */}
+              <div className="group relative">
+                <button className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+                  {t('nav.players', 'Players')}
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
+                </button>
+                <div className="invisible absolute left-1/2 top-full z-50 -translate-x-1/2 pt-2 opacity-0 transition-all group-hover:visible group-hover:opacity-100">
+                  <div className="min-w-[180px] rounded-md border bg-popover p-1.5 shadow-md">
+                    {playerSubLinks.map((item) => (
+                      <LocalizedLink
+                        key={item.to}
+                        to={item.to}
+                        className="block rounded-sm px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                      >
+                        {item.label}
+                      </LocalizedLink>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {navLinksAfter.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`text-sm font-medium transition-colors hover:text-primary ${
+                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
@@ -141,31 +178,56 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               className="md:hidden py-4 border-t"
             >
               <nav className="flex flex-col gap-4">
-                {navLinks.map((link) => 
-                  link.isAnchor ? (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
-                    >
-                      {link.label}
-                    </a>
-                  ) : (
-                    <Link
-                      key={link.href}
-                      to={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`text-sm font-medium transition-colors hover:text-primary ${
-                        isActive(link.path)
-                          ? 'text-primary'
-                          : 'text-muted-foreground'
-                      }`}
-                    >
-                      {link.label}
-                    </Link>
-                  )
-                )}
+                {navLinksBefore.map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+
+                {/* Players accordion */}
+                <div>
+                  <button
+                    onClick={() => setPlayersMenuOpen(!playersMenuOpen)}
+                    className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    {t('nav.players', 'Players')}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${playersMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {playersMenuOpen && (
+                    <div className="mt-2 flex flex-col gap-2 pl-4">
+                      {playerSubLinks.map((item) => (
+                        <LocalizedLink
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => { setMobileMenuOpen(false); setPlayersMenuOpen(false); }}
+                          className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                        >
+                          {item.label}
+                        </LocalizedLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {navLinksAfter.map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
                 <div className="flex flex-col gap-2 pt-4 border-t">
                   <div className="flex items-center gap-2">
                     <LanguageSwitcher />
