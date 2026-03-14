@@ -246,6 +246,10 @@ export default function AdminLocations() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DataProcessingBadge onClick={() => setDataProcessingOpen(true)} />
+          <Button variant="outline" onClick={exportToCsv}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
           <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
