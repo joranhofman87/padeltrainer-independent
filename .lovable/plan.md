@@ -1,33 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Improve Time Windows Layout in Generate Proposals Wizard
+## Status: ✅ COMPLETED
+
+Implemented on 2026-03-14.
 
 ## Problem
-The "Available time windows" label and "+ Add time window" button are stacked vertically, looking awkward — especially on mobile where the 3 selects + delete button overflow. The label sits alone on one line, the button on another.
+
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
+
+## Solution
+
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
+
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
+```
 
 ## Changes
 
-### `src/components/cycles/GenerateProposalsWizard.tsx`
-
-**1. Label + Add button on the same row** (lines 347-412)
-- Put the "Available time windows" label and the "+ Add time window" button in a `flex justify-between items-center` row, so the button sits right-aligned next to the label.
-- Make the add button smaller/icon-like with just a `+` icon (no text) to save space, or keep text but move it inline.
-
-**2. Mobile-friendly time window rows** (lines 351-403)
-- Change each window row from a single `flex` row to a responsive layout:
-  - On mobile: stack as two rows — day select on top (full width), time range (start – end + delete) below
-  - On desktop: keep as single row with `flex-wrap`
-- Use `w-full sm:w-[120px]` for day select, `flex-1 sm:w-[90px]` for time selects
-- Layout:
-  ```text
-  Mobile:
-  [  Monday          ▼ ]
-  [ 09:00 ▼ ] – [ 17:00 ▼ ] [🗑]
-
-  Desktop:
-  [ Monday ▼ ] [ 09:00 ▼ ] – [ 17:00 ▼ ] [🗑]
-  ```
-
-### File
-- `src/components/cycles/GenerateProposalsWizard.tsx` — ~20 lines changed in the time windows section
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)

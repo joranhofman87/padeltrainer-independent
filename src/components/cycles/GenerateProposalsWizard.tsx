@@ -345,16 +345,27 @@ export function GenerateProposalsWizard({
 
                 {/* Time windows */}
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
-                  </Label>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs text-muted-foreground">
+                      {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
+                    </Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => addWindow(config.trainerId)}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
+                    </Button>
+                  </div>
                   {config.windows.map((window, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                    <div key={idx} className="flex flex-col sm:flex-row gap-2">
                       <Select
                         value={window.day}
                         onValueChange={(v) => updateWindow(config.trainerId, idx, 'day', v)}
                       >
-                        <SelectTrigger className="w-[120px]">
+                        <SelectTrigger className="w-full sm:w-[120px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -365,51 +376,45 @@ export function GenerateProposalsWizard({
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select
-                        value={window.start}
-                        onValueChange={(v) => updateWindow(config.trainerId, idx, 'start', v)}
-                      >
-                        <SelectTrigger className="w-[90px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="text-muted-foreground">–</span>
-                      <Select
-                        value={window.end}
-                        onValueChange={(v) => updateWindow(config.trainerId, idx, 'end', v)}
-                      >
-                        <SelectTrigger className="w-[90px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() => removeWindow(config.trainerId, idx)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={window.start}
+                          onValueChange={(v) => updateWindow(config.trainerId, idx, 'start', v)}
+                        >
+                          <SelectTrigger className="flex-1 sm:w-[90px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIME_OPTIONS.map(t => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <span className="text-muted-foreground">–</span>
+                        <Select
+                          value={window.end}
+                          onValueChange={(v) => updateWindow(config.trainerId, idx, 'end', v)}
+                        >
+                          <SelectTrigger className="flex-1 sm:w-[90px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIME_OPTIONS.map(t => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => removeWindow(config.trainerId, idx)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => addWindow(config.trainerId)}
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
-                  </Button>
                 </div>
               </div>
             ))}
