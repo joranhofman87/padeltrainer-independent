@@ -72,11 +72,9 @@ export interface EmailData {
   // Intake registration confirmation fields
   cycleName?: string;
   confirmationText?: string;
-  language?: string;
   startDate?: string;
   endDate?: string;
   enrollmentDeadline?: string;
-  locationName?: string;
   lessonTypes?: string[];
   preferredDurationMinutes?: number;
   sessionsPerWeek?: number;
