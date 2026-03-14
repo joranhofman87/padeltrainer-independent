@@ -20,76 +20,80 @@ export function urlFor(source: SanityImageSource) {
   return builder.image(source);
 }
 
-// ── GROQ Queries ──
+// ── Shared Types ──
 
-export const BLOG_POSTS_QUERY = `*[_type == "post" && locale == $locale && !(_id in path("drafts.**"))] | order(publishedAt desc) [$start...$end] {
+export interface SeoFields {
+  titleTag?: string;
+  metaDescription?: string;
+  indexable?: boolean;
+  breadcrumbLabel?: string;
+}
+
+export interface CtaFields {
+  label?: string;
+  url?: string;
+}
+
+export interface BodySection {
+  heading: string;
+  content: string;
+}
+
+// ── Blog Queries ──
+
+export const BLOG_POSTS_QUERY = `*[_type == "blogPost" && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
   _id,
   title,
   "slug": slug.current,
+  h1,
   excerpt,
-  body,
-  mainImage,
-  publishedAt,
-  tags,
-  locale,
-  "author": author->{ name, image },
-  metaTitle,
-  metaDescription,
-  primaryKeyword
+  authorName,
+  category,
+  isFeatured,
+  seo,
+  cta,
+  datePublished,
+  dateModified,
+  bodySections
 }`;
 
-export const BLOG_POSTS_COUNT_QUERY = `count(*[_type == "post" && locale == $locale && !(_id in path("drafts.**"))])`;
+export const BLOG_POSTS_COUNT_QUERY = `count(*[_type == "blogPost" && !(_id in path("drafts.**"))])`;
 
-export const BLOG_POSTS_BY_TAG_QUERY = `*[_type == "post" && locale == $locale && $tag in tags && !(_id in path("drafts.**"))] | order(publishedAt desc) [$start...$end] {
+export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
   _id,
   title,
   "slug": slug.current,
+  h1,
   excerpt,
-  body,
-  mainImage,
-  publishedAt,
-  tags,
-  locale,
-  "author": author->{ name, image },
-  metaTitle,
-  metaDescription,
-  primaryKeyword
+  authorName,
+  category,
+  isFeatured,
+  seo,
+  cta,
+  datePublished,
+  dateModified,
+  bodySections
 }`;
 
-export const BLOG_POSTS_BY_TAG_COUNT_QUERY = `count(*[_type == "post" && locale == $locale && $tag in tags && !(_id in path("drafts.**"))])`;
+export const BLOG_POSTS_BY_CATEGORY_COUNT_QUERY = `count(*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))])`;
 
-export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "post" && slug.current == $slug && locale == $locale && !(_id in path("drafts.**"))][0] {
+export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "blogPost" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
+  h1,
   excerpt,
-  body,
-  mainImage,
-  publishedAt,
-  _updatedAt,
-  tags,
-  locale,
-  canonicalRef,
-  "author": author->{ name, image },
-  metaTitle,
-  metaDescription,
-  primaryKeyword,
-  "translations": *[_type == "post" && canonicalRef == ^.canonicalRef && _id != ^._id && !(_id in path("drafts.**"))] {
-    locale,
-    "slug": slug.current
-  }
+  bodySections,
+  authorName,
+  category,
+  isFeatured,
+  seo,
+  cta,
+  datePublished,
+  dateModified
 }`;
 
-export const RELATED_POSTS_QUERY = `*[_type == "post" && locale == $locale && _id != $id && count(tags[@ in $tags]) > 0 && !(_id in path("drafts.**"))] | order(publishedAt desc) [0...$limit] {
-  _id,
-  title,
-  "slug": slug.current,
-  mainImage,
-  publishedAt,
-  tags
-}`;
-
-export const ALL_TAGS_QUERY = `array::unique(*[_type == "post" && locale == $locale && !(_id in path("drafts.**"))].tags[])`;
+export const ALL_CATEGORIES_QUERY = `array::unique(*[_type == "blogPost" && !(_id in path("drafts.**"))].category)`;
 
 // ── Rules Queries ──
 
@@ -127,5 +131,138 @@ export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current ==
     h1,
     quickAnswer,
     pageType
+  }
+}`;
+
+// ── Stroke Queries ──
+
+export const STROKES_LIST_QUERY = `*[_type == "stroke" && !(_id in path("drafts.**"))] | order(title asc) {
+  _id,
+  title,
+  "slug": slug.current,
+  h1,
+  shortDescription,
+  category,
+  difficulty,
+  seo
+}`;
+
+export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+  _id,
+  title,
+  "slug": slug.current,
+  h1,
+  shortDescription,
+  category,
+  difficulty,
+  keyTips,
+  bodySections,
+  commonMistakes,
+  seo,
+  cta,
+  "relatedStrokes": relatedStrokes[]-> {
+    _id,
+    title,
+    "slug": slug.current,
+    h1,
+    shortDescription,
+    category,
+    difficulty
+  }
+}`;
+
+// ── Coach (CMS Trainer) Queries ──
+
+export const COACHES_LIST_QUERY = `*[_type == "trainer" && !(_id in path("drafts.**"))] | order(name asc) {
+  _id,
+  name,
+  "slug": slug.current,
+  bio,
+  specialties,
+  profileImageUrl,
+  seo
+}`;
+
+export const COACH_BY_SLUG_QUERY = `*[_type == "trainer" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+  _id,
+  name,
+  "slug": slug.current,
+  bio,
+  specialties,
+  profileImageUrl,
+  platformProfileUrl,
+  seo,
+  cta
+}`;
+
+// ── Video Tip Queries ──
+
+export const VIDEO_TIPS_BY_STROKE_QUERY = `*[_type == "videoTip" && references($strokeId) && !(_id in path("drafts.**"))] | order(datePublished desc) {
+  _id,
+  title,
+  "slug": slug.current,
+  videoUrl,
+  platform,
+  shortSummary,
+  thumbnailUrl,
+  isFeatured,
+  skillLevel,
+  tags,
+  seo,
+  cta,
+  datePublished,
+  "trainer": trainer-> {
+    _id,
+    name,
+    "slug": slug.current
+  }
+}`;
+
+export const VIDEO_TIPS_BY_TRAINER_QUERY = `*[_type == "videoTip" && trainer._ref == $trainerId && !(_id in path("drafts.**"))] | order(datePublished desc) {
+  _id,
+  title,
+  "slug": slug.current,
+  videoUrl,
+  platform,
+  shortSummary,
+  thumbnailUrl,
+  isFeatured,
+  skillLevel,
+  tags,
+  seo,
+  cta,
+  datePublished,
+  "strokes": strokes[]-> {
+    _id,
+    title,
+    "slug": slug.current
+  }
+}`;
+
+export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+  _id,
+  title,
+  "slug": slug.current,
+  videoUrl,
+  platform,
+  shortSummary,
+  thumbnailUrl,
+  isFeatured,
+  skillLevel,
+  tags,
+  seo,
+  cta,
+  datePublished,
+  dateModified,
+  "trainer": trainer-> {
+    _id,
+    name,
+    "slug": slug.current,
+    profileImageUrl
+  },
+  "strokes": strokes[]-> {
+    _id,
+    title,
+    "slug": slug.current
   }
 }`;
