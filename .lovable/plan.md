@@ -1,29 +1,34 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Simplify Cloudflare Worker — Remove Route Duplication
 
-Implemented on 2026-03-14.
+### Problem
+The Cloudflare Worker duplicates all marketing route patterns from the `render-page` edge function. Every time a new page type is added, both files need updating — and the worker will inevitably be forgotten.
 
-## What Changed
+### Solution
+Remove the `isMarketingPath` route matching from the worker entirely. Instead, use a simple **exclusion-based** approach: forward ALL bot GET requests to `render-page` unless they're for `/app/*` routes or static assets. The edge function already handles unknown routes gracefully via `renderFallback()`, so there's no downside.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+### Changes to `docs/cloudflare-worker.js`
 
-## Sanity Content Types Needed in Studio
+Replace the complex `isMarketingPath()` function (30+ regex patterns) with:
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+```javascript
+function shouldPrerender(pathname) {
+  // Never pre-render app routes
+  if (pathname.startsWith('/app')) return false;
+  
+  // Never pre-render static assets
+  if (pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json|xml|txt|webp|avif|mp4|webm)$/)) return false;
+  
+  // Everything else: let render-page handle it (it has its own fallback)
+  return true;
+}
+```
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+That's it. One file change. The `render-page` edge function already has all the routing logic and returns a sensible fallback for unknown paths. No more route duplication to maintain.
 
-## What Stays Unchanged
+### Files to Modify
+- `docs/cloudflare-worker.js` — replace `isMarketingPath()` with `shouldPrerender()`
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+**Note:** After this deploy, you'll still need to update the actual Cloudflare Worker in your dashboard with the new code. But from now on, the worker code is stable — you'll never need to touch it again when adding new pages.
+
