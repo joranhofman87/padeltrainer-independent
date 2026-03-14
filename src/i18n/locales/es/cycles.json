@@ -203,7 +203,8 @@
       "passwordMin": "La contraseña debe tener al menos 6 caracteres",
 
       "submit": "Enviar solicitud",
-      "submitting": "Enviando..."
+      "submitting": "Enviando...",
+      "validationSummary": "Por favor corrige lo siguiente:"
     },
     "success": {
       "title": "¡Solicitud enviada!",
