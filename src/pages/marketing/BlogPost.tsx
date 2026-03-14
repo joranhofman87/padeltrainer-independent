@@ -8,7 +8,8 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
-import { getArticleBySlug, getRelatedArticles, calculateReadTime } from '@/lib/blog';
+import { PortableText } from '@portabletext/react';
+import { getArticleBySlug, getRelatedArticles, calculateReadTime, getImageUrl } from '@/lib/blog';
 import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 
@@ -41,14 +42,19 @@ function RelatedPosts({ articles, dateLocale }: { articles: Article[]; dateLocal
       <h2 className="text-2xl font-bold mb-6">{t('blog.relatedArticles', 'Related Articles')}</h2>
       <div className="grid md:grid-cols-3 gap-6">
         {articles.map(article => (
-          <LocalizedLink key={article.id} to={`/blog/${article.slug}`}>
+          <LocalizedLink key={article._id} to={`/blog/${article.slug}`}>
             <div className="group">
               <div className="aspect-video bg-muted rounded-lg overflow-hidden mb-3">
-                <img src={article.cover_image_url ? `${article.cover_image_url}?v=${article.cover_image_generated_at ? new Date(article.cover_image_generated_at).getTime() : '1'}` : '/placeholder.svg'} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                <img
+                  src={getImageUrl(article.mainImage, 400, 225)}
+                  alt={article.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  loading="lazy"
+                />
               </div>
               <h3 className="font-semibold line-clamp-2 group-hover:text-primary transition-colors">{article.title}</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {article.published_at && new Date(article.published_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })}
+                {article.publishedAt && new Date(article.publishedAt).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })}
               </p>
             </div>
           </LocalizedLink>
@@ -70,8 +76,8 @@ export default function BlogPost() {
   });
 
   const { data: related = [] } = useQuery({
-    queryKey: ['blog-related', post?.id, i18n.language],
-    queryFn: () => getRelatedArticles(post!.id, i18n.language, post!.tags),
+    queryKey: ['blog-related', post?._id, i18n.language],
+    queryFn: () => getRelatedArticles(post!._id, i18n.language, post!.tags),
     enabled: !!post,
     staleTime: 1000 * 60 * 5,
   });
@@ -108,9 +114,9 @@ export default function BlogPost() {
     );
   }
 
-  const readTime = calculateReadTime(post.body_html);
+  const readTime = calculateReadTime(post.body);
+  const coverUrl = getImageUrl(post.mainImage, 1200, 630);
 
-  // Hreflang links for SEO component
   const hreflangLinks = post.translations?.map(tr => ({
     locale: tr.locale,
     url: `/blog/${tr.slug}`,
@@ -120,29 +126,29 @@ export default function BlogPost() {
     "@context": "https://schema.org",
     "@type": "Article",
     "headline": post.title,
-    "image": post.cover_image_url,
-    "datePublished": post.published_at,
-    "dateModified": post.updated_at,
+    "image": coverUrl !== '/placeholder.svg' ? coverUrl : undefined,
+    "datePublished": post.publishedAt,
+    "dateModified": post._updatedAt,
     "author": {
       "@type": "Organization",
-      "name": post.author_name || "PadelTrainer.ai"
+      "name": post.author?.name || "PadelTrainer.ai"
     },
     "publisher": {
       "@type": "Organization",
       "name": "PadelTrainer.ai",
       "logo": { "@type": "ImageObject", "url": "https://padeltrainer.ai/favicon.png" }
     },
-    "description": post.meta_description || post.excerpt || post.title
+    "description": post.metaDescription || post.excerpt || post.title
   };
 
   return (
     <MarketingLayout>
       <SEO
-        title={post.meta_title || post.title}
-        description={post.meta_description || post.excerpt || `Read about ${post.title} on PadelTrainer.ai`}
+        title={post.metaTitle || post.title}
+        description={post.metaDescription || post.excerpt || `Read about ${post.title} on PadelTrainer.ai`}
         url={`/blog/${slug}`}
         type="article"
-        image={post.cover_image_url || undefined}
+        image={coverUrl !== '/placeholder.svg' ? coverUrl : undefined}
         structuredData={articleStructuredData}
       />
       {/* Back Button */}
@@ -163,7 +169,7 @@ export default function BlogPost() {
           <div className="flex items-center gap-4 text-muted-foreground mb-8">
             <span className="flex items-center gap-1">
               <Calendar className="h-4 w-4" />
-              {post.published_at && new Date(post.published_at).toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' })}
+              {post.publishedAt && new Date(post.publishedAt).toLocaleDateString(dateLocale, { month: 'long', day: 'numeric', year: 'numeric' })}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
@@ -177,20 +183,21 @@ export default function BlogPost() {
         </motion.div>
 
         {/* Cover Image */}
-        {post.cover_image_url && (
+        {post.mainImage && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="aspect-[1200/630] bg-muted rounded-xl overflow-hidden mb-8">
-            <img src={`${post.cover_image_url}?v=${post.cover_image_generated_at ? new Date(post.cover_image_generated_at).getTime() : '1'}`} alt={post.cover_image_alt || post.title} width={1200} height={630} className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
+            <img src={coverUrl} alt={post.title} width={1200} height={630} className="w-full h-full object-cover" loading="eager" fetchPriority="high" />
           </motion.div>
         )}
 
-        {/* Article Content (HTML) */}
+        {/* Article Content (Portable Text) */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="prose prose-lg max-w-none dark:prose-invert"
-          dangerouslySetInnerHTML={{ __html: post.body_html || '' }}
-        />
+        >
+          {post.body && <PortableText value={post.body} />}
+        </motion.div>
 
         {/* Related Posts */}
         <RelatedPosts articles={related} dateLocale={dateLocale} />
