@@ -221,6 +221,7 @@ export default function CycleApplicationForm({
             locationId: values.location_id || null,
             notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
+            language: i18n.language,
           },
         });
 
