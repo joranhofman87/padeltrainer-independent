@@ -73,6 +73,15 @@ export interface EmailData {
   cycleName?: string;
   confirmationText?: string;
   language?: string;
+  startDate?: string;
+  endDate?: string;
+  enrollmentDeadline?: string;
+  locationName?: string;
+  lessonTypes?: string[];
+  preferredDurationMinutes?: number;
+  sessionsPerWeek?: number;
+  ratingSystem?: string;
+  notes?: string;
 }
 
 /**
