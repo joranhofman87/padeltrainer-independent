@@ -69,8 +69,8 @@ export async function getPublishedArticles(
     ]);
   } else {
     [articles, totalCount] = await Promise.all([
-      sanityClient.fetch(BLOG_POSTS_QUERY, { locale, start, end }),
-      sanityClient.fetch(BLOG_POSTS_COUNT_QUERY, { locale }),
+      sanityClient.fetch<Article[]>(BLOG_POSTS_QUERY, { locale, start, end }),
+      sanityClient.fetch<number>(BLOG_POSTS_COUNT_QUERY, { locale }),
     ]);
   }
 
