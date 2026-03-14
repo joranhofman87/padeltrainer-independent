@@ -9,6 +9,10 @@ import { initializePostHog } from "./lib/posthog";
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
+  // Ignore cross-origin script errors (no useful info) and third-party scripts
+  if (!event.filename || event.message === 'Script error.' || !event.filename.includes(window.location.hostname)) {
+    return;
+  }
   logger.error('Unhandled error', event.error instanceof Error ? event.error : new Error(event.message || 'Unknown error'), {
     component: 'global',
     action: 'uncaught_error',
