@@ -16,8 +16,7 @@ import {
 } from 'lucide-react';
 import { ImportLocationsDialog } from '@/components/admin/ImportLocationsDialog';
 import { LocationEditDialog } from '@/components/admin/LocationEditDialog';
-import { ScrapeLogosDialog } from '@/components/admin/ScrapeLogosDialog';
-import { EnrichmentControls } from '@/components/admin/EnrichmentControls';
+import { DataProcessingDialog, DataProcessingBadge } from '@/components/admin/DataProcessingDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
