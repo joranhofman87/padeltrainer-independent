@@ -110,7 +110,7 @@ export default function RulesPage() {
       <SEO
         title={article.seo?.titleTag || article.h1}
         description={article.seo?.metaDescription || article.intro}
-        url={`/rules/${slug}`}
+        url={`/padel-rules/${slug}`}
         type="article"
         structuredData={structuredData}
       />
