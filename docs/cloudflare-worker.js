@@ -61,41 +61,17 @@ function isBot(userAgent) {
   return BOT_USER_AGENTS.some(bot => ua.includes(bot));
 }
 
-// Only pre-render marketing pages, not app routes
-function isMarketingPath(pathname) {
-  // Skip /app/* routes entirely
-  if (pathname.startsWith('/app/') || pathname.startsWith('/app')) return false;
+// Decide whether to pre-render: exclude app routes and static assets,
+// forward everything else to the render-page edge function.
+function shouldPrerender(pathname) {
+  // Never pre-render app routes
+  if (pathname.startsWith('/app')) return false;
   
-  // Skip static assets
-  if (pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json|xml|txt)$/)) return false;
+  // Never pre-render static assets
+  if (pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json|xml|txt|webp|avif|mp4|webm)$/)) return false;
   
-  // Marketing routes that should be pre-rendered
-  const marketingPatterns = [
-    /^\/(en|nl|es|de|fr)\/?$/,                    // Homepage
-    /^\/(en|nl|es|de|fr)\/trainers\/?$/,          // Trainers directory
-    /^\/(en|nl|es|de|fr)\/trainers\/[^/]+$/,      // City pages
-    /^\/(en|nl|es|de|fr)\/trainer\/[^/]+$/,       // Trainer profiles
-    /^\/(en|nl|es|de|fr)\/locations\/?$/,         // Locations directory
-    /^\/(en|nl|es|de|fr)\/locations\/[^/]+$/,     // Location pages
-    /^\/(en|nl|es|de|fr)\/academies\/[^/]+$/,     // Academy pages
-    /^\/(en|nl|es|de|fr)\/blog\/?$/,              // Blog listing
-    /^\/(en|nl|es|de|fr)\/blog\/[^/]+$/,          // Blog posts
-    /^\/(en|nl|es|de|fr)\/padel-rules\/?$/,       // Rules listing
-    /^\/(en|nl|es|de|fr)\/padel-rules\/[^/]+$/,   // Rules articles
-    /^\/(en|nl|es|de|fr)\/padel-strokes\/?$/,     // Strokes listing
-    /^\/(en|nl|es|de|fr)\/padel-strokes\/[^/]+$/, // Stroke pages
-    /^\/(en|nl|es|de|fr)\/padel-coaches\/?$/,     // Coaches listing
-    /^\/(en|nl|es|de|fr)\/padel-coaches\/[^/]+$/, // Coach pages
-    /^\/(en|nl|es|de|fr)\/video-tips\/?$/,        // Video tips listing
-    /^\/(en|nl|es|de|fr)\/video-tips\/[^/]+$/,    // Video tip pages
-    /^\/(en|nl|es|de|fr)\/about\/?$/,             // About
-    /^\/(en|nl|es|de|fr)\/pricing\/?$/,           // Pricing
-    /^\/(en|nl|es|de|fr)\/partner\/?$/,           // Partner
-    /^\/(en|nl|es|de|fr)\/privacy\/?$/,           // Privacy
-    /^\/(en|nl|es|de|fr)\/terms\/?$/,             // Terms
-  ];
-  
-  return marketingPatterns.some(pattern => pattern.test(pathname));
+  // Everything else: let render-page handle it (it has its own fallback)
+  return true;
 }
 
 export default {
