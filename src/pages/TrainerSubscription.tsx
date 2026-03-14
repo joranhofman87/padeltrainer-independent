@@ -109,8 +109,8 @@ export default function TrainerSubscription() {
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (plan.tier === 'starter') {
       toast({
-        title: 'Use Cancel Subscription',
-        description: 'To downgrade, please cancel your current subscription.',
+        title: 'Use Manage Subscription',
+        description: 'To downgrade, please use the Manage Subscription button.',
       });
       return;
     }
