@@ -8,7 +8,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowRight, FileText } from 'lucide-react';
-import { getPublishedArticles, getAllTags, calculateReadTime } from '@/lib/blog';
+import { getPublishedArticles, getAllTags, calculateReadTime, getImageUrl } from '@/lib/blog';
 import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
