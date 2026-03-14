@@ -2860,6 +2860,7 @@ export type Database = {
           rating_member_id: string | null
           rating_system: string
           skill_rating: number | null
+          stripe_customer_id: string | null
           updated_at: string
           user_id: string
         }
@@ -2880,6 +2881,7 @@ export type Database = {
           rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null
+          stripe_customer_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -2900,6 +2902,7 @@ export type Database = {
           rating_member_id?: string | null
           rating_system?: string
           skill_rating?: number | null
+          stripe_customer_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -3890,6 +3893,7 @@ export type Database = {
           is_active: boolean
           months_remaining: number
           source: string
+          stripe_coupon_id: string | null
           user_id: string
         }
         Insert: {
@@ -3902,6 +3906,7 @@ export type Database = {
           is_active?: boolean
           months_remaining: number
           source?: string
+          stripe_coupon_id?: string | null
           user_id: string
         }
         Update: {
@@ -3914,6 +3919,7 @@ export type Database = {
           is_active?: boolean
           months_remaining?: number
           source?: string
+          stripe_coupon_id?: string | null
           user_id?: string
         }
         Relationships: []
