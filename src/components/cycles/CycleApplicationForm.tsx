@@ -327,7 +327,17 @@ export default function CycleApplicationForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+          // Auto-scroll to first error field
+          setTimeout(() => {
+            const firstErrorKey = Object.keys(errors)[0];
+            if (firstErrorKey) {
+              const el = document.querySelector(`[name="${firstErrorKey}"]`)
+                || document.getElementById(`${firstErrorKey}-form-item`);
+              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 100);
+        })} className="space-y-6">
         {/* Personal Information */}
         <Card>
           <CardHeader>
