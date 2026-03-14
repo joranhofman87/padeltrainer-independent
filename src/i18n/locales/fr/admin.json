@@ -31,7 +31,8 @@
         "nameMissing": "Name is required",
         "cityMissing": "City is required",
         "duplicateSlug": "Already exists",
-        "duplicateInFile": "Duplicate in file"
+        "duplicateInFile": "Duplicate in file",
+        "googleMapsMatch": "Matches \"{{name}}\" (same Google Maps link)"
       }
     }
   },

@@ -334,23 +334,30 @@ export function ImportLocationsDialog({
     // Fetch existing locations with coordinates for proximity check
     const { data: existingLocations } = await supabase
       .from("locations")
-      .select("id, name, city, slug, latitude, longitude")
-      .not("latitude", "is", null);
+      .select("id, name, city, slug, latitude, longitude, google_maps_url");
 
-    const existingWithCoords = existingLocations?.filter(
+    const existingWithCoords = (existingLocations || []).filter(
       (loc) => loc.latitude !== null && loc.longitude !== null
-    ) || [];
+    );
+
+    // Build a map of existing Google Maps URLs for matching
+    const existingGoogleUrls = new Map<string, string>();
+    for (const loc of existingLocations || []) {
+      if (loc.google_maps_url) {
+        existingGoogleUrls.set(loc.google_maps_url.trim().toLowerCase(), loc.name);
+      }
+    }
 
     // Build a set of existing slugs for fallback matching
     const existingSlugs = new Set(existingLocations?.map((loc) => loc.slug) || []);
 
     const PROXIMITY_THRESHOLD_METERS = 50; // Same venue if < 50m away
 
-    // Check for duplicates: coordinate-based first, then slug fallback
+    // Check for duplicates: coordinates → Google Maps URL → slug fallback
     for (const location of locations) {
       if (!location.isValid || location.isDuplicate) continue;
 
-      // If imported location has coordinates, check proximity
+      // Layer 1: If imported location has coordinates, check proximity
       if (location.latitude !== null && location.longitude !== null) {
         for (const existing of existingWithCoords) {
           const distance = calculateDistance(
@@ -371,8 +378,25 @@ export function ImportLocationsDialog({
             break;
           }
         }
-      } else {
-        // Fallback: slug-based check if no coordinates
+      }
+
+      // Layer 2: Google Maps URL match
+      if (!location.isDuplicate && location.google_maps_url) {
+        const normalizedUrl = location.google_maps_url.trim().toLowerCase();
+        const matchName = existingGoogleUrls.get(normalizedUrl);
+        if (matchName) {
+          location.isDuplicate = true;
+          location.errors.push(
+            t("locations.import.errors.googleMapsMatch",
+              `Matches "{{name}}" (same Google Maps link)`,
+              { name: matchName }
+            )
+          );
+        }
+      }
+
+      // Layer 3: Slug fallback (only if no coordinates and no Google Maps URL match)
+      if (!location.isDuplicate && location.latitude === null && location.longitude === null && !location.google_maps_url) {
         if (existingSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateSlug", "Already exists (by name)"));
@@ -380,15 +404,16 @@ export function ImportLocationsDialog({
       }
     }
 
-    // Check for duplicates within the file itself (coordinate-based first, then slug)
+    // Check for duplicates within the file itself (coordinates → Google Maps URL → slug)
     const seenCoords: Array<{ lat: number; lng: number; name: string }> = [];
+    const seenGoogleUrls = new Map<string, string>();
     const seenSlugs = new Set<string>();
 
     for (const location of locations) {
       if (!location.isValid || location.isDuplicate) continue;
 
+      // Layer 1: Coordinate proximity within file
       if (location.latitude !== null && location.longitude !== null) {
-        // Check against already-seen coordinates in this file
         for (const seen of seenCoords) {
           const distance = calculateDistance(
             location.latitude,
@@ -410,8 +435,27 @@ export function ImportLocationsDialog({
         if (!location.isDuplicate) {
           seenCoords.push({ lat: location.latitude, lng: location.longitude, name: location.name });
         }
-      } else {
-        // Fallback: slug check within file
+      }
+
+      // Layer 2: Google Maps URL within file
+      if (!location.isDuplicate && location.google_maps_url) {
+        const normalizedUrl = location.google_maps_url.trim().toLowerCase();
+        const matchName = seenGoogleUrls.get(normalizedUrl);
+        if (matchName) {
+          location.isDuplicate = true;
+          location.errors.push(
+            t("locations.import.errors.googleMapsMatch",
+              `Matches "{{name}}" (same Google Maps link)`,
+              { name: matchName }
+            )
+          );
+        } else {
+          seenGoogleUrls.set(normalizedUrl, location.name);
+        }
+      }
+
+      // Layer 3: Slug fallback within file
+      if (!location.isDuplicate && location.latitude === null && location.longitude === null && !location.google_maps_url) {
         if (seenSlugs.has(location.slug)) {
           location.isDuplicate = true;
           location.errors.push(t("locations.import.errors.duplicateInFile", "Duplicate in file"));

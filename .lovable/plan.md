@@ -1,44 +1,48 @@
 
+# Migrate Platform Subscriptions from Mollie to Stripe
 
-# Plan: Add Google Maps URL Duplicate Detection Layer
+## Status: ✅ COMPLETED
 
-## What changes
+Migration completed on 2026-03-14.
 
-Add Google Maps URL as a second duplicate-detection check, slotting in between the GPS proximity check and the slug fallback. This applies both against existing database records and within the imported file itself.
+## What was done
 
-## Detection priority (updated)
+### Phase 1: Stripe Products & Prices ✅
+Created all missing Stripe products and prices:
+- **Starter**: prod_U96I8IfrCKG4LU (€9/mo: price_1TAo5cPxAlHS6UZHBS3lZ5lo, €75.60/yr: price_1TAo67PxAlHS6UZHgmn9Tq4x)
+- **Professional**: prod_TnaKMqklQL0csZ (€29/mo: price_1Spz9VPxAlHS6UZH9wmgdECd, €278/yr: price_1Spz9uPxAlHS6UZHMaZfUTBY)
+- **Academy**: prod_TnaKlteqteiFWb (€79/mo: price_1SpzA8PxAlHS6UZHKsoY94qK, €758/yr: price_1SpzAdPxAlHS6UZHKjhjq8Ey)
+- **Club**: prod_TpSG6xKQWRccLA + prod_U96IiK6uDt4WHZ (€19/mo: price_1TAo6KPxAlHS6UZHg228uEB9, €2388/yr: price_1SrnLWPxAlHS6UZHnPt93ego)
 
-1. **GPS coordinates** — within 50m proximity
-2. **Google Maps URL** — exact match (new)
-3. **Slug** (name + city) — text fallback
+### Phase 2: Database Changes ✅
+- Added `stripe_customer_id` to `trainer_profiles`, `club_profiles`, `academy_profiles`
+- Added `stripe_price_id_monthly` and `stripe_price_id_yearly` to `subscription_plans`
+- Populated all Stripe price IDs in the subscription_plans table
 
-## File: `src/components/admin/ImportLocationsDialog.tsx`
+### Phase 3: Edge Functions ✅
+Created 5 new Stripe-based edge functions:
+1. **`create-stripe-checkout`** — Unified checkout for trainers, clubs, academies
+2. **`check-stripe-subscription`** — Checks subscription status via Stripe API
+3. **`cancel-stripe-subscription`** — Cancels at period end via Stripe
+4. **`stripe-subscription-webhook`** — Handles checkout.session.completed, invoice.paid/failed, subscription.deleted
+5. **`customer-portal`** — Stripe Customer Portal for self-service management
 
-### Change 1: Fetch existing Google Maps URLs from database
+### Phase 4: Frontend Updates ✅
+Updated all frontend files to call Stripe functions:
+- `src/hooks/useAuth.tsx` → `check-stripe-subscription`
+- `src/pages/TrainerSubscription.tsx` → `create-stripe-checkout` + `cancel-stripe-subscription`
+- `src/lib/clubSubscription.ts` → `create-stripe-checkout` + `check-stripe-subscription` + `cancel-stripe-subscription`
+- `src/lib/academySubscription.ts` → same
 
-Update the query on line ~335 to also select `google_maps_url`:
-```sql
-.select("id, name, city, slug, latitude, longitude, google_maps_url")
-```
+## What stays unchanged
+- **Mollie Connect** for player payments (lesson bookings)
+- **Trial logic** — same durations
+- **Admin overrides** — manual `subscription_status = 'active'`
+- Old Mollie subscription functions kept for backward compatibility
 
-Build a lookup map of existing `google_maps_url → location name` for quick matching (excluding nulls/empty).
-
-### Change 2: Database duplicate check — add Google Maps URL layer
-
-After the coordinate proximity check (line ~373) and before the slug fallback (line ~374), add a new check: if the location was not already flagged as a duplicate by coordinates, check if its `google_maps_url` matches any existing location's URL. Only then fall through to slug matching.
-
-The logic becomes:
-- If coordinates exist → check proximity → if no match, check Google Maps URL → done
-- If no coordinates → check Google Maps URL → if no match, check slug → done
-
-### Change 3: Within-file duplicate check — add Google Maps URL layer
-
-Same pattern for the within-file dedup loop (lines 383-420). Track seen Google Maps URLs in a `Map<string, string>` (url → name) alongside `seenCoords` and `seenSlugs`.
-
-### Change 4: Translation key
-
-Add `"googleMapsMatch"` error key to `src/i18n/locales/en/admin.json` under `locations.import.errors`:
-```json
-"googleMapsMatch": "Matches \"{{name}}\" (same Google Maps link)"
-```
-
+## TODO (post-migration)
+- [ ] Set up Stripe webhook endpoint URL in Stripe Dashboard pointing to `stripe-subscription-webhook`
+- [ ] Configure Stripe Customer Portal settings in Stripe Dashboard
+- [ ] Add STRIPE_WEBHOOK_SECRET for signature verification
+- [ ] Monitor and deprecate old Mollie subscription functions after transition period
+- [ ] Update `reconcile-subscriptions` cron job or retire it
