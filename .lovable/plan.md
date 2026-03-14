@@ -1,48 +1,58 @@
 
-# Migrate Platform Subscriptions from Mollie to Stripe
 
-## Status: ✅ COMPLETED
+# Plan: Combine Enrichment + Logo Fetch into Single Control
 
-Migration completed on 2026-03-14.
+## Current State
+- **EnrichmentControls** — inline badge/buttons in the header bar for the enrichment cron job (start/stop/retry)
+- **ScrapeLogosDialog** — separate dialog opened via "Fetch Logos" button, with its own background cron job and manual scraping mode
 
-## What was done
+Both are background cron jobs doing similar things (processing locations in batches via edge functions). Having them separate is confusing.
 
-### Phase 1: Stripe Products & Prices ✅
-Created all missing Stripe products and prices:
-- **Starter**: prod_U96I8IfrCKG4LU (€9/mo: price_1TAo5cPxAlHS6UZHBS3lZ5lo, €75.60/yr: price_1TAo67PxAlHS6UZHgmn9Tq4x)
-- **Professional**: prod_TnaKMqklQL0csZ (€29/mo: price_1Spz9VPxAlHS6UZH9wmgdECd, €278/yr: price_1Spz9uPxAlHS6UZHMaZfUTBY)
-- **Academy**: prod_TnaKlteqteiFWb (€79/mo: price_1SpzA8PxAlHS6UZHKsoY94qK, €758/yr: price_1SpzAdPxAlHS6UZHKjhjq8Ey)
-- **Club**: prod_TpSG6xKQWRccLA + prod_U96IiK6uDt4WHZ (€19/mo: price_1TAo6KPxAlHS6UZHg228uEB9, €2388/yr: price_1SrnLWPxAlHS6UZHnPt93ego)
+## Proposed Change
 
-### Phase 2: Database Changes ✅
-- Added `stripe_customer_id` to `trainer_profiles`, `club_profiles`, `academy_profiles`
-- Added `stripe_price_id_monthly` and `stripe_price_id_yearly` to `subscription_plans`
-- Populated all Stripe price IDs in the subscription_plans table
+Replace both with a single **"Data Processing" control panel** that manages both jobs from one place.
 
-### Phase 3: Edge Functions ✅
-Created 5 new Stripe-based edge functions:
-1. **`create-stripe-checkout`** — Unified checkout for trainers, clubs, academies
-2. **`check-stripe-subscription`** — Checks subscription status via Stripe API
-3. **`cancel-stripe-subscription`** — Cancels at period end via Stripe
-4. **`stripe-subscription-webhook`** — Handles checkout.session.completed, invoice.paid/failed, subscription.deleted
-5. **`customer-portal`** — Stripe Customer Portal for self-service management
+### UI Design
 
-### Phase 4: Frontend Updates ✅
-Updated all frontend files to call Stripe functions:
-- `src/hooks/useAuth.tsx` → `check-stripe-subscription`
-- `src/pages/TrainerSubscription.tsx` → `create-stripe-checkout` + `cancel-stripe-subscription`
-- `src/lib/clubSubscription.ts` → `create-stripe-checkout` + `check-stripe-subscription` + `cancel-stripe-subscription`
-- `src/lib/academySubscription.ts` → same
+Replace the current `EnrichmentControls` inline component + "Fetch Logos" button with a single **"Data Processing"** button that opens a dialog/popover with two sections:
 
-## What stays unchanged
-- **Mollie Connect** for player payments (lesson bookings)
-- **Trial logic** — same durations
-- **Admin overrides** — manual `subscription_status = 'active'`
-- Old Mollie subscription functions kept for backward compatibility
+**Section 1: Enrichment** (description, contacts, hours)
+- Status badge (Running/Stopped)
+- Pending / Failed counts
+- Start/Stop toggle
+- Retry failed button
 
-## TODO (post-migration)
-- [ ] Set up Stripe webhook endpoint URL in Stripe Dashboard pointing to `stripe-subscription-webhook`
-- [ ] Configure Stripe Customer Portal settings in Stripe Dashboard
-- [ ] Add STRIPE_WEBHOOK_SECRET for signature verification
-- [ ] Monitor and deprecate old Mollie subscription functions after transition period
-- [ ] Update `reconcile-subscriptions` cron job or retire it
+**Section 2: Logo Fetching**
+- Status badge (Running/Stopped)  
+- Pending / Processed / With Logos counts
+- Start/Stop toggle
+- Retry failed button
+
+**Section 3: Manual batch controls** (collapsed/expandable)
+- Batch size selector + Start button for manual runs of either job
+- Kept from the existing ScrapeLogosDialog
+
+### Files to Edit
+
+1. **New: `src/components/admin/DataProcessingDialog.tsx`**
+   - Combines logic from `EnrichmentControls` and `ScrapeLogosDialog`
+   - Single dialog with two clearly labeled sections
+   - Each section has its own start/stop/retry controls
+   - Manual scraping section at the bottom (for logos only, since enrichment already has manual via the edge function)
+
+2. **`src/pages/admin/AdminLocations.tsx`**
+   - Remove `EnrichmentControls` import and inline usage
+   - Remove `ScrapeLogosDialog` import and "Fetch Logos" button
+   - Add single "Data Processing" button that opens the new dialog
+
+3. **Delete: `src/components/admin/EnrichmentControls.tsx`** (merged into new component)
+4. **Delete: `src/components/admin/ScrapeLogosDialog.tsx`** (merged into new component)
+
+### Technical Details
+
+- Both cron job status checks already exist as RPCs (`check_enrichment_job_status`, `check_logo_fetch_job_status`)
+- Both schedule/unschedule RPCs exist (`schedule_enrichment_job`/`unschedule_enrichment_job`, `schedule_logo_fetch_job`/`unschedule_logo_fetch_job`)
+- No backend changes needed — purely a frontend consolidation
+- The dialog polls status every 30 seconds (same as current EnrichmentControls)
+- The header bar shows a compact summary badge: e.g. "2 jobs running" or "Processing idle"
+
