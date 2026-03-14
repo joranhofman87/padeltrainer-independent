@@ -23,7 +23,7 @@ export async function checkAcademySubscription(academyProfileId: string): Promis
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("check-mollie-subscription", {
+  const response = await supabase.functions.invoke("check-stripe-subscription", {
     body: { type: "academy", profileId: academyProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
