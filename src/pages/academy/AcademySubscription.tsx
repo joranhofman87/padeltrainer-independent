@@ -95,19 +95,24 @@ export default function AcademySubscription() {
     }
   };
 
-  const handleCancelSubscription = async () => {
+  const handleManageSubscription = async () => {
     if (!activeAcademy) return;
     
     setActionLoading(true);
     try {
-      const result = await cancelAcademySubscription(activeAcademy.id);
-      toast({
-        title: t("subscription.canceledTitle"),
-        description: result.message,
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      
+      const response = await supabase.functions.invoke("customer-portal", {
+        body: { type: "academy", profileId: activeAcademy.id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      // Refresh subscription status
-      const sub = await checkAcademySubscription(activeAcademy.id);
-      setSubscription(sub);
+      
+      if (response.error) throw new Error(response.error.message);
+      
+      if (response.data?.url) {
+        window.open(response.data.url, '_blank');
+      }
     } catch (error: any) {
       toast({
         title: t("common:error"),
