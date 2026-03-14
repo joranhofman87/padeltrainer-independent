@@ -1,32 +1,31 @@
 
+# Sitemap Index Architecture
 
-# Fix: BrandedCycleRegistration Page Crash
+## Status: ✅ COMPLETED
 
-## Root Cause
+Implemented on 2026-03-14.
 
-`CycleDetailDisplay.tsx` renders cycle descriptions using `dangerouslySetInnerHTML`. Third-party scripts (Reditus tracker confirmed erroring in console) modify the DOM inside this container. When React tries to reconcile, it finds nodes that no longer match its virtual DOM, throwing "Failed to execute 'removeChild' on 'Node'". The `FeatureErrorBoundary` catches this and shows the error screen, preventing any form submission.
+## Problem
 
-## Fix
+After importing 5,941+ locations across 59 countries, the single sitemap.xml exceeded Google's 50,000 URL / 50MB limits (~49,800 URLs, 592K lines of XML).
 
-**`src/components/cycles/CycleDetailDisplay.tsx`** — Replace `dangerouslySetInnerHTML` with a ref-based approach that isolates the HTML content from React's reconciliation:
+## Solution
 
-```tsx
-// Instead of:
-<div dangerouslySetInnerHTML={{ __html: cycle.description! }} />
+Switched to a **sitemap index** architecture with paginated sub-sitemaps:
 
-// Use a ref-based component:
-function SafeHTML({ html }: { html: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.innerHTML = html;
-  }, [html]);
-  return <div ref={ref} />;
-}
+```
+sitemap.xml (index)
+├── sitemaps/sitemap-static.xml      (static pages + trainers + academies + blog)
+├── sitemaps/sitemap-locations-1.xml (5000 locations per page × 5 langs)
+├── sitemaps/sitemap-locations-2.xml (if needed)
+├── sitemaps/sitemap-cities-1.xml    (5000 cities per page × 5 langs)
+├── sitemaps/sitemap-cities-2.xml    (if needed)
+└── sitemaps/sitemap-provinces.xml   (23 provinces × 5 langs)
 ```
 
-This prevents React from tracking the inner DOM nodes, so third-party script modifications won't cause reconciliation failures.
+## Changes
 
-## Files to Edit
-
-- `src/components/cycles/CycleDetailDisplay.tsx` — replace `dangerouslySetInnerHTML` with ref-based `SafeHTML`
-
+1. **`supabase/functions/sitemap/index.ts`** — Accepts `?type=index|static|locations|cities|provinces&page=N`
+2. **`.github/workflows/sitemap.yml`** — Fetches index + all paginated sub-sitemaps
+3. **`scripts/generate-sitemap.ts`** — Updated for new multi-file output
+4. **`public/robots.txt`** — No change needed (still points to `sitemap.xml`)

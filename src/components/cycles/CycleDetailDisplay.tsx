@@ -1,8 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { MapPin, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow } from '@/lib/cycles';
+
+/** Renders HTML without React tracking inner DOM nodes, preventing reconciliation crashes from third-party scripts. */
+function SafeHTML({ html, className }: { html: string; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = html;
+  }, [html]);
+  return <div ref={ref} className={className} />;
+}
 
 interface CycleDetailDisplayProps {
   cycle: Cycle;
@@ -35,9 +44,9 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
 
       {/* Description */}
       {hasDescription && (
-        <div
+        <SafeHTML
+          html={cycle.description!}
           className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: cycle.description! }}
         />
       )}
 
