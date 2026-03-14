@@ -23,7 +23,7 @@ export async function checkClubSubscription(clubProfileId: string): Promise<Club
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("check-mollie-subscription", {
+  const response = await supabase.functions.invoke("check-stripe-subscription", {
     body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
@@ -51,8 +51,8 @@ export async function createClubCheckout(clubProfileId: string): Promise<string>
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("create-club-mollie-subscription", {
-    body: { clubProfileId },
+  const response = await supabase.functions.invoke("create-stripe-checkout", {
+    body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
@@ -72,7 +72,7 @@ export async function cancelClubSubscription(clubProfileId: string): Promise<{ s
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("cancel-mollie-subscription", {
+  const response = await supabase.functions.invoke("cancel-stripe-subscription", {
     body: { type: "club", profileId: clubProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,

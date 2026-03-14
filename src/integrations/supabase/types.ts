@@ -329,6 +329,7 @@ export type Database = {
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
+          stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
           subscription_status: string | null
@@ -362,6 +363,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -395,6 +397,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -1417,6 +1420,7 @@ export type Database = {
           social_linkedin: string | null
           social_tiktok: string | null
           social_youtube: string | null
+          stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
           subscription_status: string | null
@@ -1444,6 +1448,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -1471,6 +1476,7 @@ export type Database = {
           social_linkedin?: string | null
           social_tiktok?: string | null
           social_youtube?: string | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -3312,6 +3318,8 @@ export type Database = {
           plan_type: string
           platform_fee_flat: number | null
           platform_fee_percent: number
+          stripe_price_id_monthly: string | null
+          stripe_price_id_yearly: string | null
           tier: string
           updated_at: string
           yearly_price: number
@@ -3334,6 +3342,8 @@ export type Database = {
           plan_type?: string
           platform_fee_flat?: number | null
           platform_fee_percent?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
           tier: string
           updated_at?: string
           yearly_price?: number
@@ -3356,6 +3366,8 @@ export type Database = {
           plan_type?: string
           platform_fee_flat?: number | null
           platform_fee_percent?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
           tier?: string
           updated_at?: string
           yearly_price?: number
@@ -3651,6 +3663,7 @@ export type Database = {
           social_tiktok: string | null
           social_youtube: string | null
           specializations: string[] | null
+          stripe_customer_id: string | null
           subscription_ends_at: string | null
           subscription_id: string | null
           subscription_status: string | null
@@ -3707,6 +3720,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null
@@ -3763,6 +3777,7 @@ export type Database = {
           social_tiktok?: string | null
           social_youtube?: string | null
           specializations?: string[] | null
+          stripe_customer_id?: string | null
           subscription_ends_at?: string | null
           subscription_id?: string | null
           subscription_status?: string | null

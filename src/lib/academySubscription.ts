@@ -23,7 +23,7 @@ export async function checkAcademySubscription(academyProfileId: string): Promis
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("check-mollie-subscription", {
+  const response = await supabase.functions.invoke("check-stripe-subscription", {
     body: { type: "academy", profileId: academyProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
@@ -52,8 +52,8 @@ export async function createAcademyCheckout(academyProfileId: string): Promise<s
   }
 
   // Use the same pattern as clubs - create a checkout for academy
-  const response = await supabase.functions.invoke("create-academy-mollie-subscription", {
-    body: { academyProfileId },
+  const response = await supabase.functions.invoke("create-stripe-checkout", {
+    body: { type: "academy", profileId: academyProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
@@ -73,7 +73,7 @@ export async function cancelAcademySubscription(academyProfileId: string): Promi
     throw new Error("Not authenticated");
   }
 
-  const response = await supabase.functions.invoke("cancel-mollie-subscription", {
+  const response = await supabase.functions.invoke("cancel-stripe-subscription", {
     body: { type: "academy", profileId: academyProfileId },
     headers: {
       Authorization: `Bearer ${session.access_token}`,

@@ -41,7 +41,7 @@ export default function TrainerSubscription() {
   
   const { data: plans, isLoading: loadingPlans } = useTrainerPlans();
 
-  // Handle success/cancel from Mollie checkout
+  // Handle success/cancel from Stripe checkout
   useEffect(() => {
     const success = searchParams.get('success');
     const canceled = searchParams.get('canceled');
@@ -115,20 +115,20 @@ export default function TrainerSubscription() {
       return;
     }
 
-    const planId = billingCycle === 'monthly' ? plan.tier : `${plan.tier}_yearly`;
+    // planId no longer needed - Stripe checkout uses tier + billingCycle
 
     trackEvent('subscription_checkout_started', { plan: plan.tier, billing_cycle: billingCycle });
     setProcessingPlan(plan.id);
 
     try {
-      logger.info('Starting Mollie checkout for subscription', { 
+      logger.info('Starting Stripe checkout for subscription', { 
         component: 'TrainerSubscription', 
-        planId, 
+        planId: plan.tier, 
         billingCycle 
       });
 
-      const { data, error } = await supabase.functions.invoke('create-mollie-subscription', {
-        body: { planId },
+      const { data, error } = await supabase.functions.invoke('create-stripe-checkout', {
+        body: { type: 'trainer', planId: plan.tier, billingCycle },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
@@ -154,7 +154,7 @@ export default function TrainerSubscription() {
     } catch (err) {
       logger.error('Subscription checkout failed', err as Error, { 
         component: 'TrainerSubscription', 
-        planId 
+        plan: plan.tier 
       });
       toast({
         title: 'Error',
@@ -169,7 +169,7 @@ export default function TrainerSubscription() {
     setLoadingPortal(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('cancel-mollie-subscription', {
+      const { data, error } = await supabase.functions.invoke('cancel-stripe-subscription', {
         body: { type: 'trainer' },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
