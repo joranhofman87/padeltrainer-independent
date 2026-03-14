@@ -71,7 +71,7 @@ export default function AdminLocations() {
   const [verifiedFilter, setVerifiedFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [scrapeLogosDialogOpen, setScrapeLogosDialogOpen] = useState(false);
+  const [dataProcessingOpen, setDataProcessingOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   // Get verified location IDs from club_profiles
