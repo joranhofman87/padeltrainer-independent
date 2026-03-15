@@ -56,7 +56,7 @@ export default function Coaches() {
           <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-4xl md:text-5xl font-bold mb-4">Padel Coaches & Creators</h1>
             <p className="text-xl text-muted-foreground">
-              Discover the coaches and content creators behind our padel tutorials.
+              Discover top padel coaches and content creators sharing tips, drills, and tutorials.
             </p>
           </motion.div>
         </div>
