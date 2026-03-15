@@ -250,6 +250,11 @@ Deno.serve(async (req) => {
       for (const video of sanityVideoTips || []) {
         xml += generateUrlEntry(`/video-tips/${video.slug}`, today, 'weekly', '0.6');
       }
+      for (const la of sanityLearningArticles || []) {
+        // Respect seo.indexable — exclude noindex pages from sitemap
+        if (la.seo?.indexable === false) continue;
+        xml += generateUrlEntry(`/learn/${la.slug}`, today, 'weekly', '0.7');
+      }
 
       xml += '</urlset>';
 
