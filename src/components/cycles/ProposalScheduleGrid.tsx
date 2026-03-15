@@ -321,6 +321,19 @@ export default function ProposalScheduleGrid({
 
   const canDragSlot = !!onMoveSlot;
 
+  // Collect days from availability windows
+  const availabilityDaySet = useMemo(() => {
+    const days = new Set<string>();
+    trainerAvailabilityWindows?.forEach(tw => {
+      tw.windows.forEach(w => {
+        // Capitalize first letter to match getDayName format (e.g. "monday" → "Monday")
+        const capitalized = w.day.charAt(0).toUpperCase() + w.day.slice(1).toLowerCase();
+        days.add(capitalized);
+      });
+    });
+    return days;
+  }, [trainerAvailabilityWindows]);
+
   // Group by day
   const dayGroups = useMemo(() => {
     const groups = new Map<string, SlotWithOccupancy[]>();
@@ -335,8 +348,8 @@ export default function ProposalScheduleGrid({
 
   const availableDays = useMemo(() => {
     const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return dayOrder.filter(d => dayGroups.has(d));
-  }, [dayGroups]);
+    return dayOrder.filter(d => dayGroups.has(d) || availabilityDaySet.has(d));
+  }, [dayGroups, availabilityDaySet]);
 
   const [selectedDay, setSelectedDay] = useState<string>('');
 
