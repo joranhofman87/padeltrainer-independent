@@ -345,20 +345,9 @@ export function GenerateProposalsWizard({
 
                 {/* Time windows */}
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-xs text-muted-foreground">
-                      {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
-                    </Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => addWindow(config.trainerId)}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" />
-                      {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
-                    </Button>
-                  </div>
+                  <Label className="text-xs text-muted-foreground">
+                    {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
+                  </Label>
                   {config.windows.map((window, idx) => (
                     <div key={idx} className="flex flex-col sm:flex-row gap-2">
                       <Select
