@@ -497,13 +497,12 @@ export default function ProposalScheduleGrid({
 
       // The target cell might contain a slot — extract the target slot id
       const overCellId = over.id as string;
-      if (!overCellId.startsWith('cell-')) return;
+      if (!overCellId.startsWith('cell__')) return;
 
-      // Parse cell-{trainerId}-{timeRowMinute}
-      const parts = overCellId.replace('cell-', '').split('-');
-      // trainerId is a UUID (has dashes), timeRow is the last part
-      const timeRow = parseInt(parts[parts.length - 1]);
-      const trainerId = parts.slice(0, parts.length - 1).join('-');
+      // Parse cell__{trainerId}__{timeRowMinute}
+      const parts = overCellId.split('__');
+      const trainerId = parts[1];
+      const timeRow = parseInt(parts[2]);
 
       // Find the slot at this cell
       const targetSlot = slotLookup.get(`${trainerId}-${timeRow}`);
