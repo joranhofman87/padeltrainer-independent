@@ -438,11 +438,10 @@ export default function ProposalScheduleGrid({
 
   // Build a lookup: trainerId -> timeRowMinute -> slot
   const slotLookup = useMemo(() => {
-    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}-${rowMinute}`
+    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}__${rowMinute}`
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
-      // Place slot at its start row, keyed by trainer
-      const key = `${slot.trainer_id}-${startMin}`;
+      const key = `${slot.trainer_id}__${startMin}`;
       lookup.set(key, slot);
     });
     return lookup;
