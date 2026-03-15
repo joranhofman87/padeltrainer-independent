@@ -123,7 +123,11 @@ export default {
       const sitemapUrl = getSitemapProxyUrl(url.pathname, env.SITEMAP_FUNCTION_URL);
       if (sitemapUrl) {
         try {
-          const response = await fetch(sitemapUrl);
+          const response = await fetch(sitemapUrl, {
+            headers: {
+              'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+            },
+          });
           if (response.ok) {
             return new Response(response.body, {
               status: 200,
