@@ -562,6 +562,22 @@ export default function ProposalScheduleGrid({
       newStart.setHours(Math.floor(newTimeRowMinute / 60), newTimeRowMinute % 60, 0, 0);
       const newEnd = addMinutes(newStart, duration);
 
+      // Overlap detection: reject if another slot occupies the same trainer/time range
+      const newStartMin = newTimeRowMinute;
+      const newEndMin = newTimeRowMinute + duration;
+      const hasOverlap = daySlots.some(other => {
+        if (other.id === slot.id) return false;
+        if (other.trainer_id !== newTrainerId) return false;
+        const otherStartMin = isoToMinutes(other.start_time);
+        const otherEndMin = otherStartMin + getDurationMinutes(other.start_time, other.end_time);
+        return newStartMin < otherEndMin && newEndMin > otherStartMin;
+      });
+
+      if (hasOverlap) {
+        toast.warning(t('proposals.slotOverlap', 'Cannot move here — overlaps with an existing slot'));
+        return;
+      }
+
       onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
     }
   }, [activeData, onMovePlayer, onMoveSlot, slotLookup, daySlots, slotRowSpans]);
