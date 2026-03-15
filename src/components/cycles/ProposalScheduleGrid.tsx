@@ -23,6 +23,10 @@ interface ProposalScheduleGridProps {
   onPlayerClick?: (intakeRequestId: string) => void;
   onMovePlayer?: (assignmentId: string, newSlotId: string) => void;
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
+  onSwapSlots?: (
+    slotAId: string, slotANewTrainerId: string, slotANewStart: string, slotANewEnd: string,
+    slotBId: string, slotBNewTrainerId: string, slotBNewStart: string, slotBNewEnd: string,
+  ) => void;
 }
 
 type Assignment = SlotWithOccupancy['current_assignments'][number];
