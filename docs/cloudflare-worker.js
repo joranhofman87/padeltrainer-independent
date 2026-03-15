@@ -74,6 +74,43 @@ function shouldPrerender(pathname) {
   return true;
 }
 
+/**
+ * Map a sitemap request path to the edge function query string.
+ * Returns the full URL to proxy, or null if not a sitemap path.
+ */
+function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
+  if (!sitemapFunctionUrl) return null;
+
+  // /sitemap.xml → sitemap index
+  if (pathname === '/sitemap.xml') {
+    return `${sitemapFunctionUrl}?type=index`;
+  }
+
+  // /sitemaps/sitemap-static.xml
+  if (pathname === '/sitemaps/sitemap-static.xml') {
+    return `${sitemapFunctionUrl}?type=static`;
+  }
+
+  // /sitemaps/sitemap-provinces.xml
+  if (pathname === '/sitemaps/sitemap-provinces.xml') {
+    return `${sitemapFunctionUrl}?type=provinces`;
+  }
+
+  // /sitemaps/sitemap-locations-{page}.xml
+  const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
+  if (locMatch) {
+    return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
+  }
+
+  // /sitemaps/sitemap-cities-{page}.xml
+  const cityMatch = pathname.match(/^\/sitemaps\/sitemap-cities-(\d+)\.xml$/);
+  if (cityMatch) {
+    return `${sitemapFunctionUrl}?type=cities&page=${cityMatch[1]}`;
+  }
+
+  return null;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
