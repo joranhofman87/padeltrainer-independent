@@ -1340,7 +1340,7 @@ export async function moveSlot(
   if (error) throw error;
 }
 
-// Swap two slots' times and trainers (used when dragging onto an empty slot)
+// Atomic swap of two slots using a DB function (single transaction)
 export async function swapSlots(
   slotAId: string,
   slotANewTrainerId: string,
@@ -1351,26 +1351,16 @@ export async function swapSlots(
   slotBNewStart: string,
   slotBNewEnd: string,
 ): Promise<void> {
-  // Update both slots — order matters to avoid unique constraint issues
-  const { error: errorA } = await supabase
-    .from('availability_slots')
-    .update({
-      trainer_id: slotANewTrainerId,
-      start_time: slotANewStart,
-      end_time: slotANewEnd,
-    })
-    .eq('id', slotAId);
+  const { error } = await supabase.rpc('swap_slots', {
+    _slot_a_id: slotAId,
+    _slot_a_trainer_id: slotANewTrainerId,
+    _slot_a_start: slotANewStart,
+    _slot_a_end: slotANewEnd,
+    _slot_b_id: slotBId,
+    _slot_b_trainer_id: slotBNewTrainerId,
+    _slot_b_start: slotBNewStart,
+    _slot_b_end: slotBNewEnd,
+  });
 
-  if (errorA) throw errorA;
-
-  const { error: errorB } = await supabase
-    .from('availability_slots')
-    .update({
-      trainer_id: slotBNewTrainerId,
-      start_time: slotBNewStart,
-      end_time: slotBNewEnd,
-    })
-    .eq('id', slotBId);
-
-  if (errorB) throw errorB;
+  if (error) throw error;
 }
