@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
@@ -11,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { getLearningArticles, CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } from '@/lib/learningArticles';
 import type { LearningArticleSummary } from '@/lib/learningArticles';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+
+const CONTENT_TYPE_KEYS = Object.keys(CONTENT_TYPE_LABELS);
 
 function IndexSkeleton() {
   return (
@@ -29,6 +32,10 @@ function IndexSkeleton() {
 export default function LearnIndex() {
   const { t, i18n } = useTranslation('marketing');
   const currentLang = i18n.language || 'en';
+  const [searchParams] = useSearchParams();
+
+  const activeType = searchParams.get('type');
+  const activeTopic = searchParams.get('topic');
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ['learning-articles'],
@@ -36,15 +43,33 @@ export default function LearnIndex() {
     staleTime: 1000 * 60 * 10,
   });
 
-  // Separate hubs and children
-  const hubs = articles.filter(a => a.pageType === 'hub');
-  const children = articles.filter(a => a.pageType === 'child');
+  // Filter by topic or type
+  let filtered = articles;
+  if (activeTopic) {
+    filtered = filtered.filter(a =>
+      a.topics?.some(t => t.slug === activeTopic)
+    );
+  }
+  if (activeType) {
+    filtered = filtered.filter(a => a.contentType === activeType);
+  }
+
+  const hubs = filtered.filter(a => a.pageType === 'hub');
+  const children = filtered.filter(a => a.pageType === 'child');
+
+  // Group children by contentType for default view
+  const childrenByType = children.reduce<Record<string, LearningArticleSummary[]>>((acc, a) => {
+    const key = a.contentType || 'other';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(a);
+    return acc;
+  }, {});
 
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    "name": "Learn Padel",
-    "description": "Guides, tactics, drills, and everything you need to improve your padel game.",
+    "name": t('learn.seoTitle', 'Learn Padel – Guides, Tactics & Drills'),
+    "description": t('learn.seoDescription', 'Guides, tactics, drills, and everything you need to improve your padel game.'),
     "url": `${MARKETING_DOMAIN}/${currentLang}/learn`,
     "publisher": { "@type": "Organization", "name": "PadelTrainer.ai" },
     "mainEntity": {
@@ -58,11 +83,16 @@ export default function LearnIndex() {
     },
   };
 
+  const activeTopicTitle = activeTopic
+    ? articles.find(a => a.topics?.some(t => t.slug === activeTopic))
+        ?.topics?.find(t => t.slug === activeTopic)?.title
+    : null;
+
   return (
     <MarketingLayout>
       <SEO
-        title="Learn Padel – Guides, Tactics & Drills"
-        description="Guides, tactics, drills, and everything you need to improve your padel game. From beginner to advanced."
+        title={t('learn.seoTitle', 'Learn Padel – Guides, Tactics & Drills')}
+        description={t('learn.seoDescription', 'Guides, tactics, drills, and everything you need to improve your padel game. From beginner to advanced.')}
         url="/learn"
         type="website"
         structuredData={structuredData}
@@ -73,7 +103,7 @@ export default function LearnIndex() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
+          className="mb-8"
         >
           <div className="flex items-center gap-3 mb-4">
             <BookOpen className="h-8 w-8 text-primary" />
@@ -85,6 +115,41 @@ export default function LearnIndex() {
             {t('learn.subtitle', 'Guides, tactics, drills, and everything you need to improve your padel game.')}
           </p>
         </motion.div>
+
+        {/* Content type filter chips — crawlable links */}
+        <nav className="flex flex-wrap gap-2 mb-10" aria-label="Filter by content type">
+          <LocalizedLink to="/learn">
+            <Badge
+              variant={!activeType && !activeTopic ? 'default' : 'outline'}
+              className="cursor-pointer text-sm px-3 py-1"
+            >
+              {t('learn.filterAll', 'All')}
+            </Badge>
+          </LocalizedLink>
+          {CONTENT_TYPE_KEYS.map(key => (
+            <LocalizedLink key={key} to={`/learn?type=${key}`}>
+              <Badge
+                variant={activeType === key ? 'default' : 'outline'}
+                className="cursor-pointer text-sm px-3 py-1"
+              >
+                {CONTENT_TYPE_LABELS[key]}
+              </Badge>
+            </LocalizedLink>
+          ))}
+        </nav>
+
+        {/* Active topic indicator */}
+        {activeTopicTitle && (
+          <div className="mb-6 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {t('learn.filteringByTopic', 'Filtering by topic:')}
+            </span>
+            <Badge variant="secondary">{activeTopicTitle}</Badge>
+            <LocalizedLink to="/learn" className="text-xs text-primary hover:underline ml-2">
+              {t('learn.clearFilter', 'Clear')}
+            </LocalizedLink>
+          </div>
+        )}
 
         {isLoading ? (
           <IndexSkeleton />
@@ -104,21 +169,36 @@ export default function LearnIndex() {
               </section>
             )}
 
-            {/* Child articles */}
-            {children.length > 0 && (
-              <section>
-                <h2 className="text-2xl font-bold mb-6">
-                  {t('learn.allArticles', 'All Articles')}
-                </h2>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {children.map(child => (
-                    <ArticleCard key={child._id} article={child} compact />
-                  ))}
-                </div>
-              </section>
+            {/* Children grouped by content type (default view) or flat list (filtered) */}
+            {activeType || activeTopic ? (
+              children.length > 0 && (
+                <section>
+                  <h2 className="text-2xl font-bold mb-6">
+                    {activeType ? (CONTENT_TYPE_LABELS[activeType] || activeType) : t('learn.allArticles', 'All Articles')}
+                  </h2>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {children.map(child => (
+                      <ArticleCard key={child._id} article={child} compact />
+                    ))}
+                  </div>
+                </section>
+              )
+            ) : (
+              Object.entries(childrenByType).map(([type, items]) => (
+                <section key={type} className="mb-10">
+                  <h2 className="text-xl font-bold mb-4">
+                    {CONTENT_TYPE_LABELS[type] || type}
+                  </h2>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {items.map(child => (
+                      <ArticleCard key={child._id} article={child} compact />
+                    ))}
+                  </div>
+                </section>
+              ))
             )}
 
-            {articles.length === 0 && (
+            {filtered.length === 0 && (
               <p className="text-muted-foreground text-center py-12">
                 {t('learn.noArticles', 'No articles available yet.')}
               </p>

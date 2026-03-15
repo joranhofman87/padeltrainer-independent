@@ -13,7 +13,7 @@ import { TableOfContents } from '@/components/sanity/TableOfContents';
 import { CommonMistakes } from '@/components/sanity/CommonMistakes';
 import { CTASection } from '@/components/sanity/CTASection';
 import { motion } from 'framer-motion';
-import { ArrowLeft, BookOpen, AlertCircle, User, ArrowRight } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getLearningArticleBySlug, CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } from '@/lib/learningArticles';
 import type { LearningArticleDetail } from '@/lib/learningArticles';
@@ -33,6 +33,19 @@ function ArticleSkeleton() {
       </div>
     </article>
   );
+}
+
+function formatDate(dateStr: string | null, lang: string): string | null {
+  if (!dateStr) return null;
+  try {
+    return new Date(dateStr).toLocaleDateString(lang, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 function buildStructuredData(article: LearningArticleDetail, slug: string, currentLang: string) {
@@ -57,13 +70,27 @@ function buildStructuredData(article: LearningArticleDetail, slug: string, curre
     ? { ...base, "@type": "CollectionPage" }
     : { ...base, "@type": "Article" };
 
+  // WebPage schema
+  const webPageSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": article.seo?.titleTag || article.h1,
+    "description": article.seo?.metaDescription || article.intro,
+    "url": url,
+    "inLanguage": currentLang,
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "PadelTrainer.ai",
+      "url": MARKETING_DOMAIN,
+    },
+  };
+
   // Breadcrumb structured data
   const breadcrumbItems = [
     { "@type": "ListItem", "position": 1, "name": "Home", "item": `${MARKETING_DOMAIN}/${currentLang}` },
     { "@type": "ListItem", "position": 2, "name": "Learn", "item": `${MARKETING_DOMAIN}/${currentLang}/learn` },
   ];
 
-  // If child, try to find parent hub
   if (article.pageType === 'child') {
     const parentHub = article.relatedGuides?.find(g => g.pageType === 'hub');
     if (parentHub) {
@@ -102,7 +129,7 @@ function buildStructuredData(article: LearningArticleDetail, slug: string, curre
     "itemListElement": breadcrumbItems,
   };
 
-  return [articleSchema, breadcrumbSchema];
+  return [articleSchema, webPageSchema, breadcrumbSchema];
 }
 
 export default function LearningArticlePage() {
@@ -165,6 +192,10 @@ export default function LearningArticlePage() {
 
   const structuredData = buildStructuredData(article, slug!, currentLang);
 
+  const publishedFormatted = formatDate(article.datePublished, currentLang);
+  const modifiedFormatted = formatDate(article.dateModified, currentLang);
+  const showModified = article.dateModified && article.datePublished && article.dateModified !== article.datePublished;
+
   return (
     <MarketingLayout>
       <SEO
@@ -211,6 +242,22 @@ export default function LearningArticlePage() {
               )}
             </div>
             <h1 className="text-3xl md:text-4xl font-bold mb-4">{article.h1}</h1>
+
+            {/* Publish / Modified dates */}
+            {publishedFormatted && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mb-6">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" />
+                  <time dateTime={article.datePublished!}>{publishedFormatted}</time>
+                </span>
+                {showModified && modifiedFormatted && (
+                  <span className="text-xs">
+                    ({t('learn.updated', 'Updated')}{' '}
+                    <time dateTime={article.dateModified!}>{modifiedFormatted}</time>)
+                  </span>
+                )}
+              </div>
+            )}
           </motion.header>
 
           {/* Intro */}
@@ -241,13 +288,18 @@ export default function LearningArticlePage() {
             </div>
           </motion.div>
 
-          {/* Topics */}
+          {/* Topics — crawlable links */}
           {article.topics && article.topics.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-8">
               {article.topics.map(topic => (
-                <Badge key={topic._id} variant="outline" className="text-xs">
-                  {topic.title}
-                </Badge>
+                <LocalizedLink
+                  key={topic._id}
+                  to={`/learn?topic=${topic.slug}`}
+                >
+                  <Badge variant="outline" className="text-xs hover:bg-accent transition-colors cursor-pointer">
+                    {topic.title}
+                  </Badge>
+                </LocalizedLink>
               ))}
             </div>
           )}
