@@ -561,7 +561,8 @@ Deno.serve(async (req) => {
             current.setDate(current.getDate() + 1);
           }
 
-          while (current <= cycleEndDate) {
+          // Generate slots for only the first occurrence of this weekday (template week)
+          {
             // For each requested duration, generate slots
             for (const duration of requestedDurations) {
               let slotStartMinutes = windowStartMinutes;
@@ -599,8 +600,6 @@ Deno.serve(async (req) => {
                 slotStartMinutes += duration;
               }
             }
-
-            current.setDate(current.getDate() + 7);
           }
         }
       }
