@@ -14,6 +14,8 @@
  *    - ORIGIN_URL: Your Lovable preview/published URL (e.g., https://padeltrainer.lovable.app)
  *    - RENDER_FUNCTION_URL: Your Supabase Edge Function URL 
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page)
+ *    - SITEMAP_FUNCTION_URL: Your Supabase sitemap Edge Function URL
+ *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap)
  */
 
 const BOT_USER_AGENTS = [
