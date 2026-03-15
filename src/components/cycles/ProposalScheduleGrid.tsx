@@ -554,7 +554,7 @@ export default function ProposalScheduleGrid({
     }
   }, [activeData, onMovePlayer, onMoveSlot, slotLookup, daySlots, slotRowSpans]);
 
-  if (slots.length === 0) {
+  if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
