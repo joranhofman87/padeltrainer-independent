@@ -394,10 +394,7 @@
     "generateDesc": "{{count}} nouvelles demandes",
     "review": "Vérifier & Modifier",
     "reviewDesc": "{{count}} propositions",
-    "approve": "Approuver",
-    "approveDesc": "Confirmer les propositions",
-    "book": "Planifier",
-    "bookDesc": "{{count}} confirmées",
-    "bookAction": "Planifier"
+    "approve": "Approuver & Planifier",
+    "approveDesc": "{{count}} confirmées"
   }
 }

@@ -394,10 +394,7 @@
     "generateDesc": "{{count}} neue Anfragen",
     "review": "Überprüfen & Bearbeiten",
     "reviewDesc": "{{count}} Vorschläge",
-    "approve": "Genehmigen",
-    "approveDesc": "Vorschläge bestätigen",
-    "book": "In Kalender buchen",
-    "bookDesc": "{{count}} bestätigt",
-    "bookAction": "Buchen"
+    "approve": "Genehmigen & Buchen",
+    "approveDesc": "{{count}} bestätigt"
   }
 }
