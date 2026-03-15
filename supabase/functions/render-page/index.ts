@@ -159,10 +159,22 @@ function htmlDoc(opts: {
   structuredData?: object[];
   body: string;
 }) {
+  const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'];
+  const OG_LOCALE_MAP: Record<string, string> = {
+    en: 'en_US', nl: 'nl_NL', es: 'es_ES', de: 'de_DE', fr: 'fr_FR',
+  };
+
   const canonicalUrl = `${SITE_URL}/${opts.lang}${opts.url}`;
-  const altLang = opts.lang === 'nl' ? 'en' : 'nl';
-  const altUrl = `${SITE_URL}/${altLang}${opts.url}`;
   const ogImage = opts.image || `${SITE_URL}/og-image.png`;
+  const ogLocale = OG_LOCALE_MAP[opts.lang] || 'en_US';
+
+  const hreflangTags = SUPPORTED_LANGS
+    .map(l => `<link rel="alternate" hreflang="${l}" href="${SITE_URL}/${l}${opts.url}">`)
+    .join('\n  ');
+  const ogLocaleAlternates = SUPPORTED_LANGS
+    .filter(l => l !== opts.lang)
+    .map(l => `<meta property="og:locale:alternate" content="${OG_LOCALE_MAP[l]}">`)
+    .join('\n  ');
 
   const structuredDataScripts = (opts.structuredData || [])
     .map(sd => `<script type="application/ld+json">${JSON.stringify(sd)}</script>`)
@@ -176,8 +188,7 @@ function htmlDoc(opts: {
   <title>${escHtml(opts.title)}</title>
   <meta name="description" content="${escHtml(opts.description)}">
   <link rel="canonical" href="${canonicalUrl}">
-  <link rel="alternate" hreflang="${opts.lang}" href="${canonicalUrl}">
-  <link rel="alternate" hreflang="${altLang}" href="${altUrl}">
+  ${hreflangTags}
   <link rel="alternate" hreflang="x-default" href="${SITE_URL}/nl${opts.url}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${escHtml(opts.title)}">
@@ -185,6 +196,8 @@ function htmlDoc(opts: {
   <meta property="og:url" content="${canonicalUrl}">
   <meta property="og:image" content="${ogImage}">
   <meta property="og:site_name" content="PadelTrainer.ai">
+  <meta property="og:locale" content="${ogLocale}">
+  ${ogLocaleAlternates}
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${escHtml(opts.title)}">
   <meta name="twitter:description" content="${escHtml(opts.description)}">

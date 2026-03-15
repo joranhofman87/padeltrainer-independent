@@ -78,8 +78,10 @@ export function SEO({
       <meta property="og:url" content={fullUrl} />
       <meta property="og:image" content={image || defaultImage} />
       <meta property="og:site_name" content="PadelTrainer.ai" />
-      <meta property="og:locale" content={currentLang === 'nl' ? 'nl_NL' : 'en_US'} />
-      <meta property="og:locale:alternate" content={currentLang === 'nl' ? 'en_US' : 'nl_NL'} />
+      <meta property="og:locale" content={OG_LOCALE_MAP[currentLang] || 'en_US'} />
+      {SUPPORTED_LANGUAGES.filter(l => l !== currentLang).map(l => (
+        <meta key={l} property="og:locale:alternate" content={OG_LOCALE_MAP[l] || 'en_US'} />
+      ))}
       
       {/* Twitter Card */}
       <meta name="twitter:card" content="summary_large_image" />
