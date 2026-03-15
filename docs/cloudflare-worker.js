@@ -14,6 +14,8 @@
  *    - ORIGIN_URL: Your Lovable preview/published URL (e.g., https://padeltrainer.lovable.app)
  *    - RENDER_FUNCTION_URL: Your Supabase Edge Function URL 
  *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page)
+ *    - SITEMAP_FUNCTION_URL: Your Supabase sitemap Edge Function URL
+ *      (e.g., https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap)
  */
 
 const BOT_USER_AGENTS = [
@@ -74,10 +76,71 @@ function shouldPrerender(pathname) {
   return true;
 }
 
+/**
+ * Map a sitemap request path to the edge function query string.
+ * Returns the full URL to proxy, or null if not a sitemap path.
+ */
+function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
+  if (!sitemapFunctionUrl) return null;
+
+  // /sitemap.xml → sitemap index
+  if (pathname === '/sitemap.xml') {
+    return `${sitemapFunctionUrl}?type=index`;
+  }
+
+  // /sitemaps/sitemap-static.xml
+  if (pathname === '/sitemaps/sitemap-static.xml') {
+    return `${sitemapFunctionUrl}?type=static`;
+  }
+
+  // /sitemaps/sitemap-provinces.xml
+  if (pathname === '/sitemaps/sitemap-provinces.xml') {
+    return `${sitemapFunctionUrl}?type=provinces`;
+  }
+
+  // /sitemaps/sitemap-locations-{page}.xml
+  const locMatch = pathname.match(/^\/sitemaps\/sitemap-locations-(\d+)\.xml$/);
+  if (locMatch) {
+    return `${sitemapFunctionUrl}?type=locations&page=${locMatch[1]}`;
+  }
+
+  // /sitemaps/sitemap-cities-{page}.xml
+  const cityMatch = pathname.match(/^\/sitemaps\/sitemap-cities-(\d+)\.xml$/);
+  if (cityMatch) {
+    return `${sitemapFunctionUrl}?type=cities&page=${cityMatch[1]}`;
+  }
+
+  return null;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const userAgent = request.headers.get('User-Agent') || '';
+
+    // --- Sitemap proxy: always proxy sitemap requests to the edge function ---
+    if (request.method === 'GET') {
+      const sitemapUrl = getSitemapProxyUrl(url.pathname, env.SITEMAP_FUNCTION_URL);
+      if (sitemapUrl) {
+        try {
+          const response = await fetch(sitemapUrl);
+          if (response.ok) {
+            return new Response(response.body, {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/xml; charset=utf-8',
+                'Cache-Control': 'public, max-age=3600',
+                'X-Sitemap-Source': 'edge-function',
+              },
+            });
+          }
+          console.error(`Sitemap edge function returned ${response.status} for ${url.pathname}`);
+        } catch (error) {
+          console.error(`Sitemap proxy error for ${url.pathname}:`, error);
+        }
+        // Fall through to origin (static fallback from GitHub Action)
+      }
+    }
     
     // Only intercept GET requests from bots on marketing pages
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {

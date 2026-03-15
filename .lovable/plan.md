@@ -1,43 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Plan: Dynamic Sitemap Proxy via Cloudflare
+## Status: ✅ COMPLETED
 
-### What we'll do
+Implemented on 2026-03-14.
 
-Two code changes in this repo, then one manual step in Cloudflare.
+## What Changed
 
----
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### Step 1: Update `docs/cloudflare-worker.js` (I do this)
+## Sanity Content Types Needed in Studio
 
-Add a sitemap proxy block **before** the bot detection logic. Any request (bot or human) to `/sitemap.xml` or `/sitemaps/*.xml` gets proxied directly to the sitemap edge function — no bot check needed since sitemaps are always machine-consumed.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-```text
-GET /sitemap.xml         → edge function ?type=index
-GET /sitemaps/sitemap-*  → edge function (passthrough by filename)
-```
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-Add a new environment variable `SITEMAP_FUNCTION_URL` to the deployment instructions.
+## What Stays Unchanged
 
-### Step 2: Delete `public/sitemap.xml` (I do this)
-
-Remove the stale 181K-line static file so it can never be served as a fallback.
-
-### Step 3: You deploy to Cloudflare (manual, ~2 minutes)
-
-1. Go to **dash.cloudflare.com** → Workers & Pages → your PadelTrainer worker
-2. Click **Edit Code**
-3. Replace the code with the updated `docs/cloudflare-worker.js`
-4. Add environment variable: `SITEMAP_FUNCTION_URL` = `https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap`
-5. Click **Save and Deploy**
-
-### Step 4: Verify (manual, ~1 minute)
-
-Open these URLs in your browser and confirm they return XML:
-- `https://padeltrainer.ai/sitemap.xml` — should show `<sitemapindex>` with sub-sitemap links
-- `https://padeltrainer.ai/sitemaps/sitemap-static.xml` — should show `<urlset>` with URLs
-
-### Optional: Keep GitHub Action as backup
-
-The `.github/workflows/sitemap.yml` can remain as-is. It regenerates static copies daily, which serves as a cache layer if the edge function ever goes down. No changes needed there.
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
