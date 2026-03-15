@@ -27,9 +27,20 @@ interface ProposalScheduleGridProps {
 type Assignment = SlotWithOccupancy['current_assignments'][number];
 
 // ── Helpers ──
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
 
-function getDayName(isoString: string): string {
-  return format(parseISO(isoString), 'EEEE');
+/** Get English day name (used as internal key) */
+function getDayKey(isoString: string): string {
+  return format(parseISO(isoString), 'EEEE', { locale: enUS });
+}
+
+/** Get localized day name for display */
+function getLocalizedDayName(englishDay: string, locale: Locale): string {
+  // Find the next occurrence of this weekday to format it
+  const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(englishDay);
+  if (dayIndex === -1) return englishDay;
+  const ref = new Date(2024, 0, 7 + dayIndex); // Jan 7 2024 is a Sunday
+  return format(ref, 'EEEE', { locale });
 }
 
 function getTimeRange(startIso: string, endIso: string): string {
