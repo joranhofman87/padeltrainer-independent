@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient as createSanityClient } from "npm:@sanity/client@6";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,8 +9,15 @@ const corsHeaders = {
 const SITE_URL = 'https://padeltrainer.ai';
 const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
 const SITEMAP_BASE_URL = `${SITE_URL}/sitemaps`;
-const LOCATIONS_PER_PAGE = 5000; // 5000 locations × 5 langs = 25000 URLs per file (under 50K limit)
+const LOCATIONS_PER_PAGE = 5000;
 const CITIES_PER_PAGE = 5000;
+
+const sanity = createSanityClient({
+  projectId: 'ru3aqhjn',
+  dataset: 'production',
+  apiVersion: '2024-01-01',
+  useCdn: true,
+});
 
 // deno-lint-ignore no-explicit-any
 async function fetchAllRows<T>(
