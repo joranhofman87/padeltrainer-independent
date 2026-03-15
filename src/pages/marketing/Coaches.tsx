@@ -29,6 +29,18 @@ export default function Coaches() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const itemListStructuredData = coaches.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Coaches & Creators",
+    "itemListElement": coaches.map((c, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": c.name,
+      "url": `https://padeltrainer.ai/padel-coaches/${c.slug}`,
+    })),
+  } : undefined;
+
   return (
     <MarketingLayout>
       <SEO
