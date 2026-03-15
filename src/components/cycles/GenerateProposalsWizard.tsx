@@ -173,7 +173,7 @@ export function GenerateProposalsWizard({
     setTrainerConfigs(preSelected.map(t => ({
       trainerId: t.id,
       trainerName: t.name,
-      windows: [],
+      windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
       minRating: t.preferredMinRating,
       maxRating: t.preferredMaxRating,
     })));
@@ -186,7 +186,7 @@ export function GenerateProposalsWizard({
       return [...prev, {
         trainerId: trainer.id,
         trainerName: trainer.name,
-        windows: [],
+        windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
         minRating: trainer.preferredMinRating,
         maxRating: trainer.preferredMaxRating,
       }];
@@ -345,20 +345,9 @@ export function GenerateProposalsWizard({
 
                 {/* Time windows */}
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-xs text-muted-foreground">
-                      {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
-                    </Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => addWindow(config.trainerId)}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" />
-                      {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
-                    </Button>
-                  </div>
+                  <Label className="text-xs text-muted-foreground">
+                    {t('proposals.wizard.availableWindows', { defaultValue: 'Available time windows' })}
+                  </Label>
                   {config.windows.map((window, idx) => (
                     <div key={idx} className="flex flex-col sm:flex-row gap-2">
                       <Select
@@ -415,6 +404,15 @@ export function GenerateProposalsWizard({
                       </div>
                     </div>
                   ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs self-start"
+                    onClick={() => addWindow(config.trainerId)}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
+                  </Button>
                 </div>
               </div>
             ))}
