@@ -226,6 +226,27 @@ Deno.serve(async (req) => {
         xml += generateBlogEntries(blogArticles, today);
       }
 
+      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips] = await Promise.all([
+        sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+      ]);
+
+      for (const rule of sanityRules || []) {
+        xml += generateUrlEntry(`/padel-rules/${rule.slug}`, today, 'weekly', '0.7');
+      }
+      for (const stroke of sanityStrokes || []) {
+        xml += generateUrlEntry(`/padel-strokes/${stroke.slug}`, today, 'weekly', '0.7');
+      }
+      for (const coach of sanityCoaches || []) {
+        xml += generateUrlEntry(`/padel-coaches/${coach.slug}`, today, 'weekly', '0.7');
+      }
+      for (const video of sanityVideoTips || []) {
+        xml += generateUrlEntry(`/video-tips/${video.slug}`, today, 'weekly', '0.6');
+      }
+
       xml += '</urlset>';
 
     } else if (type === 'locations') {
