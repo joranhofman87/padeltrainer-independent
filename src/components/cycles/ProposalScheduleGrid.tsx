@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO, addMinutes } from 'date-fns';
+import { format, parseISO, addMinutes, type Locale } from 'date-fns';
 import { nl, es, de, fr, enUS } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
