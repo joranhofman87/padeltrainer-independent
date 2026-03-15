@@ -1,32 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Fix Two PageSpeed Insights SEO Issues
+## Status: ✅ COMPLETED
 
-## Issue 1: `robots.txt` — "Content-Signal: search=yes,ai-train=no" unknown directive
+Implemented on 2026-03-14.
 
-This is **not in our codebase**. Cloudflare automatically injects a "Managed Content" block (including the `Content-Signal` directive) before our `robots.txt` content. Since Lighthouse doesn't recognize `Content-Signal`, it flags it as invalid.
+## What Changed
 
-**Fix**: This must be disabled in the **Cloudflare dashboard** under the domain's AI settings (Settings → Scrape Shield or AI → Content Signals). It cannot be fixed from the codebase. No code change needed here.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-## Issue 2: Avatar images missing `alt` attributes
+## Sanity Content Types Needed in Studio
 
-The Lighthouse screenshot shows an `<img>` tag from the avatar component without an `alt` attribute. Most `AvatarImage` usages across the codebase pass no `alt` prop — e.g., trainer avatars, player avatars, academy logos, sidebar avatars, review avatars.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**Fix**: Add a default `alt=""` fallback in the `AvatarImage` component so decorative avatars get an empty alt (valid for accessibility), and update key public-facing usages (trainer cards, location pages, review cards) to pass meaningful `alt` text with the person/entity name.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### Files to change
+## What Stays Unchanged
 
-1. **`src/components/ui/avatar.tsx`** — Default `alt` to `""` in `AvatarImage` so no avatar ever renders without an `alt` attribute
-2. **Key component files** (bulk find-and-replace pattern) — Add descriptive `alt` props where a name is available:
-   - `src/components/reviews/ReviewCard.tsx` — `alt={reviewerName}`
-   - `src/components/reviews/AcademyReviews.tsx` — same
-   - `src/components/ProfileSwitcher.tsx` — `alt={profile name}`
-   - `src/components/academy/AcademySidebar.tsx` — `alt={academy name}`
-   - `src/components/booking/BookingTrainerCard.tsx` — `alt={trainer name}`
-   - `src/components/cycles/ReassignPlayerDialog.tsx` — `alt={trainer name}`
-   - `src/pages/LocationDetail.tsx` — `alt={trainer/academy name}`
-   - `src/pages/academy/AcademyTrainers.tsx` — `alt={trainer name}`
-   - `src/pages/TrainerBookings.tsx` — `alt={player name}`
-
-This is a straightforward change: the `AvatarImage` default ensures zero regressions for any usage we miss, while explicit `alt` text on public pages improves SEO and accessibility.
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

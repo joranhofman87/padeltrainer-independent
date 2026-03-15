@@ -268,7 +268,7 @@ export default function AcademyTrainers() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="h-9 w-9">
-                              <AvatarImage src={trainer.profile?.avatar_url || ''} />
+                              <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
                               <AvatarFallback className="text-xs">
                                 {getInitials(trainer.profile?.full_name)}
                               </AvatarFallback>

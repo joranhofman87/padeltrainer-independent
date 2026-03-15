@@ -134,7 +134,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
           )}>
             {academy?.logo_url ? (
               <Avatar className="h-8 w-8">
-                <AvatarImage src={academy.logo_url} />
+                <AvatarImage src={academy.logo_url} alt={academy?.name || ''} />
                 <AvatarFallback className="text-xs">{initials}</AvatarFallback>
               </Avatar>
             ) : (

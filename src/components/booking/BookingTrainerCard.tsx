@@ -21,7 +21,7 @@ export function BookingTrainerCard({ fullName, avatarUrl, location, specializati
       <CardContent className="p-6">
         <div className="flex items-start gap-4">
           <Avatar className="h-16 w-16">
-            <AvatarImage src={avatarUrl || undefined} />
+            <AvatarImage src={avatarUrl || undefined} alt={fullName} />
             <AvatarFallback className="text-xl">{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1">
