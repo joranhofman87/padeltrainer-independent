@@ -55,9 +55,9 @@
 - [x] Impersonation logging for admin (admin_impersonation_logs table)
 
 ### SEO
-- [x] Sitemap edge function deployed
-- [x] Static sitemap.xml generated
-- [x] robots.txt configured for app/marketing domains
+- [x] Sitemap edge function deployed (dynamic sitemap index via Cloudflare Worker)
+- [x] Static sitemap.xml fallback via GitHub Action
+- [x] Dynamic sitemap proxy live (Cloudflare Worker → edge function)
 - [x] llms.txt for AI crawlers
 - [x] Hreflang tags for EN/NL/ES/DE/FR (all 5 languages)
 - [x] Open Graph meta tags
