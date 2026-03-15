@@ -178,6 +178,14 @@ export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slu
     shortDescription,
     category,
     difficulty
+  },
+  "relatedRules": relatedRules[]-> {
+    _id,
+    title,
+    "slug": slug.current,
+    h1,
+    quickAnswer,
+    pageType
   }
 }`;
 
