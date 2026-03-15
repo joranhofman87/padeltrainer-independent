@@ -87,7 +87,16 @@ export interface CycleSettings {
   success_message?: string;
   // Custom text included in the confirmation email sent after registration
   confirmation_email_text?: string;
+  // Stored trainer availability windows from the proposal wizard
+  trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility
+}
+
+export interface TrainerAvailabilityWindow {
+  trainerId: string;
+  trainerName: string;
+  trainerAvatar?: string | null;
+  windows: { day: string; start: string; end: string }[];
 }
 
 export interface IntakeRequest {
@@ -1134,6 +1143,27 @@ export async function generateProposals(
     additionalCriteria?: string;
   }
 ): Promise<{ generated: number; skipped: number; errors?: string[] }> {
+  // Persist trainer availability windows to cycle settings for the schedule grid
+  if (options?.trainerAvailability && options.trainerAvailability.length > 0) {
+    try {
+      const cycle = await getCycle(cycleId);
+      if (cycle) {
+        const updatedSettings: CycleSettings = {
+          ...cycle.settings,
+          trainer_availability_windows: options.trainerAvailability.map(ta => ({
+            trainerId: ta.trainerId,
+            trainerName: ta.trainerName,
+            windows: ta.windows,
+          })),
+        };
+        await updateCycle(cycleId, { settings: updatedSettings });
+      }
+    } catch (e) {
+      // Non-critical — don't block generation
+      logger.warn('Failed to persist trainer availability windows', { cycleId });
+    }
+  }
+
   const { data, error } = await supabase.functions.invoke('generate-proposals', {
     body: {
       cycleId,

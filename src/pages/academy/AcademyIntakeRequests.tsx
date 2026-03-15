@@ -309,6 +309,7 @@ export default function AcademyIntakeRequests() {
       ) : (
         <ProposalScheduleGrid
           slots={scheduleSlots}
+          trainerAvailabilityWindows={selectedCycle?.settings?.trainer_availability_windows}
           onPlayerClick={(intakeRequestId) => {
             const req = requests.find(r => r.id === intakeRequestId);
             if (req) setSelectedRequest(req);

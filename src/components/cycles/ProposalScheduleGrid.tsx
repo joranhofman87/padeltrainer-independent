@@ -12,10 +12,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, CalendarOff, Clock, GripVertical, Move } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
 interface ProposalScheduleGridProps {
   slots: SlotWithOccupancy[];
+  trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   onPlayerClick?: (intakeRequestId: string) => void;
   onMovePlayer?: (assignmentId: string, newSlotId: string) => void;
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
@@ -305,7 +306,7 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, onPlayerClick, onMovePlayer, onMoveSlot,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot,
 }: ProposalScheduleGridProps) {
   const { t } = useTranslation('cycles');
   const [activeData, setActiveData] = useState<{
@@ -319,6 +320,19 @@ export default function ProposalScheduleGrid({
   );
 
   const canDragSlot = !!onMoveSlot;
+
+  // Collect days from availability windows
+  const availabilityDaySet = useMemo(() => {
+    const days = new Set<string>();
+    trainerAvailabilityWindows?.forEach(tw => {
+      tw.windows.forEach(w => {
+        // Capitalize first letter to match getDayName format (e.g. "monday" → "Monday")
+        const capitalized = w.day.charAt(0).toUpperCase() + w.day.slice(1).toLowerCase();
+        days.add(capitalized);
+      });
+    });
+    return days;
+  }, [trainerAvailabilityWindows]);
 
   // Group by day
   const dayGroups = useMemo(() => {
@@ -334,8 +348,8 @@ export default function ProposalScheduleGrid({
 
   const availableDays = useMemo(() => {
     const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return dayOrder.filter(d => dayGroups.has(d));
-  }, [dayGroups]);
+    return dayOrder.filter(d => dayGroups.has(d) || availabilityDaySet.has(d));
+  }, [dayGroups, availabilityDaySet]);
 
   const [selectedDay, setSelectedDay] = useState<string>('');
 
@@ -347,7 +361,19 @@ export default function ProposalScheduleGrid({
 
   const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
-  // Get unique trainers for columns
+  // Get availability windows for the selected day
+  const dayAvailabilityWindows = useMemo(() => {
+    if (!trainerAvailabilityWindows) return [];
+    const selectedDayLower = selectedDay.toLowerCase();
+    return trainerAvailabilityWindows
+      .map(tw => ({
+        ...tw,
+        dayWindows: tw.windows.filter(w => w.day.toLowerCase() === selectedDayLower),
+      }))
+      .filter(tw => tw.dayWindows.length > 0);
+  }, [trainerAvailabilityWindows, selectedDay]);
+
+  // Get unique trainers for columns (from slots + availability windows)
   const trainers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; avatar: string | null }>();
     daySlots.forEach(slot => {
@@ -359,15 +385,24 @@ export default function ProposalScheduleGrid({
         });
       }
     });
+    // Add trainers from availability windows that aren't already in the map
+    dayAvailabilityWindows.forEach(tw => {
+      if (!map.has(tw.trainerId)) {
+        map.set(tw.trainerId, {
+          id: tw.trainerId,
+          name: tw.trainerName,
+          avatar: tw.trainerAvatar || null,
+        });
+      }
+    });
     return Array.from(map.values());
-  }, [daySlots]);
+  }, [daySlots, dayAvailabilityWindows]);
 
-  // Compute time rows (30-min increments covering all slots)
+  // Compute time rows (30-min increments covering all slots AND availability windows)
   const timeRows = useMemo(() => {
-    if (daySlots.length === 0) return [];
-
     let earliest = Infinity;
     let latest = -Infinity;
+
     daySlots.forEach(slot => {
       const startMin = isoToMinutes(slot.start_time);
       const endMin = isoToMinutes(slot.end_time);
@@ -377,12 +412,28 @@ export default function ProposalScheduleGrid({
       if (snappedEnd > latest) latest = snappedEnd;
     });
 
+    // Also include boundaries from availability windows
+    dayAvailabilityWindows.forEach(tw => {
+      tw.dayWindows.forEach(w => {
+        const [sh, sm] = w.start.split(':').map(Number);
+        const [eh, em] = w.end.split(':').map(Number);
+        const startMin = sh * 60 + sm;
+        const endMin = eh * 60 + em;
+        const snappedStart = Math.floor(startMin / 30) * 30;
+        const snappedEnd = Math.ceil(endMin / 30) * 30;
+        if (snappedStart < earliest) earliest = snappedStart;
+        if (snappedEnd > latest) latest = snappedEnd;
+      });
+    });
+
+    if (earliest === Infinity) return [];
+
     const rows: number[] = [];
     for (let m = earliest; m < latest; m += 30) {
       rows.push(m);
     }
     return rows;
-  }, [daySlots]);
+  }, [daySlots, dayAvailabilityWindows]);
 
   // Build a lookup: trainerId -> timeRowMinute -> slot
   const slotLookup = useMemo(() => {
@@ -503,7 +554,7 @@ export default function ProposalScheduleGrid({
     }
   }, [activeData, onMovePlayer, onMoveSlot, slotLookup, daySlots, slotRowSpans]);
 
-  if (slots.length === 0) {
+  if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
