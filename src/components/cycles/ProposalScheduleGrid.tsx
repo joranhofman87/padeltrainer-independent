@@ -361,7 +361,19 @@ export default function ProposalScheduleGrid({
 
   const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
-  // Get unique trainers for columns
+  // Get availability windows for the selected day
+  const dayAvailabilityWindows = useMemo(() => {
+    if (!trainerAvailabilityWindows) return [];
+    const selectedDayLower = selectedDay.toLowerCase();
+    return trainerAvailabilityWindows
+      .map(tw => ({
+        ...tw,
+        dayWindows: tw.windows.filter(w => w.day.toLowerCase() === selectedDayLower),
+      }))
+      .filter(tw => tw.dayWindows.length > 0);
+  }, [trainerAvailabilityWindows, selectedDay]);
+
+  // Get unique trainers for columns (from slots + availability windows)
   const trainers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; avatar: string | null }>();
     daySlots.forEach(slot => {
@@ -373,15 +385,24 @@ export default function ProposalScheduleGrid({
         });
       }
     });
+    // Add trainers from availability windows that aren't already in the map
+    dayAvailabilityWindows.forEach(tw => {
+      if (!map.has(tw.trainerId)) {
+        map.set(tw.trainerId, {
+          id: tw.trainerId,
+          name: tw.trainerName,
+          avatar: tw.trainerAvatar || null,
+        });
+      }
+    });
     return Array.from(map.values());
-  }, [daySlots]);
+  }, [daySlots, dayAvailabilityWindows]);
 
-  // Compute time rows (30-min increments covering all slots)
+  // Compute time rows (30-min increments covering all slots AND availability windows)
   const timeRows = useMemo(() => {
-    if (daySlots.length === 0) return [];
-
     let earliest = Infinity;
     let latest = -Infinity;
+
     daySlots.forEach(slot => {
       const startMin = isoToMinutes(slot.start_time);
       const endMin = isoToMinutes(slot.end_time);
@@ -391,12 +412,28 @@ export default function ProposalScheduleGrid({
       if (snappedEnd > latest) latest = snappedEnd;
     });
 
+    // Also include boundaries from availability windows
+    dayAvailabilityWindows.forEach(tw => {
+      tw.dayWindows.forEach(w => {
+        const [sh, sm] = w.start.split(':').map(Number);
+        const [eh, em] = w.end.split(':').map(Number);
+        const startMin = sh * 60 + sm;
+        const endMin = eh * 60 + em;
+        const snappedStart = Math.floor(startMin / 30) * 30;
+        const snappedEnd = Math.ceil(endMin / 30) * 30;
+        if (snappedStart < earliest) earliest = snappedStart;
+        if (snappedEnd > latest) latest = snappedEnd;
+      });
+    });
+
+    if (earliest === Infinity) return [];
+
     const rows: number[] = [];
     for (let m = earliest; m < latest; m += 30) {
       rows.push(m);
     }
     return rows;
-  }, [daySlots]);
+  }, [daySlots, dayAvailabilityWindows]);
 
   // Build a lookup: trainerId -> timeRowMinute -> slot
   const slotLookup = useMemo(() => {
