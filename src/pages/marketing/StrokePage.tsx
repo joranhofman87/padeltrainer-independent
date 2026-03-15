@@ -41,6 +41,14 @@ interface StrokeDetail {
     category: string | null;
     difficulty: string | null;
   }[] | null;
+  relatedRules: {
+    _id: string;
+    title: string;
+    slug: string;
+    h1: string;
+    quickAnswer: string;
+    pageType: string;
+  }[] | null;
 }
 
 export default function StrokePage() {
