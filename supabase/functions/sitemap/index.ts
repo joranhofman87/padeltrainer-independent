@@ -227,12 +227,15 @@ Deno.serve(async (req) => {
         xml += generateBlogEntries(blogArticles, today);
       }
 
-      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips
-      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips] = await Promise.all([
+      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles] = await Promise.all([
         sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string; seo: { indexable?: boolean } | null }[]>(
+          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current, seo }`
+        ),
       ]);
 
       for (const rule of sanityRules || []) {
