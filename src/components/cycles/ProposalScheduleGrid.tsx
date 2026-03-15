@@ -321,7 +321,8 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot,
 }: ProposalScheduleGridProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
+  const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
   const [activeData, setActiveData] = useState<{
     type: 'player' | 'slot';
     assignment?: Assignment;
