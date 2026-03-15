@@ -530,11 +530,11 @@ export default function ProposalScheduleGrid({
     if (activeType === 'slot' && onMoveSlot && currentActive?.slot) {
       const slot = currentActive.slot;
       const overCellId = over.id as string;
-      if (!overCellId.startsWith('cell-')) return;
+      if (!overCellId.startsWith('cell__')) return;
 
-      const parts = overCellId.replace('cell-', '').split('-');
-      const newTimeRowMinute = parseInt(parts[parts.length - 1]);
-      const newTrainerId = parts.slice(0, parts.length - 1).join('-');
+      const parts = overCellId.split('__');
+      const newTrainerId = parts[1];
+      const newTimeRowMinute = parseInt(parts[2]);
 
       const oldStartMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
 
