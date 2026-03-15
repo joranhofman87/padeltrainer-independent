@@ -641,17 +641,30 @@ export default function ProposalScheduleGrid({
 
                   {/* Trainer cells for this time row */}
                   {trainers.map((trainer, colIdx) => {
-                    const cellKey = `${trainer.id}-${rowMinute}`;
+                    const cellKey = `${trainer.id}__${rowMinute}`;
                     const gridColumn = colIdx + 2;
 
-                    // Skip cells occupied by a multi-row slot from an earlier row
-                    if (occupiedCells.has(cellKey)) {
-                      return null; // Grid positioning means skipping is safe
+                    // Check if cell is occupied by a multi-row slot from an earlier row
+                    const occupyingSlotId = occupiedCells.get(cellKey);
+                    if (occupyingSlotId) {
+                      // Render an invisible droppable so dnd-kit has a valid target here
+                      const cellId = `cell__${trainer.id}__${rowMinute}`;
+                      return (
+                        <div
+                          key={cellKey}
+                          style={{ gridRow, gridColumn }}
+                          className="bg-background p-0.5"
+                        >
+                          <DroppableCell cellId={cellId} hasSlot={true}>
+                            {/* Occupied by slot spanning from above — invisible but droppable */}
+                          </DroppableCell>
+                        </div>
+                      );
                     }
 
                     const slot = slotLookup.get(cellKey);
                     const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
-                    const cellId = `cell-${trainer.id}-${rowMinute}`;
+                    const cellId = `cell__${trainer.id}__${rowMinute}`;
 
                     return (
                       <div
