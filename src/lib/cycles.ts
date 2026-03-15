@@ -1290,3 +1290,22 @@ export async function moveSlotToTrainer(slotId: string, newTrainerId: string): P
 
   if (error) throw error;
 }
+
+// Move a slot: change trainer and/or time in a single update
+export async function moveSlot(
+  slotId: string,
+  newTrainerId: string,
+  newStartTime: string,
+  newEndTime: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({
+      trainer_id: newTrainerId,
+      start_time: newStartTime,
+      end_time: newEndTime,
+    })
+    .eq('id', slotId);
+
+  if (error) throw error;
+}
