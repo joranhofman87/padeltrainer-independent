@@ -52,7 +52,7 @@ export default function About() {
       '@type': 'Organization',
       name: 'PadelTrainer.ai',
       description: t('about.hero.subtitle'),
-      foundingDate: '2024',
+      foundingDate: '2026',
       url: MARKETING_DOMAIN
     }
   };
