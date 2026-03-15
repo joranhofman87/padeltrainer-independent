@@ -131,16 +131,9 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
           {availableDays.map(day => {
             const dayS = dayGroups.get(day) || [];
             const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
-            const trainerNames = new Set(dayS.map(s => s.trainer_name));
-            const trainerInitials = Array.from(trainerNames).map(n => n.split(' ').map(w => w[0]).join('').slice(0, 2)).join(', ');
             return (
               <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                {day.slice(0, 3)}
-                {trainerNames.size > 0 && (
-                  <span className="ml-1 text-[10px] text-muted-foreground hidden sm:inline">
-                    {trainerNames.size === 1 ? trainerInitials : `${trainerNames.size} trainers`}
-                  </span>
-                )}
+                {day}
                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
                   {playerCount}
                 </Badge>
