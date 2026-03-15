@@ -124,7 +124,7 @@ export default function ProposalWorkflowSteps({
   return (
     <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-start">
       {steps.map((step, idx) => (
-        <div key={step.number} className="flex items-start sm:flex-1 gap-3 sm:gap-0">
+        <React.Fragment key={step.number}>
           {/* Step content */}
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {/* Circle */}
@@ -160,14 +160,14 @@ export default function ProposalWorkflowSteps({
 
           {/* Connector line (desktop only, not after last) */}
           {idx < steps.length - 1 && (
-            <div className="hidden sm:flex items-center px-2 pt-4">
+            <div className="hidden sm:flex items-center self-stretch px-1 pt-4">
               <div className={cn(
-                'w-8 h-0.5',
+                'w-10 h-0.5 flex-shrink-0',
                 step.status === 'completed' ? 'bg-primary' : 'bg-muted-foreground/20',
               )} />
             </div>
           )}
-        </div>
+        </React.Fragment>
       ))}
     </div>
   );
