@@ -190,7 +190,7 @@ export default function ReassignPlayerDialog({
 
                         <div className="flex items-center gap-2">
                           <Avatar className="h-5 w-5">
-                            <AvatarImage src={slot.trainer_avatar || undefined} />
+                            <AvatarImage src={slot.trainer_avatar || undefined} alt={slot.trainer_name} />
                             <AvatarFallback className="text-[10px]">
                               {slot.trainer_name.slice(0, 2).toUpperCase()}
                             </AvatarFallback>

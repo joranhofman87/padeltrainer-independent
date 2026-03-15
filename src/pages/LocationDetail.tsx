@@ -744,7 +744,7 @@ export default function LocationDetail() {
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
                       <Avatar className="h-14 w-14 rounded-lg bg-muted">
-                        <AvatarImage src={academy.logo_url || ''} className="object-cover" />
+                        <AvatarImage src={academy.logo_url || ''} className="object-cover" alt={academy.name} />
                         <AvatarFallback className="rounded-lg">{getInitials(academy.name)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">

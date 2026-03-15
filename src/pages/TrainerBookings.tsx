@@ -517,7 +517,7 @@ function BookingCard({
           {/* Player Info */}
           <div className="flex items-center gap-4">
             <Avatar className="h-12 w-12">
-              <AvatarImage src={booking.player?.avatar_url || undefined} />
+              <AvatarImage src={booking.player?.avatar_url || undefined} alt={booking.player?.full_name || ''} />
               <AvatarFallback>{playerInitials}</AvatarFallback>
             </Avatar>
             <div>

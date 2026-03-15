@@ -33,7 +33,7 @@ export function ReviewCard({ review }: ReviewCardProps) {
       <CardContent className="pt-4">
         <div className="flex items-start gap-4">
           <Avatar className="h-10 w-10">
-            {!isAnonymous && <AvatarImage src={avatarUrl || undefined} />}
+            {!isAnonymous && <AvatarImage src={avatarUrl || undefined} alt={displayName} />}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
