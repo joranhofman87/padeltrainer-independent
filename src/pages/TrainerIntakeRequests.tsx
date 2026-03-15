@@ -349,6 +349,18 @@ export default function TrainerIntakeRequests() {
               toast.error(error.message);
             }
           }}
+          onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
+            try {
+              await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
+              toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
         />
       )}
 
