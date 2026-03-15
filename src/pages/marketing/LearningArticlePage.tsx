@@ -155,7 +155,9 @@ export default function LearningArticlePage() {
     : childGuides;
 
   // Build breadcrumb items
-  const breadcrumbItems = [{ label: t('learn.title', 'Learn Padel'), href: '/learn' }];
+  const breadcrumbItems: { label: string; href?: string }[] = [
+    { label: t('learn.title', 'Learn Padel'), href: '/learn' },
+  ];
   if (article.pageType === 'child' && parentHub) {
     breadcrumbItems.push({ label: parentHub.h1, href: `/learn/${parentHub.slug}` });
   }
