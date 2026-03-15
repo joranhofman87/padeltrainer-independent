@@ -315,6 +315,8 @@ export function DomainRouter() {
           <Route path="video-tips/:slug" element={<VideoTipPage />} />
           <Route path="learn" element={<LearnIndex />} />
           <Route path="learn/:slug" element={<LearningArticlePage />} />
+          <Route path="topics" element={<TopicsIndex />} />
+          <Route path="topics/:slug" element={<TopicPage />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="terms" element={<Terms />} />
           <Route path="partner" element={<Partner />} />
