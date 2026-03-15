@@ -82,6 +82,7 @@ export default function VideoTips() {
         title="Padel Video Tips & Tutorials"
         description="Watch expert padel video tips covering every stroke and skill level. Filter by technique, trainer, and difficulty to find the perfect tutorial."
         url="/video-tips"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}

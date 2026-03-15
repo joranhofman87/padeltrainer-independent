@@ -47,6 +47,7 @@ export default function Coaches() {
         title="Padel Coaches & Creators"
         description="Meet the padel coaches and creators behind our video tutorials and technique breakdowns."
         url="/padel-coaches"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}

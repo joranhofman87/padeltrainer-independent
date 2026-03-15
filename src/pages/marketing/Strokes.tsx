@@ -63,6 +63,7 @@ export default function Strokes() {
         title="Padel Strokes & Techniques"
         description="Master every padel stroke – from the bandeja to the vibora. Video tutorials, tips, and technique breakdowns."
         url="/padel-strokes"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}

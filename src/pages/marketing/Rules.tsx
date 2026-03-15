@@ -54,6 +54,7 @@ export default function Rules() {
         title={t('rules.title', 'Padel Rules & Regulations')}
         description={t('rules.subtitle', 'Learn the official rules of padel, scoring, court dimensions, and more.')}
         url="/padel-rules"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}

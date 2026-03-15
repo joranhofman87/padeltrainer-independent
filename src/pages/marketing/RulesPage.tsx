@@ -114,6 +114,7 @@ export default function RulesPage() {
         url={`/padel-rules/${slug}`}
         type="article"
         structuredData={structuredData}
+        noIndex={article.seo?.indexable === false}
       />
 
       {/* Back Button */}
