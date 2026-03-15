@@ -108,6 +108,14 @@ Deno.serve(async (req) => {
       const slug = cleanPath.match(/^\/learn\/([^/]+)$/)![1];
       html = await renderSanityArticle('learningArticle', slug, lang, '/learn');
       cacheMaxAge = 3600;
+    // ─── Topics routes ───
+    } else if (cleanPath === '/topics') {
+      html = await renderTopicsListing(lang);
+      cacheMaxAge = 3600;
+    } else if (/^\/topics\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/topics\/([^/]+)$/)![1];
+      html = await renderTopicPage(slug, lang);
+      cacheMaxAge = 3600;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
