@@ -259,6 +259,10 @@ Deno.serve(async (req) => {
         if (la.seo?.indexable === false) continue;
         xml += generateUrlEntry(`/learn/${la.slug}`, today, 'weekly', '0.7');
       }
+      for (const topic of sanityTopics || []) {
+        if (!topic.isIndexable) continue;
+        xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
+      }
 
       xml += '</urlset>';
 
