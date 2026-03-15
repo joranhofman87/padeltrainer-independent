@@ -182,6 +182,7 @@ Deno.serve(async (req) => {
         { path: '/padel-strokes', priority: '0.7', changefreq: 'weekly' },
         { path: '/padel-coaches', priority: '0.7', changefreq: 'weekly' },
         { path: '/video-tips', priority: '0.7', changefreq: 'weekly' },
+        { path: '/learn', priority: '0.8', changefreq: 'weekly' },
         { path: '/terms', priority: '0.3', changefreq: 'yearly' },
         { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
       ];
@@ -226,12 +227,15 @@ Deno.serve(async (req) => {
         xml += generateBlogEntries(blogArticles, today);
       }
 
-      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips
-      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips] = await Promise.all([
+      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles] = await Promise.all([
         sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string; seo: { indexable?: boolean } | null }[]>(
+          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current, seo }`
+        ),
       ]);
 
       for (const rule of sanityRules || []) {
@@ -245,6 +249,11 @@ Deno.serve(async (req) => {
       }
       for (const video of sanityVideoTips || []) {
         xml += generateUrlEntry(`/video-tips/${video.slug}`, today, 'weekly', '0.6');
+      }
+      for (const la of sanityLearningArticles || []) {
+        // Respect seo.indexable — exclude noindex pages from sitemap
+        if (la.seo?.indexable === false) continue;
+        xml += generateUrlEntry(`/learn/${la.slug}`, today, 'weekly', '0.7');
       }
 
       xml += '</urlset>';

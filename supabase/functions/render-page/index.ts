@@ -100,6 +100,14 @@ Deno.serve(async (req) => {
       const slug = cleanPath.match(/^\/video-tips\/([^/]+)$/)![1];
       html = await renderSanityArticle('videoTip', slug, lang, '/video-tips');
       cacheMaxAge = 3600;
+    // ─── Learn routes ───
+    } else if (cleanPath === '/learn') {
+      html = renderStaticPage('Learn Padel — Guides, Tactics & Drills', 'Guides, tactics, drills, and everything you need to improve your padel game. From beginner to advanced.', lang, '/learn');
+      cacheMaxAge = 86400;
+    } else if (/^\/learn\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/learn\/([^/]+)$/)![1];
+      html = await renderSanityArticle('learningArticle', slug, lang, '/learn');
+      cacheMaxAge = 3600;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
@@ -924,6 +932,7 @@ async function renderSanityArticle(type: string, slug: string, lang: string, bas
     stroke: 'shortDescription',
     trainer: 'bio',
     videoTip: 'shortSummary',
+    learningArticle: 'intro',
   };
   const descField = descFields[type] || 'excerpt';
 
