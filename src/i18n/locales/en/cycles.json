@@ -408,10 +408,7 @@
     "generateDesc": "{{count}} new requests",
     "review": "Review & Edit",
     "reviewDesc": "{{count}} proposals",
-    "approve": "Approve",
-    "approveDesc": "Confirm proposals",
-    "book": "Book to Agenda",
-    "bookDesc": "{{count}} confirmed",
-    "bookAction": "Book"
+    "approve": "Approve & Book",
+    "approveDesc": "{{count}} confirmed"
   }
 }

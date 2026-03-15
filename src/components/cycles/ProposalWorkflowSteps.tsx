@@ -1,3 +1,4 @@
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus } from 'lucide-react';
@@ -41,20 +42,20 @@ export default function ProposalWorkflowSteps({
   const { t } = useTranslation('cycles');
 
   // Determine step statuses based on data state
-  const getStepStatus = (): [StepStatus, StepStatus, StepStatus, StepStatus] => {
+  const getStepStatus = (): [StepStatus, StepStatus, StepStatus] => {
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return ['completed', 'completed', 'completed', 'active'];
+      return ['completed', 'completed', 'active'];
     }
     if (confirmedCount > 0 && proposedCount > 0) {
-      return ['completed', 'active', 'active', 'upcoming'];
+      return ['completed', 'active', 'active'];
     }
     if (proposedCount > 0) {
-      return ['completed', 'active', 'upcoming', 'upcoming'];
+      return ['completed', 'active', 'upcoming'];
     }
-    return ['active', 'upcoming', 'upcoming', 'upcoming'];
+    return ['active', 'upcoming', 'upcoming'];
   };
 
-  const [s1, s2, s3, s4] = getStepStatus();
+  const [s1, s2, s3] = getStepStatus();
 
   const steps: Step[] = [
     {
@@ -105,8 +106,8 @@ export default function ProposalWorkflowSteps({
     },
     {
       number: 3,
-      label: t('workflow.approve', { defaultValue: 'Approve' }),
-      description: t('workflow.approveDesc', { defaultValue: 'Confirm proposals' }),
+      label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
+      description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
       status: s3,
       action: proposedCount > 0 ? (
         <Button
@@ -119,27 +120,12 @@ export default function ProposalWorkflowSteps({
         </Button>
       ) : undefined,
     },
-    {
-      number: 4,
-      label: t('workflow.book', { defaultValue: 'Book to Agenda' }),
-      description: t('workflow.bookDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-      status: s4,
-      action: confirmedCount > 0 ? (
-        <Button
-          size="sm"
-          className="h-7 text-xs"
-        >
-          <CalendarDays className="h-3 w-3 mr-1" />
-          {t('workflow.bookAction', { defaultValue: 'Book' })}
-        </Button>
-      ) : undefined,
-    },
   ];
 
   return (
     <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-start">
       {steps.map((step, idx) => (
-        <div key={step.number} className="flex items-start sm:flex-1 gap-3 sm:gap-0">
+        <React.Fragment key={step.number}>
           {/* Step content */}
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {/* Circle */}
@@ -175,14 +161,14 @@ export default function ProposalWorkflowSteps({
 
           {/* Connector line (desktop only, not after last) */}
           {idx < steps.length - 1 && (
-            <div className="hidden sm:flex items-center px-2 pt-4">
+            <div className="hidden sm:flex items-center self-stretch px-1 pt-4">
               <div className={cn(
-                'w-8 h-0.5',
+                'w-10 h-0.5 flex-shrink-0',
                 step.status === 'completed' ? 'bg-primary' : 'bg-muted-foreground/20',
               )} />
             </div>
           )}
-        </div>
+        </React.Fragment>
       ))}
     </div>
   );
