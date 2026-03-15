@@ -1260,3 +1260,33 @@ export async function createManualIntakeRequest(
   if (error) throw error;
   return toIntakeRequest(data);
 }
+
+// Move a player assignment to a different slot
+export async function movePlayerAssignment(assignmentId: string, newSlotId: string): Promise<void> {
+  const { error } = await supabase
+    .from('proposed_assignments')
+    .update({ slot_id: newSlotId })
+    .eq('id', assignmentId);
+
+  if (error) throw error;
+}
+
+// Update the time range of an availability slot
+export async function updateSlotTime(slotId: string, startTime: string, endTime: string): Promise<void> {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ start_time: startTime, end_time: endTime })
+    .eq('id', slotId);
+
+  if (error) throw error;
+}
+
+// Move an entire slot to a different trainer
+export async function moveSlotToTrainer(slotId: string, newTrainerId: string): Promise<void> {
+  const { error } = await supabase
+    .from('availability_slots')
+    .update({ trainer_id: newTrainerId })
+    .eq('id', slotId);
+
+  if (error) throw error;
+}
