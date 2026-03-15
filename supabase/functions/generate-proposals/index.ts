@@ -858,6 +858,100 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ===== STEP 3: Fill gaps in trainer availability with empty 60-min slots =====
+    if (trainerAvailability && trainerAvailability.length > 0) {
+      console.log("Filling remaining trainer availability gaps with empty slots...");
+
+      // Re-fetch cycle slots after matching to know which times are covered
+      const { data: existingCycleSlots } = await supabase
+        .from("availability_slots")
+        .select("id, trainer_id, start_time, end_time")
+        .eq("cyclus_id", cycleId);
+
+      const fillerSlots: any[] = [];
+      const DEFAULT_FILLER_DURATION = 60; // minutes
+
+      for (const ta of trainerAvailability) {
+        for (const window of ta.windows) {
+          const dayIndex = WEEKDAYS.indexOf(window.day.toLowerCase());
+          if (dayIndex === -1) continue;
+
+          const [wStartH, wStartM] = window.start.split(":").map(Number);
+          const [wEndH, wEndM] = window.end.split(":").map(Number);
+          const windowStartMin = wStartH * 60 + (wStartM || 0);
+          const windowEndMin = wEndH * 60 + (wEndM || 0);
+
+          // Find the first occurrence of this weekday from effectiveStartDate
+          let dayDate = new Date(effectiveStartDate);
+          while (dayDate.getDay() !== dayIndex) {
+            dayDate.setDate(dayDate.getDate() + 1);
+          }
+
+          // Get existing slots for this trainer on this day
+          const trainerDaySlots = (existingCycleSlots || [])
+            .filter(s => {
+              if (s.trainer_id !== ta.trainerId) return false;
+              const slotDate = new Date(s.start_time);
+              return slotDate.getFullYear() === dayDate.getFullYear() &&
+                     slotDate.getMonth() === dayDate.getMonth() &&
+                     slotDate.getDate() === dayDate.getDate();
+            })
+            .map(s => ({
+              startMin: new Date(s.start_time).getHours() * 60 + new Date(s.start_time).getMinutes(),
+              endMin: new Date(s.end_time).getHours() * 60 + new Date(s.end_time).getMinutes(),
+            }))
+            .sort((a, b) => a.startMin - b.startMin);
+
+          // Walk through the window in 60-min increments and fill gaps
+          let cursor = windowStartMin;
+          while (cursor + DEFAULT_FILLER_DURATION <= windowEndMin) {
+            const cursorEnd = cursor + DEFAULT_FILLER_DURATION;
+
+            // Check if this range overlaps with any existing slot
+            const overlapsExisting = trainerDaySlots.some(s =>
+              cursor < s.endMin && cursorEnd > s.startMin
+            );
+
+            if (!overlapsExisting) {
+              const startDt = new Date(dayDate);
+              startDt.setHours(Math.floor(cursor / 60), cursor % 60, 0, 0);
+              const endDt = new Date(dayDate);
+              endDt.setHours(Math.floor(cursorEnd / 60), cursorEnd % 60, 0, 0);
+
+              fillerSlots.push({
+                trainer_id: ta.trainerId,
+                start_time: startDt.toISOString(),
+                end_time: endDt.toISOString(),
+                is_marked_full: false,
+                is_public: false,
+                is_recurring: false,
+                cyclus_id: cycleId,
+                max_participants: cycle.settings?.max_group_size || 4,
+                min_participants: cycle.settings?.min_group_size || null,
+                academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+                location_id: cycle.location_id || null,
+              });
+            }
+
+            cursor += DEFAULT_FILLER_DURATION;
+          }
+        }
+      }
+
+      if (fillerSlots.length > 0) {
+        const { error: fillerError } = await supabase
+          .from("availability_slots")
+          .insert(fillerSlots);
+
+        if (fillerError) {
+          console.error("Error creating filler slots:", fillerError);
+        } else {
+          console.log(`Created ${fillerSlots.length} empty filler slots to complete trainer agendas`);
+          slotsCreated += fillerSlots.length;
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         generated,

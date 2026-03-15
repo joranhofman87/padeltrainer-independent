@@ -1339,3 +1339,38 @@ export async function moveSlot(
 
   if (error) throw error;
 }
+
+// Swap two slots' times and trainers (used when dragging onto an empty slot)
+export async function swapSlots(
+  slotAId: string,
+  slotANewTrainerId: string,
+  slotANewStart: string,
+  slotANewEnd: string,
+  slotBId: string,
+  slotBNewTrainerId: string,
+  slotBNewStart: string,
+  slotBNewEnd: string,
+): Promise<void> {
+  // Update both slots — order matters to avoid unique constraint issues
+  const { error: errorA } = await supabase
+    .from('availability_slots')
+    .update({
+      trainer_id: slotANewTrainerId,
+      start_time: slotANewStart,
+      end_time: slotANewEnd,
+    })
+    .eq('id', slotAId);
+
+  if (errorA) throw errorA;
+
+  const { error: errorB } = await supabase
+    .from('availability_slots')
+    .update({
+      trainer_id: slotBNewTrainerId,
+      start_time: slotBNewStart,
+      end_time: slotBNewEnd,
+    })
+    .eq('id', slotBId);
+
+  if (errorB) throw errorB;
+}

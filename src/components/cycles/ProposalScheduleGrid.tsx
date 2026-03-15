@@ -567,10 +567,10 @@ export default function ProposalScheduleGrid({
       newStart.setHours(Math.floor(newTimeRowMinute / 60), newTimeRowMinute % 60, 0, 0);
       const newEnd = addMinutes(newStart, duration);
 
-      // Overlap detection: reject if another slot occupies the same trainer/time range
+      // Overlap detection: check if another slot occupies the same trainer/time range
       const newStartMin = newTimeRowMinute;
       const newEndMin = newTimeRowMinute + duration;
-      const hasOverlap = daySlots.some(other => {
+      const overlappingSlot = daySlots.find(other => {
         if (other.id === slot.id) return false;
         if (other.trainer_id !== newTrainerId) return false;
         const otherStartMin = isoToMinutes(other.start_time);
@@ -578,14 +578,26 @@ export default function ProposalScheduleGrid({
         return newStartMin < otherEndMin && newEndMin > otherStartMin;
       });
 
-      if (hasOverlap) {
-        toast.warning(t('proposals.slotOverlap', 'Cannot move here — overlaps with an existing slot'));
+      if (overlappingSlot) {
+        // If the overlapping slot is empty (no players), allow swap
+        if (overlappingSlot.current_assignments.length === 0 && onSwapSlots) {
+          // Swap: dragged slot goes to new position, empty slot goes to dragged slot's old position
+          const oldStart = slot.start_time;
+          const oldEnd = slot.end_time;
+          const oldTrainerId = slot.trainer_id;
+          onSwapSlots(
+            slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString(),
+            overlappingSlot.id, oldTrainerId, oldStart, oldEnd,
+          );
+        } else {
+          toast.warning(t('proposals.slotOverlap', 'Cannot move here — overlaps with an existing slot'));
+        }
         return;
       }
 
       onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
     }
-  }, [activeData, onMovePlayer, onMoveSlot, slotLookup, daySlots, slotRowSpans]);
+  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, slotLookup, daySlots, slotRowSpans]);
 
   if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
