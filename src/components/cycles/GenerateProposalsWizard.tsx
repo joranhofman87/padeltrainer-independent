@@ -404,6 +404,15 @@ export function GenerateProposalsWizard({
                       </div>
                     </div>
                   ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs self-start"
+                    onClick={() => addWindow(config.trainerId)}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {t('proposals.wizard.addWindow', { defaultValue: 'Add time window' })}
+                  </Button>
                 </div>
               </div>
             ))}
