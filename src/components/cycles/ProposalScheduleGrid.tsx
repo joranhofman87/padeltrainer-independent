@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, addMinutes } from 'date-fns';
 import {
@@ -543,18 +543,22 @@ export default function ProposalScheduleGrid({
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="overflow-x-auto">
           <div
-            className="grid gap-px bg-border/30 rounded-lg"
+            className="relative grid gap-px bg-border/30 rounded-lg"
             style={{
               gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
               gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
             }}
           >
             {/* Header: empty corner */}
-            <div className="bg-background rounded-tl-lg" />
+            <div className="bg-background rounded-tl-lg" style={{ gridRow: 1, gridColumn: 1 }} />
 
             {/* Header: trainer columns */}
-            {trainers.map(trainer => (
-              <div key={trainer.id} className="bg-background p-2 flex items-center gap-2 border-b border-border">
+            {trainers.map((trainer, colIdx) => (
+              <div
+                key={trainer.id}
+                style={{ gridRow: 1, gridColumn: colIdx + 2 }}
+                className="bg-background p-2 flex items-center gap-2 border-b border-border"
+              >
                 <Avatar className="h-6 w-6">
                   <AvatarImage src={trainer.avatar || undefined} />
                   <AvatarFallback className="text-[10px]">
@@ -570,52 +574,59 @@ export default function ProposalScheduleGrid({
               </div>
             ))}
 
-            {/* Grid body: time rows */}
-            {timeRows.map(rowMinute => (
-              <>
-                {/* Time label */}
-                <div
-                  key={`time-${rowMinute}`}
-                  className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
-                >
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {minutesToHHMM(rowMinute)}
-                  </span>
-                </div>
+            {/* Grid body: time rows with explicit positioning */}
+            {timeRows.map((rowMinute, rowIdx) => {
+              const gridRow = rowIdx + 2; // +2 because row 1 is the header
+              return (
+                <React.Fragment key={`row-${rowMinute}`}>
+                  {/* Time label */}
+                  <div
+                    style={{ gridRow, gridColumn: 1 }}
+                    className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
+                  >
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {minutesToHHMM(rowMinute)}
+                    </span>
+                  </div>
 
-                {/* Trainer cells for this time row */}
-                {trainers.map(trainer => {
-                  const cellKey = `${trainer.id}-${rowMinute}`;
+                  {/* Trainer cells for this time row */}
+                  {trainers.map((trainer, colIdx) => {
+                    const cellKey = `${trainer.id}-${rowMinute}`;
+                    const gridColumn = colIdx + 2;
 
-                  // Skip cells occupied by a multi-row slot from an earlier row
-                  if (occupiedCells.has(cellKey)) {
-                    return null; // This cell is "covered" by a slot card from a previous row
-                  }
+                    // Skip cells occupied by a multi-row slot from an earlier row
+                    if (occupiedCells.has(cellKey)) {
+                      return null; // Grid positioning means skipping is safe
+                    }
 
-                  const slot = slotLookup.get(cellKey);
-                  const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
-                  const cellId = `cell-${trainer.id}-${rowMinute}`;
+                    const slot = slotLookup.get(cellKey);
+                    const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
+                    const cellId = `cell-${trainer.id}-${rowMinute}`;
 
-                  return (
-                    <div
-                      key={cellKey}
-                      style={rowSpan > 1 ? { gridRow: `span ${rowSpan}` } : undefined}
-                      className="bg-background p-0.5"
-                    >
-                      <DroppableCell cellId={cellId} hasSlot={!!slot}>
-                        {slot && (
-                          <DraggableSlotCard
-                            slot={slot}
-                            onPlayerClick={onPlayerClick}
-                            canDragSlot={canDragSlot}
-                          />
-                        )}
-                      </DroppableCell>
-                    </div>
-                  );
-                })}
-              </>
-            ))}
+                    return (
+                      <div
+                        key={cellKey}
+                        style={{
+                          gridRow: rowSpan > 1 ? `${gridRow} / span ${rowSpan}` : gridRow,
+                          gridColumn,
+                        }}
+                        className="bg-background p-0.5"
+                      >
+                        <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                          {slot && (
+                            <DraggableSlotCard
+                              slot={slot}
+                              onPlayerClick={onPlayerClick}
+                              canDragSlot={canDragSlot}
+                            />
+                          )}
+                        </DroppableCell>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
