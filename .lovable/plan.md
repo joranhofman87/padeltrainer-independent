@@ -1,69 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Redesign ProposalScheduleGrid: Column-per-Trainer with Drag & Drop
+## Status: ✅ COMPLETED
 
-## Current State
-- Grid groups slots by **day** (tabs), then by **trainer** (collapsible sections) with slot cards in a responsive grid
-- `onMovePlayer` exists as a prop but only shows a small arrow icon on hover — no actual move UI/logic is wired up
-- No drag-and-drop, no slot time editing, no cross-trainer moves
+Implemented on 2026-03-14.
 
-## Proposed Layout: Trainer Columns
+## What Changed
 
-Switch from "rows per trainer" to a **column-per-trainer** layout within each day tab:
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-```text
-┌─ Monday ─────────────────────────────────────────────┐
-│  Trainer A          │  Trainer B          │          │
-│  ┌──────────────┐   │  ┌──────────────┐   │          │
-│  │ 09:00-10:00  │   │  │ 09:00-10:30  │   │          │
-│  │ 🟢 Jan, Piet │   │  │ 🟡 Karel     │   │          │
-│  └──────────────┘   │  └──────────────┘   │          │
-│  ┌──────────────┐   │  ┌──────────────┐   │          │
-│  │ 10:00-11:00  │   │  │ 10:30-12:00  │   │          │
-│  │ 🔴 empty     │   │  │ 🟢 Maria, .. │   │          │
-│  └──────────────┘   │  └──────────────┘   │          │
-└──────────────────────────────────────────────────────┘
-```
+## Sanity Content Types Needed in Studio
 
-Each column shows the trainer's avatar/name at the top, with their time slots stacked vertically in chronological order. This makes gaps between trainers immediately visible.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-## Interactions to Add
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### 1. Drag & Drop Players Between Slots
-- Use HTML5 drag (or a lightweight library like `@dnd-kit`) to let users drag a player chip from one slot card and drop it onto another slot card (same or different trainer column)
-- On drop: call a new function `movePlayerAssignment(assignmentId, newSlotId)` that updates the `proposed_assignments` row's `slot_id`
-- Validate: target slot not full, same day (for now)
+## What Stays Unchanged
 
-### 2. Edit Slot Time (inline)
-- Click on a slot's time header to open a small popover/dialog with start/end time pickers
-- On save: update the `availability_slots` row and refresh
-
-### 3. Move Entire Slot Between Trainers
-- Drag the slot card header (not a player chip) to a different trainer column
-- On drop: update `availability_slots.trainer_id` and refresh
-
-## Files to Change
-
-1. **`src/components/cycles/ProposalScheduleGrid.tsx`** — Major rewrite:
-   - Replace row-based trainer sections with column layout (`flex` or CSS grid with 1 column per trainer)
-   - Add drag-and-drop for player chips (using `@dnd-kit/core` + `@dnd-kit/sortable`)
-   - Add slot time edit popover
-   - Add slot drag between trainer columns
-
-2. **`src/lib/cycles.ts`** — Add helper functions:
-   - `movePlayerAssignment(assignmentId: string, newSlotId: string)` — updates `proposed_assignments.slot_id`
-   - `updateSlotTime(slotId: string, startTime: string, endTime: string)` — updates `availability_slots`
-   - `moveSlotToTrainer(slotId: string, newTrainerId: string)` — updates `availability_slots.trainer_id`
-
-3. **`package.json`** — Add `@dnd-kit/core` and `@dnd-kit/utilities` dependencies
-
-4. **Parent pages** (`AcademyIntakeRequests.tsx`, `TrainerIntakeRequests.tsx`) — Wire up the new callbacks and refresh data after moves
-
-## Implementation Priority
-Given complexity, I'd suggest phasing:
-- **Phase 1**: Column layout + drag-drop players between slots (highest value)
-- **Phase 2**: Slot time editing via popover
-- **Phase 3**: Drag entire slots between trainers
-
-Shall I implement Phase 1 first (column layout + player drag-and-drop)?
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

@@ -18,6 +18,7 @@ import {
   getAvailableSlotsForCycle,
   generateProposals,
   resetProposals,
+  movePlayerAssignment,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -333,6 +334,15 @@ export default function TrainerIntakeRequests() {
           onPlayerClick={(intakeRequestId) => {
             const req = requests.find(r => r.id === intakeRequestId);
             if (req) setSelectedRequest(req);
+          }}
+          onMovePlayer={async (assignmentId, newSlotId) => {
+            try {
+              await movePlayerAssignment(assignmentId, newSlotId);
+              toast.success(t('proposals.playerMoved', 'Player moved successfully'));
+              fetchData();
+            } catch (error: any) {
+              toast.error(error.message);
+            }
           }}
         />
       )}
