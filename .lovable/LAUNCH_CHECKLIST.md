@@ -166,6 +166,6 @@
 ## 🔗 Quick Links
 
 - **Preview URL:** https://id-preview--f04c6cfe-e2a8-41a5-974c-e82c2372539e.lovable.app
-- **Production URL:** https://padeltrainer.ai
-- **App URL:** https://app.padeltrainer.ai
+- **Production URL:** https://padeltrainer.ai (single-domain architecture)
+- **Health Check:** `POST /functions/v1/health-check`
 - **Health Check:** `POST /functions/v1/health-check`
