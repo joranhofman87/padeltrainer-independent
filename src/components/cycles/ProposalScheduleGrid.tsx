@@ -5,7 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, ArrowRightLeft } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Users, CalendarOff, Clock, ArrowRightLeft, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy } from '@/lib/cycles';
 
@@ -70,6 +71,16 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
   }, [dayGroups]);
 
   const [selectedDay, setSelectedDay] = useState<string>('');
+  const [collapsedTrainers, setCollapsedTrainers] = useState<Set<string>>(new Set());
+
+  const toggleTrainer = (trainerId: string) => {
+    setCollapsedTrainers(prev => {
+      const next = new Set(prev);
+      if (next.has(trainerId)) next.delete(trainerId);
+      else next.add(trainerId);
+      return next;
+    });
+  };
 
   // Sync selectedDay when availableDays changes
   useEffect(() => {
@@ -120,16 +131,9 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
           {availableDays.map(day => {
             const dayS = dayGroups.get(day) || [];
             const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
-            const trainerNames = new Set(dayS.map(s => s.trainer_name));
-            const trainerInitials = Array.from(trainerNames).map(n => n.split(' ').map(w => w[0]).join('').slice(0, 2)).join(', ');
             return (
               <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                {day.slice(0, 3)}
-                {trainerNames.size > 0 && (
-                  <span className="ml-1 text-[10px] text-muted-foreground hidden sm:inline">
-                    {trainerNames.size === 1 ? trainerInitials : `${trainerNames.size} trainers`}
-                  </span>
-                )}
+                {day}
                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
                   {playerCount}
                 </Badge>
@@ -141,135 +145,145 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
 
       {/* Trainer sections */}
       <div className="space-y-6">
-        {trainerGroups.map(({ trainer, slots: trainerSlots }) => (
-          <div key={trainer.id} className="space-y-3">
-            {/* Trainer header */}
-            <div className="flex items-center gap-2 px-1">
-              <Avatar className="h-7 w-7">
-                <AvatarImage src={trainer.avatar || undefined} />
-                <AvatarFallback className="text-xs">
-                  {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-semibold">{trainer.name}</span>
-              <span className="text-xs text-muted-foreground">
-                ({trainerSlots.length} {trainerSlots.length === 1 ? 'slot' : 'slots'})
-              </span>
-            </div>
+        {trainerGroups.map(({ trainer, slots: trainerSlots }) => {
+          const isOpen = !collapsedTrainers.has(trainer.id);
+          return (
+            <Collapsible key={trainer.id} open={isOpen} onOpenChange={() => toggleTrainer(trainer.id)}>
+              <div className="space-y-3">
+                {/* Trainer header */}
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center gap-2 px-1 w-full text-left cursor-pointer hover:bg-accent/50 rounded-md py-1 transition-colors">
+                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', isOpen ? '' : '-rotate-90')} />
+                    <Avatar className="h-7 w-7">
+                      <AvatarImage src={trainer.avatar || undefined} />
+                      <AvatarFallback className="text-xs">
+                        {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-semibold">{trainer.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({trainerSlots.length} {trainerSlots.length === 1 ? 'slot' : 'slots'})
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
 
-            {/* Slot cards grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {trainerSlots.map(slot => {
-                const duration = getDurationMinutes(slot.start_time, slot.end_time);
-                const maxP = slot.max_participants || 4;
-                const currentP = slot.current_assignments.length;
-                const avgConf = getAvgConfidence(slot);
-                const isFull = currentP >= maxP;
-                const isEmpty = currentP === 0;
+                <CollapsibleContent>
+                  {/* Slot cards grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {trainerSlots.map(slot => {
+                      const duration = getDurationMinutes(slot.start_time, slot.end_time);
+                      const maxP = slot.max_participants || 4;
+                      const currentP = slot.current_assignments.length;
+                      const avgConf = getAvgConfidence(slot);
+                      const isFull = currentP >= maxP;
+                      const isEmpty = currentP === 0;
 
-                return (
-                  <Card
-                    key={slot.id}
-                    className={cn(
-                      'border-l-4 transition-shadow hover:shadow-md',
-                      isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
-                    )}
-                  >
-                    <CardContent className="p-3 space-y-2">
-                      {/* Time + duration header */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold">
-                          {getTimeRange(slot.start_time, slot.end_time)}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
-                          <Clock className="h-2.5 w-2.5" />
-                          {duration}'
-                        </Badge>
-                      </div>
-
-                      {/* Occupancy + confidence */}
-                      <div className="flex items-center justify-between text-xs">
-                        <span className={cn('flex items-center gap-1 font-medium', getOccupancyColor(currentP, maxP))}>
-                          <Users className="h-3 w-3" />
-                          {currentP}/{maxP} {t('proposals.players', 'players')}
-                          {isFull && (
-                            <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">
-                              {t('proposals.full', 'FULL')}
-                            </Badge>
+                      return (
+                        <Card
+                          key={slot.id}
+                          className={cn(
+                            'border-l-4 transition-shadow hover:shadow-md',
+                            isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
                           )}
-                        </span>
-                        {avgConf > 0 && (
-                          <span className="text-muted-foreground">
-                            ø {avgConf}%
-                          </span>
-                        )}
-                      </div>
+                        >
+                          <CardContent className="p-3 space-y-2">
+                            {/* Time + duration header */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold">
+                                {getTimeRange(slot.start_time, slot.end_time)}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+                                <Clock className="h-2.5 w-2.5" />
+                                {duration}'
+                              </Badge>
+                            </div>
 
-                      {/* Player chips */}
-                      {currentP > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {slot.current_assignments.map(assignment => {
-                            const confScore = assignment.confidence_score || 0;
-                            const confClass = confScore >= 80
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : confScore >= 60
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
-
-                            return (
-                              <div
-                                key={assignment.id}
-                                className="group flex items-center gap-1 bg-muted rounded-md pl-2 pr-1 py-1 text-xs hover:bg-accent transition-colors"
-                              >
-                                <button
-                                  onClick={() => onPlayerClick?.(assignment.intake_request_id)}
-                                  className="flex items-center gap-1 cursor-pointer"
-                                >
-                                  <span className="font-medium truncate max-w-[100px]">
-                                    {assignment.player_name}
-                                  </span>
-                                  {assignment.player_rating != null && (
-                                    <span className="text-muted-foreground text-[10px]">
-                                      {assignment.player_rating}
-                                    </span>
-                                  )}
-                                  {confScore > 0 && (
-                                    <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5', confClass)}>
-                                      {confScore}%
-                                    </Badge>
-                                  )}
-                                </button>
-                                {onMovePlayer && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onMovePlayer(assignment.id, assignment.intake_request_id);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-background transition-all"
-                                    title={t('proposals.movePlayer', 'Move player')}
-                                  >
-                                    <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
-                                  </button>
+                            {/* Occupancy + confidence */}
+                            <div className="flex items-center justify-between text-xs">
+                              <span className={cn('flex items-center gap-1 font-medium', getOccupancyColor(currentP, maxP))}>
+                                <Users className="h-3 w-3" />
+                                {currentP}/{maxP} {t('proposals.players', 'players')}
+                                {isFull && (
+                                  <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5 ml-1">
+                                    {t('proposals.full', 'FULL')}
+                                  </Badge>
                                 )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              </span>
+                              {avgConf > 0 && (
+                                <span className="text-muted-foreground">
+                                  ø {avgConf}%
+                                </span>
+                              )}
+                            </div>
 
-                      {/* Empty slot indicator */}
-                      {isEmpty && (
-                        <p className="text-xs text-muted-foreground italic pt-1">
-                          {t('proposals.emptySlot', 'No players assigned')}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+                            {/* Player chips */}
+                            {currentP > 0 && (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {slot.current_assignments.map(assignment => {
+                                  const confScore = assignment.confidence_score || 0;
+                                  const confClass = confScore >= 80
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : confScore >= 60
+                                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                      : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
+
+                                  return (
+                                    <div
+                                      key={assignment.id}
+                                      className="group flex items-center gap-1 bg-muted rounded-md pl-2 pr-1 py-1 text-xs hover:bg-accent transition-colors"
+                                    >
+                                      <button
+                                        onClick={() => onPlayerClick?.(assignment.intake_request_id)}
+                                        className="flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <span className="font-medium truncate max-w-[100px]">
+                                          {assignment.player_name}
+                                        </span>
+                                        {assignment.player_rating != null && (
+                                          <span className="text-muted-foreground text-[10px]">
+                                            {assignment.player_rating}
+                                          </span>
+                                        )}
+                                        {confScore > 0 && (
+                                          <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5', confClass)}>
+                                            {confScore}%
+                                          </Badge>
+                                        )}
+                                      </button>
+                                      {onMovePlayer && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onMovePlayer(assignment.id, assignment.intake_request_id);
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-background transition-all"
+                                          title={t('proposals.movePlayer', 'Move player')}
+                                        >
+                                          <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Empty slot indicator */}
+                            {isEmpty && (
+                              <p className="text-xs text-muted-foreground italic pt-1">
+                                {t('proposals.emptySlot', 'No players assigned')}
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </CollapsibleContent>
+              </div>
+            </Collapsible>
+          );
+        })}
       </div>
     </div>
   );
