@@ -59,7 +59,7 @@
 - [x] Static sitemap.xml generated
 - [x] robots.txt configured for app/marketing domains
 - [x] llms.txt for AI crawlers
-- [x] Hreflang tags for EN/NL
+- [x] Hreflang tags for EN/NL/ES/DE/FR (all 5 languages)
 - [x] Open Graph meta tags
 - [x] Twitter cards
 - [x] Structured data on 9+ pages
