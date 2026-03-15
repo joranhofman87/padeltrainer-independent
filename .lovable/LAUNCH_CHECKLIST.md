@@ -55,11 +55,11 @@
 - [x] Impersonation logging for admin (admin_impersonation_logs table)
 
 ### SEO
-- [x] Sitemap edge function deployed
-- [x] Static sitemap.xml generated
-- [x] robots.txt configured for app/marketing domains
+- [x] Sitemap edge function deployed (dynamic sitemap index via Cloudflare Worker)
+- [x] Static sitemap.xml fallback via GitHub Action
+- [x] Dynamic sitemap proxy live (Cloudflare Worker → edge function)
 - [x] llms.txt for AI crawlers
-- [x] Hreflang tags for EN/NL
+- [x] Hreflang tags for EN/NL/ES/DE/FR (all 5 languages)
 - [x] Open Graph meta tags
 - [x] Twitter cards
 - [x] Structured data on 9+ pages
@@ -166,6 +166,6 @@
 ## 🔗 Quick Links
 
 - **Preview URL:** https://id-preview--f04c6cfe-e2a8-41a5-974c-e82c2372539e.lovable.app
-- **Production URL:** https://padeltrainer.ai
-- **App URL:** https://app.padeltrainer.ai
+- **Production URL:** https://padeltrainer.ai (single-domain architecture)
+- **Health Check:** `POST /functions/v1/health-check`
 - **Health Check:** `POST /functions/v1/health-check`
