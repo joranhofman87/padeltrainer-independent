@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient as createSanityClient } from "npm:@sanity/client@6";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,8 +9,15 @@ const corsHeaders = {
 const SITE_URL = 'https://padeltrainer.ai';
 const LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
 const SITEMAP_BASE_URL = `${SITE_URL}/sitemaps`;
-const LOCATIONS_PER_PAGE = 5000; // 5000 locations × 5 langs = 25000 URLs per file (under 50K limit)
+const LOCATIONS_PER_PAGE = 5000;
 const CITIES_PER_PAGE = 5000;
+
+const sanity = createSanityClient({
+  projectId: 'ru3aqhjn',
+  dataset: 'production',
+  apiVersion: '2024-01-01',
+  useCdn: true,
+});
 
 // deno-lint-ignore no-explicit-any
 async function fetchAllRows<T>(
@@ -216,6 +224,27 @@ Deno.serve(async (req) => {
 
       if (blogArticles) {
         xml += generateBlogEntries(blogArticles, today);
+      }
+
+      // Sanity CMS content: Rules, Strokes, Coaches, Video Tips
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips] = await Promise.all([
+        sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+        sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
+      ]);
+
+      for (const rule of sanityRules || []) {
+        xml += generateUrlEntry(`/padel-rules/${rule.slug}`, today, 'weekly', '0.7');
+      }
+      for (const stroke of sanityStrokes || []) {
+        xml += generateUrlEntry(`/padel-strokes/${stroke.slug}`, today, 'weekly', '0.7');
+      }
+      for (const coach of sanityCoaches || []) {
+        xml += generateUrlEntry(`/padel-coaches/${coach.slug}`, today, 'weekly', '0.7');
+      }
+      for (const video of sanityVideoTips || []) {
+        xml += generateUrlEntry(`/video-tips/${video.slug}`, today, 'weekly', '0.6');
       }
 
       xml += '</urlset>';
