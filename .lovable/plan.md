@@ -1,39 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Accessibility Improvement Plan
+## Status: ✅ COMPLETED
 
-Based on your Lighthouse report (score: 80), there are 4 categories of issues to fix. All are quick, non-breaking changes.
+Implemented on 2026-03-14.
 
----
+## What Changed
 
-## Issues and Fixes
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### 1. Buttons without accessible names
-The mobile hamburger menu button in `MarketingLayout.tsx` (line 163) has no `aria-label`.
+## Sanity Content Types Needed in Studio
 
-**Fix**: Add `aria-label="Open menu"` / `"Close menu"` based on state.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### 2. Links without discernible names
-Footer social media links (LinkedIn, Facebook, Instagram, YouTube, TikTok — lines 274-290) only contain icons with no text or `aria-label`.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**Fix**: Add `aria-label` to each social link (e.g., `aria-label="LinkedIn"`, `aria-label="Facebook"`, etc.).
+## What Stays Unchanged
 
-### 3. Images without alt attributes
-The `<Logo />` component used in header/footer links may not have an alt attribute. The logo links themselves also lack discernible text.
-
-**Fix**: Ensure the Logo SVG has `role="img"` and an appropriate `aria-label`, or add `aria-label="PadelTrainer home"` to the logo links.
-
-### 4. Contrast ratio — "Start free trial" CTA
-The primary button (`--primary: 16 90% 55%` = coral/orange `#F26522`) with white text fails WCAG AA contrast (ratio ~3.1:1, needs 4.5:1). This is the specific element flagged in your screenshot.
-
-**Fix**: Darken `--primary` slightly from `16 90% 55%` to `16 90% 45%` (deeper orange, ratio ~5.5:1). This preserves the brand feel while passing AA. We only change the light-mode value; dark mode already renders differently.
-
----
-
-## Files to change
-- `src/components/marketing/MarketingLayout.tsx` — aria-labels on mobile menu button, social links, logo links
-- `src/index.css` — darken `--primary` lightness from 55% to 45%
-- `src/components/home/HeroSection.tsx` — verify Logo component accessibility
-
-These are all small, targeted changes that won't affect layout or functionality.
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
