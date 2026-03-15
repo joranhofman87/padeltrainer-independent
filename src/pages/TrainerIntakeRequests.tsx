@@ -19,6 +19,7 @@ import {
   generateProposals,
   resetProposals,
   movePlayerAssignment,
+  moveSlot,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
