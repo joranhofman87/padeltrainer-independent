@@ -401,5 +401,17 @@
   "emails": {
     "applicationReceived": "Aanmelding Ontvangen",
     "scheduleConfirmed": "Je Trainingsschema is Bevestigd"
+  },
+
+  "workflow": {
+    "generate": "Genereren",
+    "generateDesc": "{{count}} nieuwe aanmeldingen",
+    "review": "Bekijken & Bewerken",
+    "reviewDesc": "{{count}} voorstellen",
+    "approve": "Goedkeuren",
+    "approveDesc": "Voorstellen bevestigen",
+    "book": "Inplannen",
+    "bookDesc": "{{count}} bevestigd",
+    "bookAction": "Inplannen"
   }
 }

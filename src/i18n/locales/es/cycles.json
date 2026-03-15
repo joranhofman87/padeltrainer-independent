@@ -387,5 +387,17 @@
   "emails": {
     "applicationReceived": "Solicitud recibida",
     "scheduleConfirmed": "Tu horario de entrenamiento está confirmado"
+  },
+
+  "workflow": {
+    "generate": "Generar",
+    "generateDesc": "{{count}} nuevas solicitudes",
+    "review": "Revisar y Editar",
+    "reviewDesc": "{{count}} propuestas",
+    "approve": "Aprobar",
+    "approveDesc": "Confirmar propuestas",
+    "book": "Agendar",
+    "bookDesc": "{{count}} confirmadas",
+    "bookAction": "Agendar"
   }
 }

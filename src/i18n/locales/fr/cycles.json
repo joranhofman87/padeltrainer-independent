@@ -387,5 +387,17 @@
   "emails": {
     "applicationReceived": "Candidature reçue",
     "scheduleConfirmed": "Votre planning d'entraînement est confirmé"
+  },
+
+  "workflow": {
+    "generate": "Générer",
+    "generateDesc": "{{count}} nouvelles demandes",
+    "review": "Vérifier & Modifier",
+    "reviewDesc": "{{count}} propositions",
+    "approve": "Approuver",
+    "approveDesc": "Confirmer les propositions",
+    "book": "Planifier",
+    "bookDesc": "{{count}} confirmées",
+    "bookAction": "Planifier"
   }
 }
