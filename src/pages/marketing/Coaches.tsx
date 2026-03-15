@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
-import { ArrowRight, User } from 'lucide-react';
+import { ArrowRight, User, MapPin } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
 import type { SeoFields } from '@/lib/sanity';
 
@@ -15,6 +15,8 @@ interface CoachListItem {
   name: string;
   slug: string;
   bio: string | null;
+  shortTagline: string | null;
+  location: string | null;
   specialties: string[] | null;
   profileImageUrl: string | null;
   seo: SeoFields | null;
@@ -98,11 +100,24 @@ export default function Coaches() {
                           )}
                         </div>
 
-                        <CardTitle className="text-lg mb-2 hover:text-primary transition-colors">
+                        <CardTitle className="text-lg mb-1 hover:text-primary transition-colors">
                           {coach.name}
                         </CardTitle>
 
-                        {coach.specialties && coach.specialties.length > 0 && (
+                        {coach.location && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
+                            <MapPin className="h-3 w-3" />
+                            {coach.location}
+                          </p>
+                        )}
+
+                        {coach.shortTagline && (
+                          <p className="text-sm text-muted-foreground italic mb-3 line-clamp-2">
+                            "{coach.shortTagline}"
+                          </p>
+                        )}
+
+                        {!coach.shortTagline && coach.specialties && coach.specialties.length > 0 && (
                           <div className="flex flex-wrap gap-1 justify-center mb-3">
                             {coach.specialties.slice(0, 3).map(s => (
                               <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
@@ -110,13 +125,13 @@ export default function Coaches() {
                           </div>
                         )}
 
-                        {coach.bio && (
+                        {!coach.shortTagline && !coach.specialties?.length && coach.bio && (
                           <CardDescription className="line-clamp-2 mb-3">
                             {coach.bio}
                           </CardDescription>
                         )}
 
-                        <span className="text-sm text-primary font-medium flex items-center gap-1">
+                        <span className="text-sm text-primary font-medium flex items-center gap-1 mt-auto">
                           View profile <ArrowRight className="h-3 w-3" />
                         </span>
                       </CardContent>
