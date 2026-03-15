@@ -186,7 +186,7 @@ export function GenerateProposalsWizard({
       return [...prev, {
         trainerId: trainer.id,
         trainerName: trainer.name,
-        windows: [],
+        windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
         minRating: trainer.preferredMinRating,
         maxRating: trainer.preferredMaxRating,
       }];
