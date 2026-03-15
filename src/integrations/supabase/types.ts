@@ -4620,6 +4620,19 @@ export type Database = {
       }
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
+      swap_slots: {
+        Args: {
+          _slot_a_end: string
+          _slot_a_id: string
+          _slot_a_start: string
+          _slot_a_trainer_id: string
+          _slot_b_end: string
+          _slot_b_id: string
+          _slot_b_start: string
+          _slot_b_trainer_id: string
+        }
+        Returns: undefined
+      }
       unschedule_enrichment_job: { Args: never; Returns: undefined }
       unschedule_logo_fetch_job: { Args: never; Returns: undefined }
     }

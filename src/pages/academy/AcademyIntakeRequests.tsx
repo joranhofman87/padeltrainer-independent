@@ -319,7 +319,6 @@ export default function AcademyIntakeRequests() {
             try {
               await movePlayerAssignment(assignmentId, newSlotId);
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-              // Silently refresh only the schedule slots to preserve UI state (selected day, scroll)
               if (selectedCycleId && selectedCycleId !== 'all') {
                 const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
                 setScheduleSlots(updatedSlots);
@@ -339,7 +338,7 @@ export default function AcademyIntakeRequests() {
             } catch (error: any) {
               toast.error(error.message);
             }
-            }}
+          }}
           onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
             try {
               await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
@@ -351,6 +350,10 @@ export default function AcademyIntakeRequests() {
             } catch (error: any) {
               toast.error(error.message);
             }
+          }}
+          onUndo={(previousSlots) => {
+            setScheduleSlots(previousSlots);
+            toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
           }}
         />
       )}
