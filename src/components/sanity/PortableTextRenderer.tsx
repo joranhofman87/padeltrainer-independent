@@ -1,5 +1,6 @@
 import { PortableText, type PortableTextComponents } from '@portabletext/react';
 import { LocalizedLink } from '@/components/LocalizedLink';
+import { urlFor } from '@/lib/sanity';
 
 /**
  * Extract headings (h2/h3) from Portable Text blocks for TOC generation.
@@ -85,6 +86,30 @@ const components: PortableTextComponents = {
   listItem: {
     bullet: ({ children }) => <li>{children}</li>,
     number: ({ children }) => <li>{children}</li>,
+  },
+  types: {
+    image: ({ value }) => {
+      if (!value?.asset) return null;
+      const alt = value.alt || '';
+      const src = urlFor(value).width(800).auto('format').quality(80).url();
+      return (
+        <figure className="my-6">
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            width={800}
+            height={450}
+            className="rounded-lg w-full h-auto"
+          />
+          {value.caption && (
+            <figcaption className="text-sm text-muted-foreground mt-2 text-center">
+              {value.caption}
+            </figcaption>
+          )}
+        </figure>
+      );
+    },
   },
   marks: {
     strong: ({ children }) => <strong>{children}</strong>,
