@@ -229,13 +229,16 @@ Deno.serve(async (req) => {
       }
 
       // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
-      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles] = await Promise.all([
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics] = await Promise.all([
         sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string; seo: { indexable?: boolean } | null }[]>(
           `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current, seo }`
+        ),
+        sanity.fetch<{ slug: string; isIndexable: boolean }[]>(
+          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true) }`
         ),
       ]);
 
