@@ -27,7 +27,7 @@ interface RulesArticleDetail {
   pageType: 'hub' | 'child';
   bodySections: BodySection[] | null;
   commonMistakes: string[] | null;
-  seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string } | null;
+  seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string; indexable?: boolean } | null;
   cta: { label: string; url: string } | null;
   datePublished: string | null;
   dateModified: string | null;
@@ -114,6 +114,7 @@ export default function RulesPage() {
         url={`/padel-rules/${slug}`}
         type="article"
         structuredData={structuredData}
+        noIndex={article.seo?.indexable === false}
       />
 
       {/* Back Button */}

@@ -1,35 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## SEO & Performance Audit of Sanity Pages
+## Status: ✅ COMPLETED
 
-### Current State — What's Already Good
-- All detail pages have dynamic SEO meta tags from Sanity (title, description, canonical, hreflang, noIndex)
-- Structured data (JSON-LD) on Blog, Rules, Strokes, Coaches, Video Tips detail pages
-- Pre-rendering system handles bots/crawlers for all routes
-- Sanity CDN enabled (`useCdn: true`) for fast reads
-- TanStack Query caching (5-10 min staleTime) on all pages
-- Skeleton loaders on all pages
+Implemented on 2026-03-14.
 
-### Issues Found & Fixes
+## What Changed
 
-**1. RulesPage missing `noIndex` support**
-- `RulesPage.tsx` does not pass `noIndex` to the `<SEO>` component, even though it reads `seo` from Sanity. Simple one-line fix.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-**2. Listing pages missing structured data**
-- Coaches, Strokes, Video Tips, and Rules listing pages have no JSON-LD structured data. Adding `ItemList` schema to each would help search engines understand these as navigable collections and can enable rich results.
+## Sanity Content Types Needed in Studio
 
-**3. Coaches listing page missing `staleTime`**
-- `Coaches.tsx` query has no `staleTime`, causing unnecessary refetches. Should match other listing pages (10 min).
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**4. Rules listing page missing `staleTime`**
-- Same issue on `Rules.tsx` — no staleTime configured.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### Files Changed
-1. `src/pages/marketing/RulesPage.tsx` — Add `noIndex={article.seo?.indexable === false}`
-2. `src/pages/marketing/Rules.tsx` — Add `staleTime`, add `ItemList` structured data
-3. `src/pages/marketing/Coaches.tsx` — Add `staleTime`, add `ItemList` structured data
-4. `src/pages/marketing/Strokes.tsx` — Add `ItemList` structured data
-5. `src/pages/marketing/VideoTips.tsx` — Add `ItemList` structured data
+## What Stays Unchanged
 
-All small, targeted changes. No redesigns needed.
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

@@ -17,6 +17,18 @@ export default function VideoTips() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const itemListStructuredData = videos.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Video Tips & Tutorials",
+    "itemListElement": videos.map((v, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": v.title,
+      "url": `https://padeltrainer.ai/video-tips/${v.slug}`,
+    })),
+  } : undefined;
+
   const [selectedStroke, setSelectedStroke] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [selectedTrainer, setSelectedTrainer] = useState<string | null>(null);
@@ -70,6 +82,7 @@ export default function VideoTips() {
         title="Padel Video Tips & Tutorials"
         description="Watch expert padel video tips covering every stroke and skill level. Filter by technique, trainer, and difficulty to find the perfect tutorial."
         url="/video-tips"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}

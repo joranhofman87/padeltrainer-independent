@@ -33,6 +33,18 @@ export default function Rules() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const itemListStructuredData = articles.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Rules & Regulations",
+    "itemListElement": articles.map((a, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": a.h1,
+      "url": `https://padeltrainer.ai/padel-rules/${a.slug}`,
+    })),
+  } : undefined;
+
   const hubPages = articles.filter(a => a.pageType === 'hub');
   const childPages = articles.filter(a => a.pageType === 'child');
 
@@ -42,6 +54,7 @@ export default function Rules() {
         title={t('rules.title', 'Padel Rules & Regulations')}
         description={t('rules.subtitle', 'Learn the official rules of padel, scoring, court dimensions, and more.')}
         url="/padel-rules"
+        structuredData={itemListStructuredData}
       />
 
       {/* Hero */}
