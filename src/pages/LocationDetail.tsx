@@ -643,7 +643,7 @@ export default function LocationDetail() {
                       <CardHeader className="pb-2">
                         <div className="flex items-start gap-4">
                           <Avatar className="h-14 w-14">
-                            <AvatarImage src={trainer.profile?.avatar_url || ''} />
+                            <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
                             <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
