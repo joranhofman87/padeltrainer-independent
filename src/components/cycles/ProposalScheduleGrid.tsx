@@ -5,7 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, ArrowRightLeft } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Users, CalendarOff, Clock, ArrowRightLeft, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy } from '@/lib/cycles';
 
