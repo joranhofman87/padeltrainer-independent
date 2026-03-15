@@ -5,6 +5,7 @@ import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   type DragStartEvent, type DragEndEvent,
   PointerSensor, useSensor, useSensors,
+  pointerWithin,
 } from '@dnd-kit/core';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
