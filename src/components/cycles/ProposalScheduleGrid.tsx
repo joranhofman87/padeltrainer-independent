@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO, addMinutes } from 'date-fns';
+import { format, parseISO, addMinutes, type Locale } from 'date-fns';
+import { nl, es, de, fr, enUS } from 'date-fns/locale';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   type DragStartEvent, type DragEndEvent,
@@ -26,9 +27,20 @@ interface ProposalScheduleGridProps {
 type Assignment = SlotWithOccupancy['current_assignments'][number];
 
 // ── Helpers ──
+const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
 
-function getDayName(isoString: string): string {
-  return format(parseISO(isoString), 'EEEE');
+/** Get English day name (used as internal key) */
+function getDayKey(isoString: string): string {
+  return format(parseISO(isoString), 'EEEE', { locale: enUS });
+}
+
+/** Get localized day name for display */
+function getLocalizedDayName(englishDay: string, locale: Locale): string {
+  // Find the next occurrence of this weekday to format it
+  const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(englishDay);
+  if (dayIndex === -1) return englishDay;
+  const ref = new Date(2024, 0, 7 + dayIndex); // Jan 7 2024 is a Sunday
+  return format(ref, 'EEEE', { locale });
 }
 
 function getTimeRange(startIso: string, endIso: string): string {
@@ -309,7 +321,8 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot,
 }: ProposalScheduleGridProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
+  const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
   const [activeData, setActiveData] = useState<{
     type: 'player' | 'slot';
     assignment?: Assignment;
@@ -339,7 +352,7 @@ export default function ProposalScheduleGrid({
   const dayGroups = useMemo(() => {
     const groups = new Map<string, SlotWithOccupancy[]>();
     slots.forEach(slot => {
-      const day = getDayName(slot.start_time);
+      const day = getDayKey(slot.start_time);
       const existing = groups.get(day) || [];
       existing.push(slot);
       groups.set(day, existing);
@@ -579,7 +592,7 @@ export default function ProposalScheduleGrid({
             const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
             return (
               <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                {day}
+                {getLocalizedDayName(day, dateFnsLocale)}
                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
                   {playerCount}
                 </Badge>
