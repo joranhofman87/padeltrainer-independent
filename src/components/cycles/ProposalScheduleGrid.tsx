@@ -460,13 +460,13 @@ export default function ProposalScheduleGrid({
 
   // Track which cells are "occupied" by a multi-row slot (so we skip rendering them)
   const occupiedCells = useMemo(() => {
-    const occupied = new Set<string>();
+    const occupied = new Map<string, string>(); // cellKey -> slotId that covers it
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
       const span = slotRowSpans.get(slot.id) || 1;
       // Mark all rows except the first as occupied
       for (let i = 1; i < span; i++) {
-        occupied.add(`${slot.trainer_id}-${startMin + i * 30}`);
+        occupied.set(`${slot.trainer_id}__${startMin + i * 30}`, slot.id);
       }
     });
     return occupied;
