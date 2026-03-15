@@ -224,6 +224,30 @@ export default function StrokePage() {
           </motion.div>
         )}
 
+        {/* Related Rules */}
+        {stroke.relatedRules && stroke.relatedRules.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="mt-12"
+          >
+            <h2 className="text-2xl font-bold mb-6">Related Rules</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {stroke.relatedRules.map(rule => (
+                <LocalizedLink key={rule._id} to={`/padel-rules/${rule.slug}`}>
+                  <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
+                    <CardContent className="p-4">
+                      <CardTitle className="text-base mb-1 hover:text-primary transition-colors">{rule.h1}</CardTitle>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{rule.quickAnswer}</p>
+                    </CardContent>
+                  </Card>
+                </LocalizedLink>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         <CTASection cta={stroke.cta} />
       </article>
     </MarketingLayout>
