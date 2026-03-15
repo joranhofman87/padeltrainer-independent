@@ -306,7 +306,7 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, onPlayerClick, onMovePlayer, onMoveSlot,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot,
 }: ProposalScheduleGridProps) {
   const { t } = useTranslation('cycles');
   const [activeData, setActiveData] = useState<{
