@@ -19,6 +19,7 @@ import {
   generateProposals,
   resetProposals,
   movePlayerAssignment,
+  moveSlot,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -340,6 +341,18 @@ export default function TrainerIntakeRequests() {
               await movePlayerAssignment(assignmentId, newSlotId);
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
               // Silently refresh only the schedule slots to preserve UI state (selected day, scroll)
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
+          onMoveSlot={async (slotId, newTrainerId, newStartTime, newEndTime) => {
+            try {
+              await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
+              toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
               if (selectedCycleId && selectedCycleId !== 'all') {
                 const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
                 setScheduleSlots(updatedSlots);

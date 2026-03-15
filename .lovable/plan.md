@@ -1,50 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Drag-and-Drop Slots: Change Trainer & Time via Grid
+## Status: ✅ COMPLETED
 
-## Concept
+Implemented on 2026-03-14.
 
-Transform the grid into a **time-based row layout** where rows represent time slots and columns represent trainers. Slots sit at the intersection. Dragging a slot card horizontally moves it to a different trainer; dragging vertically changes its time. This makes the grid feel like a visual calendar/planner.
+## What Changed
 
-```text
-              │  Trainer A       │  Trainer B       │  Trainer C
-──────────────┼──────────────────┼──────────────────┼──────────────
- 09:00-10:00  │  [Slot card]     │                  │  [Slot card]
-──────────────┼──────────────────┼──────────────────┼──────────────
- 10:00-11:00  │                  │  [Slot card]     │
-──────────────┼──────────────────┼──────────────────┼──────────────
- 11:00-12:00  │  [Slot card]     │  [Slot card]     │
-──────────────┼──────────────────┼──────────────────┼──────────────
-```
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Dropping a slot into an empty cell updates its trainer and/or time.
+## Sanity Content Types Needed in Studio
 
-## Changes
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### 1. `ProposalScheduleGrid.tsx` — Major restructure
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-- **Two drag types**: Distinguish between dragging a *player chip* (existing) and dragging an *entire slot card*. Use different `id` prefixes (`player-` vs `slot-drag-`).
-- **Time-row grid**: Compute unique time rows from all slots on the selected day (e.g., 30-min or 60-min increments based on existing slot boundaries). Render a CSS grid with trainer columns and time rows.
-- **Droppable cells**: Each empty cell (trainer × time-row intersection) becomes a droppable target with id `cell-{trainerId}-{timeRow}`.
-- **Slot cards become draggable**: Add a drag handle to each slot card header. When dragged, the `DragOverlay` shows the full slot card.
-- **On drop**: 
-  - If dropped on a different trainer column → call `onMoveSlot(slotId, newTrainerId, newStartTime, newEndTime)`
-  - If dropped on a different time row → compute new start/end time preserving duration, call the same callback
-  - If both changed → update both in one call
-- **New props**: Add `onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void`
+## What Stays Unchanged
 
-### 2. `src/lib/cycles.ts` — Add combined move function
-
-- Add `moveSlot(slotId, newTrainerId, newStartTime, newEndTime)` that updates both `trainer_id` and `start_time`/`end_time` in a single update call to `availability_slots`.
-
-### 3. Parent pages (`AcademyIntakeRequests.tsx`, `TrainerIntakeRequests.tsx`)
-
-- Wire up the new `onMoveSlot` callback similar to the existing `onMovePlayer` — call the backend function, then silently refresh `scheduleSlots` without resetting the full page state.
-
-## Technical Details
-
-- Time rows are derived from the actual slot start/end times on that day, snapped to 30-minute boundaries (e.g., if slots are 09:00-10:00 and 09:30-10:30, rows would be 09:00, 09:30, 10:00, 10:30)
-- A slot spanning multiple time rows will span multiple grid rows using `gridRow` CSS
-- Player chip drag and slot drag coexist in the same `DndContext` — differentiated by the `active.id` prefix in `handleDragEnd`
-- Slot cards get a drag handle at the top (the time header area becomes the grab zone) while player chips keep their existing grip handle
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
