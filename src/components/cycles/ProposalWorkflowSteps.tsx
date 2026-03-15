@@ -41,20 +41,20 @@ export default function ProposalWorkflowSteps({
   const { t } = useTranslation('cycles');
 
   // Determine step statuses based on data state
-  const getStepStatus = (): [StepStatus, StepStatus, StepStatus, StepStatus] => {
+  const getStepStatus = (): [StepStatus, StepStatus, StepStatus] => {
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return ['completed', 'completed', 'completed', 'active'];
+      return ['completed', 'completed', 'active'];
     }
     if (confirmedCount > 0 && proposedCount > 0) {
-      return ['completed', 'active', 'active', 'upcoming'];
+      return ['completed', 'active', 'active'];
     }
     if (proposedCount > 0) {
-      return ['completed', 'active', 'upcoming', 'upcoming'];
+      return ['completed', 'active', 'upcoming'];
     }
-    return ['active', 'upcoming', 'upcoming', 'upcoming'];
+    return ['active', 'upcoming', 'upcoming'];
   };
 
-  const [s1, s2, s3, s4] = getStepStatus();
+  const [s1, s2, s3] = getStepStatus();
 
   const steps: Step[] = [
     {
@@ -105,8 +105,8 @@ export default function ProposalWorkflowSteps({
     },
     {
       number: 3,
-      label: t('workflow.approve', { defaultValue: 'Approve' }),
-      description: t('workflow.approveDesc', { defaultValue: 'Confirm proposals' }),
+      label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
+      description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
       status: s3,
       action: proposedCount > 0 ? (
         <Button
@@ -116,21 +116,6 @@ export default function ProposalWorkflowSteps({
         >
           <CheckCheck className="h-3 w-3 mr-1" />
           {t('proposals.approveAll', { defaultValue: 'Approve all' })}
-        </Button>
-      ) : undefined,
-    },
-    {
-      number: 4,
-      label: t('workflow.book', { defaultValue: 'Book to Agenda' }),
-      description: t('workflow.bookDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-      status: s4,
-      action: confirmedCount > 0 ? (
-        <Button
-          size="sm"
-          className="h-7 text-xs"
-        >
-          <CalendarDays className="h-3 w-3 mr-1" />
-          {t('workflow.bookAction', { defaultValue: 'Book' })}
         </Button>
       ) : undefined,
     },
