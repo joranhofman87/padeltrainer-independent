@@ -351,7 +351,7 @@ export default function ProposalScheduleGrid({
   const dayGroups = useMemo(() => {
     const groups = new Map<string, SlotWithOccupancy[]>();
     slots.forEach(slot => {
-      const day = getDayName(slot.start_time);
+      const day = getDayKey(slot.start_time);
       const existing = groups.get(day) || [];
       existing.push(slot);
       groups.set(day, existing);
