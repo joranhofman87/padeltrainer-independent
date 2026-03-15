@@ -592,7 +592,7 @@ export default function ProposalScheduleGrid({
             const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
             return (
               <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                {day}
+                {getLocalizedDayName(day, dateFnsLocale)}
                 <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
                   {playerCount}
                 </Badge>
