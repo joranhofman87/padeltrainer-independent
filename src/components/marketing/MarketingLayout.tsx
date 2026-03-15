@@ -88,7 +88,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <LocalizedLink to="/" className="flex items-center gap-2">
+            <LocalizedLink to="/" className="flex items-center gap-2" aria-label="PadelTrainer.ai home">
               <Logo className="h-7" />
             </LocalizedLink>
 
