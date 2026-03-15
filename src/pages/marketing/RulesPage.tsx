@@ -32,6 +32,7 @@ interface RulesArticleDetail {
   datePublished: string | null;
   dateModified: string | null;
   relatedRules: { _id: string; title: string; slug: string; h1: string; quickAnswer: string; pageType: string }[] | null;
+  relatedStrokes: { _id: string; title: string; slug: string; h1: string; shortDescription: string; category: string | null; difficulty: string | null }[] | null;
 }
 
 function RulesPageSkeleton() {
