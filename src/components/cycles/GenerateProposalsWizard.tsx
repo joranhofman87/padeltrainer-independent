@@ -173,7 +173,7 @@ export function GenerateProposalsWizard({
     setTrainerConfigs(preSelected.map(t => ({
       trainerId: t.id,
       trainerName: t.name,
-      windows: [],
+      windows: [{ day: 'monday', start: '09:00', end: '17:00' }],
       minRating: t.preferredMinRating,
       maxRating: t.preferredMaxRating,
     })));
