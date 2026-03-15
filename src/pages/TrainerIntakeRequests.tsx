@@ -18,6 +18,7 @@ import {
   getAvailableSlotsForCycle,
   generateProposals,
   resetProposals,
+  movePlayerAssignment,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
