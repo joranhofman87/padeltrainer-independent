@@ -339,7 +339,11 @@ export default function TrainerIntakeRequests() {
             try {
               await movePlayerAssignment(assignmentId, newSlotId);
               toast.success(t('proposals.playerMoved', 'Player moved successfully'));
-              fetchData();
+              // Silently refresh only the schedule slots to preserve UI state (selected day, scroll)
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
             } catch (error: any) {
               toast.error(error.message);
             }
