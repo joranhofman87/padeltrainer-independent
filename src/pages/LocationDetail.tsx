@@ -570,7 +570,7 @@ export default function LocationDetail() {
                       onClick={() => navigate(localizePath(`/academies/${academy.slug}`))}
                     >
                       <Avatar className="h-10 w-10 rounded-lg bg-muted">
-                        <AvatarImage src={academy.logo_url || ''} className="object-cover" />
+<AvatarImage src={academy.logo_url || ''} className="object-cover" alt={academy.name} />
                         <AvatarFallback className="rounded-lg">{getInitials(academy.name)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
