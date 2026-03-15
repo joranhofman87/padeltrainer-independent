@@ -5,6 +5,7 @@ import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   type DragStartEvent, type DragEndEvent,
   PointerSensor, useSensor, useSensors,
+  pointerWithin,
 } from '@dnd-kit/core';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -437,11 +438,10 @@ export default function ProposalScheduleGrid({
 
   // Build a lookup: trainerId -> timeRowMinute -> slot
   const slotLookup = useMemo(() => {
-    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}-${rowMinute}`
+    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}__${rowMinute}`
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
-      // Place slot at its start row, keyed by trainer
-      const key = `${slot.trainer_id}-${startMin}`;
+      const key = `${slot.trainer_id}__${startMin}`;
       lookup.set(key, slot);
     });
     return lookup;
@@ -460,13 +460,13 @@ export default function ProposalScheduleGrid({
 
   // Track which cells are "occupied" by a multi-row slot (so we skip rendering them)
   const occupiedCells = useMemo(() => {
-    const occupied = new Set<string>();
+    const occupied = new Map<string, string>(); // cellKey -> slotId that covers it
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
       const span = slotRowSpans.get(slot.id) || 1;
       // Mark all rows except the first as occupied
       for (let i = 1; i < span; i++) {
-        occupied.add(`${slot.trainer_id}-${startMin + i * 30}`);
+        occupied.set(`${slot.trainer_id}__${startMin + i * 30}`, slot.id);
       }
     });
     return occupied;
@@ -497,16 +497,15 @@ export default function ProposalScheduleGrid({
 
       // The target cell might contain a slot — extract the target slot id
       const overCellId = over.id as string;
-      if (!overCellId.startsWith('cell-')) return;
+      if (!overCellId.startsWith('cell__')) return;
 
-      // Parse cell-{trainerId}-{timeRowMinute}
-      const parts = overCellId.replace('cell-', '').split('-');
-      // trainerId is a UUID (has dashes), timeRow is the last part
-      const timeRow = parseInt(parts[parts.length - 1]);
-      const trainerId = parts.slice(0, parts.length - 1).join('-');
+      // Parse cell__{trainerId}__{timeRowMinute}
+      const parts = overCellId.split('__');
+      const trainerId = parts[1];
+      const timeRow = parseInt(parts[2]);
 
       // Find the slot at this cell
-      const targetSlot = slotLookup.get(`${trainerId}-${timeRow}`);
+      const targetSlot = slotLookup.get(`${trainerId}__${timeRow}`);
       // Also check if any slot spans into this row
       let resolvedSlotId: string | undefined = targetSlot?.id;
       if (!resolvedSlotId) {
@@ -531,11 +530,11 @@ export default function ProposalScheduleGrid({
     if (activeType === 'slot' && onMoveSlot && currentActive?.slot) {
       const slot = currentActive.slot;
       const overCellId = over.id as string;
-      if (!overCellId.startsWith('cell-')) return;
+      if (!overCellId.startsWith('cell__')) return;
 
-      const parts = overCellId.replace('cell-', '').split('-');
-      const newTimeRowMinute = parseInt(parts[parts.length - 1]);
-      const newTrainerId = parts.slice(0, parts.length - 1).join('-');
+      const parts = overCellId.split('__');
+      const newTrainerId = parts[1];
+      const newTimeRowMinute = parseInt(parts[2]);
 
       const oldStartMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
 
@@ -591,7 +590,7 @@ export default function ProposalScheduleGrid({
       </Tabs>
 
       {/* Time-row × Trainer-column grid */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="overflow-x-auto">
           <div
             className="relative grid gap-px bg-border/30 rounded-lg"
@@ -642,17 +641,30 @@ export default function ProposalScheduleGrid({
 
                   {/* Trainer cells for this time row */}
                   {trainers.map((trainer, colIdx) => {
-                    const cellKey = `${trainer.id}-${rowMinute}`;
+                    const cellKey = `${trainer.id}__${rowMinute}`;
                     const gridColumn = colIdx + 2;
 
-                    // Skip cells occupied by a multi-row slot from an earlier row
-                    if (occupiedCells.has(cellKey)) {
-                      return null; // Grid positioning means skipping is safe
+                    // Check if cell is occupied by a multi-row slot from an earlier row
+                    const occupyingSlotId = occupiedCells.get(cellKey);
+                    if (occupyingSlotId) {
+                      // Render an invisible droppable so dnd-kit has a valid target here
+                      const cellId = `cell__${trainer.id}__${rowMinute}`;
+                      return (
+                        <div
+                          key={cellKey}
+                          style={{ gridRow, gridColumn }}
+                          className="bg-background p-0.5"
+                        >
+                          <DroppableCell cellId={cellId} hasSlot={true}>
+                            {/* Occupied by slot spanning from above — invisible but droppable */}
+                          </DroppableCell>
+                        </div>
+                      );
                     }
 
                     const slot = slotLookup.get(cellKey);
                     const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
-                    const cellId = `cell-${trainer.id}-${rowMinute}`;
+                    const cellId = `cell__${trainer.id}__${rowMinute}`;
 
                     return (
                       <div
