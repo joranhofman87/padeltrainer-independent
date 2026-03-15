@@ -2,7 +2,7 @@
 
 > The marketplace connecting padel players with professional trainers in the Netherlands.
 
-llms-full.txt: https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt
+llms-full.txt: https://padeltrainer.ai/llms-full.txt
 
 ## Overview
 
@@ -17,6 +17,9 @@ PadelTrainer.ai is a specialized platform for the growing padel community in the
 This platform is available in:
 - **English**: https://padeltrainer.ai/en/
 - **Dutch (Nederlands)**: https://padeltrainer.ai/nl/
+- **Spanish (Español)**: https://padeltrainer.ai/es/
+- **German (Deutsch)**: https://padeltrainer.ai/de/
+- **French (Français)**: https://padeltrainer.ai/fr/
 
 ## Key Features
 
@@ -29,7 +32,7 @@ This platform is available in:
 ### For Trainers
 - Create and manage lesson types and pricing
 - Set availability and handle bookings
-- Accept payments via Stripe Connect
+- Accept payments via Mollie
 - Generate invoices and track earnings
 
 ### For Clubs
@@ -44,61 +47,71 @@ This platform is available in:
 - Dutch: https://padeltrainer.ai/nl/
 
 ### Find a Trainer
-- All Trainers (EN): https://padeltrainer.ai/en/trainers
-- All Trainers (NL): https://padeltrainer.ai/nl/trainers
-- Pricing (EN): https://padeltrainer.ai/en/pricing
-- Pricing (NL): https://padeltrainer.ai/nl/pricing
+- All Trainers: https://padeltrainer.ai/en/trainers
+- Pricing: https://padeltrainer.ai/en/pricing
 
 ### Popular Cities
-- Amsterdam (EN): https://padeltrainer.ai/en/trainers/amsterdam
-- Amsterdam (NL): https://padeltrainer.ai/nl/trainers/amsterdam
-- Rotterdam (EN): https://padeltrainer.ai/en/trainers/rotterdam
-- Rotterdam (NL): https://padeltrainer.ai/nl/trainers/rotterdam
-- Utrecht (EN): https://padeltrainer.ai/en/trainers/utrecht
-- Utrecht (NL): https://padeltrainer.ai/nl/trainers/utrecht
-- Den Haag (EN): https://padeltrainer.ai/en/trainers/den-haag
-- Den Haag (NL): https://padeltrainer.ai/nl/trainers/den-haag
-- Eindhoven (EN): https://padeltrainer.ai/en/trainers/eindhoven
-- Eindhoven (NL): https://padeltrainer.ai/nl/trainers/eindhoven
+- Amsterdam: https://padeltrainer.ai/en/trainers/amsterdam
+- Rotterdam: https://padeltrainer.ai/en/trainers/rotterdam
+- Utrecht: https://padeltrainer.ai/en/trainers/utrecht
+- Den Haag: https://padeltrainer.ai/en/trainers/den-haag
+- Eindhoven: https://padeltrainer.ai/en/trainers/eindhoven
 
 ### Browse Locations
-- All Locations (EN): https://padeltrainer.ai/en/locations
-- All Locations (NL): https://padeltrainer.ai/nl/locations
+- All Locations: https://padeltrainer.ai/en/locations
+
+### Learn & Improve
+- Learning Hub: https://padeltrainer.ai/en/learn
+- Padel Strokes: https://padeltrainer.ai/en/strokes
+- Padel Rules: https://padeltrainer.ai/en/padel-rules
+- Video Tips: https://padeltrainer.ai/en/video-tips
+- Topics: https://padeltrainer.ai/en/topics
+
+### Blog
+- Blog: https://padeltrainer.ai/en/blog
 
 ### Information
-- About Us (EN): https://padeltrainer.ai/en/about
-- About Us (NL): https://padeltrainer.ai/nl/about
-- Blog (EN): https://padeltrainer.ai/en/blog
-- Blog (NL): https://padeltrainer.ai/nl/blog
-- Partner With Us (EN): https://padeltrainer.ai/en/partner
-- Partner With Us (NL): https://padeltrainer.ai/nl/partner
-- Privacy Policy (EN): https://padeltrainer.ai/en/privacy
-- Privacy Policy (NL): https://padeltrainer.ai/nl/privacy
-- Terms of Service (EN): https://padeltrainer.ai/en/terms
-- Terms of Service (NL): https://padeltrainer.ai/nl/terms
+- About Us: https://padeltrainer.ai/en/about
+- Partner With Us: https://padeltrainer.ai/en/partner
+- Privacy Policy: https://padeltrainer.ai/en/privacy
+- Terms of Service: https://padeltrainer.ai/en/terms
 
 ## URL Structure
 
-- `/{lang}/` - Homepage with platform overview (lang: en or nl)
+- `/{lang}/` - Homepage with platform overview (lang: en, nl, es, de, fr)
 - `/{lang}/trainers` - Browse all trainers with filters
-- `/{lang}/trainers/:city` - Trainers in a specific city (e.g., /en/trainers/amsterdam)
+- `/{lang}/trainers/:city` - Trainers in a specific city
+- `/{lang}/trainers/region/:province` - Trainers in a province
 - `/{lang}/trainer/:id` - Individual trainer profile with booking
 - `/{lang}/locations` - Browse all padel clubs/locations
 - `/{lang}/locations/:slug` - Individual club page
-- `/{lang}/pricing` - Subscription plans for trainers
-- `/{lang}/about` - About the platform
+- `/{lang}/learn` - Learning hub with guides and articles
+- `/{lang}/learn/:slug` - Individual learning article
+- `/{lang}/strokes` - Padel stroke techniques
+- `/{lang}/strokes/:slug` - Individual stroke guide
+- `/{lang}/padel-rules` - Padel rules overview
+- `/{lang}/padel-rules/:slug` - Individual rule article
+- `/{lang}/video-tips` - Video tip library
+- `/{lang}/video-tips/:slug` - Individual video tip
+- `/{lang}/topics` - Topic clusters
+- `/{lang}/topics/:slug` - Individual topic page
 - `/{lang}/blog` - Padel tips and news
 - `/{lang}/blog/:slug` - Individual blog post
+- `/{lang}/pricing` - Subscription plans for trainers
+- `/{lang}/about` - About the platform
 - `/{lang}/partner` - Partnership inquiry form
 
 ## Technology
 
-Built with React, TypeScript, and Tailwind CSS. Backend powered by Supabase. Payments processed through Stripe Connect.
+Built with React, TypeScript, and Tailwind CSS. Content managed via Sanity CMS. Backend powered by Supabase. Payments processed through Mollie.
 
 ## Supported Languages
 
 - English (en)
 - Dutch (nl)
+- Spanish (es)
+- German (de)
+- French (fr)
 
 ## Contact
 
@@ -111,4 +124,4 @@ No public API is currently available. Trainer and location data is accessible th
 
 ## Sitemap
 
-For a complete list of all pages in both languages, see: https://padeltrainer.ai/sitemap.xml
+For a complete list of all pages in all languages, see: https://padeltrainer.ai/sitemap.xml
