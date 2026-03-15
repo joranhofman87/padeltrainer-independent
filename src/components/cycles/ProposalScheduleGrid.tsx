@@ -590,7 +590,7 @@ export default function ProposalScheduleGrid({
       </Tabs>
 
       {/* Time-row × Trainer-column grid */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="overflow-x-auto">
           <div
             className="relative grid gap-px bg-border/30 rounded-lg"
