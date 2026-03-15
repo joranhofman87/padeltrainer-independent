@@ -265,7 +265,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
             {/* Brand */}
             <div className="col-span-2 md:col-span-3 lg:col-span-1">
-              <LocalizedLink to="/" className="flex items-center gap-2 mb-4">
+              <LocalizedLink to="/" className="flex items-center gap-2 mb-4" aria-label="PadelTrainer.ai home">
                 <Logo className="h-6" />
               </LocalizedLink>
               <p className="text-sm text-muted-foreground">
