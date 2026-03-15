@@ -132,6 +132,15 @@ export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current ==
     h1,
     quickAnswer,
     pageType
+  },
+  "relatedStrokes": relatedStrokes[]-> {
+    _id,
+    title,
+    "slug": slug.current,
+    h1,
+    shortDescription,
+    category,
+    difficulty
   }
 }`;
 
