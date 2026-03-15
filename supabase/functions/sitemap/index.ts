@@ -183,6 +183,7 @@ Deno.serve(async (req) => {
         { path: '/padel-coaches', priority: '0.7', changefreq: 'weekly' },
         { path: '/video-tips', priority: '0.7', changefreq: 'weekly' },
         { path: '/learn', priority: '0.8', changefreq: 'weekly' },
+        { path: '/topics', priority: '0.7', changefreq: 'weekly' },
         { path: '/terms', priority: '0.3', changefreq: 'yearly' },
         { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
       ];
@@ -228,13 +229,16 @@ Deno.serve(async (req) => {
       }
 
       // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
-      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles] = await Promise.all([
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics] = await Promise.all([
         sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
         sanity.fetch<{ slug: string; seo: { indexable?: boolean } | null }[]>(
           `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current, seo }`
+        ),
+        sanity.fetch<{ slug: string; isIndexable: boolean }[]>(
+          `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true) }`
         ),
       ]);
 
@@ -254,6 +258,10 @@ Deno.serve(async (req) => {
         // Respect seo.indexable — exclude noindex pages from sitemap
         if (la.seo?.indexable === false) continue;
         xml += generateUrlEntry(`/learn/${la.slug}`, today, 'weekly', '0.7');
+      }
+      for (const topic of sanityTopics || []) {
+        if (!topic.isIndexable) continue;
+        xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
       }
 
       xml += '</urlset>';

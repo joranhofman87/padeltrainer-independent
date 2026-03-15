@@ -37,6 +37,8 @@ const VideoTips = lazy(() => import('@/pages/marketing/VideoTips'));
 const VideoTipPage = lazy(() => import('@/pages/marketing/VideoTipPage'));
 const LearnIndex = lazy(() => import('@/pages/marketing/LearnIndex'));
 const LearningArticlePage = lazy(() => import('@/pages/marketing/LearningArticlePage'));
+const TopicsIndex = lazy(() => import('@/pages/marketing/TopicsIndex'));
+const TopicPage = lazy(() => import('@/pages/marketing/TopicPage'));
 const Privacy = lazy(() => import('@/pages/marketing/Privacy'));
 const Terms = lazy(() => import('@/pages/marketing/Terms'));
 const Partner = lazy(() => import('@/pages/marketing/Partner'));
@@ -313,6 +315,8 @@ export function DomainRouter() {
           <Route path="video-tips/:slug" element={<VideoTipPage />} />
           <Route path="learn" element={<LearnIndex />} />
           <Route path="learn/:slug" element={<LearningArticlePage />} />
+          <Route path="topics" element={<TopicsIndex />} />
+          <Route path="topics/:slug" element={<TopicPage />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="terms" element={<Terms />} />
           <Route path="partner" element={<Partner />} />

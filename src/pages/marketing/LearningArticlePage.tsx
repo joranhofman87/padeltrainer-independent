@@ -294,7 +294,7 @@ export default function LearningArticlePage() {
               {article.topics.map(topic => (
                 <LocalizedLink
                   key={topic._id}
-                  to={`/learn?topic=${topic.slug}`}
+                  to={`/topics/${topic.slug}`}
                 >
                   <Badge variant="outline" className="text-xs hover:bg-accent transition-colors cursor-pointer">
                     {topic.title}
