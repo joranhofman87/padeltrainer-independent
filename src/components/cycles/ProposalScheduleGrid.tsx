@@ -12,10 +12,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, CalendarOff, Clock, GripVertical, Move } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
 interface ProposalScheduleGridProps {
   slots: SlotWithOccupancy[];
+  trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
   onPlayerClick?: (intakeRequestId: string) => void;
   onMovePlayer?: (assignmentId: string, newSlotId: string) => void;
   onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
