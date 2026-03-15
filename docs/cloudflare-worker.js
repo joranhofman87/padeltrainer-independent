@@ -115,6 +115,30 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const userAgent = request.headers.get('User-Agent') || '';
+
+    // --- Sitemap proxy: always proxy sitemap requests to the edge function ---
+    if (request.method === 'GET') {
+      const sitemapUrl = getSitemapProxyUrl(url.pathname, env.SITEMAP_FUNCTION_URL);
+      if (sitemapUrl) {
+        try {
+          const response = await fetch(sitemapUrl);
+          if (response.ok) {
+            return new Response(response.body, {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/xml; charset=utf-8',
+                'Cache-Control': 'public, max-age=3600',
+                'X-Sitemap-Source': 'edge-function',
+              },
+            });
+          }
+          console.error(`Sitemap edge function returned ${response.status} for ${url.pathname}`);
+        } catch (error) {
+          console.error(`Sitemap proxy error for ${url.pathname}:`, error);
+        }
+        // Fall through to origin (static fallback from GitHub Action)
+      }
+    }
     
     // Only intercept GET requests from bots on marketing pages
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
