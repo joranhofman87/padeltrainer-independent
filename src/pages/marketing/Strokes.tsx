@@ -31,6 +31,18 @@ export default function Strokes() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const itemListStructuredData = strokes.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Strokes & Techniques",
+    "itemListElement": strokes.map((s, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": s.h1 || s.title,
+      "url": `https://padeltrainer.ai/padel-strokes/${s.slug}`,
+    })),
+  } : undefined;
+
   // Group by category
   const grouped = strokes.reduce<Record<string, StrokeListItem[]>>((acc, s) => {
     const cat = s.category || 'Other';
