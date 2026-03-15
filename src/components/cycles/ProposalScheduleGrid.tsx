@@ -1,12 +1,16 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO } from 'date-fns';
-import { DndContext, DragOverlay, useDraggable, useDroppable, type DragStartEvent, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { format, parseISO, addMinutes } from 'date-fns';
+import {
+  DndContext, DragOverlay, useDraggable, useDroppable,
+  type DragStartEvent, type DragEndEvent,
+  PointerSensor, useSensor, useSensors,
+} from '@dnd-kit/core';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy } from '@/lib/cycles';
 
@@ -14,9 +18,12 @@ interface ProposalScheduleGridProps {
   slots: SlotWithOccupancy[];
   onPlayerClick?: (intakeRequestId: string) => void;
   onMovePlayer?: (assignmentId: string, newSlotId: string) => void;
+  onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
 }
 
 type Assignment = SlotWithOccupancy['current_assignments'][number];
+
+// ── Helpers ──
 
 function getDayName(isoString: string): string {
   return format(parseISO(isoString), 'EEEE');
@@ -49,11 +56,30 @@ function getOccupancyColor(current: number, max: number): string {
   return 'text-muted-foreground';
 }
 
+/** Snap a Date to the nearest 30-min boundary (floor) */
+function snapTo30(date: Date): Date {
+  const d = new Date(date);
+  d.setMinutes(Math.floor(d.getMinutes() / 30) * 30, 0, 0);
+  return d;
+}
+
+/** Convert minutes-since-midnight to "HH:mm" */
+function minutesToHHMM(minutes: number): string {
+  const h = String(Math.floor(minutes / 60)).padStart(2, '0');
+  const m = String(minutes % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+/** Get minutes-since-midnight from an ISO string */
+function isoToMinutes(iso: string): number {
+  const d = parseISO(iso);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 // ── Draggable Player Chip ──
+
 function DraggablePlayerChip({
-  assignment,
-  slotId,
-  onPlayerClick,
+  assignment, slotId, onPlayerClick,
 }: {
   assignment: Assignment;
   slotId: string;
@@ -61,7 +87,7 @@ function DraggablePlayerChip({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `player-${assignment.id}`,
-    data: { assignmentId: assignment.id, sourceSlotId: slotId, assignment },
+    data: { type: 'player', assignmentId: assignment.id, sourceSlotId: slotId, assignment },
   });
 
   const confScore = assignment.confidence_score || 0;
@@ -105,17 +131,19 @@ function DraggablePlayerChip({
   );
 }
 
-// ── Droppable Slot Card ──
-function DroppableSlotCard({
-  slot,
-  onPlayerClick,
+// ── Draggable Slot Card (sits inside a droppable cell) ──
+
+function DraggableSlotCard({
+  slot, onPlayerClick, canDragSlot,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
+  canDragSlot: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `slot-${slot.id}`,
-    data: { slotId: slot.id },
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `slot-drag-${slot.id}`,
+    data: { type: 'slot', slotId: slot.id, slot },
+    disabled: !canDragSlot,
   });
 
   const duration = getDurationMinutes(slot.start_time, slot.end_time);
@@ -127,27 +155,38 @@ function DroppableSlotCard({
 
   return (
     <Card
-      ref={setNodeRef}
+      ref={setDragRef}
       className={cn(
-        'border-l-4 transition-all',
+        'border-l-4 transition-all h-full',
         isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
-        isOver && !isFull && 'ring-2 ring-primary/50 shadow-lg scale-[1.02]',
-        isOver && isFull && 'ring-2 ring-destructive/50',
+        isDragging && 'opacity-30 scale-95',
       )}
     >
-      <CardContent className="p-3 space-y-2">
-        {/* Time + duration */}
+      <CardContent className="p-2.5 space-y-1.5">
+        {/* Drag handle + time */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">
-            {getTimeRange(slot.start_time, slot.end_time)}
-          </span>
+          <div className="flex items-center gap-1">
+            {canDragSlot && (
+              <button
+                {...listeners}
+                {...attributes}
+                className="cursor-grab active:cursor-grabbing p-0.5 touch-none text-muted-foreground hover:text-foreground"
+                aria-label="Drag slot"
+              >
+                <Move className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <span className="text-xs font-semibold">
+              {getTimeRange(slot.start_time, slot.end_time)}
+            </span>
+          </div>
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
             <Clock className="h-2.5 w-2.5" />
             {duration}'
           </Badge>
         </div>
 
-        {/* Occupancy + confidence */}
+        {/* Occupancy */}
         <div className="flex items-center justify-between text-xs">
           <span className={cn('flex items-center gap-1 font-medium', getOccupancyColor(currentP, maxP))}>
             <Users className="h-3 w-3" />
@@ -157,13 +196,13 @@ function DroppableSlotCard({
             )}
           </span>
           {avgConf > 0 && (
-            <span className="text-muted-foreground">ø {avgConf}%</span>
+            <span className="text-muted-foreground text-[10px]">ø {avgConf}%</span>
           )}
         </div>
 
         {/* Player chips */}
         {currentP > 0 && (
-          <div className="flex flex-col gap-1 pt-1">
+          <div className="flex flex-col gap-1">
             {slot.current_assignments.map(assignment => (
               <DraggablePlayerChip
                 key={assignment.id}
@@ -176,14 +215,44 @@ function DroppableSlotCard({
         )}
 
         {isEmpty && (
-          <p className="text-xs text-muted-foreground italic pt-1">No players assigned</p>
+          <p className="text-[10px] text-muted-foreground italic">No players</p>
         )}
       </CardContent>
     </Card>
   );
 }
 
-// ── Drag Overlay (ghost while dragging) ──
+// ── Droppable Cell (trainer × time-row intersection) ──
+
+function DroppableCell({
+  cellId, children, hasSlot,
+}: {
+  cellId: string;
+  children?: React.ReactNode;
+  hasSlot: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: cellId,
+    data: { type: 'cell', cellId },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
+        !hasSlot && 'border-border/30',
+        isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
+        isOver && hasSlot && 'ring-1 ring-primary/30',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ── Drag Overlays ──
+
 function PlayerDragOverlay({ assignment }: { assignment: Assignment }) {
   const confScore = assignment.confidence_score || 0;
   const confClass = confScore >= 80
@@ -208,14 +277,48 @@ function PlayerDragOverlay({ assignment }: { assignment: Assignment }) {
   );
 }
 
+function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
+  const duration = getDurationMinutes(slot.start_time, slot.end_time);
+  const currentP = slot.current_assignments.length;
+  const maxP = slot.max_participants || 4;
+
+  return (
+    <Card className="border-l-4 border-l-primary shadow-xl w-[220px]">
+      <CardContent className="p-2.5 space-y-1">
+        <div className="flex items-center gap-1">
+          <Move className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold">
+            {getTimeRange(slot.start_time, slot.end_time)}
+          </span>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5 ml-auto">
+            <Clock className="h-2.5 w-2.5" />{duration}'
+          </Badge>
+        </div>
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <Users className="h-3 w-3" />{currentP}/{maxP} players
+        </span>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Grid ──
-export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlayer }: ProposalScheduleGridProps) {
+
+export default function ProposalScheduleGrid({
+  slots, onPlayerClick, onMovePlayer, onMoveSlot,
+}: ProposalScheduleGridProps) {
   const { t } = useTranslation('cycles');
-  const [activeAssignment, setActiveAssignment] = useState<Assignment | null>(null);
+  const [activeData, setActiveData] = useState<{
+    type: 'player' | 'slot';
+    assignment?: Assignment;
+    slot?: SlotWithOccupancy;
+  } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
+
+  const canDragSlot = !!onMoveSlot;
 
   // Group by day
   const dayGroups = useMemo(() => {
@@ -225,9 +328,6 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
       const existing = groups.get(day) || [];
       existing.push(slot);
       groups.set(day, existing);
-    });
-    groups.forEach(daySlots => {
-      daySlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
     });
     return groups;
   }, [slots]);
@@ -247,43 +347,161 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
 
   const daySlots = useMemo(() => dayGroups.get(selectedDay) || [], [dayGroups, selectedDay]);
 
-  // Group by trainer (for columns)
-  const trainerColumns = useMemo(() => {
-    const groups = new Map<string, { trainer: { id: string; name: string; avatar: string | null }; slots: SlotWithOccupancy[] }>();
+  // Get unique trainers for columns
+  const trainers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; avatar: string | null }>();
     daySlots.forEach(slot => {
-      const existing = groups.get(slot.trainer_id);
-      if (existing) {
-        existing.slots.push(slot);
-      } else {
-        groups.set(slot.trainer_id, {
-          trainer: { id: slot.trainer_id, name: slot.trainer_name, avatar: slot.trainer_avatar },
-          slots: [slot],
+      if (!map.has(slot.trainer_id)) {
+        map.set(slot.trainer_id, {
+          id: slot.trainer_id,
+          name: slot.trainer_name,
+          avatar: slot.trainer_avatar,
         });
       }
     });
-    return Array.from(groups.values());
+    return Array.from(map.values());
   }, [daySlots]);
+
+  // Compute time rows (30-min increments covering all slots)
+  const timeRows = useMemo(() => {
+    if (daySlots.length === 0) return [];
+
+    let earliest = Infinity;
+    let latest = -Infinity;
+    daySlots.forEach(slot => {
+      const startMin = isoToMinutes(slot.start_time);
+      const endMin = isoToMinutes(slot.end_time);
+      const snappedStart = Math.floor(startMin / 30) * 30;
+      const snappedEnd = Math.ceil(endMin / 30) * 30;
+      if (snappedStart < earliest) earliest = snappedStart;
+      if (snappedEnd > latest) latest = snappedEnd;
+    });
+
+    const rows: number[] = [];
+    for (let m = earliest; m < latest; m += 30) {
+      rows.push(m);
+    }
+    return rows;
+  }, [daySlots]);
+
+  // Build a lookup: trainerId -> timeRowMinute -> slot
+  const slotLookup = useMemo(() => {
+    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}-${rowMinute}`
+    daySlots.forEach(slot => {
+      const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+      // Place slot at its start row, keyed by trainer
+      const key = `${slot.trainer_id}-${startMin}`;
+      lookup.set(key, slot);
+    });
+    return lookup;
+  }, [daySlots]);
+
+  // For each slot, compute how many 30-min rows it spans
+  const slotRowSpans = useMemo(() => {
+    const spans = new Map<string, number>();
+    daySlots.forEach(slot => {
+      const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+      const endMin = Math.ceil(isoToMinutes(slot.end_time) / 30) * 30;
+      spans.set(slot.id, Math.max(1, (endMin - startMin) / 30));
+    });
+    return spans;
+  }, [daySlots]);
+
+  // Track which cells are "occupied" by a multi-row slot (so we skip rendering them)
+  const occupiedCells = useMemo(() => {
+    const occupied = new Set<string>();
+    daySlots.forEach(slot => {
+      const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+      const span = slotRowSpans.get(slot.id) || 1;
+      // Mark all rows except the first as occupied
+      for (let i = 1; i < span; i++) {
+        occupied.add(`${slot.trainer_id}-${startMin + i * 30}`);
+      }
+    });
+    return occupied;
+  }, [daySlots, slotRowSpans]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current;
-    if (data?.assignment) {
-      setActiveAssignment(data.assignment as Assignment);
+    if (!data) return;
+    if (data.type === 'player') {
+      setActiveData({ type: 'player', assignment: data.assignment as Assignment });
+    } else if (data.type === 'slot') {
+      setActiveData({ type: 'slot', slot: data.slot as SlotWithOccupancy });
     }
   }, []);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveAssignment(null);
+    const currentActive = activeData;
+    setActiveData(null);
     const { active, over } = event;
-    if (!over || !onMovePlayer) return;
+    if (!over) return;
 
-    const assignmentId = active.data.current?.assignmentId as string;
-    const sourceSlotId = active.data.current?.sourceSlotId as string;
-    const targetSlotId = over.data.current?.slotId as string;
+    const activeType = active.data.current?.type;
 
-    if (!assignmentId || !targetSlotId || sourceSlotId === targetSlotId) return;
+    // Player drag → drop onto a slot-based droppable cell
+    if (activeType === 'player' && onMovePlayer) {
+      const assignmentId = active.data.current?.assignmentId as string;
+      const sourceSlotId = active.data.current?.sourceSlotId as string;
 
-    onMovePlayer(assignmentId, targetSlotId);
-  }, [onMovePlayer]);
+      // The target cell might contain a slot — extract the target slot id
+      const overCellId = over.id as string;
+      if (!overCellId.startsWith('cell-')) return;
+
+      // Parse cell-{trainerId}-{timeRowMinute}
+      const parts = overCellId.replace('cell-', '').split('-');
+      // trainerId is a UUID (has dashes), timeRow is the last part
+      const timeRow = parseInt(parts[parts.length - 1]);
+      const trainerId = parts.slice(0, parts.length - 1).join('-');
+
+      // Find the slot at this cell
+      const targetSlot = slotLookup.get(`${trainerId}-${timeRow}`);
+      // Also check if any slot spans into this row
+      let resolvedSlotId: string | undefined = targetSlot?.id;
+      if (!resolvedSlotId) {
+        // Check if a slot from an earlier row spans into this one
+        for (const slot of daySlots) {
+          if (slot.trainer_id !== trainerId) continue;
+          const sMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+          const span = slotRowSpans.get(slot.id) || 1;
+          if (timeRow >= sMin && timeRow < sMin + span * 30) {
+            resolvedSlotId = slot.id;
+            break;
+          }
+        }
+      }
+
+      if (!resolvedSlotId || resolvedSlotId === sourceSlotId) return;
+      onMovePlayer(assignmentId, resolvedSlotId);
+      return;
+    }
+
+    // Slot drag → move to new cell
+    if (activeType === 'slot' && onMoveSlot && currentActive?.slot) {
+      const slot = currentActive.slot;
+      const overCellId = over.id as string;
+      if (!overCellId.startsWith('cell-')) return;
+
+      const parts = overCellId.replace('cell-', '').split('-');
+      const newTimeRowMinute = parseInt(parts[parts.length - 1]);
+      const newTrainerId = parts.slice(0, parts.length - 1).join('-');
+
+      const oldStartMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+
+      // No change?
+      if (newTrainerId === slot.trainer_id && newTimeRowMinute === oldStartMin) return;
+
+      // Compute new start/end preserving duration
+      const duration = getDurationMinutes(slot.start_time, slot.end_time);
+      const refDate = parseISO(slot.start_time);
+      // Build new date: same date, new time
+      const newStart = new Date(refDate);
+      newStart.setHours(Math.floor(newTimeRowMinute / 60), newTimeRowMinute % 60, 0, 0);
+      const newEnd = addMinutes(newStart, duration);
+
+      onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
+    }
+  }, [activeData, onMovePlayer, onMoveSlot, slotLookup, daySlots, slotRowSpans]);
 
   if (slots.length === 0) {
     return (
@@ -321,48 +539,93 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
         </TabsList>
       </Tabs>
 
-      {/* Trainer columns with drag & drop */}
+      {/* Time-row × Trainer-column grid */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: `repeat(${Math.min(trainerColumns.length, 4)}, minmax(240px, 1fr))`,
-          }}
-        >
-          {trainerColumns.map(({ trainer, slots: trainerSlots }) => (
-            <div key={trainer.id} className="space-y-3">
-              {/* Trainer column header */}
-              <div className="flex items-center gap-2 px-1 pb-2 border-b border-border">
-                <Avatar className="h-7 w-7">
+        <div className="overflow-x-auto">
+          <div
+            className="grid gap-px bg-border/30 rounded-lg"
+            style={{
+              gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
+              gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
+            }}
+          >
+            {/* Header: empty corner */}
+            <div className="bg-background rounded-tl-lg" />
+
+            {/* Header: trainer columns */}
+            {trainers.map(trainer => (
+              <div key={trainer.id} className="bg-background p-2 flex items-center gap-2 border-b border-border">
+                <Avatar className="h-6 w-6">
                   <AvatarImage src={trainer.avatar || undefined} />
-                  <AvatarFallback className="text-xs">
+                  <AvatarFallback className="text-[10px]">
                     {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{trainer.name}</p>
+                  <p className="text-xs font-semibold truncate">{trainer.name}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {trainerSlots.length} {trainerSlots.length === 1 ? 'slot' : 'slots'} · {trainerSlots.reduce((s, sl) => s + sl.current_assignments.length, 0)} players
+                    {daySlots.filter(s => s.trainer_id === trainer.id).length} slots
                   </p>
                 </div>
               </div>
+            ))}
 
-              {/* Slot cards stacked vertically */}
-              <div className="space-y-2">
-                {trainerSlots.map(slot => (
-                  <DroppableSlotCard
-                    key={slot.id}
-                    slot={slot}
-                    onPlayerClick={onPlayerClick}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            {/* Grid body: time rows */}
+            {timeRows.map(rowMinute => (
+              <>
+                {/* Time label */}
+                <div
+                  key={`time-${rowMinute}`}
+                  className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
+                >
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {minutesToHHMM(rowMinute)}
+                  </span>
+                </div>
+
+                {/* Trainer cells for this time row */}
+                {trainers.map(trainer => {
+                  const cellKey = `${trainer.id}-${rowMinute}`;
+
+                  // Skip cells occupied by a multi-row slot from an earlier row
+                  if (occupiedCells.has(cellKey)) {
+                    return null; // This cell is "covered" by a slot card from a previous row
+                  }
+
+                  const slot = slotLookup.get(cellKey);
+                  const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
+                  const cellId = `cell-${trainer.id}-${rowMinute}`;
+
+                  return (
+                    <div
+                      key={cellKey}
+                      style={rowSpan > 1 ? { gridRow: `span ${rowSpan}` } : undefined}
+                      className="bg-background p-0.5"
+                    >
+                      <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                        {slot && (
+                          <DraggableSlotCard
+                            slot={slot}
+                            onPlayerClick={onPlayerClick}
+                            canDragSlot={canDragSlot}
+                          />
+                        )}
+                      </DroppableCell>
+                    </div>
+                  );
+                })}
+              </>
+            ))}
+          </div>
         </div>
 
         <DragOverlay dropAnimation={null}>
-          {activeAssignment && <PlayerDragOverlay assignment={activeAssignment} />}
+          {activeData?.type === 'player' && activeData.assignment && (
+            <PlayerDragOverlay assignment={activeData.assignment} />
+          )}
+          {activeData?.type === 'slot' && activeData.slot && (
+            <SlotDragOverlay slot={activeData.slot} />
+          )}
         </DragOverlay>
       </DndContext>
     </div>
