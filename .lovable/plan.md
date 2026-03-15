@@ -1,29 +1,31 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+# Fix: Proposal Slot Generation & Schedule Grid
 
-Implemented on 2026-03-14.
+## Problems Identified
 
-## What Changed
+1. **182 slots created** — The slot generation creates slots for *every week* from start to end date. With a window like Monday 09:00–17:00 and durations of 60 + 90 minutes, that's 13 slots × ~14 weeks = 182 slots. These all get grouped under a single "Mon" tab since `ProposalScheduleGrid` groups by weekday name, making it unmanageable.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+2. **Day tabs = trainer switching** — If trainer A only has Monday windows and trainer B only has Wednesday windows, the day tabs effectively act as trainer switches. The grid doesn't separate "which week" so it collapses all Mondays across 14 weeks into one view.
 
-## Sanity Content Types Needed in Studio
+## Proposed Fixes
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+### A. Edge function: Generate only 1 week of slots (`generate-proposals/index.ts`)
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+The schedule view shows a weekly pattern — there's no need to generate slots for every week of the cycle. Change the slot generation loop (lines 564-604) to only generate slots for the **first week** after `startDate` that matches each day. Remove the `while (current <= cycleEndDate)` weekly loop — just find the first occurrence of each weekday and create slots for that single week only.
 
-## What Stays Unchanged
+This turns 182 slots into ~13 (one week), which is the actual schedule pattern the user wants to review and assign players to.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### B. ProposalScheduleGrid: Show trainer name in day tabs when relevant
+
+Update the day tabs (lines 118-133) to also show which trainer(s) have slots on that day, so switching days doesn't feel like "switching trainers" without context. Add trainer initials or count next to the day badge when multiple trainers are involved.
+
+### C. Slot count shows per-day count (already correct)
+
+The trainer header already shows `trainerSlots.length` which is filtered per day. With fix A (fewer slots), the count will be reasonable (e.g., 8-13 instead of 182).
+
+## Files to Change
+
+1. **`supabase/functions/generate-proposals/index.ts`** — Remove the weekly loop; generate 1 week of template slots only
+2. **`src/components/cycles/ProposalScheduleGrid.tsx`** — Minor: show trainer context in day tabs
+
