@@ -20,6 +20,7 @@ import {
   resetProposals,
   movePlayerAssignment,
   moveSlot,
+  swapSlots,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -354,6 +355,18 @@ export default function TrainerIntakeRequests() {
             try {
               await moveSlot(slotId, newTrainerId, newStartTime, newEndTime);
               toast.success(t('proposals.slotMoved', 'Slot moved successfully'));
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+            }}
+          onSwapSlots={async (slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd) => {
+            try {
+              await swapSlots(slotAId, slotATrainer, slotAStart, slotAEnd, slotBId, slotBTrainer, slotBStart, slotBEnd);
+              toast.success(t('proposals.slotsSwapped', 'Slots swapped successfully'));
               if (selectedCycleId && selectedCycleId !== 'all') {
                 const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
                 setScheduleSlots(updatedSlots);
