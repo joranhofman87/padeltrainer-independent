@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, addMinutes, type Locale } from 'date-fns';
@@ -12,8 +12,9 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
@@ -27,9 +28,16 @@ interface ProposalScheduleGridProps {
     slotAId: string, slotANewTrainerId: string, slotANewStart: string, slotANewEnd: string,
     slotBId: string, slotBNewTrainerId: string, slotBNewStart: string, slotBNewEnd: string,
   ) => void;
+  onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
 }
 
 type Assignment = SlotWithOccupancy['current_assignments'][number];
+
+// ── Undo history item ──
+interface UndoItem {
+  label: string;
+  previousSlots: SlotWithOccupancy[];
+}
 
 // ── Helpers ──
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS };
@@ -41,10 +49,9 @@ function getDayKey(isoString: string): string {
 
 /** Get localized day name for display */
 function getLocalizedDayName(englishDay: string, locale: Locale): string {
-  // Find the next occurrence of this weekday to format it
   const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(englishDay);
   if (dayIndex === -1) return englishDay;
-  const ref = new Date(2024, 0, 7 + dayIndex); // Jan 7 2024 is a Sunday
+  const ref = new Date(2024, 0, 7 + dayIndex);
   return format(ref, 'EEEE', { locale });
 }
 
@@ -75,13 +82,6 @@ function getOccupancyColor(current: number, max: number): string {
   return 'text-muted-foreground';
 }
 
-/** Snap a Date to the nearest 30-min boundary (floor) */
-function snapTo30(date: Date): Date {
-  const d = new Date(date);
-  d.setMinutes(Math.floor(d.getMinutes() / 30) * 30, 0, 0);
-  return d;
-}
-
 /** Convert minutes-since-midnight to "HH:mm" */
 function minutesToHHMM(minutes: number): string {
   const h = String(Math.floor(minutes / 60)).padStart(2, '0');
@@ -93,6 +93,28 @@ function minutesToHHMM(minutes: number): string {
 function isoToMinutes(iso: string): number {
   const d = parseISO(iso);
   return d.getHours() * 60 + d.getMinutes();
+}
+
+// ── Boundary check: is a time range within trainer's availability window? ──
+function isWithinTrainerWindow(
+  trainerId: string,
+  startMin: number,
+  endMin: number,
+  dayLower: string,
+  windows?: TrainerAvailabilityWindow[],
+): boolean {
+  if (!windows || windows.length === 0) return true; // No windows configured = no restriction
+  const trainerWindows = windows.find(tw => tw.trainerId === trainerId);
+  if (!trainerWindows) return true; // Trainer not in config = allow
+  const dayWindows = trainerWindows.windows.filter(w => w.day.toLowerCase() === dayLower);
+  if (dayWindows.length === 0) return false; // Trainer doesn't work this day
+  return dayWindows.some(w => {
+    const [sh, sm] = w.start.split(':').map(Number);
+    const [eh, em] = w.end.split(':').map(Number);
+    const wStart = sh * 60 + (sm || 0);
+    const wEnd = eh * 60 + (em || 0);
+    return startMin >= wStart && endMin <= wEnd;
+  });
 }
 
 // ── Draggable Player Chip ──
@@ -150,7 +172,7 @@ function DraggablePlayerChip({
   );
 }
 
-// ── Draggable Slot Card (sits inside a droppable cell) ──
+// ── Draggable Slot Card ──
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
@@ -241,7 +263,7 @@ function DraggableSlotCard({
   );
 }
 
-// ── Droppable Cell (trainer × time-row intersection) ──
+// ── Droppable Cell ──
 
 function DroppableCell({
   cellId, children, hasSlot,
@@ -324,7 +346,7 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onUndo,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -333,6 +355,26 @@ export default function ProposalScheduleGrid({
     assignment?: Assignment;
     slot?: SlotWithOccupancy;
   } | null>(null);
+
+  // Undo stack — stores previous slot snapshots
+  const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
+  const previousSlotsRef = useRef<SlotWithOccupancy[]>(slots);
+
+  // Keep ref in sync but don't trigger re-renders
+  useEffect(() => {
+    previousSlotsRef.current = slots;
+  }, [slots]);
+
+  const pushUndo = useCallback((label: string) => {
+    setUndoStack(prev => [...prev.slice(-9), { label, previousSlots: previousSlotsRef.current }]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    onUndo?.(last.previousSlots);
+  }, [undoStack, onUndo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -345,7 +387,6 @@ export default function ProposalScheduleGrid({
     const days = new Set<string>();
     trainerAvailabilityWindows?.forEach(tw => {
       tw.windows.forEach(w => {
-        // Capitalize first letter to match getDayName format (e.g. "monday" → "Monday")
         const capitalized = w.day.charAt(0).toUpperCase() + w.day.slice(1).toLowerCase();
         days.add(capitalized);
       });
@@ -392,7 +433,7 @@ export default function ProposalScheduleGrid({
       .filter(tw => tw.dayWindows.length > 0);
   }, [trainerAvailabilityWindows, selectedDay]);
 
-  // Get unique trainers for columns (from slots + availability windows)
+  // Get unique trainers for columns
   const trainers = useMemo(() => {
     const map = new Map<string, { id: string; name: string; avatar: string | null }>();
     daySlots.forEach(slot => {
@@ -404,7 +445,6 @@ export default function ProposalScheduleGrid({
         });
       }
     });
-    // Add trainers from availability windows that aren't already in the map
     dayAvailabilityWindows.forEach(tw => {
       if (!map.has(tw.trainerId)) {
         map.set(tw.trainerId, {
@@ -417,7 +457,7 @@ export default function ProposalScheduleGrid({
     return Array.from(map.values());
   }, [daySlots, dayAvailabilityWindows]);
 
-  // Compute time rows (30-min increments covering all slots AND availability windows)
+  // Compute time rows
   const timeRows = useMemo(() => {
     let earliest = Infinity;
     let latest = -Infinity;
@@ -431,7 +471,6 @@ export default function ProposalScheduleGrid({
       if (snappedEnd > latest) latest = snappedEnd;
     });
 
-    // Also include boundaries from availability windows
     dayAvailabilityWindows.forEach(tw => {
       tw.dayWindows.forEach(w => {
         const [sh, sm] = w.start.split(':').map(Number);
@@ -456,7 +495,7 @@ export default function ProposalScheduleGrid({
 
   // Build a lookup: trainerId -> timeRowMinute -> slot
   const slotLookup = useMemo(() => {
-    const lookup = new Map<string, SlotWithOccupancy>(); // key: `${trainerId}__${rowMinute}`
+    const lookup = new Map<string, SlotWithOccupancy>();
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
       const key = `${slot.trainer_id}__${startMin}`;
@@ -465,7 +504,7 @@ export default function ProposalScheduleGrid({
     return lookup;
   }, [daySlots]);
 
-  // For each slot, compute how many 30-min rows it spans
+  // Row spans
   const slotRowSpans = useMemo(() => {
     const spans = new Map<string, number>();
     daySlots.forEach(slot => {
@@ -476,13 +515,12 @@ export default function ProposalScheduleGrid({
     return spans;
   }, [daySlots]);
 
-  // Track which cells are "occupied" by a multi-row slot (so we skip rendering them)
+  // Occupied cells
   const occupiedCells = useMemo(() => {
-    const occupied = new Map<string, string>(); // cellKey -> slotId that covers it
+    const occupied = new Map<string, string>();
     daySlots.forEach(slot => {
       const startMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
       const span = slotRowSpans.get(slot.id) || 1;
-      // Mark all rows except the first as occupied
       for (let i = 1; i < span; i++) {
         occupied.set(`${slot.trainer_id}__${startMin + i * 30}`, slot.id);
       }
@@ -507,40 +545,57 @@ export default function ProposalScheduleGrid({
     if (!over) return;
 
     const activeType = active.data.current?.type;
+    const selectedDayLower = selectedDay.toLowerCase();
 
     // Player drag → drop onto a slot-based droppable cell
     if (activeType === 'player' && onMovePlayer) {
       const assignmentId = active.data.current?.assignmentId as string;
       const sourceSlotId = active.data.current?.sourceSlotId as string;
 
-      // The target cell might contain a slot — extract the target slot id
       const overCellId = over.id as string;
       if (!overCellId.startsWith('cell__')) return;
 
-      // Parse cell__{trainerId}__{timeRowMinute}
       const parts = overCellId.split('__');
       const trainerId = parts[1];
       const timeRow = parseInt(parts[2]);
 
       // Find the slot at this cell
       const targetSlot = slotLookup.get(`${trainerId}__${timeRow}`);
-      // Also check if any slot spans into this row
-      let resolvedSlotId: string | undefined = targetSlot?.id;
-      if (!resolvedSlotId) {
-        // Check if a slot from an earlier row spans into this one
+      let resolvedSlot: SlotWithOccupancy | undefined = targetSlot;
+      if (!resolvedSlot) {
         for (const slot of daySlots) {
           if (slot.trainer_id !== trainerId) continue;
           const sMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
           const span = slotRowSpans.get(slot.id) || 1;
           if (timeRow >= sMin && timeRow < sMin + span * 30) {
-            resolvedSlotId = slot.id;
+            resolvedSlot = slot;
             break;
           }
         }
       }
 
-      if (!resolvedSlotId || resolvedSlotId === sourceSlotId) return;
-      onMovePlayer(assignmentId, resolvedSlotId);
+      if (!resolvedSlot || resolvedSlot.id === sourceSlotId) return;
+
+      // #3: Player duration compatibility check
+      // Find the source slot to compare durations
+      const sourceSlot = daySlots.find(s => s.id === sourceSlotId);
+      if (sourceSlot) {
+        const sourceDuration = getDurationMinutes(sourceSlot.start_time, sourceSlot.end_time);
+        const targetDuration = getDurationMinutes(resolvedSlot.start_time, resolvedSlot.end_time);
+        if (sourceDuration !== targetDuration) {
+          toast.warning(
+            t('proposals.durationMismatch', {
+              defaultValue: 'Duration mismatch: player is in a {{source}}min slot, target is {{target}}min',
+              source: sourceDuration,
+              target: targetDuration,
+            })
+          );
+          return;
+        }
+      }
+
+      pushUndo(t('proposals.undoPlayerMove', { defaultValue: 'Player move' }));
+      onMovePlayer(assignmentId, resolvedSlot.id);
       return;
     }
 
@@ -562,14 +617,20 @@ export default function ProposalScheduleGrid({
       // Compute new start/end preserving duration
       const duration = getDurationMinutes(slot.start_time, slot.end_time);
       const refDate = parseISO(slot.start_time);
-      // Build new date: same date, new time
       const newStart = new Date(refDate);
       newStart.setHours(Math.floor(newTimeRowMinute / 60), newTimeRowMinute % 60, 0, 0);
       const newEnd = addMinutes(newStart, duration);
 
-      // Overlap detection: check if another slot occupies the same trainer/time range
       const newStartMin = newTimeRowMinute;
       const newEndMin = newTimeRowMinute + duration;
+
+      // #6: Boundary check — is the new position within the trainer's availability window?
+      if (!isWithinTrainerWindow(newTrainerId, newStartMin, newEndMin, selectedDayLower, trainerAvailabilityWindows)) {
+        toast.warning(t('proposals.outsideAvailability', { defaultValue: 'Cannot move here — outside trainer\'s availability window' }));
+        return;
+      }
+
+      // Overlap detection
       const overlappingSlot = daySlots.find(other => {
         if (other.id === slot.id) return false;
         if (other.trainer_id !== newTrainerId) return false;
@@ -581,10 +642,32 @@ export default function ProposalScheduleGrid({
       if (overlappingSlot) {
         // If the overlapping slot is empty (no players), allow swap
         if (overlappingSlot.current_assignments.length === 0 && onSwapSlots) {
-          // Swap: dragged slot goes to new position, empty slot goes to dragged slot's old position
+          // #2: Duration validation on swap
+          const overlappingDuration = getDurationMinutes(overlappingSlot.start_time, overlappingSlot.end_time);
+          if (overlappingDuration !== duration) {
+            toast.warning(
+              t('proposals.swapDurationMismatch', {
+                defaultValue: 'Cannot swap — slots have different durations ({{a}}min vs {{b}}min)',
+                a: duration,
+                b: overlappingDuration,
+              })
+            );
+            return;
+          }
+
           const oldStart = slot.start_time;
           const oldEnd = slot.end_time;
           const oldTrainerId = slot.trainer_id;
+
+          // #6: Also check boundary for the empty slot going to old position
+          const oldSlotStartMin = isoToMinutes(oldStart);
+          const oldSlotEndMin = oldSlotStartMin + overlappingDuration;
+          if (!isWithinTrainerWindow(oldTrainerId, oldSlotStartMin, oldSlotEndMin, selectedDayLower, trainerAvailabilityWindows)) {
+            toast.warning(t('proposals.outsideAvailability', { defaultValue: 'Cannot move here — outside trainer\'s availability window' }));
+            return;
+          }
+
+          pushUndo(t('proposals.undoSlotSwap', { defaultValue: 'Slot swap' }));
           onSwapSlots(
             slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString(),
             overlappingSlot.id, oldTrainerId, oldStart, oldEnd,
@@ -595,9 +678,10 @@ export default function ProposalScheduleGrid({
         return;
       }
 
+      pushUndo(t('proposals.undoSlotMove', { defaultValue: 'Slot move' }));
       onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
     }
-  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, slotLookup, daySlots, slotRowSpans]);
+  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, slotLookup, daySlots, slotRowSpans, selectedDay, trainerAvailabilityWindows, pushUndo, t]);
 
   if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
@@ -617,23 +701,38 @@ export default function ProposalScheduleGrid({
 
   return (
     <div className="space-y-4">
-      {/* Day tabs */}
-      <Tabs value={selectedDay} onValueChange={setSelectedDay}>
-        <TabsList className="flex-wrap h-auto gap-1">
-          {availableDays.map(day => {
-            const dayS = dayGroups.get(day) || [];
-            const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
-            return (
-              <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
-                {getLocalizedDayName(day, dateFnsLocale)}
-                <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
-                  {playerCount}
-                </Badge>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
+      {/* Day tabs + Undo button */}
+      <div className="flex items-center justify-between gap-3">
+        <Tabs value={selectedDay} onValueChange={setSelectedDay} className="flex-1">
+          <TabsList className="flex-wrap h-auto gap-1">
+            {availableDays.map(day => {
+              const dayS = dayGroups.get(day) || [];
+              const playerCount = dayS.reduce((sum, s) => sum + s.current_assignments.length, 0);
+              return (
+                <TabsTrigger key={day} value={day} className="text-xs sm:text-sm">
+                  {getLocalizedDayName(day, dateFnsLocale)}
+                  <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0 h-4">
+                    {playerCount}
+                  </Badge>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
+
+        {undoStack.length > 0 && onUndo && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleUndo}
+            className="shrink-0 gap-1.5"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            {t('common:undo', { defaultValue: 'Undo' })}
+            <span className="text-muted-foreground text-[10px]">({undoStack[undoStack.length - 1].label})</span>
+          </Button>
+        )}
+      </div>
 
       {/* Time-row × Trainer-column grid */}
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -670,9 +769,9 @@ export default function ProposalScheduleGrid({
               </div>
             ))}
 
-            {/* Grid body: time rows with explicit positioning */}
+            {/* Grid body */}
             {timeRows.map((rowMinute, rowIdx) => {
-              const gridRow = rowIdx + 2; // +2 because row 1 is the header
+              const gridRow = rowIdx + 2;
               return (
                 <React.Fragment key={`row-${rowMinute}`}>
                   {/* Time label */}
@@ -685,15 +784,13 @@ export default function ProposalScheduleGrid({
                     </span>
                   </div>
 
-                  {/* Trainer cells for this time row */}
+                  {/* Trainer cells */}
                   {trainers.map((trainer, colIdx) => {
                     const cellKey = `${trainer.id}__${rowMinute}`;
                     const gridColumn = colIdx + 2;
 
-                    // Check if cell is occupied by a multi-row slot from an earlier row
                     const occupyingSlotId = occupiedCells.get(cellKey);
                     if (occupyingSlotId) {
-                      // Render an invisible droppable so dnd-kit has a valid target here
                       const cellId = `cell__${trainer.id}__${rowMinute}`;
                       return (
                         <div
@@ -702,7 +799,7 @@ export default function ProposalScheduleGrid({
                           className="bg-background p-0.5"
                         >
                           <DroppableCell cellId={cellId} hasSlot={true}>
-                            {/* Occupied by slot spanning from above — invisible but droppable */}
+                            {/* Occupied by slot spanning from above */}
                           </DroppableCell>
                         </div>
                       );
