@@ -996,3 +996,109 @@ async function renderBlogListing(lang: string): Promise<string> {
 
   return htmlDoc({ title, description, url: '/blog', lang, body });
 }
+
+async function renderTopicsListing(lang: string): Promise<string> {
+  const query = `*[_type == "topic" && isIndexable != false && !(_id in path("drafts.**"))] | order(title asc) {
+    title, "slug": slug.current, description
+  }`;
+  const topics = await sanityFetch(query) || [];
+
+  const title = 'Padel Topics — Explore All Topics';
+  const description = 'Browse padel topics including serve, volley, tactics, drills, and more. Find guides, rules, strokes, video tips, and expert coaching.';
+
+  const topicsHtml = topics.map((t: any) => `
+    <div class="card">
+      <h3><a href="${SITE_URL}/${lang}/topics/${t.slug}">${escHtml(t.title)}</a></h3>
+      ${t.description ? `<p>${escHtml(t.description.slice(0, 120))}</p>` : ''}
+    </div>
+  `).join('');
+
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": title,
+      "description": description,
+      "url": `${SITE_URL}/${lang}/topics`,
+      "mainEntity": {
+        "@type": "ItemList",
+        "itemListElement": topics.map((t: any, i: number) => ({
+          "@type": "ListItem",
+          "position": i + 1,
+          "url": `${SITE_URL}/${lang}/topics/${t.slug}`,
+          "name": t.title,
+        })),
+      },
+    },
+    breadcrumbSchema([{ name: 'Home', url: '/' }, { name: 'Topics' }], lang),
+  ];
+
+  const body = `
+    ${breadcrumb([{ name: 'Home', url: '/' }, { name: 'Topics' }], lang)}
+    <h1>Padel Topics</h1>
+    <p>${escHtml(description)}</p>
+    <div class="grid">${topicsHtml}</div>
+  `;
+
+  return htmlDoc({ title, description, url: '/topics', lang, structuredData, body });
+}
+
+async function renderTopicPage(slug: string, lang: string): Promise<string> {
+  const query = `*[_type == "topic" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+    title, h1, "slug": slug.current, description, intro, seo,
+    "isIndexable": coalesce(isIndexable, true),
+    "featuredGuides": featuredGuides[]-> { title, "slug": slug.current },
+    "featuredRules": featuredRules[]-> { title, "slug": slug.current },
+    "featuredStrokes": featuredStrokes[]-> { title, "slug": slug.current },
+    "featuredVideoTips": featuredVideoTips[]-> { title, "slug": slug.current },
+    "featuredTrainers": featuredTrainers[]-> { name, "slug": slug.current },
+    "relatedTopics": relatedTopics[]-> { title, "slug": slug.current }
+  }`;
+
+  const topic = await sanityFetch(query, { slug });
+  if (!topic) return renderNotFound(lang);
+
+  const title = topic.seo?.titleTag || topic.h1 || topic.title || slug;
+  const description = topic.seo?.metaDescription || topic.description || topic.intro || `Learn about ${title} on PadelTrainer.ai`;
+  const noIndex = topic.isIndexable === false;
+
+  const breadcrumbItems = [
+    { name: 'Home', url: '/' },
+    { name: 'Topics', url: '/topics' },
+    { name: topic.title || slug },
+  ];
+
+  const structuredData = [
+    breadcrumbSchema(breadcrumbItems, lang),
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": title,
+      "description": typeof description === 'string' ? description : '',
+      "url": `${SITE_URL}/${lang}/topics/${slug}`,
+    },
+  ];
+
+  const linkSection = (heading: string, items: any[] | null, basePath: string, nameField = 'title') => {
+    if (!items || items.length === 0) return '';
+    const links = items.map((item: any) =>
+      `<li><a href="${SITE_URL}/${lang}${basePath}/${item.slug}">${escHtml(item[nameField])}</a></li>`
+    ).join('');
+    return `<h2>${escHtml(heading)}</h2><ul>${links}</ul>`;
+  };
+
+  const body = `
+    ${breadcrumb(breadcrumbItems, lang)}
+    ${noIndex ? '<meta name="robots" content="noindex, nofollow">' : ''}
+    <h1>${escHtml(topic.h1 || topic.title || slug)}</h1>
+    ${topic.intro ? `<p>${escHtml(topic.intro)}</p>` : ''}
+    ${linkSection('Guides', topic.featuredGuides, '/learn')}
+    ${linkSection('Rules', topic.featuredRules, '/padel-rules')}
+    ${linkSection('Strokes', topic.featuredStrokes, '/padel-strokes')}
+    ${linkSection('Video Tips', topic.featuredVideoTips, '/video-tips')}
+    ${linkSection('Coaches', topic.featuredTrainers, '/padel-coaches', 'name')}
+    ${linkSection('Related Topics', topic.relatedTopics, '/topics')}
+  `;
+
+  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/topics/${slug}`, lang, structuredData, body });
+}
