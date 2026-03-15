@@ -932,6 +932,7 @@ async function renderSanityArticle(type: string, slug: string, lang: string, bas
     stroke: 'shortDescription',
     trainer: 'bio',
     videoTip: 'shortSummary',
+    learningArticle: 'intro',
   };
   const descField = descFields[type] || 'excerpt';
 
