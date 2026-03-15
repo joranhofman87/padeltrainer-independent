@@ -27,7 +27,7 @@ interface RulesArticleDetail {
   pageType: 'hub' | 'child';
   bodySections: BodySection[] | null;
   commonMistakes: string[] | null;
-  seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string } | null;
+  seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string; indexable?: boolean } | null;
   cta: { label: string; url: string } | null;
   datePublished: string | null;
   dateModified: string | null;
