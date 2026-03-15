@@ -71,6 +71,16 @@ export default function ProposalScheduleGrid({ slots, onPlayerClick, onMovePlaye
   }, [dayGroups]);
 
   const [selectedDay, setSelectedDay] = useState<string>('');
+  const [collapsedTrainers, setCollapsedTrainers] = useState<Set<string>>(new Set());
+
+  const toggleTrainer = (trainerId: string) => {
+    setCollapsedTrainers(prev => {
+      const next = new Set(prev);
+      if (next.has(trainerId)) next.delete(trainerId);
+      else next.add(trainerId);
+      return next;
+    });
+  };
 
   // Sync selectedDay when availableDays changes
   useEffect(() => {
