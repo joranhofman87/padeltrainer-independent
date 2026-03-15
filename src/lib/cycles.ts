@@ -87,7 +87,16 @@ export interface CycleSettings {
   success_message?: string;
   // Custom text included in the confirmation email sent after registration
   confirmation_email_text?: string;
+  // Stored trainer availability windows from the proposal wizard
+  trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility
+}
+
+export interface TrainerAvailabilityWindow {
+  trainerId: string;
+  trainerName: string;
+  trainerAvatar?: string | null;
+  windows: { day: string; start: string; end: string }[];
 }
 
 export interface IntakeRequest {
