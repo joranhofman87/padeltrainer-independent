@@ -505,7 +505,7 @@ export default function ProposalScheduleGrid({
       const timeRow = parseInt(parts[2]);
 
       // Find the slot at this cell
-      const targetSlot = slotLookup.get(`${trainerId}-${timeRow}`);
+      const targetSlot = slotLookup.get(`${trainerId}__${timeRow}`);
       // Also check if any slot spans into this row
       let resolvedSlotId: string | undefined = targetSlot?.id;
       if (!resolvedSlotId) {
