@@ -197,7 +197,9 @@ export const COACHES_LIST_QUERY = `*[_type == "trainer" && !(_id in path("drafts
   "slug": slug.current,
   bio,
   specialties,
-  profileImageUrl,
+  "profileImageUrl": profileImage.asset->url,
+  shortTagline,
+  location,
   seo
 }`;
 
@@ -207,7 +209,16 @@ export const COACH_BY_SLUG_QUERY = `*[_type == "trainer" && slug.current == $slu
   "slug": slug.current,
   bio,
   specialties,
-  profileImageUrl,
+  "profileImageUrl": profileImage.asset->url,
+  shortTagline,
+  location,
+  languages,
+  bestFor,
+  isFeatured,
+  instagramUrl,
+  youtubeUrl,
+  tiktokUrl,
+  websiteUrl,
   platformProfileUrl,
   seo,
   cta

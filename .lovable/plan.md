@@ -1,73 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Redesign Coach Detail Page as a Landing Page
+## Status: ✅ COMPLETED
 
-### Problem
-The current coach page is minimal — a small avatar, name, badges, and bio in a single narrow column. Several new CMS fields are not fetched or displayed. The `profileImageUrl` field is actually `null` for all coaches because the query references a non-existent field instead of the `profileImage` image object. The page doesn't look like something a coach would proudly share.
+Implemented on 2026-03-14.
 
-### New fields available in Sanity (not currently fetched)
-- `shortTagline` — one-liner quote
-- `location` — city/region
-- `languages` — array of spoken languages
-- `bestFor` — target audience (e.g. "Beginners", "Intermediate")
-- `isFeatured` — featured flag
-- `profileImage` — actual image object (current `profileImageUrl` returns null)
-- `instagramUrl`, `youtubeUrl`, `tiktokUrl`, `websiteUrl` — social links
+## What Changed
 
-### Changes
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-**1. Fix image + fetch all fields — `src/lib/sanity.ts`**
+## Sanity Content Types Needed in Studio
 
-Update both `COACHES_LIST_QUERY` and `COACH_BY_SLUG_QUERY`:
-- Replace `profileImageUrl` with `"profileImageUrl": profileImage.asset->url` (computed projection)
-- Add to detail query: `shortTagline`, `location`, `languages`, `bestFor`, `isFeatured`, `instagramUrl`, `youtubeUrl`, `tiktokUrl`, `websiteUrl`
-- Add to list query: `shortTagline`, `location`, `"profileImageUrl": profileImage.asset->url`
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**2. Redesign CoachPage as a landing page — `src/pages/marketing/CoachPage.tsx`**
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-Replace the current simple layout with a professional profile landing page structure:
+## What Stays Unchanged
 
-- **Hero section**: Large profile image, name, short tagline as a quote, location with icon, language badges, social links (Instagram, YouTube, TikTok, website) as icon buttons. Use the existing `ProfileHeroCard` pattern/style from the app profiles for visual consistency but implemented inline (since this is a marketing page using `MarketingLayout`).
-- **"Best For" section**: If `bestFor` is populated, show a row of cards/badges indicating target audience (e.g. "Beginners", "Intermediate").
-- **Bio section**: Full bio in a card with a heading like "About {name}".
-- **Specialties section**: Displayed as a grid of badges/chips in their own card.
-- **Videos section**: Existing video tips grid (already works).
-- **CTA section**: Existing CTA (already works).
-- Enhance structured data with `location`, social links (`sameAs`), and `knowsAbout` from specialties.
-
-**3. Improve Coaches list page — `src/pages/marketing/Coaches.tsx`**
-
-- Fix image (same `profileImageUrl` projection fix)
-- Add `shortTagline` and `location` display on cards
-- Show location under the name
-
-### Layout sketch
-
-```text
-┌──────────────────────────────────────────────┐
-│  ← Back to Coaches          Breadcrumbs      │
-├──────────────────────────────────────────────┤
-│  ┌──────┐  Name                              │
-│  │      │  "Short tagline"                   │
-│  │ IMG  │  📍 Bristol · 🌐 English, Spanish  │
-│  │      │  [IG] [YT] [TT] [Web]             │
-│  └──────┘  [Best for: Beginners, Inter...]   │
-├──────────────────────────────────────────────┤
-│  About Gonzalo Lorenzo                       │
-│  Full bio text...                            │
-├──────────────────────────────────────────────┤
-│  Specialties                                 │
-│  [technique] [beginners] [Intermediate]      │
-├──────────────────────────────────────────────┤
-│  Videos by Gonzalo Lorenzo                   │
-│  [card] [card] [card]                        │
-├──────────────────────────────────────────────┤
-│  CTA Section                                 │
-└──────────────────────────────────────────────┘
-```
-
-### Files changed
-1. `src/lib/sanity.ts` — Fix image projection, add new fields to both queries
-2. `src/pages/marketing/CoachPage.tsx` — Full redesign with landing page layout
-3. `src/pages/marketing/Coaches.tsx` — Fix image, add location + tagline to cards
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
