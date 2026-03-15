@@ -1,20 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
 import { ArrowRight, Play, Calendar, CreditCard, Bell, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 }
-};
-
-const staggerContainer = {
-  animate: { transition: { staggerChildren: 0.1 } }
-};
 
 export function HeroSection() {
   const { t } = useTranslation('marketing');
@@ -27,28 +16,25 @@ export function HeroSection() {
       <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-20 md:py-28">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left: Copy */}
-          <motion.div initial="initial" animate="animate" variants={staggerContainer}>
-            <motion.h1
-              variants={fadeInUp}
-              className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-tight mb-6"
-            >
+          <div className="animate-fade-in">
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-tight mb-6">
               {t('homev2.hero.h1')}
-            </motion.h1>
+            </h1>
 
-            <motion.p variants={fadeInUp} className="text-lg md:text-xl text-muted-foreground mb-8 max-w-xl">
+            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-xl">
               {t('homev2.hero.subheadline')}
-            </motion.p>
+            </p>
 
-            <motion.ul variants={fadeInUp} className="space-y-3 mb-8 text-foreground">
+            <ul className="space-y-3 mb-8 text-foreground">
               {[1, 2, 3].map(i => (
                 <li key={i} className="flex items-start gap-3">
                   <span className="mt-1.5 h-2 w-2 rounded-full bg-primary flex-shrink-0" />
                   <span>{t(`homev2.hero.bullet${i}`)}</span>
                 </li>
               ))}
-            </motion.ul>
+            </ul>
 
-            <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
               <Button size="lg" className="text-lg px-8 h-14 bg-primary hover:bg-primary/90" asChild>
                 <Link to={getAppUrl('/signup/trainer')} onClick={() => trackEvent('cta_clicked', { location: 'hero' })}>
                   {t('homev2.cta.startTrial')}
@@ -61,19 +47,17 @@ export function HeroSection() {
                   {t('homev2.cta.watchDemo')}
                 </a>
               </Button>
-            </motion.div>
+            </div>
 
-            <motion.p variants={fadeInUp} className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {t('homev2.cta.trustMicrocopy')}
-            </motion.p>
-          </motion.div>
+            </p>
+          </div>
 
           {/* Right: Product screenshot placeholder */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="hidden lg:block"
+          <div
+            className="hidden lg:block animate-fade-in"
+            style={{ animationDelay: '300ms', animationFillMode: 'backwards' }}
           >
             <div className="relative rounded-xl border-2 border-border bg-card shadow-2xl overflow-hidden">
               <div className="bg-muted/50 px-4 py-3 border-b flex items-center gap-2">
@@ -120,7 +104,7 @@ export function HeroSection() {
                 </span>
               ))}
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>
