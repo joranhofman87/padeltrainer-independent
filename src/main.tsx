@@ -5,7 +5,6 @@ import App from "./App.tsx";
 import "./index.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { logger } from "./lib/logger";
-import { initializePostHog } from "./lib/posthog";
 
 // Global error handlers — catch unhandled errors and promise rejections
 window.addEventListener('error', (event) => {
@@ -31,7 +30,8 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // Initialize PostHog and Reditus after critical rendering
-function initDeferred() {
+async function initDeferred() {
+  const { initializePostHog } = await import('./lib/posthog');
   initializePostHog();
   // Reditus affiliate tracking — deferred to avoid render-blocking
   const s = document.createElement('script');

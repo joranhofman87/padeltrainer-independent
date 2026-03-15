@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Menu, X, Linkedin, Facebook, Instagram, Youtube, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -31,7 +31,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useTranslation('marketing');
-  const { user, role } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const dashboardUrl = getAppUrl(getDashboardPath(role));
 
   // Capture UTM params from URL on marketing page load
