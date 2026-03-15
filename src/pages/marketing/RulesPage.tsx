@@ -32,6 +32,7 @@ interface RulesArticleDetail {
   datePublished: string | null;
   dateModified: string | null;
   relatedRules: { _id: string; title: string; slug: string; h1: string; quickAnswer: string; pageType: string }[] | null;
+  relatedStrokes: { _id: string; title: string; slug: string; h1: string; shortDescription: string; category: string | null; difficulty: string | null }[] | null;
 }
 
 function RulesPageSkeleton() {
@@ -214,6 +215,34 @@ export default function RulesPage() {
                     <CardContent className="p-4">
                       <CardTitle className="text-base mb-1 hover:text-primary transition-colors">{rule.h1}</CardTitle>
                       <p className="text-sm text-muted-foreground line-clamp-2">{rule.quickAnswer}</p>
+                    </CardContent>
+                  </Card>
+                </LocalizedLink>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Related Strokes */}
+        {article.relatedStrokes && article.relatedStrokes.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="mt-12"
+          >
+            <h2 className="text-2xl font-bold mb-6">{t('rules.relatedStrokes', 'Related Strokes')}</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {article.relatedStrokes.map(rs => (
+                <LocalizedLink key={rs._id} to={`/padel-strokes/${rs.slug}`}>
+                  <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
+                    <CardContent className="p-4">
+                      <div className="flex gap-2 mb-2">
+                        {rs.category && <Badge variant="secondary" className="text-xs">{rs.category}</Badge>}
+                        {rs.difficulty && <Badge variant="outline" className="text-xs">{rs.difficulty}</Badge>}
+                      </div>
+                      <CardTitle className="text-base mb-1 hover:text-primary transition-colors">{rs.h1}</CardTitle>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{rs.shortDescription}</p>
                     </CardContent>
                   </Card>
                 </LocalizedLink>
