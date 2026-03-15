@@ -17,6 +17,18 @@ export default function VideoTips() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const itemListStructuredData = videos.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Padel Video Tips & Tutorials",
+    "itemListElement": videos.map((v, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "name": v.title,
+      "url": `https://padeltrainer.ai/video-tips/${v.slug}`,
+    })),
+  } : undefined;
+
   const [selectedStroke, setSelectedStroke] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [selectedTrainer, setSelectedTrainer] = useState<string | null>(null);
