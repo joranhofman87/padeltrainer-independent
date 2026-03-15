@@ -37,6 +37,8 @@ const VideoTips = lazy(() => import('@/pages/marketing/VideoTips'));
 const VideoTipPage = lazy(() => import('@/pages/marketing/VideoTipPage'));
 const LearnIndex = lazy(() => import('@/pages/marketing/LearnIndex'));
 const LearningArticlePage = lazy(() => import('@/pages/marketing/LearningArticlePage'));
+const TopicsIndex = lazy(() => import('@/pages/marketing/TopicsIndex'));
+const TopicPage = lazy(() => import('@/pages/marketing/TopicPage'));
 const Privacy = lazy(() => import('@/pages/marketing/Privacy'));
 const Terms = lazy(() => import('@/pages/marketing/Terms'));
 const Partner = lazy(() => import('@/pages/marketing/Partner'));
