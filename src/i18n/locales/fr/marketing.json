@@ -744,14 +744,14 @@
     },
     "playerBanner": {
       "headline": "Vous êtes joueur de padel ?",
-      "subtitle": "On a aussi quelque chose pour vous.",
+      "subtitle": "Voici ce qu'on a pour vous.",
       "trainersDesc": "Réservez un cours près de chez vous",
-      "locationsDesc": "Découvrez les clubs de padel proches",
+      "locationsDesc": "Trouvez un club près de chez vous",
       "rules": "Règles du padel",
       "rulesDesc": "Apprenez les règles officielles",
       "videoTips": "Conseils vidéo",
-      "videoTipsDesc": "Améliorez votre jeu en vidéo",
-      "blogDesc": "Conseils, guides & actualités"
+      "videoTipsDesc": "Regardez & progressez",
+      "blogDesc": "Conseils, guides & actus"
     }
   },
   "cityPage": {
