@@ -328,6 +328,7 @@ export default function CycleForm({
         cyclus_options: isRegistration && cyclusOptions.filter(co => co.label && co.number_of_sessions > 0).length > 0
           ? cyclusOptions.filter(co => co.label && co.number_of_sessions > 0)
           : undefined,
+        duration_options: isRegistration && durationOptions.length > 0 ? durationOptions : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
