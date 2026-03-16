@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle, AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -138,13 +138,28 @@ function isWithinTrainerWindow(
 
 // ── Draggable Player Chip ──
 
+/** Check if player rating is outside slot's configured range */
+function isRatingOutOfRange(
+  playerRating: number | null | undefined,
+  slotMinRating: number | null | undefined,
+  slotMaxRating: number | null | undefined,
+): boolean {
+  if (playerRating == null) return false;
+  if (slotMinRating != null && playerRating < slotMinRating) return true;
+  if (slotMaxRating != null && playerRating > slotMaxRating) return true;
+  return false;
+}
+
 function DraggablePlayerChip({
-  assignment, slotId, onPlayerClick,
+  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating,
 }: {
   assignment: Assignment;
   slotId: string;
   onPlayerClick?: (id: string) => void;
+  slotMinRating?: number | null;
+  slotMaxRating?: number | null;
 }) {
+  const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `player-${assignment.id}`,
     data: { type: 'player', assignmentId: assignment.id, sourceSlotId: slotId, assignment },
@@ -157,11 +172,14 @@ function DraggablePlayerChip({
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
+  const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
+
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        'flex items-center gap-1 bg-muted rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
+        'flex items-center gap-1 rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
+        outOfRange ? 'bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-400/50' : 'bg-muted',
         isDragging ? 'opacity-30' : 'hover:bg-accent',
       )}
     >
@@ -179,7 +197,24 @@ function DraggablePlayerChip({
       >
         <span className="font-medium truncate max-w-[90px]">{assignment.player_name}</span>
         {assignment.player_rating != null && (
-          <span className="text-muted-foreground text-[10px]">{assignment.player_rating}</span>
+          <span className={cn('text-[10px]', outOfRange ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
+            {assignment.player_rating}
+          </span>
+        )}
+        {outOfRange && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[200px]">
+              {t('proposals.ratingOutOfRange', {
+                defaultValue: 'Rating {{rating}} is outside slot range ({{min}}–{{max}})',
+                rating: assignment.player_rating,
+                min: slotMinRating ?? '?',
+                max: slotMaxRating ?? '?',
+              })}
+            </TooltipContent>
+          </Tooltip>
         )}
         {confScore > 0 && (
           <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
@@ -356,27 +391,34 @@ function SlotEditPopover({
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 {t('proposals.players', { defaultValue: 'Players' })} ({slot.current_assignments.length})
               </p>
-              {slot.current_assignments.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
-                  className="flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium truncate">{a.player_name}</span>
-                    {a.player_rating != null && (
-                      <span className="text-muted-foreground text-[10px] shrink-0">
-                        {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+              {slot.current_assignments.map(a => {
+                const oor = isRatingOutOfRange(a.player_rating, slot.min_rating, slot.max_rating);
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
+                    className={cn(
+                      'flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors',
+                      oor && 'bg-amber-50 dark:bg-amber-950/30',
+                    )}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {oor && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
+                      <span className="font-medium truncate">{a.player_name}</span>
+                      {a.player_rating != null && (
+                        <span className={cn('text-[10px] shrink-0', oor ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
+                          {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    {a.confidence_score != null && a.confidence_score > 0 && (
+                      <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
+                        {a.confidence_score}%
                       </span>
                     )}
-                  </div>
-                  {a.confidence_score != null && a.confidence_score > 0 && (
-                    <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
-                      {a.confidence_score}%
-                    </span>
-                  )}
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
@@ -510,6 +552,14 @@ function DraggableSlotCard({
           )}
         </div>
 
+        {/* Rating range indicator */}
+        {(slot.min_rating != null || slot.max_rating != null) && (
+          <div className="text-[10px] text-muted-foreground">
+            {slot.rating_system ? `${slot.rating_system} ` : ''}
+            {slot.min_rating ?? '?'}–{slot.max_rating ?? '?'}
+          </div>
+        )}
+
         {/* Player chips */}
         {currentP > 0 && (
           <div className="flex flex-col gap-1">
@@ -519,6 +569,8 @@ function DraggableSlotCard({
                 assignment={assignment}
                 slotId={slot.id}
                 onPlayerClick={onPlayerClick}
+                slotMinRating={slot.min_rating}
+                slotMaxRating={slot.max_rating}
               />
             ))}
           </div>

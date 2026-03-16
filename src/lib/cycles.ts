@@ -968,6 +968,9 @@ export interface SlotWithOccupancy {
   trainer_name: string;
   trainer_avatar: string | null;
   max_participants: number | null;
+  min_rating: number | null;
+  max_rating: number | null;
+  rating_system: string | null;
   cyclus_name: string | null;
   is_blocked?: boolean;
   current_assignments: Array<{
@@ -1014,7 +1017,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
   // 3. Fetch availability slots for this specific cycle
   const { data: slots, error: slotsError } = await supabase
     .from('availability_slots')
-    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name')
+    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name, min_rating, max_rating, rating_system')
     .eq('cyclus_id', cycleId)
     .order('start_time', { ascending: true });
 
@@ -1085,6 +1088,9 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       trainer_name: trainer.name,
       trainer_avatar: trainer.avatar,
       max_participants: slot.max_participants,
+      min_rating: slot.min_rating ?? null,
+      max_rating: slot.max_rating ?? null,
+      rating_system: slot.rating_system ?? null,
       cyclus_name: slot.cyclus_name,
       is_blocked: false,
       current_assignments: slotAssignments.map(a => {
@@ -1121,6 +1127,9 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       trainer_name: trainer.name,
       trainer_avatar: trainer.avatar,
       max_participants: slot.max_participants,
+      min_rating: null,
+      max_rating: null,
+      rating_system: null,
       cyclus_name: slot.cyclus_name,
       is_blocked: true,
       current_assignments: [],
