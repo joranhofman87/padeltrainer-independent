@@ -207,6 +207,7 @@ export interface IntakeRequestInput {
   location_id?: string;
   notes?: string;
   consent_given?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CycleInput {
