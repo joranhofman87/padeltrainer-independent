@@ -219,6 +219,17 @@
       "validationSummary": "Please fix the following:"
     },
     
+    "summary": {
+      "title": "Your Selection",
+      "lessonType": "Lesson type",
+      "duration": "Duration",
+      "lessonLength": "Lesson length",
+      "pricePerLesson": "Price per lesson",
+      "total": "Total",
+      "weeksCount_one": "{{count}} week",
+      "weeksCount_other": "{{count}} weeks"
+    },
+    
     "success": {
       "title": "Application Submitted!",
       "message": "Thank you for your application. You will receive a confirmation email shortly.",

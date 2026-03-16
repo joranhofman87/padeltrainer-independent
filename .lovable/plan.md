@@ -1,42 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Price Summary Calculator at Bottom of Application Form
+## Status: ✅ COMPLETED
 
-### What it does
-A summary card shown above the consent checkbox that dynamically calculates and displays what the player is signing up for based on their selections: lesson type, duration (weeks), and lesson duration (minutes). It looks up the per-session price from the cycle's `price_table` (matching by label/lesson type) and multiplies by the selected number of weeks.
+Implemented on 2026-03-14.
 
-### Layout
+## What Changed
 
-```text
-┌─────────────────────────────────────┐
-│ 📋 Your Selection Summary           │
-│                                     │
-│  Lesson type:    Duo (2 players)    │
-│  Duration:       10 weeks           │
-│  Lesson length:  60 min             │
-│                                     │
-│  Price per lesson:       €25.00     │
-│  Total (10 × €25.00):   €250.00    │
-└─────────────────────────────────────┘
-```
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Only shows when the player has selected at least a lesson type. Price lines only appear when a matching `price_table` entry exists. If no price data is available, just show the selections without pricing.
+## Sanity Content Types Needed in Studio
 
-### Changes
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**`src/components/cycles/CycleApplicationForm.tsx`**
-- Add a summary `Card` between the Availability card and the consent checkbox (before line 852).
-- Reads from form state: `lesson_types` (first selected), `preferred_duration_minutes`, and `selectedDurationWeeks`.
-- Looks up price from `cycle.price_table` by matching the lesson type label, or falls back to `cycle.price_per_session`.
-- Calculates total: `price × selectedDurationWeeks`.
-- Uses `formatPrice` from `src/lib/pricing.ts`.
-- Only renders when not an event and at least one selection is made.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**`src/i18n/locales/en/cycles.json`** and **`src/i18n/locales/nl/cycles.json`**
-- Add keys under `application.summary`: `title`, `lessonType`, `duration`, `lessonLength`, `pricePerLesson`, `total`, `weeksCount`.
+## What Stays Unchanged
 
-### Files to modify
-- `src/components/cycles/CycleApplicationForm.tsx`
-- `src/i18n/locales/en/cycles.json`
-- `src/i18n/locales/nl/cycles.json`
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

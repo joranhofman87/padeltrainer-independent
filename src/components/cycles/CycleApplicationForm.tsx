@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, CheckCircle2, CreditCard, Banknote } from 'lucide-react';
+import { Loader2, CheckCircle2, CreditCard, Banknote, Calculator } from 'lucide-react';
+import { formatPrice } from '@/lib/pricing';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
@@ -848,6 +849,75 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
         )}
+
+        {/* Selection Summary Calculator */}
+        {!isEvent && (() => {
+          const watchedLessonTypes = form.watch('lesson_types') || [];
+          const watchedDuration = form.watch('preferred_duration_minutes');
+          const firstLessonType = watchedLessonTypes[0];
+          
+          if (!firstLessonType) return null;
+          
+          // Find price from price_table matching the selected lesson type
+          const priceRow = cycle.price_table?.find(row => {
+            const labelLower = row.label.toLowerCase();
+            return labelLower === firstLessonType.toLowerCase() ||
+              labelLower.includes(firstLessonType.toLowerCase());
+          });
+          const pricePerSession = priceRow?.price ?? cycle.price_per_session;
+          const hasPrice = pricePerSession != null && pricePerSession > 0;
+          const total = hasPrice && selectedDurationWeeks ? pricePerSession! * selectedDurationWeeks : null;
+          
+          const lessonTypeLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
+            ? t(`application.form.lessonTypes.${firstLessonType}`)
+            : firstLessonType.charAt(0).toUpperCase() + firstLessonType.slice(1);
+          
+          return (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-primary" />
+                  {t('application.summary.title')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t('application.summary.lessonType')}</span>
+                  <span className="font-medium">{lessonTypeLabel}</span>
+                </div>
+                {selectedDurationWeeks && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t('application.summary.duration')}</span>
+                    <span className="font-medium">{t('application.summary.weeksCount', { count: selectedDurationWeeks })}</span>
+                  </div>
+                )}
+                {watchedDuration && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t('application.summary.lessonLength')}</span>
+                    <span className="font-medium">{watchedDuration} min</span>
+                  </div>
+                )}
+                {hasPrice && (
+                  <>
+                    <div className="border-t border-border my-2" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
+                      <span className="font-medium">{formatPrice(pricePerSession!)}</span>
+                    </div>
+                    {total != null && (
+                      <div className="flex justify-between text-base font-semibold">
+                        <span>{t('application.summary.total')}</span>
+                        <span className="text-primary">
+                          {formatPrice(total)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <FormField
           control={form.control}
