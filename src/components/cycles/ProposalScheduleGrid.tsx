@@ -138,13 +138,28 @@ function isWithinTrainerWindow(
 
 // ── Draggable Player Chip ──
 
+/** Check if player rating is outside slot's configured range */
+function isRatingOutOfRange(
+  playerRating: number | null | undefined,
+  slotMinRating: number | null | undefined,
+  slotMaxRating: number | null | undefined,
+): boolean {
+  if (playerRating == null) return false;
+  if (slotMinRating != null && playerRating < slotMinRating) return true;
+  if (slotMaxRating != null && playerRating > slotMaxRating) return true;
+  return false;
+}
+
 function DraggablePlayerChip({
-  assignment, slotId, onPlayerClick,
+  assignment, slotId, onPlayerClick, slotMinRating, slotMaxRating,
 }: {
   assignment: Assignment;
   slotId: string;
   onPlayerClick?: (id: string) => void;
+  slotMinRating?: number | null;
+  slotMaxRating?: number | null;
 }) {
+  const { t } = useTranslation('cycles');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `player-${assignment.id}`,
     data: { type: 'player', assignmentId: assignment.id, sourceSlotId: slotId, assignment },
@@ -157,11 +172,14 @@ function DraggablePlayerChip({
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
       : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
 
+  const outOfRange = isRatingOutOfRange(assignment.player_rating, slotMinRating, slotMaxRating);
+
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        'flex items-center gap-1 bg-muted rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
+        'flex items-center gap-1 rounded-md pl-1.5 pr-2 py-1 text-xs transition-colors',
+        outOfRange ? 'bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-400/50' : 'bg-muted',
         isDragging ? 'opacity-30' : 'hover:bg-accent',
       )}
     >
@@ -179,7 +197,24 @@ function DraggablePlayerChip({
       >
         <span className="font-medium truncate max-w-[90px]">{assignment.player_name}</span>
         {assignment.player_rating != null && (
-          <span className="text-muted-foreground text-[10px]">{assignment.player_rating}</span>
+          <span className={cn('text-[10px]', outOfRange ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
+            {assignment.player_rating}
+          </span>
+        )}
+        {outOfRange && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-[200px]">
+              {t('proposals.ratingOutOfRange', {
+                defaultValue: 'Rating {{rating}} is outside slot range ({{min}}–{{max}})',
+                rating: assignment.player_rating,
+                min: slotMinRating ?? '?',
+                max: slotMaxRating ?? '?',
+              })}
+            </TooltipContent>
+          </Tooltip>
         )}
         {confScore > 0 && (
           <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', confClass)}>
