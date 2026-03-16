@@ -1098,7 +1098,52 @@ export default function ProposalScheduleGrid({
       pushUndo(t('proposals.undoSlotMove', { defaultValue: 'Slot move' }));
       onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
     }
-  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, slotLookup, daySlots, slotRowSpans, selectedDay, trainerAvailabilityWindows, pushUndo, t]);
+    // Unplaced player drag → drop onto a cell (assign to slot)
+    if (activeType === 'unplaced-player' && onAssignPlayer) {
+      const intakeRequestId = active.data.current?.intakeRequestId as string;
+      const overCellId = over.id as string;
+      if (!overCellId.startsWith('cell__')) return;
+
+      const parts = overCellId.split('__');
+      const trainerId = parts[1];
+      const timeRow = parseInt(parts[2]);
+
+      // Find the slot at this cell
+      let resolvedSlot = slotLookup.get(`${trainerId}__${timeRow}`);
+      if (!resolvedSlot) {
+        for (const slot of daySlots) {
+          if (slot.trainer_id !== trainerId) continue;
+          const sMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+          const span = slotRowSpans.get(slot.id) || 1;
+          if (timeRow >= sMin && timeRow < sMin + span * 30) {
+            resolvedSlot = slot;
+            break;
+          }
+        }
+      }
+
+      if (!resolvedSlot) {
+        toast.warning(t('proposals.noSlotHere', { defaultValue: 'No slot here — drop onto an existing slot' }));
+        return;
+      }
+      if (resolvedSlot.is_blocked) return;
+
+      pushUndo(t('proposals.undoAssign', { defaultValue: 'Player assignment' }));
+      onAssignPlayer(intakeRequestId, resolvedSlot.id);
+      return;
+    }
+
+    // Player drag → drop onto unplaced pool (unassign)
+    if (activeType === 'player' && onUnassignPlayer) {
+      const overData = over.data.current;
+      if (overData?.type === 'unplaced-pool') {
+        const assignmentId = active.data.current?.assignmentId as string;
+        pushUndo(t('proposals.undoUnassign', { defaultValue: 'Player unassignment' }));
+        onUnassignPlayer(assignmentId);
+        return;
+      }
+    }
+  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, onAssignPlayer, onUnassignPlayer, slotLookup, daySlots, slotRowSpans, selectedDay, trainerAvailabilityWindows, pushUndo, t]);
 
   if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
