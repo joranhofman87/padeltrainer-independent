@@ -44,8 +44,8 @@ export default function Coaches() {
   return (
     <MarketingLayout>
       <SEO
-        title="Padel Coaches & Creators"
-        description="Meet the padel coaches and creators behind our video tutorials and technique breakdowns."
+        title="Padel Content Creators"
+        description="Discover independent padel coaches and content creators we feature for the quality of their tutorials, drills, and tips."
         url="/padel-coaches"
         structuredData={itemListStructuredData}
       />
