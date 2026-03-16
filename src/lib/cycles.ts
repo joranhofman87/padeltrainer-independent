@@ -102,6 +102,8 @@ export interface CycleSettings {
   duration_options?: number[];
   // Available lesson duration options (in minutes) players can choose from
   available_duration_minutes?: number[];
+  // Named price columns for the price table (e.g. ["Jeugd", "Volwassenen"])
+  price_columns?: string[];
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility

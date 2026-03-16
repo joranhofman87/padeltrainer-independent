@@ -144,6 +144,17 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
             {t('detail.priceTable', 'Tarieven')}
           </div>
           <table className="w-full text-sm">
+            {priceColumns.length > 0 && (
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
+                  {priceColumns.map(col => (
+                    <th key={col} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                  ))}
+                </tr>
+              </thead>
+            )}
             <tbody>
               {priceTable!.map((row, i) => (
                 <tr key={i} className="border-t">
@@ -151,6 +162,14 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                   <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
                     {currencyFormatter.format(row.price)}
                   </td>
+                  {priceColumns.map(col => {
+                    const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
+                    return (
+                      <td key={col} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                        {ep ? currencyFormatter.format(ep.price) : '–'}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
