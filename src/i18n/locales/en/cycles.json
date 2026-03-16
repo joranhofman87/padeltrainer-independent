@@ -226,6 +226,7 @@
     "summary": {
       "title": "Your Selection",
       "lessonType": "Lesson type",
+      "package": "Package",
       "duration": "Duration",
       "lessonLength": "Lesson length",
       "pricePerLesson": "Price per lesson",
