@@ -1195,8 +1195,16 @@ export async function saveCycleScoringWeights(
   return updateCycle(cycleId, { settings: updatedSettings });
 }
 
-// Reset all proposals for a cycle (delete proposed_assignments and set intake_requests back to 'new')
+// Reset all proposals for a cycle (delete proposed_assignments, generated slots, and set intake_requests back to 'new')
 export async function resetProposals(cycleId: string): Promise<{ reset: number }> {
+  // Step 0: Delete generated availability slots for this cycle
+  const { error: slotsDeleteError } = await supabase
+    .from('availability_slots')
+    .delete()
+    .eq('cyclus_id', cycleId);
+
+  if (slotsDeleteError) throw slotsDeleteError;
+
   // Get ALL intake requests for this cycle
   const { data: allRequests, error: allFetchError } = await supabase
     .from('intake_requests')
