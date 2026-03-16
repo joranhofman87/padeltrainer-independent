@@ -357,6 +357,9 @@ export default function AcademyOpenSlots() {
                                       <p className="text-sm text-muted-foreground">
                                         {format(new Date(cyclus.first_date), 'd MMM', { locale: dateLocale })} – {format(new Date(cyclus.last_date), 'd MMM', { locale: dateLocale })}
                                       </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        {tAcademy('calendar.created', 'Created')}: {format(new Date(cyclus.created_at), 'd MMM yyyy', { locale: dateLocale })}
+                                      </p>
                                     </div>
                                   </div>
                                 </div>
