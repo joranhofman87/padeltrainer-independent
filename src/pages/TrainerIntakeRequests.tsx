@@ -21,6 +21,8 @@ import {
   moveSlot,
   swapSlots,
   deleteSlot,
+  assignPlayerToSlot,
+  unassignPlayer,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
