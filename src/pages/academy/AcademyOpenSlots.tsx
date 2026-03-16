@@ -25,6 +25,7 @@ interface CyclusGroup {
   day_time: string;
   first_date: string;
   last_date: string;
+  created_at: string;
 }
 
 interface SlotData {
