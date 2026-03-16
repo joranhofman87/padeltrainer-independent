@@ -786,6 +786,14 @@ export default function ProposalScheduleGrid({
     onUndo?.(last.previousSlots);
   }, [undoStack, onUndo]);
 
+  // Filter unplaced players by search query
+  const filteredUnplaced = useMemo(() => {
+    if (!unplacedPlayers) return [];
+    if (!searchQuery.trim()) return unplacedPlayers;
+    const q = searchQuery.toLowerCase();
+    return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
+  }, [unplacedPlayers, searchQuery]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
