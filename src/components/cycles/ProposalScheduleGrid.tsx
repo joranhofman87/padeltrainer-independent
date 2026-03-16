@@ -614,7 +614,7 @@ export default function ProposalScheduleGrid({
       }
 
       if (!resolvedSlot || resolvedSlot.id === sourceSlotId) return;
-
+      if (resolvedSlot.is_blocked) return; // Can't drop onto blocked slots
       // #3: Player duration compatibility check
       // Find the source slot to compare durations
       const sourceSlot = daySlots.find(s => s.id === sourceSlotId);
