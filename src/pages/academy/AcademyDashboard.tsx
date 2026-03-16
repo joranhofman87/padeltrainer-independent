@@ -436,7 +436,7 @@ export default function AcademyDashboard() {
                   {recentRegistrations.map(reg => (
                     <TableRow key={reg.id}>
                       <TableCell className="text-sm py-2">{reg.full_name}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
+                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</TableCell>
                       <TableCell className="py-2">
                         <Badge variant={reg.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
                           {tCycles(`intakeRequests.filters.${reg.status}`, reg.status)}
