@@ -641,6 +641,40 @@ export default function CycleApplicationForm({
           </Card>
         )}
 
+        {/* Duration Option Selector */}
+        {hasDurationOptions && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.chooseDuration', 'Choose your preferred duration')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {durationOptions.sort((a, b) => a - b).map((weeks) => {
+                const isSelected = selectedDurationWeeks === weeks;
+                return (
+                  <label
+                    key={weeks}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
+                      isSelected && "border-primary bg-primary/5"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="duration_option"
+                      checked={isSelected}
+                      onChange={() => setSelectedDurationWeeks(weeks)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-sm font-medium">
+                      {weeks} {t('application.form.weeks', 'weken')}
+                    </span>
+                  </label>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Preferences - hide for events */}
         {!isEvent && (
         <Card>

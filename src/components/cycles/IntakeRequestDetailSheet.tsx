@@ -208,6 +208,14 @@ export default function IntakeRequestDetailSheet({
                   </Badge>
                 </div>
               )}
+              {request.metadata?.preferred_number_of_weeks && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{t('application.form.preferredWeeks', 'Preferred duration')}</span>
+                  <Badge variant="secondary">
+                    {request.metadata.preferred_number_of_weeks} {t('application.form.weeks', 'weken')}
+                  </Badge>
+                </div>
+              )}
               {request.location_id && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Location</span>

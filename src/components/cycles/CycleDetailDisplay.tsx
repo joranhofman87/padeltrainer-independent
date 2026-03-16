@@ -111,6 +111,18 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
         </div>
       )}
 
+      {/* Duration Options */}
+      {hasDurationOptions && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+          <span className="font-medium text-foreground">{t('detail.durationOptions', 'Beschikbare duur')}:</span>
+          {durationOptions.sort((a, b) => a - b).map((weeks, i) => (
+            <span key={weeks} className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+              {weeks} {t('detail.weeks', 'weken')}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Terms */}
       {hasTerms && (
         <div>
