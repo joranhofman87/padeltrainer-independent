@@ -320,7 +320,7 @@ function DroppableCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
+        'h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
         !hasSlot && 'border-border/30',
         isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
         isOver && hasSlot && 'ring-1 ring-primary/30',
