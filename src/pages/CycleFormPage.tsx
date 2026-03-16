@@ -146,6 +146,54 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
                 city: l.location!.city || '',
               }))
           );
+        } else if (ownerType === 'club' && activeClub) {
+          // Fetch club trainers and location
+          const clubTrainers = await getClubTrainers(activeClub.id);
+          const trainerList: { id: string; name: string; hourly_rate?: number }[] = [];
+          const trainerIds: string[] = [];
+
+          for (const ct of clubTrainers) {
+            const trainer = ct.trainer_profiles as any;
+            if (!trainer) continue;
+            trainerIds.push(trainer.id);
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', trainer.user_id)
+              .single();
+            trainerList.push({
+              id: trainer.id,
+              name: profile?.full_name || 'Unknown',
+              hourly_rate: trainer.hourly_rate || undefined,
+            });
+          }
+          setTrainers(trainerList);
+
+          // Club location
+          const { data: locData } = await supabase
+            .from('locations')
+            .select('id, name, city')
+            .eq('id', activeClub.location_id)
+            .single();
+          if (locData) {
+            setLocations([{ id: locData.id, name: locData.name, city: locData.city || '' }]);
+          }
+
+          // Trainer-location map
+          let tlMap: Record<string, string[]> = {};
+          if (trainerIds.length > 0) {
+            const { data: trainerLocs } = await supabase
+              .from('trainer_locations')
+              .select('trainer_id, location_id')
+              .in('trainer_id', trainerIds);
+            if (trainerLocs) {
+              for (const tl of trainerLocs) {
+                if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
+                tlMap[tl.location_id].push(tl.trainer_id);
+              }
+            }
+          }
+          setTrainerLocationMap(tlMap);
         }
 
         // Load existing cycle for editing
@@ -171,7 +219,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
     };
 
     fetchData();
-  }, [user, ownerType, activeAcademy?.id, cycleId, duplicateFromId]);
+  }, [user, ownerType, activeAcademy?.id, activeClub?.id, cycleId, duplicateFromId]);
 
   const handleSuccess = () => {
     navigate(backPath);
