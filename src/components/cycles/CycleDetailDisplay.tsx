@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { MapPin, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { differenceInWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow, CyclusOption } from '@/lib/cycles';
 
@@ -29,6 +30,13 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
   const hasCyclusOptions = cyclusOptions.length > 0;
   const hasDurationOptions = durationOptions.length > 0;
   const hasPriceTable = !hasCyclusOptions && priceTable && priceTable.length > 0;
+
+  // Compute number of weeks from cycle dates as fallback
+  const numberOfWeeks = useMemo(() => {
+    if (hasDurationOptions) return 0; // duration options handle their own columns
+    if (!cycle.start_date || !cycle.end_date) return 0;
+    return Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date))));
+  }, [cycle.start_date, cycle.end_date, hasDurationOptions]);
   const hasTerms = !!cycle.terms;
   const hasLocation = !hideLocation && !!cycle.location;
   const hasDescription = !!cycle.description;
@@ -103,13 +111,18 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
                 {priceColumns.map(col => (
-                  <th key={col} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                  <th key={`per-${col}`} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
                 ))}
-                {[...durationOptions].sort((a, b) => a - b).map(weeks => (
-                  <th key={weeks} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                {[...durationOptions].sort((a, b) => a - b).flatMap(weeks => [
+                  <th key={`w-${weeks}`} className="px-3 py-2 text-right font-medium text-primary whitespace-nowrap">
                     {t('detail.weeksColumn', '{{count}} weken', { count: weeks })}
-                  </th>
-                ))}
+                  </th>,
+                  ...priceColumns.map(col => (
+                    <th key={`w-${weeks}-${col}`} className="px-3 py-2 text-right font-medium text-primary whitespace-nowrap">
+                      {col} {weeks}w
+                    </th>
+                  )),
+                ])}
               </tr>
             </thead>
             <tbody>
@@ -120,16 +133,24 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                   {priceColumns.map(col => {
                     const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                     return (
-                      <td key={col} className="px-3 py-2 text-right whitespace-nowrap">
+                      <td key={`per-${col}`} className="px-3 py-2 text-right whitespace-nowrap">
                         {ep ? currencyFormatter.format(ep.price) : '–'}
                       </td>
                     );
                   })}
-                  {[...durationOptions].sort((a, b) => a - b).map(weeks => (
-                    <td key={weeks} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                  {[...durationOptions].sort((a, b) => a - b).flatMap(weeks => [
+                    <td key={`w-${weeks}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
                       {currencyFormatter.format(row.price * weeks)}
-                    </td>
-                  ))}
+                    </td>,
+                    ...priceColumns.map(col => {
+                      const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
+                      return (
+                        <td key={`w-${weeks}-${col}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                          {ep ? currencyFormatter.format(ep.price * weeks) : '–'}
+                        </td>
+                      );
+                    }),
+                  ])}
                 </tr>
               ))}
             </tbody>
@@ -144,32 +165,57 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
             {t('detail.priceTable', 'Tarieven')}
           </div>
           <table className="w-full text-sm">
-            {priceColumns.length > 0 && (
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
-                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
-                  {priceColumns.map(col => (
-                    <th key={col} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
-                  ))}
-                </tr>
-              </thead>
-            )}
+            <thead>
+              <tr className="border-b bg-muted/30">
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
+                {priceColumns.map(col => (
+                  <th key={`per-${col}`} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                ))}
+                {numberOfWeeks > 0 && (
+                  <>
+                    <th className="px-3 py-2 text-right font-medium text-primary whitespace-nowrap">
+                      {t('detail.weeksColumn', '{{count}} weken', { count: numberOfWeeks })}
+                    </th>
+                    {priceColumns.map(col => (
+                      <th key={`tot-${col}`} className="px-3 py-2 text-right font-medium text-primary whitespace-nowrap">
+                        {col} {numberOfWeeks}w
+                      </th>
+                    ))}
+                  </>
+                )}
+              </tr>
+            </thead>
             <tbody>
               {priceTable!.map((row, i) => (
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{row.label}</td>
-                  <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     {currencyFormatter.format(row.price)}
                   </td>
                   {priceColumns.map(col => {
                     const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                     return (
-                      <td key={col} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                      <td key={`per-${col}`} className="px-3 py-2 text-right whitespace-nowrap">
                         {ep ? currencyFormatter.format(ep.price) : '–'}
                       </td>
                     );
                   })}
+                  {numberOfWeeks > 0 && (
+                    <>
+                      <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                        {currencyFormatter.format(row.price * numberOfWeeks)}
+                      </td>
+                      {priceColumns.map(col => {
+                        const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
+                        return (
+                          <td key={`tot-${col}`} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                            {ep ? currencyFormatter.format(ep.price * numberOfWeeks) : '–'}
+                          </td>
+                        );
+                      })}
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
