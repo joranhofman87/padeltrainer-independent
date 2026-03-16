@@ -1504,25 +1504,3 @@ export async function swapSlots(
 
   if (error) throw error;
 }
-  slotAId: string,
-  slotANewTrainerId: string,
-  slotANewStart: string,
-  slotANewEnd: string,
-  slotBId: string,
-  slotBNewTrainerId: string,
-  slotBNewStart: string,
-  slotBNewEnd: string,
-): Promise<void> {
-  const { error } = await supabase.rpc('swap_slots', {
-    _slot_a_id: slotAId,
-    _slot_a_trainer_id: slotANewTrainerId,
-    _slot_a_start: slotANewStart,
-    _slot_a_end: slotANewEnd,
-    _slot_b_id: slotBId,
-    _slot_b_trainer_id: slotBNewTrainerId,
-    _slot_b_start: slotBNewStart,
-    _slot_b_end: slotBNewEnd,
-  });
-
-  if (error) throw error;
-}
