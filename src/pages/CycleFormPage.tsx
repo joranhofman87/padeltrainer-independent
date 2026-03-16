@@ -28,7 +28,7 @@ interface LocationData {
  *   /app/academy/cycles/new?type=registration|event
  *   /app/academy/cycles/:cycleId/edit
  */
-export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'academy' }) {
+export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'club' | 'academy' }) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
   const { cycleId } = useParams<{ cycleId: string }>();
