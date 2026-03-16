@@ -300,6 +300,7 @@ function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
       </Tooltip>
     </TooltipProvider>
   );
+}
 
 // ── Droppable Cell ──
 
