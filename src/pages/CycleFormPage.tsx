@@ -9,7 +9,9 @@ import { ArrowLeft } from 'lucide-react';
 import { getCycle, type Cycle } from '@/lib/cycles';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { useClubContext } from '@/components/club/ClubLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
+import { getClubTrainers } from '@/lib/club';
 import { logger } from '@/lib/logger';
 
 interface LocationData {
