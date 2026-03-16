@@ -1053,7 +1053,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
     slotAssignmentMap.set(a.slot_id, existing);
   }
 
-  return slots.map(slot => {
+  const cycleSlots: SlotWithOccupancy[] = (slots || []).map(slot => {
     const trainer = trainerNameMap.get(slot.trainer_id) || { name: 'Unknown', avatar: null };
     const slotAssignments = slotAssignmentMap.get(slot.id) || [];
 
@@ -1066,6 +1066,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       trainer_avatar: trainer.avatar,
       max_participants: slot.max_participants,
       cyclus_name: slot.cyclus_name,
+      is_blocked: false,
       current_assignments: slotAssignments.map(a => {
         const req = requestMap.get(a.intake_request_id);
         return {
@@ -1079,6 +1080,34 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       }),
     };
   });
+
+  // 7. Fetch existing (non-cycle) slots for the same trainers within the cycle date range → blocked
+  const { data: existingSlots } = await supabase
+    .from('availability_slots')
+    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name')
+    .in('trainer_id', trainerIds)
+    .is('cyclus_id', null)
+    .gte('start_time', cycle.start_date)
+    .lte('end_time', cycle.end_date)
+    .order('start_time', { ascending: true });
+
+  const blockedSlots: SlotWithOccupancy[] = (existingSlots || []).map(slot => {
+    const trainer = trainerNameMap.get(slot.trainer_id) || { name: 'Unknown', avatar: null };
+    return {
+      id: slot.id,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      trainer_id: slot.trainer_id,
+      trainer_name: trainer.name,
+      trainer_avatar: trainer.avatar,
+      max_participants: slot.max_participants,
+      cyclus_name: slot.cyclus_name,
+      is_blocked: true,
+      current_assignments: [],
+    };
+  });
+
+  return [...cycleSlots, ...blockedSlots];
 }
 
 export async function deleteProposedAssignment(assignmentId: string): Promise<void> {
