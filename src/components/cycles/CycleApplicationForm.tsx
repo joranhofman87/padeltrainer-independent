@@ -916,24 +916,8 @@ export default function CycleApplicationForm({
             totalPrice = pricePerSession! * effectiveWeeks;
           }
 
-          // If no match found but price table exists, show price range
-          let priceRange: { min: number; max: number } | null = null;
-          let totalRange: { min: number; max: number } | null = null;
-          if (!hasPrice && cycle.price_table && cycle.price_table.length > 0) {
-            const allPrices = cycle.price_table
-              .flatMap(row => {
-                const prices = [row.price];
-                if (row.extra_prices) prices.push(...row.extra_prices.map(ep => ep.price));
-                return prices;
-              })
-              .filter(p => p > 0);
-            if (allPrices.length > 0) {
-              priceRange = { min: Math.min(...allPrices), max: Math.max(...allPrices) };
-              if (effectiveWeeks) {
-                totalRange = { min: priceRange.min * effectiveWeeks, max: priceRange.max * effectiveWeeks };
-              }
-            }
-          }
+
+
           
           const displayLessonType = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
             ? t(`application.form.lessonTypes.${firstLessonType}`)
