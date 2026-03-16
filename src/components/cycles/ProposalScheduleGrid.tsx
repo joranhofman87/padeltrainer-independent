@@ -552,6 +552,14 @@ function DraggableSlotCard({
           )}
         </div>
 
+        {/* Rating range indicator */}
+        {(slot.min_rating != null || slot.max_rating != null) && (
+          <div className="text-[10px] text-muted-foreground">
+            {slot.rating_system ? `${slot.rating_system} ` : ''}
+            {slot.min_rating ?? '?'}–{slot.max_rating ?? '?'}
+          </div>
+        )}
+
         {/* Player chips */}
         {currentP > 0 && (
           <div className="flex flex-col gap-1">
