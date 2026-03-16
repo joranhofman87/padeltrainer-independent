@@ -574,14 +574,16 @@
       "mock_booking_slot": "Beschikbaar",
       "mock_booking_booked": "Geboekt",
       "mock_booking_sync": "Gesynchroniseerd met Google Calendar",
-      "mock_reg_title": "Schrijf je in voor een trainingsgroep",
-      "mock_reg_level": "Selecteer je niveau",
+      "mock_reg_title": "Open inschrijving",
+      "mock_reg_subtitle": "inschrijvingen deze week",
+      "mock_reg_groups": "groepen ingepland",
+      "mock_reg_ai": "Automatisch ingepland in je agenda met AI",
       "mock_reg_cta": "Inschrijven",
       "mock_payments_title": "Recente betalingen",
       "mock_payments_auto": "Automatisch factureren",
-      "mock_payments_powered": "Mogelijk gemaakt door Mollie",
-      "mock_profile_slots": "{{count}} plekken gevuld deze maand",
-      "mock_profile_cta": "Boek les"
+      "mock_payments_powered": "Automatiseer betalingen door te koppelen met",
+      "mock_profile_slots": "open plekken deze week",
+      "mock_profile_cta": "Boek nu"
     },
     "cta": {
       "startTrial": "Start gratis proefperiode",

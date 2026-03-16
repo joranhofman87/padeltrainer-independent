@@ -574,14 +574,16 @@
       "mock_booking_slot": "Disponible",
       "mock_booking_booked": "Réservé",
       "mock_booking_sync": "Synchronisé avec Google Calendar",
-      "mock_reg_title": "Rejoindre un groupe d'entraînement",
-      "mock_reg_level": "Sélectionnez votre niveau",
+      "mock_reg_title": "Inscription ouverte",
+      "mock_reg_subtitle": "inscriptions cette semaine",
+      "mock_reg_groups": "groupes planifiés",
+      "mock_reg_ai": "Planifié automatiquement dans votre agenda avec l'IA",
       "mock_reg_cta": "S'inscrire",
       "mock_payments_title": "Paiements récents",
       "mock_payments_auto": "Facturation auto",
-      "mock_payments_powered": "Powered by Mollie",
-      "mock_profile_slots": "{{count}} créneaux remplis ce mois",
-      "mock_profile_cta": "Réserver un cours"
+      "mock_payments_powered": "Automatisez les paiements en connectant",
+      "mock_profile_slots": "créneaux ouverts cette semaine",
+      "mock_profile_cta": "Réserver maintenant"
     },
     "cta": {
       "startTrial": "Essai gratuit",
