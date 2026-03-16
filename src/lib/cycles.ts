@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 export interface PriceTableRow {
   label: string;
   price: number;
+  extra_prices?: { column_name: string; price: number }[];
 }
 
 export interface Cycle {
