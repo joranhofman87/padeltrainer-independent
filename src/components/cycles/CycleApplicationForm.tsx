@@ -893,31 +893,7 @@ export default function CycleApplicationForm({
               ? cycle.price_table[typeIndex]
               : cycle.price_table[0]; // fallback to first row
             if (priceRow) {
-              // Check if price_columns exist and try to match lesson type to a column
-              const priceColumns = cycle.settings?.price_columns;
-              let matchedColumnPrice: number | null = null;
-              let matchedColumnName: string | null = null;
-              
-              if (priceColumns && priceColumns.length > 0 && priceRow.extra_prices) {
-                for (const col of priceColumns) {
-                  const colLower = col.toLowerCase();
-                  const typeLower = firstLessonType.toLowerCase();
-                  const typeLabelLower = lessonTypeLabel.toLowerCase();
-                  if (colLower.includes(typeLower) || typeLower.includes(colLower) ||
-                      colLower.includes(typeLabelLower) || typeLabelLower.includes(colLower)) {
-                    const extraPrice = priceRow.extra_prices.find(
-                      ep => ep.column_name.toLowerCase() === colLower
-                    );
-                    if (extraPrice) {
-                      matchedColumnPrice = extraPrice.price;
-                      matchedColumnName = col;
-                      break;
-                    }
-                  }
-                }
-              }
-              
-              pricePerSession = matchedColumnPrice ?? priceRow.price;
+              pricePerSession = priceRow.price;
               priceSource = 'price_table';
             }
           }
