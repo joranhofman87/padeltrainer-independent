@@ -92,11 +92,14 @@ export default function CycleApplicationForm({
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cash'>('online');
   const [selectedCyclusOption, setSelectedCyclusOption] = useState<CyclusOption | null>(null);
+  const [selectedDurationWeeks, setSelectedDurationWeeks] = useState<number | null>(null);
   
   const isEvent = cycle.type === 'event';
   const eventPaymentMethods = (cycle.settings as any)?.payment_methods as EventPaymentMethod | undefined;
   const cyclusOptions = ((cycle.settings as any)?.cyclus_options as CyclusOption[] | undefined) || [];
   const hasCyclusOptions = cyclusOptions.length > 0;
+  const durationOptions = ((cycle.settings as any)?.duration_options as number[] | undefined) || [];
+  const hasDurationOptions = durationOptions.length > 0;
   
   // Load rating systems
   useEffect(() => {
