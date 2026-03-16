@@ -378,8 +378,8 @@ export default function CycleForm({
         total_price: isEvent ? (values.total_price ? Number(values.total_price) : null) : (isRegistration ? null : (values.total_price ? Number(values.total_price) : null)),
         currency: values.currency,
         terms: terms || null,
-        price_table: priceTable.filter(pt => pt.label && pt.price > 0).length > 0
-          ? priceTable.filter(pt => pt.label && pt.price > 0)
+        price_table: priceTable.filter(pt => pt.label && (pt.price > 0 || (pt.extra_prices && pt.extra_prices.some(ep => ep.price > 0)))).length > 0
+          ? priceTable.filter(pt => pt.label && (pt.price > 0 || (pt.extra_prices && pt.extra_prices.some(ep => ep.price > 0))))
           : null,
       };
 
