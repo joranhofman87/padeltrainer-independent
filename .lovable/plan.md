@@ -1,29 +1,35 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Show Rating Decimals (e.g. 4.2 instead of 4)
 
-Implemented on 2026-03-14.
+### Problem
+When a player's KNLTB rating is a whole number (e.g. `4.0`), JavaScript renders it as `4` — hiding the decimal that matters. Ratings like 4.1 vs 4.9 have very different skill implications. All rating displays should consistently show at least one decimal place.
 
-## What Changed
+### Changes
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+**`src/components/cycles/ProposalScheduleGrid.tsx`**
 
-## Sanity Content Types Needed in Studio
+Add a helper function to format ratings with 1 decimal:
+```ts
+function formatRating(r: number): string {
+  return r.toFixed(1);
+}
+```
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+Apply it everywhere ratings are rendered (approximately 8 locations):
+- Player chips: `{assignment.player_rating}` → `{formatRating(assignment.player_rating)}`
+- Popover player list ratings
+- Tooltip out-of-range messages (rating, min, max values)
+- Slot rating range indicator: `{slot.min_rating}–{slot.max_rating}`
+- Unplaced player badges and drag overlay
+- DraggablePlayerChipOverlay rating display
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+**`src/lib/ratingSystems.ts`**
+- Update `formatRatingWithSystem` — currently uses 4 decimals for KNLTB, change to 1 decimal for all systems (consistent display)
 
-## What Stays Unchanged
+**No changes to matching logic** — the edge function already compares exact numeric values without rounding, which is correct.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### Files to modify
+- `src/components/cycles/ProposalScheduleGrid.tsx`
+- `src/lib/ratingSystems.ts`
+
