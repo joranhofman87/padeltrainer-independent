@@ -108,7 +108,9 @@
     "customDurationPlaceholder": "e.g. 75",
     "addDuration": "Add",
     "addPriceColumn": "Add price column",
-    "defaultColumnName": "Category"
+    "defaultColumnName": "Category",
+    "priceOverview": "Price Overview",
+    "perLesson": "Per lesson"
   },
   
   "actions": {
