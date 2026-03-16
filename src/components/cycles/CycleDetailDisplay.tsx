@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { MapPin, FileText, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { differenceInWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import type { Cycle, PriceTableRow, CyclusOption } from '@/lib/cycles';
 
