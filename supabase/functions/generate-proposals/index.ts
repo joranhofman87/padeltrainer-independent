@@ -54,6 +54,7 @@ interface IntakeRequest {
   preferred_duration_minutes: number | null;
   location_id: string | null;
   sessions_per_week: number;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 }
 
