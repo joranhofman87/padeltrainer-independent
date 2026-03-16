@@ -20,6 +20,7 @@ import {
   movePlayerAssignment,
   moveSlot,
   swapSlots,
+  deleteSlot,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
