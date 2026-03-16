@@ -1196,103 +1196,189 @@ export default function ProposalScheduleGrid({
         )}
       </div>
 
-      {/* Time-row × Trainer-column grid */}
+      {/* Time-row × Trainer-column grid + Sidebar */}
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="overflow-x-auto">
-          <div
-            className="relative grid gap-px bg-border/30 rounded-lg"
-            style={{
-              gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
-              gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
-            }}
-          >
-            {/* Header: empty corner */}
-            <div className="bg-background rounded-tl-lg" style={{ gridRow: 1, gridColumn: 1 }} />
+        <div className="flex gap-4">
+          {/* Grid */}
+          <div className="flex-1 overflow-x-auto">
+            <div
+              className="relative grid gap-px bg-border/30 rounded-lg"
+              style={{
+                gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
+                gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
+              }}
+            >
+              {/* Header: empty corner */}
+              <div className="bg-background rounded-tl-lg" style={{ gridRow: 1, gridColumn: 1 }} />
 
-            {/* Header: trainer columns */}
-            {trainers.map((trainer, colIdx) => (
-              <div
-                key={trainer.id}
-                style={{ gridRow: 1, gridColumn: colIdx + 2 }}
-                className="bg-background p-2 flex items-center gap-2 border-b border-border"
-              >
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={trainer.avatar || undefined} />
-                  <AvatarFallback className="text-[10px]">
-                    {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate">{trainer.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {daySlots.filter(s => s.trainer_id === trainer.id).length} slots
-                  </p>
-                </div>
-              </div>
-            ))}
-
-            {/* Grid body */}
-            {timeRows.map((rowMinute, rowIdx) => {
-              const gridRow = rowIdx + 2;
-              return (
-                <React.Fragment key={`row-${rowMinute}`}>
-                  {/* Time label */}
-                  <div
-                    style={{ gridRow, gridColumn: 1 }}
-                    className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
-                  >
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {minutesToHHMM(rowMinute)}
-                    </span>
+              {/* Header: trainer columns */}
+              {trainers.map((trainer, colIdx) => (
+                <div
+                  key={trainer.id}
+                  style={{ gridRow: 1, gridColumn: colIdx + 2 }}
+                  className="bg-background p-2 flex items-center gap-2 border-b border-border"
+                >
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={trainer.avatar || undefined} />
+                    <AvatarFallback className="text-[10px]">
+                      {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate">{trainer.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {daySlots.filter(s => s.trainer_id === trainer.id).length} slots
+                    </p>
                   </div>
+                </div>
+              ))}
 
-                  {/* Trainer cells */}
-                  {trainers.map((trainer, colIdx) => {
-                    const cellKey = `${trainer.id}__${rowMinute}`;
-                    const gridColumn = colIdx + 2;
+              {/* Grid body */}
+              {timeRows.map((rowMinute, rowIdx) => {
+                const gridRow = rowIdx + 2;
+                return (
+                  <React.Fragment key={`row-${rowMinute}`}>
+                    {/* Time label */}
+                    <div
+                      style={{ gridRow, gridColumn: 1 }}
+                      className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
+                    >
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {minutesToHHMM(rowMinute)}
+                      </span>
+                    </div>
 
-                    const occupyingSlotId = occupiedCells.get(cellKey);
-                    if (occupyingSlotId) {
-                      // Skip rendering — the spanning slot cell above covers this row
-                      return null;
-                    }
+                    {/* Trainer cells */}
+                    {trainers.map((trainer, colIdx) => {
+                      const cellKey = `${trainer.id}__${rowMinute}`;
+                      const gridColumn = colIdx + 2;
 
-                    const slot = slotLookup.get(cellKey);
-                    const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
-                    const cellId = `cell__${trainer.id}__${rowMinute}`;
+                      const occupyingSlotId = occupiedCells.get(cellKey);
+                      if (occupyingSlotId) {
+                        return null;
+                      }
 
-                    return (
-                      <div
-                        key={cellKey}
-                        style={{
-                          gridRow: rowSpan > 1 ? `${gridRow} / span ${rowSpan}` : gridRow,
-                          gridColumn,
-                        }}
-                        className="bg-background p-0.5"
-                      >
-                        <DroppableCell cellId={cellId} hasSlot={!!slot}>
-                          {slot && slot.is_blocked ? (
-                            <BlockedSlotCard slot={slot} />
-                          ) : slot ? (
-                            <DraggableSlotCard
-                              slot={slot}
-                              onPlayerClick={onPlayerClick}
-                              canDragSlot={canDragSlot}
-                              trainerAvailabilityWindows={trainerAvailabilityWindows}
-                              selectedDay={selectedDay}
-                              daySlots={daySlots}
-                              onMoveSlot={onMoveSlot}
-                              onDeleteSlot={onDeleteSlot}
-                            />
-                          ) : null}
-                        </DroppableCell>
-                      </div>
-                    );
-                  })}
-                </React.Fragment>
-              );
-            })}
+                      const slot = slotLookup.get(cellKey);
+                      const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
+                      const cellId = `cell__${trainer.id}__${rowMinute}`;
+
+                      return (
+                        <div
+                          key={cellKey}
+                          style={{
+                            gridRow: rowSpan > 1 ? `${gridRow} / span ${rowSpan}` : gridRow,
+                            gridColumn,
+                          }}
+                          className="bg-background p-0.5"
+                        >
+                          <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                            {slot && slot.is_blocked ? (
+                              <BlockedSlotCard slot={slot} />
+                            ) : slot ? (
+                              <DraggableSlotCard
+                                slot={slot}
+                                onPlayerClick={onPlayerClick}
+                                canDragSlot={canDragSlot}
+                                trainerAvailabilityWindows={trainerAvailabilityWindows}
+                                selectedDay={selectedDay}
+                                daySlots={daySlots}
+                                onMoveSlot={onMoveSlot}
+                                onDeleteSlot={onDeleteSlot}
+                              />
+                            ) : null}
+                          </DroppableCell>
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Unplaced Players Sidebar */}
+          {unplacedPlayers && unplacedPlayers.length > 0 && (
+            <div className={cn(
+              'shrink-0 sticky top-4 self-start transition-all',
+              sidebarOpen ? 'w-[280px]' : 'w-10',
+            )}>
+              {sidebarOpen ? (
+                <Card className="h-[calc(100vh-200px)] flex flex-col">
+                  <div className="p-3 border-b border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <UserCircle className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">
+                          {t('proposals.unplacedPlayers', { defaultValue: 'Unplaced' })}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {filteredUnplaced.length}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <PanelRightClose className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search...' })}
+                        className="h-7 text-xs pl-7"
+                      />
+                    </div>
+                  </div>
+                  <DroppableUnplacedPool>
+                    {filteredUnplaced.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4 italic">
+                        {searchQuery
+                          ? t('proposals.noSearchResults', { defaultValue: 'No players found' })
+                          : t('proposals.allPlaced', { defaultValue: 'All players are placed' })
+                        }
+                      </p>
+                    ) : (
+                      filteredUnplaced.map(player => (
+                        <DraggableUnplacedPlayer
+                          key={player.id}
+                          player={player}
+                          onPlayerClick={onPlayerClick}
+                        />
+                      ))
+                    )}
+                  </DroppableUnplacedPool>
+                </Card>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 relative"
+                        onClick={() => setSidebarOpen(true)}
+                      >
+                        <PanelRightOpen className="h-4 w-4" />
+                        {unplacedPlayers.length > 0 && (
+                          <Badge variant="destructive" className="absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0 h-4 min-w-4 flex items-center justify-center">
+                            {unplacedPlayers.length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {t('proposals.showUnplaced', { defaultValue: 'Show unplaced players' })} ({unplacedPlayers.length})
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          )}
         </div>
 
         <DragOverlay dropAnimation={null}>
@@ -1301,6 +1387,9 @@ export default function ProposalScheduleGrid({
           )}
           {activeData?.type === 'slot' && activeData.slot && (
             <SlotDragOverlay slot={activeData.slot} />
+          )}
+          {activeData?.type === 'unplaced-player' && activeData.player && (
+            <UnplacedPlayerDragOverlay player={activeData.player} />
           )}
         </DragOverlay>
       </DndContext>
