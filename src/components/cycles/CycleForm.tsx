@@ -342,6 +342,7 @@ export default function CycleForm({
           : undefined,
         duration_options: isRegistration && durationOptions.length > 0 ? durationOptions : undefined,
         available_duration_minutes: isRegistration ? availableDurations.sort((a, b) => a - b) : undefined,
+        price_columns: priceColumns.length > 0 ? priceColumns : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
