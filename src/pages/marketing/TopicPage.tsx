@@ -8,14 +8,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
-import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
+import { PortableTextRenderer, extractHeadings } from '@/components/sanity/PortableTextRenderer';
+import { TableOfContents } from '@/components/sanity/TableOfContents';
+import { CTASection } from '@/components/sanity/CTASection';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, BookOpen } from 'lucide-react';
+import { ArrowLeft, User, BookOpen, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getTopicBySlug } from '@/lib/topics';
+import { getTopicBySlug, buildArticleItemList } from '@/lib/topics';
 import { CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } from '@/lib/learningArticles';
 import { MARKETING_DOMAIN } from '@/lib/domains';
-import type { TopicDetail } from '@/lib/topics';
+import type { TopicDetail, ReferencingArticle } from '@/lib/topics';
+
+// ── Skeleton ──
 
 function TopicSkeleton() {
   return (
@@ -32,6 +36,92 @@ function TopicSkeleton() {
     </div>
   );
 }
+
+// ── Article card (reused across sections) ──
+
+function ArticleCard({ article }: { article: ReferencingArticle }) {
+  return (
+    <LocalizedLink to={`/learn/${article.slug}`} className="block h-full">
+      <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
+        <CardContent className="p-5">
+          <div className="flex gap-2 mb-2">
+            {article.contentType && (
+              <Badge variant="secondary" className="text-xs">
+                {CONTENT_TYPE_LABELS[article.contentType] || article.contentType}
+              </Badge>
+            )}
+            {article.skillLevel && (
+              <Badge variant="outline" className="text-xs">
+                {SKILL_LEVEL_LABELS[article.skillLevel] || article.skillLevel}
+              </Badge>
+            )}
+          </div>
+          <CardTitle className="text-base mb-2 hover:text-primary transition-colors">
+            {article.h1 || article.title}
+          </CardTitle>
+          {article.intro && (
+            <p className="text-sm text-muted-foreground line-clamp-2">{article.intro}</p>
+          )}
+        </CardContent>
+      </Card>
+    </LocalizedLink>
+  );
+}
+
+// ── Grouped article blocks ──
+
+function GroupedArticles({ articles, t }: { articles: ReferencingArticle[]; t: (key: string, fallback: string) => string }) {
+  const groups: Record<string, ReferencingArticle[]> = {};
+  const ungrouped: ReferencingArticle[] = [];
+
+  for (const a of articles) {
+    if (a.contentType) {
+      (groups[a.contentType] ??= []).push(a);
+    } else {
+      ungrouped.push(a);
+    }
+  }
+
+  // Only show groups with 3+ articles; rest go to ungrouped
+  const validGroups: [string, ReferencingArticle[]][] = [];
+  for (const [type, items] of Object.entries(groups)) {
+    if (items.length >= 3) {
+      validGroups.push([type, items]);
+    } else {
+      ungrouped.push(...items);
+    }
+  }
+
+  if (validGroups.length === 0 && ungrouped.length === 0) return null;
+
+  return (
+    <>
+      {validGroups.map(([type, items]) => (
+        <section key={type} className="mt-12">
+          <h2 className="text-2xl font-bold mb-6 capitalize">
+            {CONTENT_TYPE_LABELS[type] || type}
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {items.map(a => <ArticleCard key={a._id} article={a} />)}
+          </div>
+        </section>
+      ))}
+      {ungrouped.length > 0 && (
+        <section className="mt-12">
+          <h2 className="text-2xl font-bold mb-6">
+            <FileText className="h-5 w-5 inline-block mr-2 text-primary" />
+            {t('topics.moreArticles', 'More Articles')}
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {ungrouped.map(a => <ArticleCard key={a._id} article={a} />)}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+// ── Structured data ──
 
 function buildStructuredData(topic: TopicDetail, slug: string, currentLang: string) {
   const url = `${MARKETING_DOMAIN}/${currentLang}/topics/${slug}`;
@@ -74,8 +164,15 @@ function buildStructuredData(topic: TopicDetail, slug: string, currentLang: stri
     ],
   };
 
-  return [collectionPage, webPage, breadcrumbSchema];
+  const schemas: object[] = [collectionPage, webPage, breadcrumbSchema];
+
+  const itemList = buildArticleItemList(topic.referencingArticles || [], currentLang);
+  if (itemList) schemas.push(itemList);
+
+  return schemas;
 }
+
+// ── Main page ──
 
 export default function TopicPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -120,6 +217,23 @@ export default function TopicPage() {
   }
 
   const structuredData = buildStructuredData(topic, slug!, currentLang);
+  const headings = topic.content ? extractHeadings(topic.content) : [];
+  const articles = topic.referencingArticles || [];
+  const totalArticles = articles.length;
+
+  // Determine "Start Here" items: featuredGuides or first 3 articles
+  const startHereGuides = topic.featuredGuides && topic.featuredGuides.length > 0
+    ? topic.featuredGuides.slice(0, 6)
+    : null;
+  const startHereFallback = !startHereGuides && articles.length > 0
+    ? articles.slice(0, 3)
+    : null;
+
+  // Articles for grouped section (exclude Start Here fallback ids)
+  const startHereFallbackIds = new Set(startHereFallback?.map(a => a._id) || []);
+  const remainingArticles = startHereFallback
+    ? articles.filter(a => !startHereFallbackIds.has(a._id))
+    : articles;
 
   const breadcrumbItems = [
     { label: t('topics.title', 'Topics'), href: '/topics' },
@@ -151,7 +265,7 @@ export default function TopicPage() {
         <Breadcrumbs items={breadcrumbItems} />
 
         <article>
-          {/* Header */}
+          {/* ═══ A. Hero ═══ */}
           <motion.header initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex flex-wrap gap-2 mb-4">
               {topic.contentType && (
@@ -162,6 +276,12 @@ export default function TopicPage() {
               {topic.skillLevel && (
                 <Badge variant="outline">
                   {SKILL_LEVEL_LABELS[topic.skillLevel] || topic.skillLevel}
+                </Badge>
+              )}
+              {totalArticles > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  <FileText className="h-3 w-3 mr-1" />
+                  {totalArticles} {totalArticles === 1 ? 'article' : 'articles'}
                 </Badge>
               )}
             </div>
@@ -182,7 +302,19 @@ export default function TopicPage() {
             </motion.p>
           )}
 
-          {/* Portable Text Content */}
+          {/* ═══ B. Table of Contents ═══ */}
+          {headings.length >= 2 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+              className="mb-8 p-4 border rounded-lg bg-card"
+            >
+              <TableOfContents headings={headings} />
+            </motion.div>
+          )}
+
+          {/* ═══ C. Portable Text Content ═══ */}
           {topic.content && topic.content.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -194,17 +326,20 @@ export default function TopicPage() {
             </motion.div>
           )}
 
-          {/* ═══ Featured Content Sections ═══ */}
-
-          {/* Featured Guides */}
-          {topic.featuredGuides && topic.featuredGuides.length > 0 && (
-            <section className="mt-12">
+          {/* ═══ D. Start Here ═══ */}
+          {startHereGuides && (
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="mt-12 p-6 rounded-xl border-2 border-primary/10 bg-accent/5"
+            >
               <h2 className="text-2xl font-bold mb-6">
                 <BookOpen className="h-5 w-5 inline-block mr-2 text-primary" />
-                {t('topics.featuredGuides', 'Guides')}
+                {t('topics.startHere', 'Start Here')}
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {topic.featuredGuides.map(guide => (
+                {startHereGuides.map(guide => (
                   <LocalizedLink key={guide._id} to={`/learn/${guide.slug}`}>
                     <Card className="h-full hover:shadow-lg transition-shadow hover:border-primary/20">
                       <CardContent className="p-5">
@@ -229,8 +364,33 @@ export default function TopicPage() {
                   </LocalizedLink>
                 ))}
               </div>
-            </section>
+            </motion.section>
           )}
+
+          {/* Start Here fallback (from referencing articles) */}
+          {startHereFallback && (
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="mt-12 p-6 rounded-xl border-2 border-primary/10 bg-accent/5"
+            >
+              <h2 className="text-2xl font-bold mb-6">
+                <BookOpen className="h-5 w-5 inline-block mr-2 text-primary" />
+                {t('topics.startHere', 'Start Here')}
+              </h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {startHereFallback.map(a => <ArticleCard key={a._id} article={a} />)}
+              </div>
+            </motion.section>
+          )}
+
+          {/* ═══ E. All Articles / Grouped ═══ */}
+          {remainingArticles.length > 0 && (
+            <GroupedArticles articles={remainingArticles} t={t} />
+          )}
+
+          {/* ═══ F. Supporting Resources ═══ */}
 
           {/* Featured Rules */}
           {topic.featuredRules && topic.featuredRules.length > 0 && (
@@ -358,7 +518,7 @@ export default function TopicPage() {
             </section>
           )}
 
-          {/* Related Topics */}
+          {/* ═══ G. Related Topics ═══ */}
           {topic.relatedTopics && topic.relatedTopics.length > 0 && (
             <section className="mt-12">
               <h2 className="text-2xl font-bold mb-6">
@@ -379,7 +539,15 @@ export default function TopicPage() {
             </section>
           )}
 
-          {/* Parent Topic */}
+          {/* ═══ H. CTA Section ═══ */}
+          <CTASection
+            cta={null}
+            fallbackLabel={`${t('topics.ctaLabel', 'Work on')} ${topic.h1 || topic.title} ${t('topics.ctaWithTrainer', 'with a trainer')}`}
+            fallbackUrl="/trainers"
+            fallbackDescription={t('topics.ctaDescription', 'Find a certified padel trainer to help you improve.')}
+          />
+
+          {/* ═══ I. Parent Topic ═══ */}
           {topic.parentTopic && (
             <div className="mt-8 p-4 border rounded-lg bg-card">
               <LocalizedLink

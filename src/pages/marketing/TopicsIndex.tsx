@@ -7,7 +7,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { motion } from 'framer-motion';
-import { Tag } from 'lucide-react';
+import { Tag, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getTopics } from '@/lib/topics';
 import { MARKETING_DOMAIN } from '@/lib/domains';
@@ -91,6 +91,9 @@ export default function TopicsIndex() {
           <p className="text-lg text-muted-foreground max-w-2xl">
             {t('topics.subtitle', 'Explore padel topics to find guides, rules, strokes, video tips, and more.')}
           </p>
+          <p className="text-base text-muted-foreground max-w-2xl mt-2">
+            {t('topics.hubIntro', 'Each topic page brings together our best articles, drills, video tips, and expert trainers so you can dive deep into any area of padel.')}
+          </p>
         </motion.div>
 
         {isLoading ? (
@@ -115,16 +118,20 @@ export default function TopicsIndex() {
                           {topic.description}
                         </p>
                       )}
-                      {(topic.contentType || topic.skillLevel) && (
-                        <div className="flex flex-wrap gap-1.5 mt-3">
-                          {topic.contentType && (
-                            <Badge variant="secondary" className="text-xs">{topic.contentType}</Badge>
-                          )}
-                          {topic.skillLevel && (
-                            <Badge variant="outline" className="text-xs">{topic.skillLevel}</Badge>
-                          )}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {topic.articleCount > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            <FileText className="h-3 w-3 mr-1" />
+                            {topic.articleCount} {topic.articleCount === 1 ? 'article' : 'articles'}
+                          </Badge>
+                        )}
+                        {topic.contentType && (
+                          <Badge variant="secondary" className="text-xs">{topic.contentType}</Badge>
+                        )}
+                        {topic.skillLevel && (
+                          <Badge variant="outline" className="text-xs">{topic.skillLevel}</Badge>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </LocalizedLink>
