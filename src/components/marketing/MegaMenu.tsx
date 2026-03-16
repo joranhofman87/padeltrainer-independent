@@ -53,7 +53,7 @@ export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
-              className="absolute left-1/2 top-[calc(100%+0.75rem)] z-50 -translate-x-1/2"
+              className="absolute left-0 top-[calc(100%+0.75rem)] z-50"
             >
               <div className="rounded-xl border bg-popover p-6 shadow-xl">
                 <div className={`grid gap-10 ${columns.length >= 3 ? 'grid-cols-3 min-w-[680px]' : columns.length === 2 ? 'grid-cols-2 min-w-[520px]' : 'grid-cols-1 min-w-[280px]'}`}>
