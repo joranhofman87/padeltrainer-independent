@@ -1,29 +1,43 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Make Summary Card Multi-Selection Aware & Informative
 
-Implemented on 2026-03-14.
+### Problem
+The "Jouw keuze" summary card only shows the first selected lesson type's price. When a player selects multiple types (e.g., Private + Group) or multiple durations, only one is shown. The card also looks too much like a checkout — it should be informative ("this is indicative pricing") not transactional.
 
-## What Changed
+### Changes
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+**`src/components/cycles/CycleApplicationForm.tsx`** (lines 869-977):
 
-## Sanity Content Types Needed in Studio
+Replace the single-type price logic with a loop over all `watchedLessonTypes`:
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+1. For each selected lesson type, find its matching price table row (by index in `orderedTypes`)
+2. Show a row per type: type label + per-lesson price + total (if weeks known)
+3. If multiple durations are selected, show rows per duration as well
+4. Change the card styling: remove `bg-primary/5 border-primary/20`, use a softer `bg-muted/30 border-muted` look
+5. Replace `Calculator` icon + bold total with an `Info` icon
+6. Add a small italic note: "Indicative pricing — final price confirmed after registration" (translated)
+7. Remove the large bold total row — instead show per-line totals inline
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+**Layout sketch:**
+```text
+┌─ ℹ️ Price indication ─────────────────────┐
+│                                             │
+│  Private lesson    €25/les    14w: €350     │
+│  Group lesson      €15/les    14w: €210     │
+│                                             │
+│  Duration: 60 min                           │
+│                                             │
+│  ⁱ Indicative — confirmed after enrollment  │
+└─────────────────────────────────────────────┘
+```
 
-## What Stays Unchanged
+**Translation keys** (EN + NL):
+- `application.summary.indicativeNote` — "Indicative pricing, confirmed after registration" / "Indicatieve prijzen, bevestigd na inschrijving"
+- `application.summary.priceIndication` — "Price indication" / "Prijsindicatie"
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### Files to modify
+- `src/components/cycles/CycleApplicationForm.tsx`
+- `src/i18n/locales/en/cycles.json`
+- `src/i18n/locales/nl/cycles.json`
+
