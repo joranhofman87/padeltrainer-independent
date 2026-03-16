@@ -25,6 +25,7 @@ interface CyclusGroup {
   day_time: string;
   first_date: string;
   last_date: string;
+  created_at: string;
 }
 
 interface SlotData {
@@ -79,7 +80,7 @@ export default function AcademyOpenSlots() {
       const { data: slots, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, max_participants,
+          id, start_time, end_time, max_participants, created_at,
           cyclus_id, cyclus_name, is_marked_full, is_public,
           location_id, locations:location_id(name)
         `)
@@ -134,6 +135,9 @@ export default function AcademyOpenSlots() {
             if (!slot.is_public) existing.is_public = false;
             if (slot.start_time > existing.last_date) existing.last_date = slot.start_time;
             if (slot.start_time < existing.first_date) existing.first_date = slot.start_time;
+            if (slotInfo && (slotInfo as any).created_at < existing.created_at) {
+              existing.created_at = (slotInfo as any).created_at;
+            }
           } else {
             cyclusMap.set(slot.cyclus_id, {
               cyclus_id: slot.cyclus_id,
@@ -145,6 +149,7 @@ export default function AcademyOpenSlots() {
               day_time: format(new Date(slot.start_time), 'EEEE HH:mm', { locale: dateLocale }),
               first_date: slot.start_time,
               last_date: slot.start_time,
+              created_at: (slotInfo as any)?.created_at || slot.start_time,
             });
           }
         } else {
@@ -351,6 +356,9 @@ export default function AcademyOpenSlots() {
                                       <p className="text-sm text-muted-foreground capitalize">{cyclus.day_time}</p>
                                       <p className="text-sm text-muted-foreground">
                                         {format(new Date(cyclus.first_date), 'd MMM', { locale: dateLocale })} – {format(new Date(cyclus.last_date), 'd MMM', { locale: dateLocale })}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        {tAcademy('calendar.created', 'Created')}: {format(new Date(cyclus.created_at), 'd MMM yyyy', { locale: dateLocale })}
                                       </p>
                                     </div>
                                   </div>
