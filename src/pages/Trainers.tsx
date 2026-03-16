@@ -443,7 +443,7 @@ export default function Trainers() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-background to-blue-100/30 dark:from-blue-950/20 dark:via-background dark:to-blue-900/10">
       <SEO
         title="Find Padel Trainers"
-        description="Discover certified padel trainers across the Netherlands. Compare rates, read reviews, and book lessons that match your skill level."
+        description="Discover certified padel trainers worldwide. Compare rates, read reviews, and book lessons that match your skill level."
         url="/trainers"
         structuredData={structuredData}
       />
