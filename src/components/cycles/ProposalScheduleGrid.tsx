@@ -412,7 +412,7 @@ function SlotEditPopover({
                       <span className="font-medium truncate">{a.player_name}</span>
                       {a.player_rating != null && (
                         <span className={cn('text-[10px] shrink-0', oor ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
-                          {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+                          {formatRating(a.player_rating)}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
                         </span>
                       )}
                     </div>
