@@ -203,7 +203,7 @@ function DraggablePlayerChip({
         <span className="font-medium truncate max-w-[90px]">{assignment.player_name}</span>
         {assignment.player_rating != null && (
           <span className={cn('text-[10px]', outOfRange ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
-            {assignment.player_rating}
+            {formatRating(assignment.player_rating)}
           </span>
         )}
         {outOfRange && (
@@ -214,9 +214,9 @@ function DraggablePlayerChip({
             <TooltipContent side="top" className="text-xs max-w-[200px]">
               {t('proposals.ratingOutOfRange', {
                 defaultValue: 'Rating {{rating}} is outside slot range ({{min}}–{{max}})',
-                rating: assignment.player_rating,
-                min: slotMinRating ?? '?',
-                max: slotMaxRating ?? '?',
+                rating: formatRating(assignment.player_rating!),
+                min: slotMinRating != null ? formatRating(slotMinRating) : '?',
+                max: slotMaxRating != null ? formatRating(slotMaxRating) : '?',
               })}
             </TooltipContent>
           </Tooltip>
