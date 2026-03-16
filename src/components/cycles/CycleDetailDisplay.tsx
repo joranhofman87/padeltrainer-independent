@@ -25,6 +25,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
   const priceTable = cycle.price_table as PriceTableRow[] | null;
   const cyclusOptions = (cycle.settings?.cyclus_options as CyclusOption[] | undefined) || [];
   const durationOptions = (cycle.settings?.duration_options as number[] | undefined) || [];
+  const priceColumns = (cycle.settings?.price_columns as string[] | undefined) || [];
   const hasCyclusOptions = cyclusOptions.length > 0;
   const hasDurationOptions = durationOptions.length > 0;
   const hasPriceTable = !hasCyclusOptions && priceTable && priceTable.length > 0;
