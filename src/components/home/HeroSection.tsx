@@ -133,7 +133,7 @@ function MockPayments({ t }: { t: (k: string, opts?: Record<string, unknown>) =>
   );
 }
 
-function MockProfile({ t }: { t: (k: string) => string }) {
+function MockProfile({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-4">
