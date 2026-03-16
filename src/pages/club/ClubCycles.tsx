@@ -21,6 +21,7 @@ interface LocationData {
 export default function ClubCycles() {
   const { t } = useTranslation('cycles');
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { activeClub } = useClubContext();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
