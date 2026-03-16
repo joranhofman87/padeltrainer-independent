@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
+import ProposalOverviewPanel from '@/components/cycles/ProposalOverviewPanel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
@@ -50,6 +51,7 @@ export default function AcademyIntakeRequests() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
+  const [showOverview, setShowOverview] = useState(false);
 
   const fetchData = async () => {
     if (!activeAcademy) return;
@@ -217,6 +219,8 @@ export default function AcademyIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
+        onShowOverview={() => setShowOverview(true)}
+        showOverview={showOverview}
         isGenerating={isGenerating}
         isResetting={isResetting}
       />
@@ -380,6 +384,15 @@ export default function AcademyIntakeRequests() {
           setShowAddDialog(false);
           fetchData();
         }}
+      />
+
+      {/* Proposal Overview Panel */}
+      <ProposalOverviewPanel
+        open={showOverview}
+        onOpenChange={setShowOverview}
+        slots={scheduleSlots}
+        onApproveAll={() => {}}
+        onBackToEditing={() => setShowOverview(false)}
       />
 
       {/* Reset Proposals Confirmation */}

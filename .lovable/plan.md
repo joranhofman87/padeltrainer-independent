@@ -1,45 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Step 4: Read-Only Overview + Approve & Book
+## Status: ✅ COMPLETED
 
-## Problem
-- Step 3 currently has an "Approve all" button that doesn't belong there -- Step 3 is for editing/reviewing.
-- There is no Step 4 view: users cannot see a final read-only summary before confirming.
-- Users need a clear "last check" before committing proposals into the agenda.
+Implemented on 2026-03-14.
 
-## Changes
+## What Changed
 
-### 1. Remove "Approve all" from Step 3 (`ProposalWorkflowSteps.tsx`)
-- Step 3 action keeps only the **Reset** button (for going back to regenerate).
-- Add a **"Continue to overview"** button that triggers a new callback `onShowOverview`.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### 2. Add "Approve all" to Step 4 (`ProposalWorkflowSteps.tsx`)
-- Step 4 action shows the **"Approve all"** button only when it's active and there are proposed items.
-- Also add a "View overview" button to open the overview panel.
+## Sanity Content Types Needed in Studio
 
-### 3. New component: `ProposalOverviewPanel.tsx`
-A read-only summary dialog/sheet that shows:
-- **Summary stats**: total slots created, total players assigned, unassigned players.
-- **Per-trainer breakdown**: trainer name, number of slots, list of days/times with assigned player names.
-- Uses the existing `scheduleSlots` (`SlotWithOccupancy[]`) data -- no new API calls needed.
-- Grouped by trainer, then by day, showing time + player names in a simple table/list.
-- No drag-and-drop, no editing, no interactivity beyond scrolling and closing.
-- A prominent **"Approve & Book all"** button at the bottom of the overview.
-- A **"Back to editing"** button to return to Step 3.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### 4. Wire into parent pages (`AcademyIntakeRequests.tsx` + `TrainerIntakeRequests.tsx`)
-- Add `showOverview` state.
-- Pass `onShowOverview` to `ProposalWorkflowSteps`.
-- Render `ProposalOverviewPanel` when `showOverview` is true, passing `scheduleSlots` and `onApproveAll`.
-- The `onApproveAll` handler still needs to be implemented (currently a no-op `() => {}`), but that's a separate task -- the overview panel will call it.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### 5. Update step status logic
-- When `proposedCount > 0`: steps 1-2 completed, step 3 active, step 4 upcoming.
-- When user clicks "Continue to overview": step 3 completed, step 4 active (controlled by parent state `showOverview`).
+## What Stays Unchanged
 
-## Files to create/modify
-- **Create**: `src/components/cycles/ProposalOverviewPanel.tsx`
-- **Modify**: `src/components/cycles/ProposalWorkflowSteps.tsx` -- move approve to step 4, add overview trigger
-- **Modify**: `src/pages/academy/AcademyIntakeRequests.tsx` -- wire overview state
-- **Modify**: `src/pages/TrainerIntakeRequests.tsx` -- wire overview state
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

@@ -27,6 +27,8 @@ interface ProposalWorkflowStepsProps {
   onApproveAll: () => void;
   onReset: () => void;
   onAddManual: () => void;
+  onShowOverview: () => void;
+  showOverview?: boolean;
   isGenerating?: boolean;
   isResetting?: boolean;
 }
@@ -42,6 +44,8 @@ export default function ProposalWorkflowSteps({
   onApproveAll,
   onReset,
   onAddManual,
+  onShowOverview,
+  showOverview,
   isGenerating,
   isResetting,
 }: ProposalWorkflowStepsProps) {
@@ -55,10 +59,13 @@ export default function ProposalWorkflowSteps({
       return ['active', 'upcoming', 'upcoming', 'upcoming'];
     }
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
+      return ['completed', 'completed', 'completed', 'completed'];
+    }
+    if (showOverview) {
       return ['completed', 'completed', 'completed', 'active'];
     }
     if (confirmedCount > 0 && proposedCount > 0) {
-      return ['completed', 'completed', 'active', 'active'];
+      return ['completed', 'completed', 'active', 'upcoming'];
     }
     if (proposedCount > 0) {
       return ['completed', 'completed', 'active', 'upcoming'];
@@ -126,11 +133,11 @@ export default function ProposalWorkflowSteps({
           </Button>
           <Button
             size="sm"
-            onClick={onApproveAll}
+            onClick={onShowOverview}
             className="h-7 text-xs"
           >
-            <CheckCheck className="h-3 w-3 mr-1" />
-            {t('proposals.approveAll', { defaultValue: 'Approve all' })}
+            <Eye className="h-3 w-3 mr-1" />
+            {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
           </Button>
         </div>
       ) : undefined,
@@ -140,14 +147,14 @@ export default function ProposalWorkflowSteps({
       label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
       description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
       status: s4,
-      action: proposedCount > 0 ? (
+      action: s4 === 'active' && proposedCount > 0 ? (
         <Button
           size="sm"
-          onClick={onApproveAll}
+          onClick={onShowOverview}
           className="h-7 text-xs"
         >
-          <CheckCheck className="h-3 w-3 mr-1" />
-          {t('proposals.approveAll', { defaultValue: 'Approve all' })}
+          <ClipboardList className="h-3 w-3 mr-1" />
+          {t('workflow.viewOverview', { defaultValue: 'View overview' })}
         </Button>
       ) : undefined,
     },
