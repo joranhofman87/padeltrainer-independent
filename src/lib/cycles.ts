@@ -1017,7 +1017,7 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
   // 3. Fetch availability slots for this specific cycle
   const { data: slots, error: slotsError } = await supabase
     .from('availability_slots')
-    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name')
+    .select('id, start_time, end_time, trainer_id, max_participants, cyclus_name, min_rating, max_rating, rating_system')
     .eq('cyclus_id', cycleId)
     .order('start_time', { ascending: true });
 
