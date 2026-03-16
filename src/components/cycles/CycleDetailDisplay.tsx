@@ -68,6 +68,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
               <tr className="border-b bg-muted/30">
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.cyclusOption', 'Optie')}</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.sessions', 'Lessen')}</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.weeks', 'Weken')}</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.totalPrice', 'Totaal')}</th>
               </tr>
@@ -77,6 +78,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{opt.label}</td>
                   <td className="px-3 py-2 text-right">{opt.number_of_sessions}</td>
+                  <td className="px-3 py-2 text-right">{opt.number_of_weeks || '–'}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">{currencyFormatter.format(opt.price_per_session)}</td>
                   <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{currencyFormatter.format(opt.total_price)}</td>
                 </tr>

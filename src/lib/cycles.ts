@@ -60,6 +60,7 @@ export interface ExtraCost {
 export interface CyclusOption {
   label: string;
   number_of_sessions: number;
+  number_of_weeks: number;
   price_per_session: number;
   total_price: number;
 }

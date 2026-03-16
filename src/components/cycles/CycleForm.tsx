@@ -999,7 +999,7 @@ export default function CycleForm({
                   {t('form.cyclusOptionsHelp', 'Define different packages players can choose from (e.g. 5, 10, or 15 lessons)')}
                 </p>
                 {cyclusOptions.map((opt, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_5rem_5rem_5rem_auto] items-center gap-2">
+                  <div key={index} className="grid grid-cols-[1fr_4rem_4rem_5rem_5rem_auto] items-center gap-2">
                     <Input
                       placeholder={t('form.cyclusOptionLabel', 'e.g. Cyclus 5 lessen')}
                       value={opt.label}
@@ -1025,6 +1025,18 @@ export default function CycleForm({
                         setCyclusOptions(updated);
                       }}
                       title={t('form.numberOfSessions', 'Number of sessions')}
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="#"
+                      value={opt.number_of_weeks || ''}
+                      onChange={(e) => {
+                        const updated = [...cyclusOptions];
+                        updated[index] = { ...updated[index], number_of_weeks: parseInt(e.target.value) || 0 };
+                        setCyclusOptions(updated);
+                      }}
+                      title={t('form.numberOfWeeksColumn', 'Weeks')}
                     />
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
@@ -1062,9 +1074,10 @@ export default function CycleForm({
                   </div>
                 ))}
                 {cyclusOptions.length > 0 && (
-                  <div className="grid grid-cols-[1fr_5rem_5rem_5rem_auto] items-center gap-2 text-xs text-muted-foreground">
+                  <div className="grid grid-cols-[1fr_4rem_4rem_5rem_5rem_auto] items-center gap-2 text-xs text-muted-foreground">
                     <span>{t('form.cyclusOptionLabel', 'Label')}</span>
-                    <span>{t('form.sessions', 'Sessions')}</span>
+                    <span>{t('form.sessions', 'Lessen')}</span>
+                    <span>{t('form.numberOfWeeksColumn', 'Weken')}</span>
                     <span>{t('form.pricePerSession', 'Per les')}</span>
                     <span className="text-right">{t('form.totalPrice', 'Totaal')}</span>
                     <span />
@@ -1074,7 +1087,7 @@ export default function CycleForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setCyclusOptions([...cyclusOptions, { label: '', number_of_sessions: 0, price_per_session: 0, total_price: 0 }])}
+                  onClick={() => setCyclusOptions([...cyclusOptions, { label: '', number_of_sessions: 0, number_of_weeks: 0, price_per_session: 0, total_price: 0 }])}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addCyclusOption', 'Add cyclus option')}
