@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
-import CycleForm from '@/components/cycles/CycleForm';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubTrainers } from '@/lib/club';
 import { supabase } from '@/lib/supabaseClient';
