@@ -420,8 +420,8 @@ export default function Trainers() {
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    "name": "Padel Trainers in the Netherlands",
-    "description": "Find certified padel trainers across the Netherlands. Browse profiles, compare rates, and book lessons.",
+    "name": "Padel Trainers",
+    "description": "Find certified padel trainers worldwide. Browse profiles, compare rates, and book lessons.",
     "numberOfItems": filteredAndSortedTrainers.length,
     "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
