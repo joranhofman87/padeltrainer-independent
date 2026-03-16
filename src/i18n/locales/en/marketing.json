@@ -744,13 +744,13 @@
     },
     "playerBanner": {
       "headline": "Are you a padel player?",
-      "subtitle": "We've got you covered too.",
+      "subtitle": "Here's what we've got for you.",
       "trainersDesc": "Book a session near you",
-      "locationsDesc": "Discover padel clubs nearby",
+      "locationsDesc": "Find clubs near you",
       "rules": "Padel Rules",
       "rulesDesc": "Learn the official rules",
       "videoTips": "Video Tips",
-      "videoTipsDesc": "Improve your game with video",
+      "videoTipsDesc": "Watch & improve",
       "blogDesc": "Tips, guides & news"
     }
   },

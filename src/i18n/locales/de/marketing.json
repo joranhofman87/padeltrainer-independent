@@ -744,13 +744,13 @@
     },
     "playerBanner": {
       "headline": "Bist du ein Padel-Spieler?",
-      "subtitle": "Wir haben auch etwas für dich.",
+      "subtitle": "Das haben wir für dich.",
       "trainersDesc": "Buche eine Stunde in deiner Nähe",
-      "locationsDesc": "Entdecke Padel-Clubs in der Nähe",
+      "locationsDesc": "Finde Clubs in deiner Nähe",
       "rules": "Padel-Regeln",
       "rulesDesc": "Lerne die offiziellen Regeln",
       "videoTips": "Video-Tipps",
-      "videoTipsDesc": "Verbessere dein Spiel mit Video",
+      "videoTipsDesc": "Anschauen & verbessern",
       "blogDesc": "Tipps, Guides & News"
     }
   },

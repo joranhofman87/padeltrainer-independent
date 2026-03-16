@@ -744,13 +744,13 @@
     },
     "playerBanner": {
       "headline": "Ben je een padelspeler?",
-      "subtitle": "Wij hebben ook iets voor jou.",
-      "trainersDesc": "Boek een sessie bij jou in de buurt",
-      "locationsDesc": "Ontdek padelclubs in de buurt",
+      "subtitle": "Dit hebben we voor jou.",
+      "trainersDesc": "Boek een les bij jou in de buurt",
+      "locationsDesc": "Vind clubs bij jou in de buurt",
       "rules": "Padelregels",
       "rulesDesc": "Leer de officiële regels",
       "videoTips": "Videotips",
-      "videoTipsDesc": "Verbeter je spel met video",
+      "videoTipsDesc": "Bekijk & verbeter",
       "blogDesc": "Tips, gidsen & nieuws"
     }
   },

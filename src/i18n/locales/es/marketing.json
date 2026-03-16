@@ -744,13 +744,13 @@
     },
     "playerBanner": {
       "headline": "¿Eres jugador de pádel?",
-      "subtitle": "También tenemos algo para ti.",
+      "subtitle": "Esto es lo que tenemos para ti.",
       "trainersDesc": "Reserva una clase cerca de ti",
-      "locationsDesc": "Descubre clubes de pádel cercanos",
+      "locationsDesc": "Encuentra clubs cerca de ti",
       "rules": "Reglas del pádel",
       "rulesDesc": "Aprende las reglas oficiales",
       "videoTips": "Consejos en vídeo",
-      "videoTipsDesc": "Mejora tu juego con vídeo",
+      "videoTipsDesc": "Mira y mejora",
       "blogDesc": "Consejos, guías y noticias"
     }
   },
