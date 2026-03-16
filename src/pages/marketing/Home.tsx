@@ -74,6 +74,7 @@ export default function Home() {
       <HeroSection />
       <SocialProofStrip />
       <Suspense fallback={null}>
+        <PlayerBanner />
         <PadelRealitiesSection />
         <SolutionOverview />
         <HowItWorksSection />

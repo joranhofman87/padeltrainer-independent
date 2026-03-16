@@ -741,6 +741,17 @@
     "finalCta": {
       "headline": "Klaar om te stoppen met admin tussen je lessen?",
       "body": "Opzetten duurt 10 minuten. Je eerste boeking kan vandaag nog binnenkomen."
+    },
+    "playerBanner": {
+      "headline": "Ben je een padelspeler?",
+      "subtitle": "Wij hebben ook iets voor jou.",
+      "trainersDesc": "Boek een sessie bij jou in de buurt",
+      "locationsDesc": "Ontdek padelclubs in de buurt",
+      "rules": "Padelregels",
+      "rulesDesc": "Leer de officiële regels",
+      "videoTips": "Videotips",
+      "videoTipsDesc": "Verbeter je spel met video",
+      "blogDesc": "Tips, gidsen & nieuws"
     }
   },
   "cityPage": {

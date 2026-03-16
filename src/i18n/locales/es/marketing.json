@@ -741,6 +741,17 @@
     "finalCta": {
       "headline": "¿Listo para dejar de hacer admin entre sesiones?",
       "body": "La configuración lleva 10 minutos. Tu primera reserva podría llegar hoy."
+    },
+    "playerBanner": {
+      "headline": "¿Eres jugador de pádel?",
+      "subtitle": "También tenemos algo para ti.",
+      "trainersDesc": "Reserva una clase cerca de ti",
+      "locationsDesc": "Descubre clubes de pádel cercanos",
+      "rules": "Reglas del pádel",
+      "rulesDesc": "Aprende las reglas oficiales",
+      "videoTips": "Consejos en vídeo",
+      "videoTipsDesc": "Mejora tu juego con vídeo",
+      "blogDesc": "Consejos, guías y noticias"
     }
   },
   "cityPage": {
