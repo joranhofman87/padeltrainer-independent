@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
-import { ArrowRight, User, MapPin } from 'lucide-react';
+import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
 import type { SeoFields } from '@/lib/sanity';
 
