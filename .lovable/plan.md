@@ -1,29 +1,60 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+# Convert Overview from Dialog to Full Page
 
-Implemented on 2026-03-14.
+## Why a page is better
+- More room for richer data: trainer workload balance, rating spread warnings, empty slot highlights
+- Mobile-friendly — no cramped dialog, natural scroll
+- Fits the existing routing pattern (`/app/academy/intake-requests/overview`, `/app/trainer/intake-requests/overview`)
 
-## What Changed
+## What to build
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+### 1. New page component: `ProposalOverviewPage.tsx`
+A full-page read-only overview replacing the current dialog. Sections:
 
-## Sanity Content Types Needed in Studio
+**Top bar**: Back to editing button + "Approve & Book all" CTA (sticky on mobile)
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+**Summary cards row** (3-4 cards):
+- Total slots created
+- Players assigned vs total requests
+- Empty slots (highlighted if high)
+- Trainer workload distribution (e.g., "Patrick: 24 slots, Yari: 8 slots" — flag imbalance)
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+**Warnings/alerts section** (conditional):
+- Empty slots count warning
+- Groups with only 1 player (ideally needs 2+)
+- Large rating gaps within a single slot (e.g., player rated 1 paired with player rated 4)
+- Trainer with disproportionately more/fewer slots
 
-## What Stays Unchanged
+**Per-trainer breakdown** (collapsible cards):
+- Trainer avatar + name + stats badge
+- Day-by-day table: time | assigned players with ratings | group size indicator
+- Visual indicator for slots needing attention (empty, rating mismatch)
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### 2. Routing
+- Add routes: `intake-requests/overview` under both trainer and academy paths in `DomainRouter.tsx`
+- Pass `scheduleSlots` data via route state (`navigate(..., { state: { slots } })`) to avoid refetching
+
+### 3. Navigation flow
+- "Continue" button in Step 3 navigates to the overview page instead of opening a dialog
+- "Back to editing" on overview page navigates back
+- "Approve & Book all" on overview page triggers approval then redirects back to intake-requests
+
+### 4. Remove dialog
+- Delete `ProposalOverviewPanel.tsx` dialog (replaced by page)
+- Remove `showOverview` state from parent pages
+- Update `ProposalWorkflowSteps` — Step 4 action navigates to overview route
+
+### 5. Mobile optimization
+- Summary cards stack vertically
+- Trainer sections as collapsible accordions
+- Sticky bottom bar with approve CTA
+
+## Files to create/modify
+- **Create**: `src/pages/ProposalOverviewPage.tsx`
+- **Modify**: `src/components/DomainRouter.tsx` — add overview routes
+- **Modify**: `src/pages/academy/AcademyIntakeRequests.tsx` — navigate instead of dialog
+- **Modify**: `src/pages/TrainerIntakeRequests.tsx` — navigate instead of dialog
+- **Modify**: `src/components/cycles/ProposalWorkflowSteps.tsx` — update Step 4 action
+- **Delete**: `src/components/cycles/ProposalOverviewPanel.tsx`
+
