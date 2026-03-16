@@ -11,7 +11,6 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ArrowLeft, List, CalendarDays, AlertCircle } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
   getIntakeRequestsWithProposals, 
