@@ -1860,6 +1860,7 @@ export type Database = {
           id: string
           lesson_type: string[]
           location_id: string | null
+          metadata: Json | null
           notes: string | null
           phone: string | null
           player_id: string
@@ -1884,6 +1885,7 @@ export type Database = {
           id?: string
           lesson_type: string[]
           location_id?: string | null
+          metadata?: Json | null
           notes?: string | null
           phone?: string | null
           player_id: string
@@ -1908,6 +1910,7 @@ export type Database = {
           id?: string
           lesson_type?: string[]
           location_id?: string | null
+          metadata?: Json | null
           notes?: string | null
           phone?: string | null
           player_id?: string

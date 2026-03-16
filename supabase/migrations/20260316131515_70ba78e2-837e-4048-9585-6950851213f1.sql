@@ -1,0 +1,1 @@
+ALTER TABLE public.intake_requests ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
