@@ -219,11 +219,7 @@ export default function AcademyIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
-        onShowOverview={() => setShowOverview(true)}
-        showOverview={showOverview}
-        isGenerating={isGenerating}
-        isResetting={isResetting}
-      />
+        onShowOverview={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, backPath: '/app/academy/intake-requests' } })}
 
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
