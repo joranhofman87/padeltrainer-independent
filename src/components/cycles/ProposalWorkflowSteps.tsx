@@ -113,16 +113,26 @@ export default function ProposalWorkflowSteps({
       description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
       status: s3,
       action: proposedCount > 0 ? (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onReset}
-          disabled={isResetting}
-          className="h-7 text-xs"
-        >
-          <RotateCcw className="h-3 w-3 mr-1" />
-          {t('proposals.reset', { defaultValue: 'Reset' })}
-        </Button>
+        <div className="flex gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onReset}
+            disabled={isResetting}
+            className="h-7 text-xs"
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            {t('proposals.reset', { defaultValue: 'Reset' })}
+          </Button>
+          <Button
+            size="sm"
+            onClick={onApproveAll}
+            className="h-7 text-xs"
+          >
+            <CheckCheck className="h-3 w-3 mr-1" />
+            {t('proposals.approveAll', { defaultValue: 'Approve all' })}
+          </Button>
+        </div>
       ) : undefined,
     },
     {
