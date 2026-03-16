@@ -199,7 +199,7 @@ function DraggableSlotCard({
     <Card
       ref={setDragRef}
       className={cn(
-        'border-l-4 transition-all h-full',
+        'border-l-4 transition-all min-h-full',
         isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
         isDragging && 'opacity-30 scale-95',
       )}
