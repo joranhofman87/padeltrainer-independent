@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Menu, X, Linkedin, Facebook, Instagram, Youtube, ChevronDown } from 'lucide-react';
+import { Menu, X, Linkedin, Facebook, Instagram, Youtube, BookOpen, Target, MapPin, GraduationCap, Video, PenLine, Dumbbell, DollarSign, Rocket, Users, Building, Handshake } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -13,6 +13,7 @@ import { getAppUrl } from '@/lib/domains';
 import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/Logo';
 import { captureUtmParams } from '@/lib/utm';
+import { MegaMenu, MegaMenuMobile } from '@/components/marketing/MegaMenu';
 
 const getDashboardPath = (role?: string | null) => {
   switch (role) {
@@ -34,48 +35,67 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
   const { user, role, loading: authLoading } = useAuth();
   const dashboardUrl = getAppUrl(getDashboardPath(role));
 
-  // Capture UTM params from URL on marketing page load
   useEffect(() => {
     captureUtmParams();
   }, []);
-  
-  // Get localized paths
-  const homePath = useLocalizedPath('/');
+
   const pricingPath = useLocalizedPath('/pricing');
   const aboutPath = useLocalizedPath('/about');
   const blogPath = useLocalizedPath('/blog');
-  const rulesPath = useLocalizedPath('/padel-rules');
-  const strokesPath = useLocalizedPath('/padel-strokes');
-  const trainersPath = useLocalizedPath('/trainers');
-  const locationsPath = useLocalizedPath('/locations');
-  const partnerPath = useLocalizedPath('/partner');
-  const privacyPath = useLocalizedPath('/privacy');
-  const termsPath = useLocalizedPath('/terms');
 
-  const [playersMenuOpen, setPlayersMenuOpen] = useState(false);
+  const closeMobile = () => setMobileMenuOpen(false);
 
-  const navLinksBefore = [
-    { href: homePath, label: t('nav.home'), path: '/', isAnchor: false },
+  // Players mega menu columns
+  const playersColumns = [
+    {
+      title: t('footer.learnPadel', 'Learn Padel'),
+      items: [
+        { to: '/padel-rules', label: t('nav.rules', 'Padel Rules'), description: t('megamenu.rulesDesc', 'Official rules explained'), icon: <BookOpen className="h-4 w-4" /> },
+        { to: '/padel-strokes', label: t('nav.strokes', 'Padel Strokes'), description: t('megamenu.strokesDesc', 'Master every technique'), icon: <Target className="h-4 w-4" /> },
+        { to: '/padel-coaches', label: t('footer.coaches', 'Coaches'), description: t('megamenu.coachesDesc', 'Expert coaching guides'), icon: <GraduationCap className="h-4 w-4" /> },
+      ],
+    },
+    {
+      title: t('megamenu.findAndPlay', 'Find & Play'),
+      items: [
+        { to: '/trainers', label: t('footer.findTrainers', 'Find Trainers'), description: t('megamenu.trainersDesc', 'Book a session near you'), icon: <Dumbbell className="h-4 w-4" /> },
+        { to: '/locations', label: t('footer.locations', 'Find Club'), description: t('megamenu.locationsDesc', 'Discover padel clubs'), icon: <MapPin className="h-4 w-4" /> },
+        { to: '/academies', label: t('footer.academies', 'Academies'), description: t('megamenu.academiesDesc', 'Join an academy'), icon: <Building className="h-4 w-4" /> },
+      ],
+    },
+    {
+      title: t('megamenu.content', 'Content'),
+      items: [
+        { to: '/video-tips', label: t('footer.videoTips', 'Video Tips'), description: t('megamenu.videoDesc', 'Watch & learn'), icon: <Video className="h-4 w-4" /> },
+        { to: '/blog', label: t('nav.blog', 'Blog'), description: t('megamenu.blogDesc', 'News & insights'), icon: <PenLine className="h-4 w-4" /> },
+      ],
+    },
   ];
 
-  const navLinksAfter = [
-    { href: pricingPath, label: t('nav.pricing'), path: '/pricing', isAnchor: false },
-    { href: aboutPath, label: t('nav.about'), path: '/about', isAnchor: false },
-    { href: blogPath, label: t('nav.blog'), path: '/blog', isAnchor: false },
+  // For Trainers mega menu columns
+  const trainersColumns = [
+    {
+      title: t('megamenu.forTrainers', 'For Trainers'),
+      items: [
+        { to: '/about', label: t('megamenu.platformOverview', 'Platform Overview'), description: t('megamenu.platformDesc', 'How PadelTrainer.ai works'), icon: <Rocket className="h-4 w-4" /> },
+        { to: '/pricing', label: t('nav.pricing', 'Pricing'), description: t('megamenu.pricingDesc', 'Plans & pricing'), icon: <DollarSign className="h-4 w-4" /> },
+      ],
+    },
+    {
+      title: t('megamenu.forAcademies', 'For Academies'),
+      items: [
+        { to: '/about', label: t('megamenu.manageTeams', 'Manage Teams'), description: t('megamenu.teamsDesc', 'Organize your trainers'), icon: <Users className="h-4 w-4" /> },
+        { to: '/partner', label: t('footer.becomePartner', 'Partner with us'), description: t('megamenu.partnerDesc', 'Grow together'), icon: <Handshake className="h-4 w-4" /> },
+      ],
+    },
   ];
 
-  const playerSubLinks = [
-    { to: '/trainers', label: t('footer.findTrainers', 'Find Trainers') },
-    { to: '/locations', label: t('footer.locations', 'Find Club') },
-    { to: '/padel-strokes', label: t('nav.strokes', 'Padel Strokes') },
-    { to: '/padel-rules', label: t('nav.rules', 'Padel Rules') },
-    { to: '/video-tips', label: t('footer.videoTips', 'Video Tips') },
-    { to: '/padel-coaches', label: t('footer.coaches', 'Coaches') },
+  const standaloneLinks = [
+    { href: pricingPath, label: t('nav.pricing'), path: '/pricing' },
+    { href: aboutPath, label: t('nav.about'), path: '/about' },
+    { href: blogPath, label: t('nav.blog'), path: '/blog' },
   ];
 
-  const allNavLinks = [...navLinksBefore, ...navLinksAfter];
-
-  // Check if current path matches (ignoring language prefix)
   const isActive = (path: string) => {
     const currentPath = location.pathname.replace(/^\/(en|nl|es|de|fr)/, '');
     return currentPath === path || (path === '/' && currentPath === '');
@@ -93,46 +113,15 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
             </LocalizedLink>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-8">
-              {navLinksBefore.map((link) => (
+            <nav className="hidden md:flex items-center gap-6">
+              <MegaMenu label={t('nav.players', 'Players')} columns={playersColumns} />
+              <MegaMenu label={t('megamenu.forTrainersNav', 'For Trainers')} columns={trainersColumns} />
+              {standaloneLinks.map((link) => (
                 <Link
                   key={link.href}
                   to={link.href}
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              ))}
-
-              {/* Players Dropdown */}
-              <div className="group relative">
-                <button className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-                  {t('nav.players', 'Players')}
-                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
-                </button>
-                <div className="invisible absolute left-1/2 top-full z-50 -translate-x-1/2 pt-2 opacity-0 transition-all group-hover:visible group-hover:opacity-100">
-                  <div className="min-w-[180px] rounded-md border bg-popover p-1.5 shadow-md">
-                    {playerSubLinks.map((item) => (
-                      <LocalizedLink
-                        key={item.to}
-                        to={item.to}
-                        className="block rounded-sm px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                      >
-                        {item.label}
-                      </LocalizedLink>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {navLinksAfter.map((link) => (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                  className={`text-sm font-medium transition-colors hover:text-foreground ${
+                    isActive(link.path) ? 'text-foreground' : 'text-muted-foreground'
                   }`}
                 >
                   {link.label}
@@ -179,51 +168,16 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
               className="md:hidden py-4 border-t"
             >
               <nav className="flex flex-col gap-4">
-                {navLinksBefore.map((link) => (
+                <MegaMenuMobile label={t('nav.players', 'Players')} columns={playersColumns} onNavigate={closeMobile} />
+                <MegaMenuMobile label={t('megamenu.forTrainersNav', 'For Trainers')} columns={trainersColumns} onNavigate={closeMobile} />
+
+                {standaloneLinks.map((link) => (
                   <Link
                     key={link.href}
                     to={link.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-
-                {/* Players accordion */}
-                <div>
-                  <button
-                    onClick={() => setPlayersMenuOpen(!playersMenuOpen)}
-                    className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-                  >
-                    {t('nav.players', 'Players')}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${playersMenuOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {playersMenuOpen && (
-                    <div className="mt-2 flex flex-col gap-2 pl-4">
-                      {playerSubLinks.map((item) => (
-                        <LocalizedLink
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => { setMobileMenuOpen(false); setPlayersMenuOpen(false); }}
-                          className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                        >
-                          {item.label}
-                        </LocalizedLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {navLinksAfter.map((link) => (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`text-sm font-medium transition-colors hover:text-primary ${
-                      isActive(link.path) ? 'text-primary' : 'text-muted-foreground'
+                    onClick={closeMobile}
+                    className={`text-sm font-medium transition-colors hover:text-foreground ${
+                      isActive(link.path) ? 'text-foreground' : 'text-muted-foreground'
                     }`}
                   >
                     {link.label}
