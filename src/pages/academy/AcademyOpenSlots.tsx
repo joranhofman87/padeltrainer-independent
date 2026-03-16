@@ -80,7 +80,7 @@ export default function AcademyOpenSlots() {
       const { data: slots, error } = await supabase
         .from('availability_slots')
         .select(`
-          id, start_time, end_time, max_participants,
+          id, start_time, end_time, max_participants, created_at,
           cyclus_id, cyclus_name, is_marked_full, is_public,
           location_id, locations:location_id(name)
         `)
