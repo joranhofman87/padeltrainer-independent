@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
+import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { useQuery } from '@tanstack/react-query';
 
