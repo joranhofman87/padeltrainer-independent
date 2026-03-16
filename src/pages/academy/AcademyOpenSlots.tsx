@@ -135,6 +135,9 @@ export default function AcademyOpenSlots() {
             if (!slot.is_public) existing.is_public = false;
             if (slot.start_time > existing.last_date) existing.last_date = slot.start_time;
             if (slot.start_time < existing.first_date) existing.first_date = slot.start_time;
+            if (slotInfo && (slotInfo as any).created_at < existing.created_at) {
+              existing.created_at = (slotInfo as any).created_at;
+            }
           } else {
             cyclusMap.set(slot.cyclus_id, {
               cyclus_id: slot.cyclus_id,
@@ -146,6 +149,7 @@ export default function AcademyOpenSlots() {
               day_time: format(new Date(slot.start_time), 'EEEE HH:mm', { locale: dateLocale }),
               first_date: slot.start_time,
               last_date: slot.start_time,
+              created_at: (slotInfo as any)?.created_at || slot.start_time,
             });
           }
         } else {
