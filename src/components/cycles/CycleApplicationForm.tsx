@@ -953,13 +953,13 @@ export default function CycleApplicationForm({
                     <div className="border-t border-border my-2" />
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
-                      <span className="font-medium">{formatPrice(pricePerSession!, cycle.currency)}</span>
+                      <span className="font-medium">{new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(pricePerSession!)}</span>
                     </div>
                     {totalPrice != null && totalPrice > 0 && (
                       <div className="flex justify-between text-base font-semibold">
                         <span>{t('application.summary.total')}</span>
                         <span className="text-primary">
-                          {formatPrice(totalPrice, cycle.currency)}
+                          {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalPrice)}
                         </span>
                       </div>
                     )}
