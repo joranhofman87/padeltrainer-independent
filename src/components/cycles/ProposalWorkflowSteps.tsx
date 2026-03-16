@@ -59,12 +59,6 @@ export default function ProposalWorkflowSteps({
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
       return ['completed', 'completed', 'completed', 'completed'];
     }
-    if (showOverview) {
-      return ['completed', 'completed', 'completed', 'active'];
-    }
-    if (confirmedCount > 0 && proposedCount > 0) {
-      return ['completed', 'completed', 'active', 'upcoming'];
-    }
     if (proposedCount > 0) {
       return ['completed', 'completed', 'active', 'upcoming'];
     }
