@@ -1114,6 +1114,11 @@ export default function ProposalScheduleGrid({
                               slot={slot}
                               onPlayerClick={onPlayerClick}
                               canDragSlot={canDragSlot}
+                              trainerAvailabilityWindows={trainerAvailabilityWindows}
+                              selectedDay={selectedDay}
+                              daySlots={daySlots}
+                              onMoveSlot={onMoveSlot}
+                              onDeleteSlot={onDeleteSlot}
                             />
                           ) : null}
                         </DroppableCell>
