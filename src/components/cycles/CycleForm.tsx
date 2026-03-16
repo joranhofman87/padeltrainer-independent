@@ -1101,6 +1101,56 @@ export default function CycleForm({
               </div>
             )}
 
+            {/* Duration Options builder — for registrations only */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.durationOptions', 'Duration Options')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.durationOptionsHelp', 'How many weeks can a player choose? (e.g. 5, 10 or 15 weeks)')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {durationOptions.sort((a, b) => a - b).map((weeks) => (
+                    <Badge
+                      key={weeks}
+                      variant="secondary"
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm cursor-pointer hover:bg-destructive/10"
+                      onClick={() => setDurationOptions(durationOptions.filter(w => w !== weeks))}
+                    >
+                      {weeks} {t('form.numberOfWeeksColumn', 'weken')}
+                      <Trash2 className="h-3 w-3 ml-1" />
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={52}
+                    placeholder="#"
+                    value={newDurationWeeks}
+                    onChange={(e) => setNewDurationWeeks(parseInt(e.target.value) || '')}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">{t('form.numberOfWeeksColumn', 'weken')}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!newDurationWeeks || durationOptions.includes(Number(newDurationWeeks))}
+                    onClick={() => {
+                      if (newDurationWeeks && !durationOptions.includes(Number(newDurationWeeks))) {
+                        setDurationOptions([...durationOptions, Number(newDurationWeeks)]);
+                        setNewDurationWeeks('');
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t('form.addDurationOption', 'Add option')}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Event: Pricing + Payment Method */}
             {isEvent && (
               <div className="space-y-3 rounded-lg border p-3">
