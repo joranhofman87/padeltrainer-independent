@@ -236,6 +236,7 @@ export default function CycleForm({
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
+      setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
     }
   }, [cycle, open]);
 
