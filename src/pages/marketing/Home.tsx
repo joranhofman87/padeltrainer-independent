@@ -8,6 +8,7 @@ import { SocialProofStrip } from '@/components/home/SocialProofStrip';
 import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
 
 // Lazy-load below-fold sections to reduce initial JS parsing on mobile
+const PlayerBanner = lazy(() => import('@/components/home/PlayerBanner').then(m => ({ default: m.PlayerBanner })));
 const SolutionOverview = lazy(() => import('@/components/home/SolutionOverview').then(m => ({ default: m.SolutionOverview })));
 const HowItWorksSection = lazy(() => import('@/components/home/HowItWorksSection').then(m => ({ default: m.HowItWorksSection })));
 const PadelRealitiesSection = lazy(() => import('@/components/home/PadelRealitiesSection').then(m => ({ default: m.PadelRealitiesSection })));
@@ -73,6 +74,7 @@ export default function Home() {
       <HeroSection />
       <SocialProofStrip />
       <Suspense fallback={null}>
+        <PlayerBanner />
         <PadelRealitiesSection />
         <SolutionOverview />
         <HowItWorksSection />

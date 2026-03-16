@@ -741,6 +741,17 @@
     "finalCta": {
       "headline": "Prêt à arrêter de faire de l'admin entre les séances ?",
       "body": "La mise en place prend 10 minutes. Votre première réservation pourrait arriver aujourd'hui."
+    },
+    "playerBanner": {
+      "headline": "Vous êtes joueur de padel ?",
+      "subtitle": "On a aussi quelque chose pour vous.",
+      "trainersDesc": "Réservez un cours près de chez vous",
+      "locationsDesc": "Découvrez les clubs de padel proches",
+      "rules": "Règles du padel",
+      "rulesDesc": "Apprenez les règles officielles",
+      "videoTips": "Conseils vidéo",
+      "videoTipsDesc": "Améliorez votre jeu en vidéo",
+      "blogDesc": "Conseils, guides & actualités"
     }
   },
   "cityPage": {

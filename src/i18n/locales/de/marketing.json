@@ -741,6 +741,17 @@
     "finalCta": {
       "headline": "Bereit, zwischen den Stunden keine Verwaltung mehr zu machen?",
       "body": "Die Einrichtung dauert 10 Minuten. Deine erste Buchung könnte heute kommen."
+    },
+    "playerBanner": {
+      "headline": "Bist du ein Padel-Spieler?",
+      "subtitle": "Wir haben auch etwas für dich.",
+      "trainersDesc": "Buche eine Stunde in deiner Nähe",
+      "locationsDesc": "Entdecke Padel-Clubs in der Nähe",
+      "rules": "Padel-Regeln",
+      "rulesDesc": "Lerne die offiziellen Regeln",
+      "videoTips": "Video-Tipps",
+      "videoTipsDesc": "Verbessere dein Spiel mit Video",
+      "blogDesc": "Tipps, Guides & News"
     }
   },
   "cityPage": {

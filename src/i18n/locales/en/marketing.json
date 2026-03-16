@@ -741,6 +741,17 @@
     "finalCta": {
       "headline": "Ready to stop doing admin between sessions?",
       "body": "Set up takes 10 minutes. Your first booking could come today."
+    },
+    "playerBanner": {
+      "headline": "Are you a padel player?",
+      "subtitle": "We've got you covered too.",
+      "trainersDesc": "Book a session near you",
+      "locationsDesc": "Discover padel clubs nearby",
+      "rules": "Padel Rules",
+      "rulesDesc": "Learn the official rules",
+      "videoTips": "Video Tips",
+      "videoTipsDesc": "Improve your game with video",
+      "blogDesc": "Tips, guides & news"
     }
   },
   "cityPage": {
