@@ -300,6 +300,8 @@
     "guestPlayersDescription": "{{count}} spelers beheerd door jou",
     "searchPlayers": "Zoek spelers...",
     "noPlayers": "Nog geen spelers toegevoegd",
+    "empty": "Nog geen spelers",
+    "emptyDescription": "Spelers verschijnen hier zodra ze boeken bij je trainers.",
     "noPlayersFound": "Geen spelers gevonden",
     "tryDifferentSearch": "Probeer een andere zoekterm",
     "createFirst": "Voeg je eerste speler toe om sessies voor te boeken",
