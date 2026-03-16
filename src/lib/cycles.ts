@@ -999,7 +999,10 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
     .order('start_time', { ascending: true });
 
   if (slotsError) throw slotsError;
-  if (!slots || slots.length === 0) return [];
+  if (!slots || slots.length === 0) {
+    // Even with no cycle slots, fetch blocked (existing) slots for trainers
+    // Fall through to blocked slot logic below
+  }
 
   // 4. Fetch all proposed_assignments for intake_requests in this cycle
   const { data: requests } = await supabase
