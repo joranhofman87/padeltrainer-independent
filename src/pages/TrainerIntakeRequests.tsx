@@ -54,6 +54,7 @@ export default function TrainerIntakeRequests() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
+  const [showOverview, setShowOverview] = useState(false);
 
   useEffect(() => {
     const fetchTrainerId = async () => {
