@@ -264,6 +264,43 @@ function DraggableSlotCard({
   );
 }
 
+// ── Blocked Slot Card (non-interactive) ──
+
+function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
+  const { t } = useTranslation('cycles');
+  const duration = getDurationMinutes(slot.start_time, slot.end_time);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Card className="border-l-4 border-l-muted-foreground/30 h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
+            <CardContent className="p-2.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Lock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {getTimeRange(slot.start_time, slot.end_time)}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+                  <Clock className="h-2.5 w-2.5" />
+                  {duration}'
+                </Badge>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic">
+                {t('proposals.existingLesson', { defaultValue: 'Existing lesson' })}
+              </p>
+            </CardContent>
+          </Card>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{t('proposals.blockedSlotTooltip', { defaultValue: 'This time is already booked in the trainer\'s agenda' })}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
 // ── Droppable Cell ──
 
 function DroppableCell({
