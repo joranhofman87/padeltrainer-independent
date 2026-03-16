@@ -650,18 +650,121 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
   );
 }
 
+// ── Draggable Unplaced Player Card ──
+
+function DraggableUnplacedPlayer({
+  player, onPlayerClick,
+}: {
+  player: UnplacedPlayer;
+  onPlayerClick?: (id: string) => void;
+}) {
+  const { t } = useTranslation('cycles');
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `unplaced-${player.id}`,
+    data: { type: 'unplaced-player', intakeRequestId: player.id, player },
+  });
+
+  const lessonTypes = Array.isArray(player.lesson_type) ? player.lesson_type : [player.lesson_type];
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex items-start gap-1.5 rounded-md border border-border bg-background p-2 text-xs transition-colors',
+        isDragging ? 'opacity-30' : 'hover:bg-accent/50',
+      )}
+    >
+      <button
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing p-0.5 touch-none mt-0.5 shrink-0"
+        aria-label="Drag player"
+      >
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
+      </button>
+      <button
+        onClick={() => onPlayerClick?.(player.id)}
+        className="flex flex-col gap-0.5 cursor-pointer min-w-0 text-left"
+      >
+        <span className="font-medium truncate">{player.full_name}</span>
+        <div className="flex flex-wrap gap-1">
+          {player.rating != null && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">
+              {player.rating}{player.rating_system ? ` ${player.rating_system}` : ''}
+            </Badge>
+          )}
+          {lessonTypes.map(lt => (
+            <Badge key={lt} variant="secondary" className="text-[9px] px-1 py-0 h-3.5">
+              {t(`lessonTypes.${lt}`, { defaultValue: lt })}
+            </Badge>
+          ))}
+          {player.skip_reason && (
+            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
+              {t(`skipReasons.${player.skip_reason}.short`, { defaultValue: 'Skipped' })}
+            </Badge>
+          )}
+        </div>
+        {player.preferred_days.length > 0 && (
+          <span className="text-[10px] text-muted-foreground truncate">
+            {player.preferred_days.slice(0, 3).join(', ')}{player.preferred_days.length > 3 ? '…' : ''}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ── Unplaced Player Drag Overlay ──
+
+function UnplacedPlayerDragOverlay({ player }: { player: UnplacedPlayer }) {
+  return (
+    <div className="flex items-center gap-1 bg-muted rounded-md px-2 py-1 text-xs shadow-lg border border-border">
+      <GripVertical className="h-3 w-3 text-muted-foreground" />
+      <span className="font-medium">{player.full_name}</span>
+      {player.rating != null && (
+        <span className="text-muted-foreground text-[10px]">{player.rating}</span>
+      )}
+    </div>
+  );
+}
+
+// ── Droppable Unplaced Pool ──
+
+function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'unplaced-pool',
+    data: { type: 'unplaced-pool' },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex-1 overflow-y-auto space-y-1.5 p-2 rounded-md transition-colors min-h-[100px]',
+        isOver && 'bg-primary/5 ring-1 ring-primary/30',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
+  unplacedPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
   const [activeData, setActiveData] = useState<{
-    type: 'player' | 'slot';
+    type: 'player' | 'slot' | 'unplaced-player';
     assignment?: Assignment;
     slot?: SlotWithOccupancy;
+    player?: UnplacedPlayer;
   } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Undo stack — stores previous slot snapshots
   const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
