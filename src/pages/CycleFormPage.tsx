@@ -243,7 +243,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6 max-w-lg">
+    <div className="container mx-auto px-4 py-6 space-y-6 max-w-2xl">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={handleCancel}>
