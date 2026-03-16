@@ -523,12 +523,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Collect unique durations requested by intake forms (strict match)
-      const requestedDurations = [...new Set(
-        requests.map(r => r.preferred_duration_minutes || 60)
-      )];
-      console.log(`Requested durations: ${requestedDurations.join(', ')} minutes`);
-
       // Fetch existing non-cycle slots for conflict checking
       const trainerIds = trainerAvailability.map(ta => ta.trainerId);
       const { data: existingSlots } = await supabase
@@ -550,24 +544,9 @@ Deno.serve(async (req) => {
         conflictMap.set(s.trainer_id, existing);
       });
 
-      // Also check existing bookings on those slots
-      const existingSlotIds = (existingSlots || []).map(s => s.id);
-      if (existingSlotIds.length > 0) {
-        const BATCH_SIZE = 200;
-        for (let i = 0; i < existingSlotIds.length; i += BATCH_SIZE) {
-          const batch = existingSlotIds.slice(i, i + BATCH_SIZE);
-          const { data: bookedSlots } = await supabase
-            .from("bookings")
-            .select("slot_id")
-            .in("slot_id", batch)
-            .in("status", ["pending", "confirmed"]);
-          // The slots themselves are already in conflictMap, so bookings don't add new conflicts
-          // but the existing slot times already block the window
-        }
-      }
-
       const cycleEndDate = new Date(cycle.end_date);
       const slotsToInsert: any[] = [];
+      const SLOT_DURATION = 60; // Always 60-min uniform grid
 
       for (const ta of trainerAvailability) {
         const trainerConflicts = conflictMap.get(ta.trainerId) || [];
@@ -586,44 +565,41 @@ Deno.serve(async (req) => {
             current.setDate(current.getDate() + 1);
           }
 
-          // Generate slots for only the first occurrence of this weekday (template week)
+          // Generate uniform 60-min slots for the FULL trainer availability window
           {
-            // For each requested duration, generate slots
-            for (const duration of requestedDurations) {
-              let slotStartMinutes = windowStartMinutes;
-              while (slotStartMinutes + duration <= windowEndMinutes) {
-                const startDateTime = new Date(current);
-                startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
+            let slotStartMinutes = windowStartMinutes;
+            while (slotStartMinutes + SLOT_DURATION <= windowEndMinutes) {
+              const startDateTime = new Date(current);
+              startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
 
-                const endMinutes = slotStartMinutes + duration;
-                const endDateTime = new Date(current);
-                endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+              const endMinutes = slotStartMinutes + SLOT_DURATION;
+              const endDateTime = new Date(current);
+              endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
 
-                // Check for conflicts with existing non-cycle slots
-                const startMs = startDateTime.getTime();
-                const endMs = endDateTime.getTime();
-                const hasConflict = trainerConflicts.some(c =>
-                  rangesOverlap(startMs, endMs, c.start, c.end)
-                );
+              // Check for conflicts with existing non-cycle slots
+              const startMs = startDateTime.getTime();
+              const endMs = endDateTime.getTime();
+              const hasConflict = trainerConflicts.some(c =>
+                rangesOverlap(startMs, endMs, c.start, c.end)
+              );
 
-                if (!hasConflict) {
-                  slotsToInsert.push({
-                    trainer_id: ta.trainerId,
-                    start_time: startDateTime.toISOString(),
-                    end_time: endDateTime.toISOString(),
-                    is_marked_full: false,
-                    is_public: false,
-                    is_recurring: false,
-                    cyclus_id: cycleId,
-                    max_participants: cycle.settings?.max_group_size || 4,
-                    min_participants: cycle.settings?.min_group_size || null,
-                    academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
-                    location_id: cycle.location_id || null,
-                  });
-                }
-
-                slotStartMinutes += duration;
+              if (!hasConflict) {
+                slotsToInsert.push({
+                  trainer_id: ta.trainerId,
+                  start_time: startDateTime.toISOString(),
+                  end_time: endDateTime.toISOString(),
+                  is_marked_full: false,
+                  is_public: false,
+                  is_recurring: false,
+                  cyclus_id: cycleId,
+                  max_participants: cycle.settings?.max_group_size || 4,
+                  min_participants: cycle.settings?.min_group_size || null,
+                  academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+                  location_id: cycle.location_id || null,
+                });
               }
+
+              slotStartMinutes += SLOT_DURATION;
             }
           }
         }
