@@ -835,18 +835,8 @@ export default function ProposalScheduleGrid({
 
                     const occupyingSlotId = occupiedCells.get(cellKey);
                     if (occupyingSlotId) {
-                      const cellId = `cell__${trainer.id}__${rowMinute}`;
-                      return (
-                        <div
-                          key={cellKey}
-                          style={{ gridRow, gridColumn }}
-                          className="bg-background p-0.5"
-                        >
-                          <DroppableCell cellId={cellId} hasSlot={true}>
-                            {/* Occupied by slot spanning from above */}
-                          </DroppableCell>
-                        </div>
-                      );
+                      // Skip rendering — the spanning slot cell above covers this row
+                      return null;
                     }
 
                     const slot = slotLookup.get(cellKey);
