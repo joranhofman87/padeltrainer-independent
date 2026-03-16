@@ -48,7 +48,7 @@
     "settings": "Settings"
   },
   "footer": {
-    "description": "Connecting padel players with top trainers across the Netherlands.",
+    "description": "Connecting padel players with top trainers worldwide.",
     "platform": "Platform",
     "legal": "Legal",
     "privacy": "Privacy Policy",
@@ -105,7 +105,7 @@
   },
   "locations": {
     "title": "Padel Locations",
-    "subtitle": "Find trainers at {{count}} venues across the Netherlands",
+    "subtitle": "Find trainers at {{count}} venues worldwide",
     "searchPlaceholder": "Search by name or city...",
     "filterByCity": "Filter by city",
     "filterByCountry": "Filter by country",
@@ -146,8 +146,8 @@
     "memberSince": "Member since",
     "noDescription": "No description available yet.",
     "editClub": "Edit Club",
-    "seoTitle": "Padel Locations in the Netherlands",
-    "seoDescription": "Find padel trainers at {{count}} venues across the Netherlands. Book lessons at your nearest club.",
+    "seoTitle": "Padel Locations",
+    "seoDescription": "Find padel trainers at {{count}} venues worldwide. Book lessons at your nearest club.",
     "searchCountry": "Search country...",
     "searchCity": "Search city...",
     "noCountryFound": "No country found.",

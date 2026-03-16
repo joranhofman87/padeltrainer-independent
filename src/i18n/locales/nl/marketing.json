@@ -63,7 +63,7 @@
       },
       "local": {
         "title": "Lokale Trainers",
-        "description": "Verbind met trainers bij jou in de buurt in alle grote steden van Nederland."
+        "description": "Verbind met trainers bij jou in de buurt, wereldwijd."
       },
       "payments": {
         "title": "Veilige Betalingen",
@@ -97,7 +97,7 @@
         "1": {
           "name": "Thomas de Vries",
           "role": "Speler sinds 2023",
-          "content": "Binnen enkele minuten een geweldige trainer gevonden in Amsterdam. Mijn spel is in slechts 2 maanden aanzienlijk verbeterd!"
+          "content": "Binnen enkele minuten een geweldige trainer gevonden. Mijn spel is in slechts 2 maanden aanzienlijk verbeterd!"
         },
         "2": {
           "name": "Lisa van den Berg",
@@ -591,7 +591,7 @@
       "trustMicrocopy": "Spelers zijn altijd gratis. Trainers starten met een gratis proefperiode, daarna vanaf €9/maand."
     },
     "socialProof": {
-      "headline": "Gebruikt door trainers en academies door heel Nederland",
+      "headline": "Gebruikt door trainers en academies wereldwijd",
       "testimonial1": "Ik heb mijn avonden terug. Geen lesplanning meer via WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Hoofdtrainer, Bramos Padel Academy",

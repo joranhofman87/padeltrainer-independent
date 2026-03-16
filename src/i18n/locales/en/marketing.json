@@ -63,7 +63,7 @@
       },
       "local": {
         "title": "Local Trainers",
-        "description": "Connect with trainers near you across all major cities in the Netherlands."
+        "description": "Connect with trainers near you across all major cities worldwide."
       },
       "payments": {
         "title": "Secure Payments",
@@ -97,7 +97,7 @@
         "1": {
           "name": "Thomas de Vries",
           "role": "Player since 2023",
-          "content": "Found an amazing trainer in Amsterdam within minutes. My game has improved significantly in just 2 months!"
+          "content": "Found an amazing trainer within minutes. My game has improved significantly in just 2 months!"
         },
         "2": {
           "name": "Lisa van den Berg",
@@ -591,7 +591,7 @@
       "trustMicrocopy": "Players are always free. Trainers start with a free trial, then from €9/month."
     },
     "socialProof": {
-      "headline": "Used by trainers and academies across the Netherlands",
+      "headline": "Used by trainers and academies worldwide",
       "testimonial1": "I got my evenings back. No more coordinating lessons over WhatsApp.",
       "author1": "Bram Meijer",
       "author1role": "Head Trainer, Bramos Padel Academy",

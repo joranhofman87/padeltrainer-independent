@@ -48,7 +48,7 @@
     "settings": "Instellingen"
   },
   "footer": {
-    "description": "We verbinden padelspelers met toptrainers in heel Nederland.",
+    "description": "We verbinden padelspelers met toptrainers wereldwijd.",
     "platform": "Platform",
     "legal": "Juridisch",
     "privacy": "Privacybeleid",
@@ -105,7 +105,7 @@
   },
   "locations": {
     "title": "Padel Locaties",
-    "subtitle": "Vind trainers op {{count}} locaties in Nederland",
+    "subtitle": "Vind trainers op {{count}} locaties wereldwijd",
     "searchPlaceholder": "Zoek op naam of stad...",
     "filterByCity": "Filter op stad",
     "filterByCountry": "Filter op land",
@@ -146,8 +146,8 @@
     "memberSince": "Lid sinds",
     "noDescription": "Nog geen beschrijving beschikbaar.",
     "editClub": "Club bewerken",
-    "seoTitle": "Padel Locaties in Nederland",
-    "seoDescription": "Vind padel trainers op {{count}} locaties in Nederland. Boek lessen bij jouw dichtstbijzijnde club.",
+    "seoTitle": "Padel Locaties",
+    "seoDescription": "Vind padel trainers op {{count}} locaties wereldwijd. Boek lessen bij jouw dichtstbijzijnde club.",
     "searchCountry": "Zoek land...",
     "searchCity": "Zoek stad...",
     "noCountryFound": "Geen land gevonden.",
