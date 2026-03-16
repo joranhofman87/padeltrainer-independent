@@ -274,7 +274,7 @@ function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Card className="border-l-4 border-l-muted-foreground/30 h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
+          <Card className="border-l-4 border-l-muted-foreground/30 min-h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
             <CardContent className="p-2.5 space-y-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
