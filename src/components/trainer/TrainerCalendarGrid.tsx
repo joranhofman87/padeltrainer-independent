@@ -43,7 +43,7 @@ export function TrainerCalendarGrid({
   onSlotClick,
 }: TrainerCalendarGridProps) {
   const { t, i18n } = useTranslation("trainer");
-  const dfLocale = dateFnsLocales[i18n.language] || enUS;
+  const dfLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
   const [mobileSelectedDate, setMobileSelectedDate] = useState(currentDate);
 
   // Sync mobile selected date when currentDate changes
