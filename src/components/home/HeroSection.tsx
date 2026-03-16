@@ -16,7 +16,7 @@ const TAB_ICONS: Record<Tab, React.ElementType> = {
   profile: User,
 };
 
-function MockBooking({ t }: { t: (k: string) => string }) {
+function MockBooking({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 mb-4">
