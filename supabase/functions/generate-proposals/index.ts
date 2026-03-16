@@ -449,7 +449,33 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fetch intake requests with status 'new'
+    // ===== STEP 0: Reset 'proposed' requests back to 'new' for re-run safety =====
+    console.log(`Resetting proposed requests back to 'new' for cycle ${cycleId}...`);
+    const { error: resetError } = await supabase
+      .from("intake_requests")
+      .update({ status: "new", skip_reason: null })
+      .eq("cycle_id", cycleId)
+      .in("status", ["proposed"]);
+
+    if (resetError) {
+      console.warn("Error resetting proposed requests:", resetError);
+    }
+
+    // Delete old proposed assignments for this cycle's requests
+    const { data: allCycleRequests } = await supabase
+      .from("intake_requests")
+      .select("id")
+      .eq("cycle_id", cycleId);
+
+    if (allCycleRequests && allCycleRequests.length > 0) {
+      const allReqIds = allCycleRequests.map(r => r.id);
+      await supabase
+        .from("proposed_assignments")
+        .delete()
+        .in("intake_request_id", allReqIds);
+    }
+
+    // Fetch intake requests with status 'new' (now includes the ones we just reset)
     const { data: requests, error: requestsError } = await supabase
       .from("intake_requests")
       .select("*")
@@ -468,13 +494,12 @@ Deno.serve(async (req) => {
 
     const effectiveStartDate = startDate || cycle.start_date;
 
-    // ===== STEP 0: Delete old cycle slots before creating new ones =====
+    // ===== Delete old cycle slots before creating new ones =====
     console.log(`Cleaning up old slots for cycle ${cycleId}...`);
-    const { error: deleteOldSlotsError, count: deletedCount } = await supabase
+    const { error: deleteOldSlotsError } = await supabase
       .from("availability_slots")
       .delete()
-      .eq("cyclus_id", cycleId)
-      .select("id", { count: "exact", head: true });
+      .eq("cyclus_id", cycleId);
 
     if (deleteOldSlotsError) {
       console.error("Error deleting old slots:", deleteOldSlotsError);
