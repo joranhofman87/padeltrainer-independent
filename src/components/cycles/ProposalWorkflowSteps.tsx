@@ -44,7 +44,6 @@ export default function ProposalWorkflowSteps({
   onReset,
   onAddManual,
   onShowOverview,
-  showOverview,
   isGenerating,
   isResetting,
 }: ProposalWorkflowStepsProps) {
