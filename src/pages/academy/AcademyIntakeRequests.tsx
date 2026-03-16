@@ -223,30 +223,41 @@ export default function AcademyIntakeRequests() {
 
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-          <TabsList>
-            <TabsTrigger value="all">
-              {t('intakeRequests.filters.all')} ({allCount})
-            </TabsTrigger>
-            <TabsTrigger value="new">
-              {t('intakeRequests.filters.new')} ({newCount})
-            </TabsTrigger>
-            {skippedCount > 0 && (
-              <TabsTrigger value="skipped">
-                {t('intakeRequests.filters.skipped')} ({skippedCount})
+        <div className="flex items-center gap-2">
+          <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+            <TabsList>
+              <TabsTrigger value="all">
+                {t('intakeRequests.filters.all')} ({allCount})
               </TabsTrigger>
-            )}
-            <TabsTrigger value="proposed">
-              {t('intakeRequests.filters.proposed')} ({proposedCount})
-            </TabsTrigger>
-            <TabsTrigger value="confirmed">
-              {t('intakeRequests.filters.confirmed')}
-            </TabsTrigger>
-            <TabsTrigger value="waitlist">
-              {t('intakeRequests.filters.waitlist')}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+              <TabsTrigger value="new">
+                {t('intakeRequests.filters.new')} ({newCount})
+              </TabsTrigger>
+              {skippedCount > 0 && (
+                <TabsTrigger value="skipped">
+                  {t('intakeRequests.filters.skipped')} ({skippedCount})
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="proposed">
+                {t('intakeRequests.filters.proposed')} ({proposedCount})
+              </TabsTrigger>
+              <TabsTrigger value="confirmed">
+                {t('intakeRequests.filters.confirmed')}
+              </TabsTrigger>
+              <TabsTrigger value="waitlist">
+                {t('intakeRequests.filters.waitlist')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowAddDialog(true)}
+            className="h-8 text-xs"
+          >
+            <UserPlus className="h-3 w-3 mr-1" />
+            {t('intakeRequests.addManual', { defaultValue: 'Add registration' })}
+          </Button>
+        </div>
 
         <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v)} size="sm">
           <ToggleGroupItem value="list" aria-label="List view">

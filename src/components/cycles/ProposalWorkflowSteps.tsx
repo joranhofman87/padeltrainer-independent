@@ -96,26 +96,15 @@ export default function ProposalWorkflowSteps({
       description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
       status: s2,
       action: (
-        <div className="flex gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onAddManual}
-            className="h-7 text-xs"
-          >
-            <UserPlus className="h-3 w-3 mr-1" />
-            {t('intakeRequests.addManual', { defaultValue: 'Add' })}
-          </Button>
-          <Button
-            size="sm"
-            onClick={onGenerate}
-            disabled={!cycleSelected || newCount === 0}
-            className="h-7 text-xs"
-          >
-            <Sparkles className="h-3 w-3 mr-1" />
-            {t('proposals.generateAll', { defaultValue: 'Generate' })}
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          onClick={onGenerate}
+          disabled={!cycleSelected || newCount === 0}
+          className="h-7 text-xs"
+        >
+          <Sparkles className="h-3 w-3 mr-1" />
+          {t('proposals.generateAll', { defaultValue: 'Generate' })}
+        </Button>
       ),
     },
     {
