@@ -945,8 +945,9 @@ export default function CycleApplicationForm({
           // Calculate total from weeks if no cyclus option total
           const effectiveWeeks = selectedDurationWeeks || (() => {
             if (!cycle.start_date || !cycle.end_date) return null;
-            const { differenceInWeeks } = require('date-fns');
-            return Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date))));
+            return Math.max(1, Math.round(
+              (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
+            ));
           })();
           if (hasPrice && totalPrice == null && effectiveWeeks) {
             totalPrice = pricePerSession! * effectiveWeeks;
