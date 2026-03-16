@@ -30,13 +30,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+// Dialog imports removed — component now renders inline on a dedicated page
 import {
   Select,
   SelectContent,
@@ -55,9 +49,8 @@ interface CycleFormProps {
   cycle?: Cycle | null;
   ownerType: 'trainer' | 'club' | 'academy';
   ownerId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   onSuccess?: (cycle: Cycle) => void;
+  onCancel?: () => void;
   trainers?: { id: string; name: string; hourly_rate?: number }[];
   locations?: { id: string; name: string; city: string }[];
   /** Map of location_id -> trainer_ids at that location */
@@ -74,9 +67,8 @@ export default function CycleForm({
   cycle,
   ownerType,
   ownerId,
-  open,
-  onOpenChange,
   onSuccess,
+  onCancel,
   trainers = [],
   locations = [],
   trainerLocationMap = {},
@@ -392,7 +384,7 @@ export default function CycleForm({
 
       toast.success(isEdit ? 'Cycle updated' : 'Cycle created');
       onSuccess?.(result);
-      onOpenChange(false);
+      // Navigation handled by onSuccess callback
     } catch (error: any) {
       logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
       toast.error(error.message || 'Failed to save cycle');
@@ -402,20 +394,7 @@ export default function CycleForm({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden p-0">
-        <div className="overflow-y-auto max-h-[90vh] p-6">
-        <DialogHeader>
-          <DialogTitle>
-            {isEdit 
-              ? isEvent ? t('editEvent', 'Edit Event') : isRegistration ? t('editRegistration', 'Edit Registration') : t('editCycle')
-              : isEvent
-                ? t('createEvent', 'Create Event')
-                : isRegistration 
-                  ? t('createRegistration', 'Create Registration')
-                  : t('createCycle')}
-          </DialogTitle>
-        </DialogHeader>
+    <div className="space-y-6">
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
@@ -1819,11 +1798,11 @@ export default function CycleForm({
             )}
 
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => onCancel?.()}
                 disabled={isSubmitting}
               >
                 {t('common:cancel', 'Cancel')}
@@ -1840,11 +1819,9 @@ export default function CycleForm({
                   {t('form.saveAndOpen')}
                 </Button>
               )}
-            </DialogFooter>
+            </div>
           </form>
         </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }

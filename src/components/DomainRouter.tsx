@@ -102,6 +102,7 @@ const ProposalOverviewPage = lazy(() => import('@/pages/ProposalOverviewPage'));
 const TrainerWaitingList = lazy(() => import('@/pages/TrainerWaitingList'));
 const OpenSlots = lazy(() => import('@/pages/OpenSlots'));
 const BookingSuccess = lazy(() => import('@/pages/BookingSuccess'));
+const CycleFormPage = lazy(() => import('@/pages/CycleFormPage'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
@@ -209,6 +210,8 @@ export function DomainRouter() {
           <Route path="players" element={<TrainerPlayers />} />
           <Route path="cyclus" element={<TrainerCyclus />} />
           <Route path="cycles" element={<TrainerCycles />} />
+          <Route path="cycles/new" element={<CycleFormPage ownerType="trainer" />} />
+          <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="trainer" />} />
           <Route path="intake-requests" element={<TrainerIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
@@ -258,6 +261,8 @@ export function DomainRouter() {
           <Route path="trainers" element={<ClubTrainers />} />
           <Route path="calendar" element={<ClubCalendar />} />
           <Route path="registrations" element={<ClubCycles />} />
+          <Route path="registrations/new" element={<CycleFormPage ownerType="club" />} />
+          <Route path="registrations/:cycleId/edit" element={<CycleFormPage ownerType="club" />} />
           
           <Route path="tournaments" element={<ClubTournaments />} />
           <Route path="settings" element={<ClubSettings />} />
@@ -274,6 +279,8 @@ export function DomainRouter() {
           <Route path="open-slots" element={<AcademyOpenSlots />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
+          <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />
+          <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />

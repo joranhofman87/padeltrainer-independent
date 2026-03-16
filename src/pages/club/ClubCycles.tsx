@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -6,10 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
-import CycleForm from '@/components/cycles/CycleForm';
 import { useClubContext } from '@/components/club/ClubLayout';
-import { getClubTrainers } from '@/lib/club';
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
 interface LocationData {
@@ -21,75 +19,19 @@ interface LocationData {
 export default function ClubCycles() {
   const { t } = useTranslation('cycles');
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { activeClub } = useClubContext();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
-  const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
-  const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
-  // Fetch club trainers and location for the form
   useEffect(() => {
-    const fetchData = async () => {
-      if (!activeClub) return;
-      try {
-        // Get trainers
-        const clubTrainers = await getClubTrainers(activeClub.id);
-        const trainerList: { id: string; name: string; hourly_rate?: number }[] = [];
-        const trainerIds: string[] = [];
-
-        for (const ct of clubTrainers) {
-          const trainer = ct.trainer_profiles as any;
-          if (!trainer) continue;
-          trainerIds.push(trainer.id);
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('user_id', trainer.user_id)
-            .single();
-          trainerList.push({
-            id: trainer.id,
-            name: profile?.full_name || 'Unknown',
-            hourly_rate: trainer.hourly_rate || undefined,
-          });
-        }
-        setTrainers(trainerList);
-
-        // Club has a single location
-        const clubLocation = activeClub.location;
-        if (clubLocation) {
-          setLocations([{
-            id: clubLocation.id,
-            name: clubLocation.name,
-            city: clubLocation.city || '',
-          }]);
-        }
-
-        // Fetch trainer-location mappings
-        let tlMap: Record<string, string[]> = {};
-        if (trainerIds.length > 0) {
-          const { data: trainerLocs } = await supabase
-            .from('trainer_locations')
-            .select('trainer_id, location_id')
-            .in('trainer_id', trainerIds);
-
-          if (trainerLocs) {
-            for (const tl of trainerLocs) {
-              if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
-              tlMap[tl.location_id].push(tl.trainer_id);
-            }
-          }
-        }
-        setTrainerLocationMap(tlMap);
-      } catch (error) {
-        logger.error('Error fetching club data', error as Error, { component: 'ClubCycles', clubId: activeClub?.id });
-      }
-    };
-    fetchData();
+    if (!activeClub) return;
+    const clubLocation = activeClub.location;
+    if (clubLocation) {
+      setLocations([{ id: clubLocation.id, name: clubLocation.name, city: clubLocation.city || '' }]);
+    }
   }, [activeClub]);
 
   const fetchCycles = async () => {
@@ -115,22 +57,8 @@ export default function ClubCycles() {
     if (activeClub) fetchCycles();
   }, [activeClub]);
 
-  const handleCycleCreated = () => {
-    setShowCreateDialog(false);
-    setShowCreateEventDialog(false);
-    setEditingCycle(null);
-    fetchCycles();
-  };
-
   const handleDuplicate = (cycle: Cycle) => {
-    const duplicatedCycle: Cycle = {
-      ...cycle,
-      id: '',
-      name: `${cycle.name} (${t('common:copy', 'Copy')})`,
-      status: 'draft',
-    };
-    setEditingCycle(duplicatedCycle);
-    setShowCreateDialog(true);
+    navigate(`/app/club/registrations/new?type=registration&duplicateFrom=${cycle.id}`);
   };
 
   if (isLoading) {
@@ -154,11 +82,11 @@ export default function ClubCycles() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
-          <Button variant="outline" onClick={() => setShowCreateEventDialog(true)}>
+          <Button variant="outline" onClick={() => navigate('/app/club/registrations/new?type=event')}>
             <PartyPopper className="mr-2 h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
@@ -175,7 +103,7 @@ export default function ClubCycles() {
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
             {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
           </p>
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
@@ -184,52 +112,12 @@ export default function ClubCycles() {
         <CyclesTable
           cycles={cycles}
           locations={locations}
-          onEdit={(c) => setEditingCycle(c)}
+          onEdit={(c) => navigate(`/app/club/registrations/${c.id}/edit`)}
           onDuplicate={handleDuplicate}
           onDeleted={fetchCycles}
           ownerType="club"
           ownerSlug={activeClub.id}
         />
-      )}
-
-      {/* Create/Edit Dialog */}
-      {activeClub && (
-        <>
-          <CycleForm
-            open={showCreateDialog || (!!editingCycle && editingCycle.type !== 'event')}
-            onOpenChange={(open) => {
-              if (!open) {
-                setShowCreateDialog(false);
-                setEditingCycle(null);
-              }
-            }}
-            cycle={editingCycle && editingCycle.id && editingCycle.type !== 'event' ? editingCycle : undefined}
-            ownerType="club"
-            ownerId={activeClub.id}
-            onSuccess={handleCycleCreated}
-            formType="registration"
-            trainers={trainers}
-            locations={locations}
-            trainerLocationMap={trainerLocationMap}
-          />
-          <CycleForm
-            open={showCreateEventDialog || (!!editingCycle && editingCycle.type === 'event')}
-            onOpenChange={(open) => {
-              if (!open) {
-                setShowCreateEventDialog(false);
-                setEditingCycle(null);
-              }
-            }}
-            cycle={editingCycle?.type === 'event' ? editingCycle : undefined}
-            ownerType="club"
-            ownerId={activeClub.id}
-            onSuccess={handleCycleCreated}
-            formType="event"
-            trainers={trainers}
-            locations={locations}
-            trainerLocationMap={trainerLocationMap}
-          />
-        </>
       )}
     </div>
   );
