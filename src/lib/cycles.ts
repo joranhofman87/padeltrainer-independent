@@ -128,6 +128,7 @@ export interface IntakeRequest {
   consent_given: boolean;
   status: 'new' | 'proposed' | 'confirmed' | 'rejected' | 'waitlist';
   skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | 'rating_outside_trainer_range' | 'rating_spread_exceeded' | null;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
