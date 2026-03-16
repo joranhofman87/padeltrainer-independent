@@ -240,7 +240,7 @@ export default function TrainerIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
-        onShowOverview={() => navigate('/app/trainer/intake-requests/overview', { state: { slots: scheduleSlots, backPath: '/app/trainer/intake-requests' } })}
+        onShowOverview={() => navigate('/app/trainer/intake-requests/overview', { state: { slots: scheduleSlots, cycleId: selectedCycleId, backPath: '/app/trainer/intake-requests' } })}
         isGenerating={isGenerating}
         isResetting={isResetting}
       />
