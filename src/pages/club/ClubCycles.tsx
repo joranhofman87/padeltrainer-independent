@@ -57,10 +57,6 @@ export default function ClubCycles() {
     if (activeClub) fetchCycles();
   }, [activeClub]);
 
-  const handleCycleCreated = () => {
-    fetchCycles();
-  };
-
   const handleDuplicate = (cycle: Cycle) => {
     navigate(`/app/club/registrations/new?type=registration&duplicateFrom=${cycle.id}`);
   };
