@@ -210,6 +210,8 @@ export function DomainRouter() {
           <Route path="players" element={<TrainerPlayers />} />
           <Route path="cyclus" element={<TrainerCyclus />} />
           <Route path="cycles" element={<TrainerCycles />} />
+          <Route path="cycles/new" element={<CycleFormPage ownerType="trainer" />} />
+          <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="trainer" />} />
           <Route path="intake-requests" element={<TrainerIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
