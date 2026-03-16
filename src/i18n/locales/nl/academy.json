@@ -26,6 +26,20 @@
     "last7Days": "Laatste 7 Dagen",
     "last30Days": "Laatste 30 Dagen"
   },
+  "calendar": {
+    "title": "Agenda",
+    "new": "Nieuw",
+    "duplicateCyclus": "Cyclus dupliceren",
+    "today": "Vandaag",
+    "dayView": "Dag",
+    "weekView": "Week",
+    "monthView": "Maand",
+    "allLocations": "Alle locaties",
+    "allTrainers": "Alle trainers",
+    "available": "Beschikbaar",
+    "pending": "In afwachting",
+    "booked": "Geboekt"
+  },
   "onboarding": {
     "title": "Maak je Academy",
     "subtitle": "Stel je padel training academy in",

@@ -15,6 +15,7 @@ import {
   endOfMonth,
   isBefore,
 } from "date-fns";
+import { nl, enUS, es, de, fr } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,8 +70,17 @@ interface Location {
   city: string;
 }
 
+const dateFnsLocales: Record<string, typeof enUS> = {
+  nl,
+  en: enUS,
+  es,
+  de,
+  fr,
+};
+
 export default function AcademyCalendar() {
-  const { t } = useTranslation("academy");
+  const { t, i18n } = useTranslation("academy");
+  const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split("-")[0]] || enUS;
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   
@@ -302,13 +312,13 @@ export default function AcademyCalendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (view === "day") return format(currentDate, "EEEE, MMMM d, yyyy");
+    if (view === "day") return format(currentDate, "EEEE d MMMM yyyy", { locale: dateLocale });
     if (view === "week") {
       const start = startOfWeek(currentDate, { weekStartsOn: 1 });
       const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-      return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+      return `${format(start, "d MMM", { locale: dateLocale })} - ${format(end, "d MMM yyyy", { locale: dateLocale })}`;
     }
-    return format(currentDate, "MMMM yyyy");
+    return format(currentDate, "MMMM yyyy", { locale: dateLocale });
   };
 
   // Stats
