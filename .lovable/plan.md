@@ -1,47 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Add Price Totals Summary Below Price Table
+## Status: ✅ COMPLETED
 
-### What
-Below the price table rows (after the "Add price row" button, before Cyclus Options), add a summary card showing the total price per column multiplied by the configured duration weeks. This gives trainers a quick view of what players will pay.
+Implemented on 2026-03-14.
 
-### Layout
+## What Changed
 
-The summary renders when there are price rows with prices > 0 and at least one duration option configured.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-```text
-┌─────────────────────────────────────────────────────┐
-│  Price Overview                                      │
-│                                                       │
-│  ┌─── Per lesson ──────┐  ┌─── Kids (per lesson) ──┐│
-│  │ Row1: €15            │  │ Row1: €10               ││
-│  │ Row2: €20            │  │ Row2: €12               ││
-│  └──────────────────────┘  └─────────────────────────┘│
-│                                                       │
-│  ┌─── 14 weeks ────────┐  ┌─── Kids 14 weeks ──────┐│
-│  │ Row1: €210           │  │ Row1: €140              ││
-│  │ Row2: €280           │  │ Row2: €168              ││
-│  └──────────────────────┘  └─────────────────────────┘│
-└─────────────────────────────────────────────────────┘
-```
+## Sanity Content Types Needed in Studio
 
-Visual grouping: use a subtle `bg-muted/50 rounded-lg p-4` container, with columns displayed in a responsive grid. "Per lesson" columns use normal weight, "X weeks" columns use a slightly different background shade or a left border accent to differentiate.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### Implementation
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**`src/components/cycles/CycleForm.tsx`** (~line 1095, after the "Add price row" button):
+## What Stays Unchanged
 
-- Add a computed summary section that:
-  1. Shows only when `priceTable.length > 0` and rows have non-zero prices
-  2. For each price column (default + extra columns), shows per-lesson prices
-  3. For each `durationOptions` week value, multiplies per-lesson × weeks for each column
-  4. Groups them in a flex/grid with cards: "Per lesson" group, then one group per duration week
-  5. Each group is a small card with a header and list of `label: €price` rows
-
-**Translations** — add keys `form.priceOverview`, `form.perLesson`, `form.weeksTotal` to EN and NL.
-
-### Files to modify
-- `src/components/cycles/CycleForm.tsx`
-- `src/i18n/locales/en/cycles.json`
-- `src/i18n/locales/nl/cycles.json`
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

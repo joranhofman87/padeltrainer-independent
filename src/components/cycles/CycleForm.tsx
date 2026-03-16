@@ -1092,6 +1092,55 @@ export default function CycleForm({
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addPriceRow', 'Add price row')}
                 </Button>
+
+                {/* Price Overview Summary */}
+                {priceTable.length > 0 && priceTable.some(r => r.price > 0 || (r.extra_prices || []).some(ep => ep.price > 0)) && (
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">{t('form.priceOverview', 'Price Overview')}</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {/* Per lesson columns */}
+                      {[
+                        { name: t('form.perLesson', 'Per lesson'), getPrice: (row: PriceTableRow) => row.price },
+                        ...priceColumns.map(col => ({
+                          name: `${col} (${t('form.perLesson', 'per lesson').toLowerCase()})`,
+                          getPrice: (row: PriceTableRow) => (row.extra_prices || []).find(ep => ep.column_name === col)?.price || 0,
+                        })),
+                      ].map((column, ci) => (
+                        <div key={`per-${ci}`} className="rounded-md bg-background border p-3 space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground">{column.name}</p>
+                          {priceTable.filter(r => column.getPrice(r) > 0).map((row, ri) => (
+                            <div key={ri} className="flex justify-between text-sm">
+                              <span className="text-muted-foreground truncate mr-2">{row.label || '—'}</span>
+                              <span className="font-medium tabular-nums">€{column.getPrice(row).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+
+                      {/* Per duration columns */}
+                      {durationOptions.sort((a, b) => a - b).flatMap(weeks =>
+                        [
+                          { name: `${weeks} ${t('form.numberOfWeeksColumn', 'weeks')}`, getPrice: (row: PriceTableRow) => row.price, weeks },
+                          ...priceColumns.map(col => ({
+                            name: `${col} ${weeks} ${t('form.numberOfWeeksColumn', 'weeks')}`,
+                            getPrice: (row: PriceTableRow) => (row.extra_prices || []).find(ep => ep.column_name === col)?.price || 0,
+                            weeks,
+                          })),
+                        ].map((column, ci) => (
+                          <div key={`w${weeks}-${ci}`} className="rounded-md bg-background border border-primary/20 p-3 space-y-1.5">
+                            <p className="text-xs font-medium text-primary">{column.name}</p>
+                            {priceTable.filter(r => column.getPrice(r) > 0).map((row, ri) => (
+                              <div key={ri} className="flex justify-between text-sm">
+                                <span className="text-muted-foreground truncate mr-2">{row.label || '—'}</span>
+                                <span className="font-semibold tabular-nums">€{(column.getPrice(row) * column.weeks).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
