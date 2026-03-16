@@ -115,21 +115,11 @@ export default function ClubCycles() {
   }, [activeClub]);
 
   const handleCycleCreated = () => {
-    setShowCreateDialog(false);
-    setShowCreateEventDialog(false);
-    setEditingCycle(null);
     fetchCycles();
   };
 
   const handleDuplicate = (cycle: Cycle) => {
-    const duplicatedCycle: Cycle = {
-      ...cycle,
-      id: '',
-      name: `${cycle.name} (${t('common:copy', 'Copy')})`,
-      status: 'draft',
-    };
-    setEditingCycle(duplicatedCycle);
-    setShowCreateDialog(true);
+    navigate(`/app/club/registrations/new?type=registration&duplicateFrom=${cycle.id}`);
   };
 
   if (isLoading) {
