@@ -49,7 +49,7 @@ function MockBooking({ t }: { t: (k: string, opts?: Record<string, unknown>) => 
   );
 }
 
-function MockRegistration({ t }: { t: (k: string) => string }) {
+function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
