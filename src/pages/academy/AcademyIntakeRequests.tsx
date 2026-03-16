@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
+import ProposalOverviewPanel from '@/components/cycles/ProposalOverviewPanel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
