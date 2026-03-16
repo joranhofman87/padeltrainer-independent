@@ -249,6 +249,7 @@ export default function CycleForm({
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
+      setPriceColumns((cycle?.settings as any)?.price_columns ?? []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
