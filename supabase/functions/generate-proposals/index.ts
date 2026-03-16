@@ -845,20 +845,6 @@ Deno.serve(async (req) => {
 
     // Step 3 (gap-filler) removed — Step 1 now creates full coverage with uniform 60-min slots
 
-      if (fillerSlots.length > 0) {
-        const { error: fillerError } = await supabase
-          .from("availability_slots")
-          .insert(fillerSlots);
-
-        if (fillerError) {
-          console.error("Error creating filler slots:", fillerError);
-        } else {
-          console.log(`Created ${fillerSlots.length} empty filler slots to complete trainer agendas`);
-          slotsCreated += fillerSlots.length;
-        }
-      }
-    }
-
     return new Response(
       JSON.stringify({
         generated,
