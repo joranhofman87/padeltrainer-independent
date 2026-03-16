@@ -479,11 +479,11 @@ export default function LearningArticlePage() {
             </section>
           )}
 
-          {/* Featured Trainers */}
+          {/* Featured Creators */}
           {article.featuredTrainers && article.featuredTrainers.length > 0 && (
             <section className="mt-12">
               <h2 className="text-2xl font-bold mb-6">
-                {t('learn.featuredTrainers', 'Featured Coaches')}
+                {t('learn.featuredTrainers', 'Featured Creators')}
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {article.featuredTrainers.map(trainer => (

@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
-import { ArrowRight, User, MapPin } from 'lucide-react';
+import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
 import type { SeoFields } from '@/lib/sanity';
 
@@ -44,8 +44,8 @@ export default function Coaches() {
   return (
     <MarketingLayout>
       <SEO
-        title="Padel Coaches & Creators"
-        description="Meet the padel coaches and creators behind our video tutorials and technique breakdowns."
+        title="Padel Content Creators"
+        description="Discover independent padel coaches and content creators we feature for the quality of their tutorials, drills, and tips."
         url="/padel-coaches"
         structuredData={itemListStructuredData}
       />
@@ -54,13 +54,23 @@ export default function Coaches() {
       <section className="py-16 bg-gradient-to-b from-background to-accent/20">
         <div className="container mx-auto px-4">
           <motion.div className="text-center max-w-3xl mx-auto" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Padel Coaches & Creators</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">Padel Content Creators</h1>
             <p className="text-xl text-muted-foreground">
-              Discover top padel coaches and content creators sharing tips, drills, and tutorials.
+              We curate the best padel content from independent coaches and creators. These creators are not affiliated with PadelTrainer.ai — we feature them because of the quality of their tutorials, drills, and tips.
             </p>
           </motion.div>
         </div>
       </section>
+
+      {/* Disclaimer */}
+      <div className="container mx-auto px-4 pt-6">
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 p-4 text-sm text-muted-foreground max-w-3xl mx-auto">
+          <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+          <p>
+            The creators featured on this page are independent content creators. They are not affiliated with or employed by PadelTrainer.ai. We showcase their content because of its quality and educational value.
+          </p>
+        </div>
+      </div>
 
       {/* Content */}
       <section className="py-12">

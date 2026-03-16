@@ -1,34 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Rebrand Coach Pages: "Content Creators" with Disclaimer
+## Status: ✅ COMPLETED
 
-## Problem
-The current coach pages use language like "Padel Coach", "View trainer on PadelTrainer.ai", and "Learn from [name]" which implies these creators are trainers on the platform. They are independent content creators featured for their quality content.
+Implemented on 2026-03-14.
 
-## Changes
+## What Changed
 
-### 1. Coaches listing page (`src/pages/marketing/Coaches.tsx`)
-- Update SEO title/description: "Padel Content Creators" or "Padel Coaches & Content Creators"
-- Update hero subtitle to: "We curate the best padel content from independent coaches and creators. These creators are not affiliated with PadelTrainer.ai -- we feature them because of the quality of their tutorials, drills, and tips."
-- Add a small disclaimer banner below the hero: an `Info` icon with text like "The creators featured on this page are independent content creators. They are not affiliated with or employed by PadelTrainer.ai. We showcase their content because of its quality and educational value."
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### 2. Individual coach profile page (`src/pages/marketing/CoachPage.tsx`)
-- Update SEO fallback from `"Padel Coach"` to `"Padel Content Creator"`
-- Update SEO description fallback from `"Learn from {name} on PadelTrainer.ai"` to `"Watch quality padel content by {name}, featured on PadelTrainer.ai"`
-- Change `"View trainer on PadelTrainer.ai"` button text to `"View on PadelTrainer.ai"` (line 275)
-- Change `"Videos by {name}"` heading to `"Featured content by {name}"`
-- Add a **disclaimer card** at the bottom of the hero section (inside the rounded box), styled subtly with an `Info` icon: "This creator is independently featured on PadelTrainer.ai for the quality of their content. They are not employed by or formally affiliated with our platform."
-- Change breadcrumb label from `'Coaches'` to `'Creators'`
+## Sanity Content Types Needed in Studio
 
-### 3. References from other pages
-- `VideoTipPage.tsx` line ~152: the link text to coach profile -- no label change needed (just links to profile)
-- `TopicPage.tsx` / `LearningArticlePage.tsx`: these show "Featured Trainers" sections linking to coach profiles -- update heading to "Featured Creators" if present
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-### Files to Change
-| File | What |
-|------|------|
-| `src/pages/marketing/Coaches.tsx` | Hero copy, SEO meta, add disclaimer banner |
-| `src/pages/marketing/CoachPage.tsx` | SEO meta, hero disclaimer card, rename "trainer" references, breadcrumb |
-| `src/pages/marketing/TopicPage.tsx` | Rename "Featured Trainers" heading if used |
-| `src/pages/marketing/LearningArticlePage.tsx` | Same as above |
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
+## What Stays Unchanged
+
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

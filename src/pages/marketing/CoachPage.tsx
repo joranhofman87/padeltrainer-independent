@@ -12,7 +12,7 @@ import { CTASection } from '@/components/sanity/CTASection';
 import { VideoTipCard } from '@/components/sanity/VideoTipCard';
 import type { VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube } from 'lucide-react';
+import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube, Info } from 'lucide-react';
 import { sanityClient, COACH_BY_SLUG_QUERY, VIDEO_TIPS_BY_TRAINER_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 
@@ -130,8 +130,8 @@ export default function CoachPage() {
   return (
     <MarketingLayout>
       <SEO
-        title={coach.seo?.titleTag || `${coach.name} — Padel Coach`}
-        description={coach.seo?.metaDescription || coach.shortTagline || coach.bio || `Learn from ${coach.name} on PadelTrainer.ai`}
+        title={coach.seo?.titleTag || `${coach.name} — Padel Content Creator`}
+        description={coach.seo?.metaDescription || coach.shortTagline || coach.bio || `Watch quality padel content by ${coach.name}, featured on PadelTrainer.ai`}
         url={`/padel-coaches/${slug}`}
         type="article"
         image={coach.profileImageUrl || undefined}
@@ -149,7 +149,7 @@ export default function CoachPage() {
 
       <article className="container mx-auto px-4 py-8 max-w-4xl">
         <Breadcrumbs items={[
-          { label: 'Coaches', href: '/padel-coaches' },
+          { label: 'Creators', href: '/padel-coaches' },
           { label: coach.seo?.breadcrumbLabel || coach.name },
         ]} />
 
@@ -223,6 +223,14 @@ export default function CoachPage() {
               )}
             </div>
           </div>
+
+          {/* Disclaimer */}
+          <div className="flex items-start gap-3 rounded-lg bg-muted/50 border border-border p-3 mt-6 text-sm text-muted-foreground">
+            <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+            <p>
+              This creator is independently featured on PadelTrainer.ai for the quality of their content. They are not employed by or formally affiliated with our platform.
+            </p>
+          </div>
         </motion.div>
 
         {/* ── About Section ── */}
@@ -272,7 +280,7 @@ export default function CoachPage() {
             <Button variant="outline" asChild>
               <a href={coach.platformProfileUrl} className="flex items-center gap-2">
                 <ExternalLink className="h-4 w-4" />
-                View trainer on PadelTrainer.ai
+                View on PadelTrainer.ai
               </a>
             </Button>
           </motion.div>
@@ -286,7 +294,7 @@ export default function CoachPage() {
             transition={{ delay: 0.2 }}
             className="mb-8"
           >
-            <h2 className="text-2xl font-bold mb-6">Videos by {coach.name}</h2>
+            <h2 className="text-2xl font-bold mb-6">Featured content by {coach.name}</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {videoTips.map(video => (
                 <VideoTipCard key={video._id} video={video} />
