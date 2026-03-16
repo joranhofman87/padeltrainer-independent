@@ -26,9 +26,7 @@ export default function ClubCycles() {
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
-  const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
+  // Dialog state removed — using dedicated pages now
   const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
   const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
