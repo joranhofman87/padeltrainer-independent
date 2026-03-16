@@ -22,8 +22,10 @@ interface MegaMenuProps {
 
 export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
   const [open, setOpen] = useState(false);
+  const [panelShiftX, setPanelShiftX] = useState(0);
   const timeout = useRef<ReturnType<typeof setTimeout>>(undefined);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const enter = () => {
     clearTimeout(timeout.current);
@@ -35,6 +37,37 @@ export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
   };
 
   useEffect(() => () => clearTimeout(timeout.current), []);
+
+  useEffect(() => {
+    if (!open) {
+      setPanelShiftX(0);
+      return;
+    }
+
+    const clampPanel = () => {
+      if (!panelRef.current) return;
+      const rect = panelRef.current.getBoundingClientRect();
+      const margin = 16;
+
+      let nextShift = 0;
+      if (rect.right > window.innerWidth - margin) {
+        nextShift -= rect.right - (window.innerWidth - margin);
+      }
+      if (rect.left + nextShift < margin) {
+        nextShift += margin - (rect.left + nextShift);
+      }
+
+      setPanelShiftX(nextShift);
+    };
+
+    const rafId = requestAnimationFrame(clampPanel);
+    window.addEventListener('resize', clampPanel);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', clampPanel);
+    };
+  }, [open, columns.length]);
 
   return (
     <div ref={ref} className="relative" onMouseEnter={enter} onMouseLeave={leave}>
@@ -49,9 +82,10 @@ export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
             {/* Invisible bridge so mouse doesn't lose hover between trigger and panel */}
             <div className="absolute left-0 top-full h-3 w-full" />
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
+              ref={panelRef}
+              initial={{ opacity: 0, y: 8, x: 0 }}
+              animate={{ opacity: 1, y: 0, x: panelShiftX }}
+              exit={{ opacity: 0, y: 8, x: panelShiftX }}
               transition={{ duration: 0.15 }}
               className="absolute left-0 top-[calc(100%+0.75rem)] z-50"
             >
