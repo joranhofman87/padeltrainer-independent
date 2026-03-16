@@ -27,6 +27,8 @@ interface ProposalWorkflowStepsProps {
   onApproveAll: () => void;
   onReset: () => void;
   onAddManual: () => void;
+  onShowOverview: () => void;
+  showOverview?: boolean;
   isGenerating?: boolean;
   isResetting?: boolean;
 }
