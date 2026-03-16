@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
       notes,
       consentGiven,
       language,
+      metadata,
     } = await req.json();
 
     if (!email || !fullName || !cycleId) {
