@@ -98,6 +98,7 @@ const TrainerPlayers = lazy(() => import('@/pages/TrainerPlayers'));
 const TrainerCyclus = lazy(() => import('@/pages/TrainerCyclus'));
 const TrainerCycles = lazy(() => import('@/pages/TrainerCycles'));
 const TrainerIntakeRequests = lazy(() => import('@/pages/TrainerIntakeRequests'));
+const ProposalOverviewPage = lazy(() => import('@/pages/ProposalOverviewPage'));
 const TrainerWaitingList = lazy(() => import('@/pages/TrainerWaitingList'));
 const OpenSlots = lazy(() => import('@/pages/OpenSlots'));
 const BookingSuccess = lazy(() => import('@/pages/BookingSuccess'));
