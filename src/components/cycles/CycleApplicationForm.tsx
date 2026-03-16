@@ -588,6 +588,48 @@ export default function CycleApplicationForm({
           </Card>
         )}
 
+        {/* Cyclus Option Selector */}
+        {hasCyclusOptions && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.chooseCyclus', 'Choose your cyclus')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {cyclusOptions.map((opt, i) => {
+                const isSelected = selectedCyclusOption?.label === opt.label && selectedCyclusOption?.number_of_sessions === opt.number_of_sessions;
+                return (
+                  <label
+                    key={i}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border p-4 cursor-pointer transition-colors",
+                      isSelected && "border-primary bg-primary/5"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="cyclus_option"
+                        checked={isSelected}
+                        onChange={() => setSelectedCyclusOption(opt)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="text-sm font-medium">{opt.label}</span>
+                        <p className="text-xs text-muted-foreground">
+                          {opt.number_of_sessions} {t('application.form.lessons', 'lessen')} · {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-semibold">
+                      {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.total_price)}
+                    </span>
+                  </label>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Preferences - hide for events */}
         {!isEvent && (
         <Card>
