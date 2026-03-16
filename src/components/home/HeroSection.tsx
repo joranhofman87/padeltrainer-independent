@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Play, Calendar, CreditCard, UserPlus, User, Check, Star, MapPin, Clock } from 'lucide-react';
+import { ArrowRight, Play, Calendar, CreditCard, UserPlus, User, Check, Clock, Users, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAppUrl } from '@/lib/domains';
 import { trackEvent } from '@/lib/tracking';
@@ -15,6 +15,31 @@ const TAB_ICONS: Record<Tab, React.ElementType> = {
   payments: CreditCard,
   profile: User,
 };
+
+function GoogleCalendarLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M18.316 5.684H5.684v12.632h12.632V5.684z" fill="#fff"/>
+      <path d="M18.316 24l5.684-5.684h-5.684V24z" fill="#EA4335"/>
+      <path d="M24 5.684V0h-5.684l5.684 5.684z" fill="#188038"/>
+      <path d="M5.684 18.316V24H0l5.684-5.684z" fill="#1967D2"/>
+      <path d="M24 5.684h-5.684v12.632H24V5.684z" fill="#FBBC04"/>
+      <path d="M5.684 5.684H0v12.632h5.684V5.684z" fill="#4285F4"/>
+      <path d="M5.684 0v5.684h12.632V0H5.684z" fill="#34A853"/>
+      <path d="M5.684 24h12.632v-5.684H5.684V24z" fill="#EA4335"/>
+      <path d="M0 5.684V0h5.684L0 5.684z" fill="#1967D2"/>
+      <path d="M8.5 16.2V15l2.1-1.8c.5-.4.8-.8.8-1.2 0-.5-.3-.8-.9-.8-.5 0-.9.2-1.3.6l-.9-.8c.6-.6 1.3-1 2.3-1 1.3 0 2.1.7 2.1 1.8 0 .7-.4 1.3-1.1 1.9l-1.3 1.1h2.5v1.2H8.5zm6.3 0v-1l1.1-.9c1.1-.9 1.6-1.5 1.6-2.1 0-.5-.3-.8-.9-.8-.5 0-.9.3-1.2.7l-.9-.7c.5-.7 1.2-1.1 2.2-1.1 1.3 0 2.1.8 2.1 1.8 0 .9-.6 1.6-1.5 2.3l-.7.5h2.3v1.2h-4.1z" fill="#4285F4"/>
+    </svg>
+  );
+}
+
+function MollieLogo({ className }: { className?: string }) {
+  return (
+    <div className={`inline-flex items-center justify-center rounded bg-[hsl(0,0%,15%)] px-2 py-0.5 ${className}`}>
+      <span className="text-[11px] text-white font-bold tracking-tight">mollie</span>
+    </div>
+  );
+}
 
 function MockBooking({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
   return (
@@ -40,9 +65,7 @@ function MockBooking({ t }: { t: (k: string, opts?: Record<string, unknown>) => 
         </div>
       ))}
       <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-        <div className="h-4 w-4 rounded bg-[hsl(var(--brand-gold))] flex items-center justify-center">
-          <Calendar className="h-2.5 w-2.5 text-foreground" />
-        </div>
+        <GoogleCalendarLogo className="h-4 w-4" />
         <span>{t('homev2.hero.mock_booking_sync')}</span>
       </div>
     </div>
@@ -56,29 +79,41 @@ function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>
         <UserPlus className="h-5 w-5 text-primary" />
         <span className="font-semibold text-sm">{t('homev2.hero.mock_reg_title')}</span>
       </div>
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Name</label>
-          <div className="h-9 rounded-md border border-input bg-background px-3 flex items-center text-sm text-muted-foreground">Sarah van Dijk</div>
+
+      {/* Stats highlight */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 rounded-xl border bg-primary/5 border-primary/20 p-4 text-center">
+          <div className="text-3xl font-bold text-primary">52</div>
+          <div className="text-xs text-muted-foreground mt-1">{t('homev2.hero.mock_reg_subtitle')}</div>
         </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Email</label>
-          <div className="h-9 rounded-md border border-input bg-background px-3 flex items-center text-sm text-muted-foreground">sarah@email.com</div>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">{t('homev2.hero.mock_reg_level')}</label>
-          <div className="flex gap-2">
-            {['Beginner', 'Intermediate', 'Advanced'].map((level, i) => (
-              <div key={level} className={`flex-1 text-center text-xs py-2 rounded-md border cursor-default ${i === 1 ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background text-muted-foreground'}`}>
-                {level}
-              </div>
-            ))}
-          </div>
+        <div className="flex-1 rounded-xl border bg-muted/30 p-4 text-center">
+          <div className="text-3xl font-bold text-foreground">6</div>
+          <div className="text-xs text-muted-foreground mt-1">{t('homev2.hero.mock_reg_groups')}</div>
         </div>
       </div>
-      <div className="h-9 rounded-md bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-        <Check className="h-4 w-4 mr-1.5" />
-        {t('homev2.hero.mock_reg_cta')}
+
+      {/* Recent registrations */}
+      <div className="space-y-2">
+        {[
+          { name: 'Sarah van Dijk', time: '2 min ago', level: 'Intermediate' },
+          { name: 'Marco Visser', time: '8 min ago', level: 'Beginner' },
+          { name: 'Lisa de Boer', time: '15 min ago', level: 'Advanced' },
+        ].map((reg, i) => (
+          <div key={i} className="flex items-center gap-3 text-sm">
+            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Users className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <span className="flex-1 truncate">{reg.name}</span>
+            <span className="text-xs text-muted-foreground">{reg.level}</span>
+            <span className="text-xs text-muted-foreground">{reg.time}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* AI auto-plan */}
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+        <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
+        <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_reg_ai')}</span>
       </div>
     </div>
   );
@@ -124,9 +159,7 @@ function MockPayments({ t }: { t: (k: string, opts?: Record<string, unknown>) =>
         ))}
       </div>
       <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
-        <div className="h-4 px-1.5 rounded bg-[hsl(0,0%,15%)] flex items-center justify-center">
-          <span className="text-[10px] text-white font-bold tracking-tight">mollie</span>
-        </div>
+        <MollieLogo />
         <span>{t('homev2.hero.mock_payments_powered')}</span>
       </div>
     </div>
@@ -137,36 +170,40 @@ function MockProfile({ t }: { t: (k: string, opts?: Record<string, unknown>) => 
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-4">
-        <div className="h-14 w-14 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <User className="h-7 w-7 text-primary" />
+        <div className="h-12 w-12 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <User className="h-6 w-6 text-primary" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h4 className="font-semibold text-sm">Coach Maria Santos</h4>
-          <div className="flex items-center gap-1 mt-0.5">
-            {[1, 2, 3, 4, 5].map(i => (
-              <Star key={i} className={`h-3 w-3 ${i <= 4 ? 'fill-[hsl(var(--brand-gold))] text-[hsl(var(--brand-gold))]' : 'text-border'}`} />
-            ))}
-            <span className="text-xs text-muted-foreground ml-1">4.8 (32)</span>
-          </div>
-          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" />
-            <span>Amsterdam</span>
-          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">padeltrainer.ai/maria-santos</p>
+        </div>
+        <div className="rounded-lg bg-primary/10 px-3 py-1.5 text-center flex-shrink-0">
+          <div className="text-lg font-bold text-primary">8</div>
+          <div className="text-[10px] text-primary/80">{t('homev2.hero.mock_profile_slots', { count: '8' })}</div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {['Mon 09:00', 'Tue 14:00', 'Wed 10:30', 'Thu 16:00'].map(slot => (
-          <div key={slot} className="flex items-center gap-1.5 text-xs p-2 rounded-md border border-dashed border-primary/40 bg-primary/5">
-            <Clock className="h-3 w-3 text-primary" />
-            <span>{slot}</span>
+
+      {/* Open slots grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { day: 'Mon', time: '09:00' },
+          { day: 'Mon', time: '14:00' },
+          { day: 'Tue', time: '10:30' },
+          { day: 'Wed', time: '09:00' },
+          { day: 'Wed', time: '16:00' },
+          { day: 'Thu', time: '14:00' },
+          { day: 'Fri', time: '09:00' },
+          { day: 'Fri', time: '11:00' },
+        ].map((slot, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-xs p-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
+            <Clock className="h-3 w-3 text-primary flex-shrink-0" />
+            <span className="font-medium">{slot.day} {slot.time}</span>
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_profile_slots', { count: '12' })}</span>
-        <div className="h-8 px-4 rounded-md bg-primary text-primary-foreground flex items-center text-xs font-medium">
-          {t('homev2.hero.mock_profile_cta')}
-        </div>
+
+      <div className="h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+        {t('homev2.hero.mock_profile_cta')}
       </div>
     </div>
   );
@@ -250,19 +287,8 @@ export function HeroSection() {
             })}
           </div>
 
-          {/* Mock screen container */}
+          {/* Mock screen container — clean card, no browser chrome */}
           <div className="relative rounded-xl rounded-tl-none border-2 border-border bg-card shadow-2xl overflow-hidden">
-            {/* Browser chrome */}
-            <div className="bg-muted/50 px-4 py-3 border-b flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <div className="h-3 w-3 rounded-full bg-destructive/40" />
-                <div className="h-3 w-3 rounded-full bg-primary/40" />
-                <div className="h-3 w-3 rounded-full bg-green-500/40" />
-              </div>
-              <span className="text-xs text-muted-foreground ml-2">padeltrainer.ai</span>
-            </div>
-
-            {/* Crossfade screens */}
             <div className="relative min-h-[320px] md:min-h-[340px]">
               {TABS.map(tab => (
                 <div
