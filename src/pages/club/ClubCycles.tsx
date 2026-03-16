@@ -8,8 +8,6 @@ import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import { useClubContext } from '@/components/club/ClubLayout';
-import { getClubTrainers } from '@/lib/club';
-import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
 interface LocationData {
