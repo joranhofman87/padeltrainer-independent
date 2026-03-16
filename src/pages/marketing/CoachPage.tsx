@@ -12,7 +12,7 @@ import { CTASection } from '@/components/sanity/CTASection';
 import { VideoTipCard } from '@/components/sanity/VideoTipCard';
 import type { VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube } from 'lucide-react';
+import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube, Info } from 'lucide-react';
 import { sanityClient, COACH_BY_SLUG_QUERY, VIDEO_TIPS_BY_TRAINER_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 
