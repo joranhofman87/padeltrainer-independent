@@ -1798,11 +1798,11 @@ export default function CycleForm({
             )}
 
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => onCancel?.()}
                 disabled={isSubmitting}
               >
                 {t('common:cancel', 'Cancel')}
@@ -1819,11 +1819,9 @@ export default function CycleForm({
                   {t('form.saveAndOpen')}
                 </Button>
               )}
-            </DialogFooter>
+            </div>
           </form>
         </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }
