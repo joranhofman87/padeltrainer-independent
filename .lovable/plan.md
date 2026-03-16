@@ -1,29 +1,28 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Player Redirect Banner
 
-Implemented on 2026-03-14.
+**What:** A new `PlayerBanner` component placed between `SocialProofStrip` and `PadelRealitiesSection` on the homepage. It acts as a quick off-ramp for players who landed on the trainer-focused homepage, surfacing the same options from the "Players" mega menu.
 
-## What Changed
+**Design:** A visually distinct horizontal banner (accent background, e.g. `bg-primary/5 border-primary/20`) with:
+- Headline: "Are you a padel player?" 
+- Subtitle: "We've got you covered too"
+- A row of 4-5 card-style links matching the Players mega menu items:
+  - Find Trainers (Dumbbell icon) → `/trainers`
+  - Find Club (MapPin icon) → `/locations`
+  - Padel Rules (BookOpen icon) → `/padel-rules`
+  - Video Tips (Video icon) → `/video-tips`
+  - Blog (PenLine icon) → `/blog`
+- Each card shows icon + label + short description, clickable via `LocalizedLink`
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+**Layout:** On desktop, a horizontal row of cards. On mobile, a scrollable horizontal strip or 2-column grid.
 
-## Sanity Content Types Needed in Studio
+**Files to create/modify:**
+1. **`src/components/home/PlayerBanner.tsx`** — New component with the banner UI, using icons and links matching the Players mega menu
+2. **`src/pages/marketing/Home.tsx`** — Add lazy-loaded `PlayerBanner` between `SocialProofStrip` and `PadelRealitiesSection`
+3. **Translation files** (en, nl, es, de, fr `marketing.json`) — Add keys:
+   - `homev2.playerBanner.headline` — "Are you a padel player?"
+   - `homev2.playerBanner.subtitle` — "We've got you covered too"
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+Existing mega menu description translations will be reused for the card descriptions.
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
-
-## What Stays Unchanged
-
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
