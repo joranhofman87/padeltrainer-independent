@@ -181,7 +181,7 @@ export default function CycleApplicationForm({
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_types: ['group'] as string[],
-      preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
+      preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
       availability: {},
       preferred_trainer_id: '',
