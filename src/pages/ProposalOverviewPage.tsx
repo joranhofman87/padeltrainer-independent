@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -28,8 +28,9 @@ import {
   Clock,
   UserX,
   ScaleIcon,
+  Loader2,
 } from 'lucide-react';
-import type { SlotWithOccupancy } from '@/lib/cycles';
+import { getAvailableSlotsForCycle, type SlotWithOccupancy } from '@/lib/cycles';
 
 // --- Helpers ---
 
@@ -70,9 +71,25 @@ export default function ProposalOverviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const slots: SlotWithOccupancy[] = (location.state as any)?.slots ?? [];
+  const stateSlots: SlotWithOccupancy[] = (location.state as any)?.slots ?? [];
+  const cycleId: string | undefined = (location.state as any)?.cycleId;
   const backPath: string = (location.state as any)?.backPath ?? -1;
 
+  const [fetchedSlots, setFetchedSlots] = useState<SlotWithOccupancy[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // If no slots were passed via state, fetch them using cycleId
+  useEffect(() => {
+    if (stateSlots.length === 0 && cycleId) {
+      setIsLoading(true);
+      getAvailableSlotsForCycle(cycleId)
+        .then(setFetchedSlots)
+        .catch(console.error)
+        .finally(() => setIsLoading(false));
+    }
+  }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const slots = stateSlots.length > 0 ? stateSlots : (fetchedSlots ?? []);
   const cycleSlots = useMemo(() => slots.filter(s => !s.is_blocked), [slots]);
 
   const { trainerGroups, totalSlots, totalAssigned, totalEmpty, warnings } = useMemo(() => {

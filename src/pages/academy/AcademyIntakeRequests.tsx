@@ -220,7 +220,7 @@ export default function AcademyIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
-        onShowOverview={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, backPath: '/app/academy/intake-requests' } })}
+        onShowOverview={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, cycleId: selectedCycleId, backPath: '/app/academy/intake-requests' } })}
         isGenerating={isGenerating}
         isResetting={isResetting}
       />
