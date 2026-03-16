@@ -35,6 +35,7 @@ export default function AcademyIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { activeAcademy } = useAcademyContext();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [requests, setRequests] = useState<IntakeRequestWithProposal[]>([]);
