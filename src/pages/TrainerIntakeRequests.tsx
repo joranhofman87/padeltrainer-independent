@@ -20,6 +20,7 @@ import {
   movePlayerAssignment,
   moveSlot,
   swapSlots,
+  deleteSlot,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -349,6 +350,19 @@ export default function TrainerIntakeRequests() {
                 const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
                 setScheduleSlots(updatedSlots);
               }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
+          onDeleteSlot={async (slotId) => {
+            try {
+              await deleteSlot(slotId);
+              toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+              fetchData();
             } catch (error: any) {
               toast.error(error.message);
             }

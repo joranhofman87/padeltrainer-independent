@@ -14,8 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
@@ -29,6 +32,7 @@ interface ProposalScheduleGridProps {
     slotAId: string, slotANewTrainerId: string, slotANewStart: string, slotANewEnd: string,
     slotBId: string, slotBNewTrainerId: string, slotBNewStart: string, slotBNewEnd: string,
   ) => void;
+  onDeleteSlot?: (slotId: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
 }
 
@@ -173,14 +177,258 @@ function DraggablePlayerChip({
   );
 }
 
+// ── Slot Edit Popover ──
+
+function SlotEditPopover({
+  slot,
+  trainerAvailabilityWindows,
+  selectedDay,
+  daySlots,
+  onMoveSlot,
+  onDeleteSlot,
+  onPlayerClick,
+}: {
+  slot: SlotWithOccupancy;
+  trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
+  selectedDay: string;
+  daySlots: SlotWithOccupancy[];
+  onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
+  onDeleteSlot?: (slotId: string) => void;
+  onPlayerClick?: (intakeRequestId: string) => void;
+}) {
+  const { t } = useTranslation('cycles');
+  const [open, setOpen] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setStartTime(format(parseISO(slot.start_time), 'HH:mm'));
+      setEndTime(format(parseISO(slot.end_time), 'HH:mm'));
+      setConfirmDelete(false);
+    }
+  }, [open, slot.start_time, slot.end_time]);
+
+  // Get the trainer's availability bounds for the selected day
+  const trainerBounds = useMemo(() => {
+    if (!trainerAvailabilityWindows) return { min: 6 * 60, max: 23 * 60 };
+    const tw = trainerAvailabilityWindows.find(w => w.trainerId === slot.trainer_id);
+    if (!tw) return { min: 6 * 60, max: 23 * 60 };
+    const dayWindows = tw.windows.filter(w => w.day.toLowerCase() === selectedDay.toLowerCase());
+    if (dayWindows.length === 0) return { min: 6 * 60, max: 23 * 60 };
+    let min = Infinity, max = -Infinity;
+    dayWindows.forEach(w => {
+      const [sh, sm] = w.start.split(':').map(Number);
+      const [eh, em] = w.end.split(':').map(Number);
+      min = Math.min(min, sh * 60 + (sm || 0));
+      max = Math.max(max, eh * 60 + (em || 0));
+    });
+    return { min, max };
+  }, [trainerAvailabilityWindows, slot.trainer_id, selectedDay]);
+
+  // Generate time options in 30-min increments
+  const timeOptions = useMemo(() => {
+    const opts: string[] = [];
+    for (let m = trainerBounds.min; m <= trainerBounds.max; m += 30) {
+      opts.push(minutesToHHMM(m));
+    }
+    return opts;
+  }, [trainerBounds]);
+
+  const startMin = (() => { const [h, m] = startTime.split(':').map(Number); return h * 60 + (m || 0); })();
+  const endMin = (() => { const [h, m] = endTime.split(':').map(Number); return h * 60 + (m || 0); })();
+  const isValid = endMin > startMin;
+
+  // Check for overlaps
+  const hasOverlap = useMemo(() => {
+    if (!isValid) return false;
+    return daySlots.some(other => {
+      if (other.id === slot.id) return false;
+      if (other.trainer_id !== slot.trainer_id) return false;
+      const otherStart = isoToMinutes(other.start_time);
+      const otherEnd = otherStart + getDurationMinutes(other.start_time, other.end_time);
+      return startMin < otherEnd && endMin > otherStart;
+    });
+  }, [daySlots, slot.id, slot.trainer_id, startMin, endMin, isValid]);
+
+  const canApply = isValid && !hasOverlap && (startTime !== format(parseISO(slot.start_time), 'HH:mm') || endTime !== format(parseISO(slot.end_time), 'HH:mm'));
+
+  const handleApply = () => {
+    if (!onMoveSlot || !canApply) return;
+    const refDate = parseISO(slot.start_time);
+    const newStart = new Date(refDate);
+    newStart.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+    const newEnd = new Date(refDate);
+    newEnd.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
+    onMoveSlot(slot.id, slot.trainer_id, newStart.toISOString(), newEnd.toISOString());
+    setOpen(false);
+  };
+
+  const handleDelete = () => {
+    if (!onDeleteSlot) return;
+    onDeleteSlot(slot.id);
+    setOpen(false);
+  };
+
+  const confScoreColor = (score: number) => {
+    if (score >= 80) return 'text-emerald-600 dark:text-emerald-400';
+    if (score >= 60) return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="flex items-center gap-1 group cursor-pointer hover:text-primary transition-colors">
+          <span className="text-xs font-semibold">
+            {getTimeRange(slot.start_time, slot.end_time)}
+          </span>
+          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start" side="right" onClick={(e) => e.stopPropagation()}>
+        {/* Time editing */}
+        <div className="p-3 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            {t('proposals.editTime', { defaultValue: 'Edit time' })}
+          </p>
+          <div className="flex items-center gap-2">
+            <Select value={startTime} onValueChange={setStartTime}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {timeOptions.filter(t => {
+                  const [h, m] = t.split(':').map(Number);
+                  return h * 60 + m < endMin;
+                }).map(t => (
+                  <SelectItem key={`s-${t}`} value={t} className="text-xs">{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">–</span>
+            <Select value={endTime} onValueChange={setEndTime}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {timeOptions.filter(t => {
+                  const [h, m] = t.split(':').map(Number);
+                  return h * 60 + m > startMin;
+                }).map(t => (
+                  <SelectItem key={`e-${t}`} value={t} className="text-xs">{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {hasOverlap && (
+            <p className="text-[10px] text-destructive">
+              {t('proposals.overlapWarning', { defaultValue: 'Overlaps with another slot' })}
+            </p>
+          )}
+          {canApply && (
+            <Button size="sm" className="w-full h-7 text-xs" onClick={handleApply}>
+              {t('proposals.applyTimeChange', { defaultValue: 'Apply' })}
+            </Button>
+          )}
+        </div>
+
+        {/* Player details */}
+        {slot.current_assignments.length > 0 && (
+          <>
+            <Separator />
+            <div className="p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {t('proposals.players', { defaultValue: 'Players' })} ({slot.current_assignments.length})
+              </p>
+              {slot.current_assignments.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
+                  className="flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium truncate">{a.player_name}</span>
+                    {a.player_rating != null && (
+                      <span className="text-muted-foreground text-[10px] shrink-0">
+                        {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+                      </span>
+                    )}
+                  </div>
+                  {a.confidence_score != null && a.confidence_score > 0 && (
+                    <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
+                      {a.confidence_score}%
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Delete slot */}
+        {onDeleteSlot && (
+          <>
+            <Separator />
+            <div className="p-3">
+              {!confirmDelete ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 gap-1"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {t('proposals.deleteSlot', { defaultValue: 'Delete slot' })}
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {t('proposals.deleteSlotConfirm', { defaultValue: 'Are you sure? Players will be unassigned.' })}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-7 text-xs"
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      {t('common:cancel', { defaultValue: 'Cancel' })}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="flex-1 h-7 text-xs"
+                      onClick={handleDelete}
+                    >
+                      {t('proposals.confirmDelete', { defaultValue: 'Delete' })}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Draggable Slot Card ──
 
 function DraggableSlotCard({
   slot, onPlayerClick, canDragSlot,
+  trainerAvailabilityWindows, selectedDay, daySlots, onMoveSlot, onDeleteSlot,
 }: {
   slot: SlotWithOccupancy;
   onPlayerClick?: (id: string) => void;
   canDragSlot: boolean;
+  trainerAvailabilityWindows?: TrainerAvailabilityWindow[];
+  selectedDay: string;
+  daySlots: SlotWithOccupancy[];
+  onMoveSlot?: (slotId: string, newTrainerId: string, newStartTime: string, newEndTime: string) => void;
+  onDeleteSlot?: (slotId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `slot-drag-${slot.id}`,
@@ -218,9 +466,15 @@ function DraggableSlotCard({
                 <Move className="h-3.5 w-3.5" />
               </button>
             )}
-            <span className="text-xs font-semibold">
-              {getTimeRange(slot.start_time, slot.end_time)}
-            </span>
+            <SlotEditPopover
+              slot={slot}
+              trainerAvailabilityWindows={trainerAvailabilityWindows}
+              selectedDay={selectedDay}
+              daySlots={daySlots}
+              onMoveSlot={onMoveSlot}
+              onDeleteSlot={onDeleteSlot}
+              onPlayerClick={onPlayerClick}
+            />
           </div>
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
             <Clock className="h-2.5 w-2.5" />
@@ -385,7 +639,7 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onUndo,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
@@ -860,6 +1114,11 @@ export default function ProposalScheduleGrid({
                               slot={slot}
                               onPlayerClick={onPlayerClick}
                               canDragSlot={canDragSlot}
+                              trainerAvailabilityWindows={trainerAvailabilityWindows}
+                              selectedDay={selectedDay}
+                              daySlots={daySlots}
+                              onMoveSlot={onMoveSlot}
+                              onDeleteSlot={onDeleteSlot}
                             />
                           ) : null}
                         </DroppableCell>

@@ -1,53 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Slot Edit Popover: Time Editing, Deletion, and Player Details
+## Status: ✅ COMPLETED
 
-## What to build
+Implemented on 2026-03-14.
 
-A click-to-edit popover on each slot card in the schedule grid that serves three purposes:
-1. **Edit start/end time** via dropdowns (30-min increments)
-2. **Delete the slot** (with confirmation)
-3. **Show richer player info** (name, rating, confidence score, preferred times)
+## What Changed
 
-## Changes
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### 1. Backend: Add `deleteSlot` function (`src/lib/cycles.ts`)
-- New function that deletes an `availability_slots` row by ID
-- Before deleting, reassign any `proposal_assignments` on the slot back to status `new` (or simply delete them — players return to unassigned pool)
-- Simple `supabase.from('availability_slots').delete().eq('id', slotId)`
+## Sanity Content Types Needed in Studio
 
-### 2. New component: `SlotEditPopover` (inline in `ProposalScheduleGrid.tsx`)
-A `Popover` anchored to the slot card containing:
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**Time section:**
-- Two `Select` dropdowns: start time and end time (30-min steps, bounded by trainer availability window for that day)
-- Validation: end > start, no overlap with adjacent slots on same trainer
-- "Apply" button calls existing `onMoveSlot(slotId, sameTrainerId, newStart, newEnd)`
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**Player details section:**
-- List of assigned players with: name, rating (with rating system label), confidence score with color coding
-- Each player row is clickable (triggers existing `onPlayerClick`)
+## What Stays Unchanged
 
-**Delete section:**
-- "Delete slot" button (destructive variant) with inline confirmation ("Are you sure?")
-- Calls new `onDeleteSlot` callback
-
-### 3. Wire into `DraggableSlotCard`
-- Make the time range label clickable to open the `SlotEditPopover`
-- Add a subtle pencil/edit icon on hover next to the time
-- Pass through: `onMoveSlot`, `onDeleteSlot`, `trainerAvailabilityWindows`, `selectedDay`, `daySlots` (for overlap checking)
-
-### 4. Update `ProposalScheduleGrid` props
-- Add `onDeleteSlot?: (slotId: string) => void` prop
-- Thread it from parent pages alongside existing `onMoveSlot`
-
-### 5. Update parent pages (`AcademyIntakeRequests.tsx`, `TrainerIntakeRequests.tsx`)
-- Add `onDeleteSlot` handler that calls `deleteSlot()` from cycles lib, then refreshes schedule slots
-- Push to undo stack before deletion
-
-## Files to create/modify
-- **Modify**: `src/lib/cycles.ts` — add `deleteSlot` function
-- **Modify**: `src/components/cycles/ProposalScheduleGrid.tsx` — add `SlotEditPopover`, wire into `DraggableSlotCard`, add `onDeleteSlot` prop
-- **Modify**: `src/pages/academy/AcademyIntakeRequests.tsx` — pass `onDeleteSlot` handler
-- **Modify**: `src/pages/TrainerIntakeRequests.tsx` — pass `onDeleteSlot` handler
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
