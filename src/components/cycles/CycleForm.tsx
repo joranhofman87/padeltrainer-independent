@@ -112,6 +112,10 @@ export default function CycleForm({
   const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
     (cycle?.settings as any)?.cyclus_options ?? []
   );
+  const [durationOptions, setDurationOptions] = useState<number[]>(
+    (cycle?.settings as any)?.duration_options ?? []
+  );
+  const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
   const [customLessonType1, setCustomLessonType1] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
   );
