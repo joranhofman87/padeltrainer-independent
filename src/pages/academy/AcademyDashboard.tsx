@@ -29,6 +29,7 @@ const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 export default function AcademyDashboard() {
   const { t, i18n } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
+  const { t: tCycles } = useTranslation('cycles');
   const navigate = useNavigate();
   const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
 
