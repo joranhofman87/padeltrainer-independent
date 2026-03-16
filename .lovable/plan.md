@@ -1,29 +1,55 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Rework: Duration Options as Player Preference
 
-Implemented on 2026-03-14.
+### Current state
+The `CyclusOption` interface bundles label, number_of_sessions, number_of_weeks, price_per_session, and total_price into packages. The cycle has a fixed start/end date and a single `number_of_weeks` field. Players pick a full package.
 
-## What Changed
+### What's changing
+The cycle keeps its overall timeframe (start_date → end_date). The trainer defines **which duration options** (in weeks) players can choose from — e.g. 5, 10, or 15 weeks. This is a simple list of week counts, not full packages. The existing pricing (price_per_session, total_price, price_table) stays separate.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+Players see these duration options in the registration form and pick one as their **preference**. This selection is stored on the intake request and used during proposal generation.
 
-## Sanity Content Types Needed in Studio
+### Changes
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+#### 1. `src/lib/cycles.ts` — Simplify to duration options
+- Add `duration_options?: number[]` to `CycleSettings` (e.g. `[5, 10, 15]`).
+- Keep `CyclusOption` and `cyclus_options` for backward compatibility but they become secondary to this simpler model.
+- Add `preferred_number_of_weeks?: number` to `IntakeRequest` and `IntakeRequestInput` — stored in the `metadata` JSONB column.
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+#### 2. `src/components/cycles/CycleForm.tsx` — Duration options builder
+- In the registration section, add a **"Duration options"** field: a simple UI where the trainer can add/remove week counts (e.g. chips or a small list with + button).
+- Store as `settings.duration_options: number[]`.
+- Keep the existing cyclus options builder for pricing packages — they work independently.
 
-## What Stays Unchanged
+#### 3. `src/components/cycles/CycleApplicationForm.tsx` — Player picks duration
+- When `cycle.settings.duration_options` has entries, show a selector (radio cards or select) where the player picks how many weeks they want to train.
+- Store selection in `metadata.preferred_number_of_weeks`.
+- This is shown in the preferences section, separate from the cyclus option (package) selector.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+#### 4. `src/components/cycles/CycleDetailDisplay.tsx` — Show available durations
+- Display the available duration options to players (e.g. "Available durations: 5, 10, or 15 weeks").
+
+#### 5. `supabase/functions/generate-proposals/index.ts` — Use duration in proposals
+- Fetch `metadata` from intake requests.
+- When a player has `preferred_number_of_weeks`, use it to determine how many weeks of slots to assign them (instead of filling the entire cycle duration).
+- Add `metadata` to the `IntakeRequest` interface in the edge function and include it in the query select.
+
+#### 6. `supabase/functions/submit-guest-intake/index.ts` — Pass through
+- Already passes `metadata` — just ensure `preferred_number_of_weeks` flows through.
+
+#### 7. Intake request display
+- Show the player's preferred duration (weeks) on the trainer's intake request detail view.
+
+#### 8. `src/i18n/locales/nl/cycles.json` — Translations
+- Add: "Duur opties", "Aantal weken", "Kies je gewenste duur", "weken", etc.
+
+### Files to modify
+- `src/lib/cycles.ts`
+- `src/components/cycles/CycleForm.tsx`
+- `src/components/cycles/CycleApplicationForm.tsx`
+- `src/components/cycles/CycleDetailDisplay.tsx`
+- `supabase/functions/generate-proposals/index.ts`
+- `src/i18n/locales/nl/cycles.json`
+- Intake request detail components (to display selected duration)
+
