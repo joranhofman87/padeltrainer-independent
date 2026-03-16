@@ -70,8 +70,17 @@ interface Location {
   city: string;
 }
 
+const dateFnsLocales: Record<string, typeof enUS> = {
+  nl,
+  en: enUS,
+  es,
+  de,
+  fr,
+};
+
 export default function AcademyCalendar() {
-  const { t } = useTranslation("academy");
+  const { t, i18n } = useTranslation("academy");
+  const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split("-")[0]] || enUS;
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   
