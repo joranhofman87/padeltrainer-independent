@@ -32,7 +32,7 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
   const hasLocation = !hideLocation && !!cycle.location;
   const hasDescription = !!cycle.description;
 
-  if (!hasLocation && !hasDescription && !hasTerms && !hasPriceTable && !hasCyclusOptions) {
+  if (!hasLocation && !hasDescription && !hasTerms && !hasPriceTable && !hasCyclusOptions && !hasDurationOptions) {
     return null;
   }
 
