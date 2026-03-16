@@ -236,7 +236,9 @@
       "pricePerLesson": "Price per lesson",
       "total": "Total",
       "weeksCount_one": "{{count}} week",
-      "weeksCount_other": "{{count}} weeks"
+      "weeksCount_other": "{{count}} weeks",
+      "priceIndication": "Price indication",
+      "indicativeNote": "Indicative pricing — confirmed after registration"
     },
     
     "success": {

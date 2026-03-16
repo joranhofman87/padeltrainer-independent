@@ -870,106 +870,100 @@ export default function CycleApplicationForm({
         {!isEvent && (() => {
           const watchedLessonTypes = form.watch('lesson_types') || [];
           const watchedDuration = form.watch('preferred_duration_minutes');
-          const firstLessonType = watchedLessonTypes[0];
           
-          if (!firstLessonType) return null;
-          
-          // Determine price: cyclus option > price_table (type+duration) > price_table (type) > cycle fallback
-          let pricePerSession: number | null = null;
-          let totalPrice: number | null = null;
-          let priceSource: 'cyclus_option' | 'price_table' | 'fallback' | null = null;
+          if (watchedLessonTypes.length === 0) return null;
 
-          if (selectedCyclusOption) {
-            pricePerSession = selectedCyclusOption.price_per_session;
-            totalPrice = selectedCyclusOption.total_price;
-            priceSource = 'cyclus_option';
-          } else if (cycle.price_table && cycle.price_table.length > 0) {
-            // Match price_table row by index: rows are ordered to match lesson types
-            const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
-            const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
-            const orderedTypes = [...standardAllowedTypes, ...customTypes];
-            const typeIndex = orderedTypes.indexOf(firstLessonType);
-            const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length
-              ? cycle.price_table[typeIndex]
-              : cycle.price_table[0]; // fallback to first row
-            if (priceRow) {
-              pricePerSession = priceRow.price;
-              priceSource = 'price_table';
-            }
-          }
+          const currency = cycle.currency || 'EUR';
+          const fmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency }).format(v);
 
-          // Fallback to cycle-level price
-          if (pricePerSession == null && cycle.price_per_session) {
-            pricePerSession = cycle.price_per_session;
-            priceSource = 'fallback';
-          }
-
-          const hasPrice = pricePerSession != null && pricePerSession > 0;
-          // Calculate total from weeks if no cyclus option total
           const effectiveWeeks = selectedDurationWeeks || (() => {
             if (!cycle.start_date || !cycle.end_date) return null;
             return Math.max(1, Math.round(
               (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
             ));
           })();
-          if (hasPrice && totalPrice == null && effectiveWeeks) {
-            totalPrice = pricePerSession! * effectiveWeeks;
+
+          // Build price lines per selected lesson type
+          const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+          const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
+          const orderedTypes = [...standardAllowedTypes, ...customTypes];
+
+          const priceLines: { label: string; perLesson: number | null; total: number | null }[] = [];
+
+          for (const lt of watchedLessonTypes) {
+            const displayLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(lt)
+              ? t(`application.form.lessonTypes.${lt}`)
+              : lt.charAt(0).toUpperCase() + lt.slice(1);
+
+            let perLesson: number | null = null;
+
+            if (selectedCyclusOption) {
+              perLesson = selectedCyclusOption.price_per_session;
+            } else if (cycle.price_table && cycle.price_table.length > 0) {
+              const typeIndex = orderedTypes.indexOf(lt);
+              const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length
+                ? cycle.price_table[typeIndex]
+                : null;
+              if (priceRow) perLesson = priceRow.price;
+            }
+
+            if (perLesson == null && cycle.price_per_session) {
+              perLesson = cycle.price_per_session;
+            }
+
+            const total = perLesson && effectiveWeeks ? perLesson * effectiveWeeks : null;
+            priceLines.push({ label: displayLabel, perLesson, total });
           }
 
+          const hasAnyPrice = priceLines.some(l => l.perLesson != null && l.perLesson > 0);
 
-
-          
-          const displayLessonType = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
-            ? t(`application.form.lessonTypes.${firstLessonType}`)
-            : firstLessonType.charAt(0).toUpperCase() + firstLessonType.slice(1);
-          
           return (
-            <Card className="border-primary/20 bg-primary/5">
+            <Card className="border-muted bg-muted/30">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-primary" />
-                  {t('application.summary.title')}
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                  {t('application.summary.priceIndication')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t('application.summary.lessonType')}</span>
-                  <span className="font-medium">{displayLessonType}</span>
-                </div>
+                {priceLines.map((line, i) => (
+                  <div key={i} className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">{line.label}</span>
+                    <span className="font-medium text-right whitespace-nowrap">
+                      {line.perLesson != null && line.perLesson > 0 ? (
+                        <>
+                          {fmt(line.perLesson)}/{t('form.perLesson')}
+                          {line.total != null && effectiveWeeks && (
+                            <span className="text-muted-foreground font-normal ml-2">
+                              {effectiveWeeks}w: {fmt(line.total)}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+
                 {selectedCyclusOption && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('application.summary.package', 'Package')}</span>
+                    <span className="text-muted-foreground">{t('application.summary.package')}</span>
                     <span className="font-medium">{selectedCyclusOption.label}</span>
                   </div>
                 )}
-                {selectedDurationWeeks && !selectedCyclusOption && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('application.summary.duration')}</span>
-                    <span className="font-medium">{t('application.summary.weeksCount', { count: selectedDurationWeeks })}</span>
-                  </div>
-                )}
+
                 {watchedDuration && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t('application.summary.lessonLength')}</span>
                     <span className="font-medium">{watchedDuration} min</span>
                   </div>
                 )}
-                {hasPrice && (
-                  <>
-                    <div className="border-t border-border my-2" />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
-                      <span className="font-medium">{new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(pricePerSession!)}</span>
-                    </div>
-                    {totalPrice != null && totalPrice > 0 && (
-                      <div className="flex justify-between text-base font-semibold">
-                        <span>{t('application.summary.total')}</span>
-                        <span className="text-primary">
-                          {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalPrice)}
-                        </span>
-                      </div>
-                    )}
-                  </>
+
+                {hasAnyPrice && (
+                  <p className="text-xs italic text-muted-foreground pt-2 border-t border-border">
+                    {t('application.summary.indicativeNote')}
+                  </p>
                 )}
               </CardContent>
             </Card>
