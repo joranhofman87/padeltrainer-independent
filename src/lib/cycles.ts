@@ -949,6 +949,7 @@ export interface SlotWithOccupancy {
   trainer_avatar: string | null;
   max_participants: number | null;
   cyclus_name: string | null;
+  is_blocked?: boolean;
   current_assignments: Array<{
     id: string;
     intake_request_id: string;
