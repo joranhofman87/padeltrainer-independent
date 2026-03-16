@@ -377,6 +377,33 @@ export default function AcademyIntakeRequests() {
             setScheduleSlots(previousSlots);
             toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
           }}
+          unplacedPlayers={unplacedPlayers}
+          onAssignPlayer={async (intakeRequestId, slotId) => {
+            try {
+              await assignPlayerToSlot(intakeRequestId, slotId);
+              toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
+              fetchData();
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
+          onUnassignPlayer={async (assignmentId) => {
+            try {
+              await unassignPlayer(assignmentId);
+              toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
+              fetchData();
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
         />
       )}
 
