@@ -393,7 +393,7 @@ export default function AcademyDashboard() {
                             <span>{cyclusName} <span className="text-xs">({booking.sessionCount} {booking.sessionCount === 1 ? tTrainer('dashboard.session', 'session') : tTrainer('dashboard.sessions', 'sessions')})</span></span>
                           ) : '—'}
                         </TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
+                        <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</TableCell>
                         <TableCell className="py-2">
                           <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
                             {booking.payment_status === 'paid' && (booking as any).paid_externally
