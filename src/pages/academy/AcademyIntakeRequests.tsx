@@ -181,6 +181,19 @@ export default function AcademyIntakeRequests() {
   const proposedCount = cycleFilteredRequests.filter(r => r.status === 'proposed').length;
   const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed').length;
 
+  // Unplaced players for the sidebar (status 'new' for selected cycle)
+  const unplacedPlayers = cycleFilteredRequests
+    .filter(r => r.status === 'new')
+    .map(r => ({
+      id: r.id,
+      full_name: r.full_name,
+      rating: r.rating,
+      rating_system: r.rating_system,
+      preferred_days: r.preferred_days,
+      lesson_type: r.lesson_type,
+      skip_reason: r.skip_reason,
+    }));
+
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
         const reason = r.skip_reason;
