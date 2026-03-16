@@ -394,20 +394,7 @@ export default function CycleForm({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden p-0">
-        <div className="overflow-y-auto max-h-[90vh] p-6">
-        <DialogHeader>
-          <DialogTitle>
-            {isEdit 
-              ? isEvent ? t('editEvent', 'Edit Event') : isRegistration ? t('editRegistration', 'Edit Registration') : t('editCycle')
-              : isEvent
-                ? t('createEvent', 'Create Event')
-                : isRegistration 
-                  ? t('createRegistration', 'Create Registration')
-                  : t('createCycle')}
-          </DialogTitle>
-        </DialogHeader>
+    <div className="space-y-6">
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
