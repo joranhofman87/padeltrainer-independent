@@ -700,20 +700,30 @@ export default function CycleApplicationForm({
                   {effectiveDurations.length === 1 ? (
                     <Input value={`${effectiveDurations[0]} min`} disabled className="bg-muted" />
                   ) : (
-                    <Select onValueChange={field.onChange} value={String(field.value)}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {effectiveDurations.map(d => (
-                          <SelectItem key={d} value={String(d)}>
-                            {d} min
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                      {effectiveDurations.map(d => {
+                        const isSelected = field.value === d;
+                        return (
+                          <label
+                            key={d}
+                            className={cn(
+                              "flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors",
+                              isSelected && "border-primary bg-primary/5"
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              name="preferred_duration_minutes"
+                              checked={isSelected}
+                              onChange={() => field.onChange(Number(d))}
+                            />
+                            <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
+                              {d} min
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   )}
                   <FormMessage />
                 </FormItem>
