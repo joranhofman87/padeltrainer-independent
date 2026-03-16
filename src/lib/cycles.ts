@@ -1381,6 +1381,23 @@ export async function moveSlot(
   if (error) throw error;
 }
 
+// Delete a slot and remove its proposal assignments (players return to unassigned pool)
+export async function deleteSlot(slotId: string): Promise<void> {
+  // First delete proposal assignments for this slot
+  const { error: assignError } = await supabase
+    .from('proposed_assignments')
+    .delete()
+    .eq('slot_id', slotId);
+  if (assignError) throw assignError;
+
+  // Then delete the slot itself
+  const { error } = await supabase
+    .from('availability_slots')
+    .delete()
+    .eq('id', slotId);
+  if (error) throw error;
+}
+
 // Atomic swap of two slots using a DB function (single transaction)
 export async function swapSlots(
   slotAId: string,
