@@ -1,29 +1,50 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Hero Mock Screens Visual Update
 
-Implemented on 2026-03-14.
+### Changes to `src/components/home/HeroSection.tsx`
 
-## What Changed
+**Remove browser chrome** (lines 255-263 — the dots + URL bar). The mock container becomes a clean rounded card with just a subtle border and shadow.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+**MockBooking (Easy Booking):**
+- Replace the generic calendar icon badge with an actual **Google Calendar logo** (inline SVG with the 4-color icon)
+- Keep the slot list as-is, it works well
+- Update sync line: Google logo + "Synced with Google Calendar"
 
-## Sanity Content Types Needed in Studio
+**MockRegistration (Open Registration):**
+- Redesign to focus on the **value outcome** rather than a form
+- Show a success/stats view: "52 registrations this week" with a mini bar chart or counter
+- Below: "AI auto-planned into your calendar" with a visual showing slots being filled
+- Small list of recent registrations (3 names with timestamps) to feel alive
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+**MockPayments (Automated Payments):**
+- Keep the transaction table (it's good)
+- Change Mollie footer from "Powered by Mollie" → "Automate payments by connecting Mollie" with the Mollie logo
+- Keep the auto-invoice toggle
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+**MockProfile (Your Profile):**
+- Redesign to emphasize **bookable open slots** as the main value
+- Remove the star rating and location — focus on availability
+- Show a grid of available time slots (6-8 slots) with "Open" badges
+- Add a prominent "Book now" CTA
+- Show a stat: "8 open slots this week" as a highlighted metric
+- Keep trainer name + avatar placeholder
 
-## What Stays Unchanged
+### Translation updates (all 5 languages)
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+Update keys:
+- `mock_booking_sync` → keep as-is (already says "Synced with Google Calendar")
+- `mock_reg_title` → "52 registrations this week" (value-focused)
+- Add `mock_reg_ai` → "Auto-planned into your calendar with AI"
+- `mock_payments_powered` → "Automate payments by connecting Mollie"
+- `mock_profile_slots` → "{{count}} open slots this week"
+- `mock_profile_cta` → "Book now"
+
+### Files to modify
+- `src/components/home/HeroSection.tsx`
+- `src/i18n/locales/en/marketing.json`
+- `src/i18n/locales/nl/marketing.json`
+- `src/i18n/locales/es/marketing.json`
+- `src/i18n/locales/de/marketing.json`
+- `src/i18n/locales/fr/marketing.json`
+
