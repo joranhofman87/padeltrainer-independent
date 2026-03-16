@@ -228,7 +228,6 @@ export default function CycleApplicationForm({
             language: i18n.language,
             metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
           },
-          },
         });
 
         if (fnError) throw fnError;
