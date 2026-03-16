@@ -101,6 +101,8 @@ export default function CycleApplicationForm({
   const hasCyclusOptions = cyclusOptions.length > 0;
   const durationOptions = ((cycle.settings as any)?.duration_options as number[] | undefined) || [];
   const hasDurationOptions = durationOptions.length > 0;
+  const availableDurations = ((cycle.settings as any)?.available_duration_minutes as number[] | undefined) || [...DEFAULT_DURATIONS];
+  const effectiveDurations = availableDurations.sort((a, b) => a - b);
   
   // Load rating systems
   useEffect(() => {
