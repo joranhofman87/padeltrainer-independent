@@ -713,30 +713,35 @@ export default function CycleApplicationForm({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="sessions_per_week"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('application.form.sessionsPerWeek')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={String(field.value)}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n}× {t('application.form.timesPerWeek')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {hasDurationOptions && (
+              <div>
+                <Label className="text-sm font-medium">{t('application.form.preferredWeeks')}</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {durationOptions.sort((a, b) => a - b).map((weeks) => {
+                    const isSelected = selectedDurationWeeks === weeks;
+                    return (
+                      <label
+                        key={weeks}
+                        className={cn(
+                          "flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors",
+                          isSelected && "border-primary bg-primary/5"
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="duration_option"
+                          checked={isSelected}
+                          onChange={() => setSelectedDurationWeeks(weeks)}
+                        />
+                        <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
+                          {weeks} {t('application.form.weeks', 'weken')}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <FormField
               control={form.control}
