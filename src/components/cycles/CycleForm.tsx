@@ -110,6 +110,9 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [priceColumns, setPriceColumns] = useState<string[]>(
+    (cycle?.settings as any)?.price_columns ?? []
+  );
   const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
     (cycle?.settings as any)?.cyclus_options ?? []
   );
