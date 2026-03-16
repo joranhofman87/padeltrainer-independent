@@ -679,6 +679,11 @@ export default function ProposalScheduleGrid({
       });
 
       if (overlappingSlot) {
+        // Can't swap with blocked slots
+        if (overlappingSlot.is_blocked) {
+          toast.warning(t('proposals.slotBlocked', { defaultValue: 'Cannot move here — trainer has an existing lesson' }));
+          return;
+        }
         // If the overlapping slot is empty (no players), allow swap
         if (overlappingSlot.current_assignments.length === 0 && onSwapSlots) {
           // #2: Duration validation on swap
