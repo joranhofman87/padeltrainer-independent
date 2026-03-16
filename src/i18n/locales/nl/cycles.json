@@ -248,6 +248,17 @@
       "validationSummary": "Controleer de volgende velden:"
     },
     
+    "summary": {
+      "title": "Jouw keuze",
+      "lessonType": "Lestype",
+      "duration": "Duur",
+      "lessonLength": "Lesduur",
+      "pricePerLesson": "Prijs per les",
+      "total": "Totaal",
+      "weeksCount_one": "{{count}} week",
+      "weeksCount_other": "{{count}} weken"
+    },
+    
     "success": {
       "title": "Aanmelding Ingediend!",
       "message": "Bedankt voor je aanmelding. Je ontvangt binnenkort een bevestigingsmail.",
