@@ -54,18 +54,26 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   // Shared state
   const [locations, setLocations] = useState<LocationData[]>([]);
 
-  // For academy, get context
+  // For academy/club, get context
   let activeAcademy: { id: string } | null = null;
+  let activeClub: { id: string; location_id: string } | null = null;
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const ctx = useAcademyContext();
     activeAcademy = ctx.activeAcademy;
   } catch {
-    // Not inside AcademyLayout — that's fine for trainer
+    // Not inside AcademyLayout
+  }
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const ctx = useClubContext();
+    activeClub = ctx.activeClub;
+  } catch {
+    // Not inside ClubLayout
   }
 
-  const ownerId = ownerType === 'trainer' ? trainerId : activeAcademy?.id;
-  const backPath = ownerType === 'trainer' ? '/app/trainer/cycles' : '/app/academy/cycles';
+  const ownerId = ownerType === 'trainer' ? trainerId : ownerType === 'academy' ? activeAcademy?.id : activeClub?.id;
+  const backPath = ownerType === 'trainer' ? '/app/trainer/cycles' : ownerType === 'academy' ? '/app/academy/cycles' : '/app/club/registrations';
 
   // Fetch owner data
   useEffect(() => {
