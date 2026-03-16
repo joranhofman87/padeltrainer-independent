@@ -117,6 +117,11 @@ export default function CycleForm({
     (cycle?.settings as any)?.duration_options ?? []
   );
   const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
+  const STANDARD_DURATIONS = [30, 45, 60, 90, 120] as const;
+  const [availableDurations, setAvailableDurations] = useState<number[]>(
+    (cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]
+  );
+  const [customDurationInput, setCustomDurationInput] = useState<number | ''>('');
   const [customLessonType1, setCustomLessonType1] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
   );
