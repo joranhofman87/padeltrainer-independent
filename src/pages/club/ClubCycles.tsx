@@ -143,11 +143,11 @@ export default function ClubCycles() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
-          <Button variant="outline" onClick={() => setShowCreateEventDialog(true)}>
+          <Button variant="outline" onClick={() => navigate('/app/club/registrations/new?type=event')}>
             <PartyPopper className="mr-2 h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
