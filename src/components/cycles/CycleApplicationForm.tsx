@@ -1024,6 +1024,31 @@ export default function CycleApplicationForm({
                     )}
                   </>
                 )}
+                {!hasPrice && priceRange && (
+                  <>
+                    <div className="border-t border-border my-2" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
+                      <span className="font-medium">
+                        {priceRange.min === priceRange.max
+                          ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)
+                          : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.max)}`
+                        }
+                      </span>
+                    </div>
+                    {totalRange && (
+                      <div className="flex justify-between text-base font-semibold">
+                        <span>{t('application.summary.total')}</span>
+                        <span className="text-primary">
+                          {totalRange.min === totalRange.max
+                            ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)
+                            : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.max)}`
+                          }
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           );
