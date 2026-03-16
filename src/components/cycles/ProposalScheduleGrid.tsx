@@ -13,14 +13,25 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2 } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal } from '@/lib/cycles';
+
+export interface UnplacedPlayer {
+  id: string;
+  full_name: string;
+  rating: number | null;
+  rating_system: string | null;
+  preferred_days: string[];
+  lesson_type: string | string[];
+  skip_reason?: string | null;
+}
 
 interface ProposalScheduleGridProps {
   slots: SlotWithOccupancy[];
@@ -34,6 +45,9 @@ interface ProposalScheduleGridProps {
   ) => void;
   onDeleteSlot?: (slotId: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
+  unplacedPlayers?: UnplacedPlayer[];
+  onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
+  onUnassignPlayer?: (assignmentId: string) => void;
 }
 
 type Assignment = SlotWithOccupancy['current_assignments'][number];
