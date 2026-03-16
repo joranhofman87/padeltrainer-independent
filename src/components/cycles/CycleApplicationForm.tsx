@@ -943,8 +943,33 @@ export default function CycleApplicationForm({
 
           const hasPrice = pricePerSession != null && pricePerSession > 0;
           // Calculate total from weeks if no cyclus option total
-          if (hasPrice && totalPrice == null && selectedDurationWeeks) {
-            totalPrice = pricePerSession! * selectedDurationWeeks;
+          const effectiveWeeks = selectedDurationWeeks || (() => {
+            if (!cycle.start_date || !cycle.end_date) return null;
+            return Math.max(1, Math.round(
+              (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
+            ));
+          })();
+          if (hasPrice && totalPrice == null && effectiveWeeks) {
+            totalPrice = pricePerSession! * effectiveWeeks;
+          }
+
+          // If no match found but price table exists, show price range
+          let priceRange: { min: number; max: number } | null = null;
+          let totalRange: { min: number; max: number } | null = null;
+          if (!hasPrice && cycle.price_table && cycle.price_table.length > 0) {
+            const allPrices = cycle.price_table
+              .flatMap(row => {
+                const prices = [row.price];
+                if (row.extra_prices) prices.push(...row.extra_prices.map(ep => ep.price));
+                return prices;
+              })
+              .filter(p => p > 0);
+            if (allPrices.length > 0) {
+              priceRange = { min: Math.min(...allPrices), max: Math.max(...allPrices) };
+              if (effectiveWeeks) {
+                totalRange = { min: priceRange.min * effectiveWeeks, max: priceRange.max * effectiveWeeks };
+              }
+            }
           }
           
           const displayLessonType = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
@@ -994,6 +1019,31 @@ export default function CycleApplicationForm({
                         <span>{t('application.summary.total')}</span>
                         <span className="text-primary">
                           {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalPrice)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {!hasPrice && priceRange && (
+                  <>
+                    <div className="border-t border-border my-2" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
+                      <span className="font-medium">
+                        {priceRange.min === priceRange.max
+                          ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)
+                          : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.max)}`
+                        }
+                      </span>
+                    </div>
+                    {totalRange && (
+                      <div className="flex justify-between text-base font-semibold">
+                        <span>{t('application.summary.total')}</span>
+                        <span className="text-primary">
+                          {totalRange.min === totalRange.max
+                            ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)
+                            : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.max)}`
+                          }
                         </span>
                       </div>
                     )}
