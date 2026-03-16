@@ -716,8 +716,7 @@ Deno.serve(async (req) => {
 
       // All slots are now uniform 60-min; no duration filter needed
 
-      // STRICT AVAILABILITY FILTER: Only consider slots that match player's time windows
-      const matchingSlots = durationMatchedSlots.filter((slot) => {
+      const matchingSlots = slots.filter((slot) => {
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );
