@@ -14,7 +14,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2 } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
