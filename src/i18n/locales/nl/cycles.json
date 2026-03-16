@@ -102,7 +102,12 @@
     "confirmationEmailTextPlaceholder": "bijv. De training begint op 1 maart. Neem je eigen racket mee.",
     "confirmationEmailTextHelp": "Deze tekst wordt opgenomen in de bevestigingsmail die spelers ontvangen na inschrijving. Laat leeg voor een standaard bevestiging.",
     "registrationAssignedTrainerHelp": "De trainer die de lessen geeft voor deze inschrijving",
-    "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving"
+    "registrationApplicableTrainersHelp": "Welke trainers kunnen worden toegewezen aan deze inschrijving",
+    "cyclusOptions": "Cyclus opties",
+    "cyclusOptionsHelp": "Definieer verschillende pakketten waar spelers uit kunnen kiezen (bijv. 5, 10 of 15 lessen)",
+    "cyclusOptionLabel": "bijv. Cyclus 5 lessen",
+    "numberOfSessions": "Aantal lessen",
+    "addCyclusOption": "Cyclus optie toevoegen"
   },
   
   "actions": {
