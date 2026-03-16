@@ -1,29 +1,42 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Add Duration (Weeks) to Cyclus Options
 
-Implemented on 2026-03-14.
+Currently the form has a single `number_of_weeks` field for the entire cycle. The user wants each cyclus option (package) to have its own duration, so players can choose e.g. "5 lessons / 5 weeks", "10 lessons / 10 weeks", "15 lessons / 15 weeks".
 
-## What Changed
+### Changes
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+#### 1. `src/lib/cycles.ts` — Add `number_of_weeks` to `CyclusOption`
+```ts
+export interface CyclusOption {
+  label: string;
+  number_of_sessions: number;
+  number_of_weeks: number;       // NEW
+  price_per_session: number;
+  total_price: number;
+}
+```
 
-## Sanity Content Types Needed in Studio
+#### 2. `src/components/cycles/CycleForm.tsx` — Update cyclus options builder
+- Add a "Weeks" column to the cyclus options row grid (change from 5 to 6 columns).
+- Each option row gets a `number_of_weeks` input field.
+- When cyclus options exist, hide the single `number_of_weeks` field (since duration is per-option now).
+- When computing `end_date` on submit, use the **max** `number_of_weeks` across all options as the cycle's end date.
+- Initialize new options with `number_of_weeks: 0`.
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+#### 3. `src/components/cycles/CycleDetailDisplay.tsx` — Show weeks in price table
+- Add a "Weeks" or "Duration" column to the cyclus options table so players see the duration per package.
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+#### 4. `src/components/cycles/CycleApplicationForm.tsx` — Show weeks in package selector
+- Display the number of weeks alongside sessions/price in the radio card so players know the duration of each option.
 
-## What Stays Unchanged
+#### 5. `src/i18n/locales/nl/cycles.json` — Add translations
+- Add keys: `detail.weeks` ("Weken"), `form.numberOfWeeksColumn` ("Weken"), `application.form.weeks` ("weken").
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### Files to modify
+- `src/lib/cycles.ts`
+- `src/components/cycles/CycleForm.tsx`
+- `src/components/cycles/CycleDetailDisplay.tsx`
+- `src/components/cycles/CycleApplicationForm.tsx`
+- `src/i18n/locales/nl/cycles.json`
+
