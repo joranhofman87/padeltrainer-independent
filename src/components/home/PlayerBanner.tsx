@@ -23,41 +23,32 @@ export function PlayerBanner() {
           viewport={{ once: true }}
           className="rounded-2xl border border-primary/20 bg-primary/5 p-6 md:p-10"
         >
-          <div className="text-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold mb-2">
+          <div className="mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold mb-1">
               {t('homev2.playerBanner.headline')}
             </h2>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {t('homev2.playerBanner.subtitle')}
             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-            {playerLinks.map((link, i) => (
-              <motion.div
+            {playerLinks.map((link) => (
+              <LocalizedLink
                 key={link.to}
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05 }}
+                to={link.to}
+                className="group flex flex-col items-start gap-2 rounded-xl border bg-card p-4 md:p-5 transition-all hover:shadow-md hover:border-primary/30 h-full"
               >
-                <LocalizedLink
-                  to={link.to}
-                  className="group flex flex-col items-center gap-3 rounded-xl border bg-card p-4 md:p-5 text-center transition-all hover:shadow-md hover:border-primary/30"
-                >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                    <link.icon className="h-5 w-5" />
+                <link.icon className="h-5 w-5 text-primary shrink-0" />
+                <div>
+                  <span className="block text-sm font-medium text-foreground">
+                    {t(link.labelKey)}
                   </span>
-                  <div>
-                    <span className="block text-sm font-medium text-foreground">
-                      {t(link.labelKey)}
-                    </span>
-                    <span className="mt-1 block text-xs text-muted-foreground leading-snug">
-                      {t(link.descKey)}
-                    </span>
-                  </div>
-                </LocalizedLink>
-              </motion.div>
+                  <span className="mt-0.5 block text-xs text-muted-foreground leading-snug">
+                    {t(link.descKey)}
+                  </span>
+                </div>
+              </LocalizedLink>
             ))}
           </div>
         </motion.div>
