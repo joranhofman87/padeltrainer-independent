@@ -884,27 +884,14 @@ export default function CycleApplicationForm({
             totalPrice = selectedCyclusOption.total_price;
             priceSource = 'cyclus_option';
           } else if (cycle.price_table && cycle.price_table.length > 0) {
-            const lessonTypeLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
-              ? t(`application.form.lessonTypes.${firstLessonType}`)
-              : firstLessonType;
-            
-            // Try matching by both lesson type and duration
-            const matchWithDuration = watchedDuration ? cycle.price_table.find(row => {
-              const l = row.label.toLowerCase();
-              const typeMatch = l.includes(firstLessonType.toLowerCase()) || l.includes(lessonTypeLabel.toLowerCase());
-              const durationMatch = l.includes(`${watchedDuration}`) || l.includes(`${watchedDuration} min`);
-              return typeMatch && durationMatch;
-            }) : null;
-            
-            // Fall back to type-only match
-            const matchTypeOnly = cycle.price_table.find(row => {
-              const l = row.label.toLowerCase();
-              return l === firstLessonType.toLowerCase() ||
-                l.includes(firstLessonType.toLowerCase()) ||
-                l.includes(lessonTypeLabel.toLowerCase());
-            });
-
-            const priceRow = matchWithDuration || matchTypeOnly;
+            // Match price_table row by index: rows are ordered to match lesson types
+            const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+            const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
+            const orderedTypes = [...standardAllowedTypes, ...customTypes];
+            const typeIndex = orderedTypes.indexOf(firstLessonType);
+            const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length
+              ? cycle.price_table[typeIndex]
+              : cycle.price_table[0]; // fallback to first row
             if (priceRow) {
               // Check if price_columns exist and try to match lesson type to a column
               const priceColumns = cycle.settings?.price_columns;
