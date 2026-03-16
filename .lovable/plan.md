@@ -1,18 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Default Trainers to Unselected
+## Status: ✅ COMPLETED
 
-## Problem
-Lines 167-179 in `GenerateProposalsWizard.tsx` pre-select all trainers (or those from `applicable_trainer_ids`). Users want to explicitly choose which trainers to include.
+Implemented on 2026-03-14.
 
-## Change
+## What Changed
 
-**File: `src/components/cycles/GenerateProposalsWizard.tsx`** (lines 167-179)
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Change the pre-selection logic to start with an empty `trainerConfigs` array instead of pre-selecting all trainers:
+## Sanity Content Types Needed in Studio
 
-- If `applicable_trainer_ids` exists and has entries, keep pre-selecting those (they were explicitly chosen before).
-- Otherwise, default to an **empty array** instead of selecting all trainers.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-This means the badges will all show as `outline` (unselected) by default, and the user must click to select the trainers they want.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
+## What Stays Unchanged
+
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

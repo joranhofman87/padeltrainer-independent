@@ -164,11 +164,11 @@ export function GenerateProposalsWizard({
 
     setAvailableTrainers(trainers);
 
-    // Pre-select trainers from cycle settings
+    // Pre-select only trainers explicitly saved in cycle settings
     const applicableIds = cycle.settings?.applicable_trainer_ids || [];
     const preSelected = applicableIds.length > 0
       ? trainers.filter(t => applicableIds.includes(t.id))
-      : trainers;
+      : [];
 
     setTrainerConfigs(preSelected.map(t => ({
       trainerId: t.id,
