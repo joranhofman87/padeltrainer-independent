@@ -1,5 +1,6 @@
 import { sanityClient } from '@/lib/sanity';
 import type { SeoFields } from '@/lib/sanity';
+import { MARKETING_DOMAIN } from '@/lib/domains';
 
 // ── Types ──
 
@@ -11,6 +12,18 @@ export interface TopicSummary {
   contentType: string | null;
   skillLevel: string | null;
   isIndexable: boolean;
+  articleCount: number;
+}
+
+export interface ReferencingArticle {
+  _id: string;
+  title: string;
+  slug: string;
+  h1: string;
+  intro: string | null;
+  contentType: string | null;
+  skillLevel: string | null;
+  datePublished: string | null;
 }
 
 export interface TopicDetail extends TopicSummary {
@@ -21,6 +34,7 @@ export interface TopicDetail extends TopicSummary {
   seo: SeoFields | null;
   parentTopic: { _id: string; title: string; slug: string } | null;
   relatedTopics: { _id: string; title: string; slug: string; description: string | null }[] | null;
+  referencingArticles: ReferencingArticle[] | null;
   featuredGuides: {
     _id: string;
     title: string;
@@ -65,6 +79,8 @@ export interface TopicDetail extends TopicSummary {
 
 // ── Queries ──
 
+const ARTICLE_COUNT_PROJECTION = `"articleCount": count(*[_type == "learningArticle" && references(^._id) && !(_id in path("drafts.**"))])`;
+
 export const TOPICS_LIST_QUERY = `*[_type == "topic" && isIndexable != false && !(_id in path("drafts.**"))] | order(title asc) {
   _id,
   title,
@@ -72,7 +88,8 @@ export const TOPICS_LIST_QUERY = `*[_type == "topic" && isIndexable != false && 
   description,
   contentType,
   skillLevel,
-  "isIndexable": coalesce(isIndexable, true)
+  "isIndexable": coalesce(isIndexable, true),
+  ${ARTICLE_COUNT_PROJECTION}
 }`;
 
 export const ALL_TOPICS_LIST_QUERY = `*[_type == "topic" && !(_id in path("drafts.**"))] | order(title asc) {
@@ -82,7 +99,8 @@ export const ALL_TOPICS_LIST_QUERY = `*[_type == "topic" && !(_id in path("draft
   description,
   contentType,
   skillLevel,
-  "isIndexable": coalesce(isIndexable, true)
+  "isIndexable": coalesce(isIndexable, true),
+  ${ARTICLE_COUNT_PROJECTION}
 }`;
 
 export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
@@ -96,9 +114,13 @@ export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug 
   contentType,
   skillLevel,
   "isIndexable": coalesce(isIndexable, true),
+  ${ARTICLE_COUNT_PROJECTION},
   seo,
   "parentTopic": parentTopic-> { _id, title, "slug": slug.current },
   "relatedTopics": relatedTopics[]-> { _id, title, "slug": slug.current, description },
+  "referencingArticles": *[_type == "learningArticle" && references(^._id) && !(_id in path("drafts.**"))] | order(datePublished desc) {
+    _id, title, "slug": slug.current, h1, intro, contentType, skillLevel, datePublished
+  },
   "featuredGuides": featuredGuides[]-> {
     _id,
     title,
@@ -140,6 +162,25 @@ export const TOPIC_BY_SLUG_QUERY = `*[_type == "topic" && slug.current == $slug 
     "profileImageUrl": profileImage.asset->url
   }
 }`;
+
+// ── Structured data helpers ──
+
+export function buildArticleItemList(
+  articles: ReferencingArticle[],
+  currentLang: string
+) {
+  if (!articles || articles.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": articles.map((article, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "url": `${MARKETING_DOMAIN}/${currentLang}/learn/${article.slug}`,
+      "name": article.h1 || article.title,
+    })),
+  };
+}
 
 // ── Fetch helpers ──
 
