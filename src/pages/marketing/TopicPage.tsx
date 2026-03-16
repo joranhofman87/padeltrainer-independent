@@ -317,11 +317,11 @@ export default function TopicPage() {
             </section>
           )}
 
-          {/* Featured Trainers */}
+          {/* Featured Creators */}
           {topic.featuredTrainers && topic.featuredTrainers.length > 0 && (
             <section className="mt-12">
               <h2 className="text-2xl font-bold mb-6">
-                {t('topics.featuredTrainers', 'Featured Coaches')}
+                {t('topics.featuredTrainers', 'Featured Creators')}
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {topic.featuredTrainers.map(trainer => (

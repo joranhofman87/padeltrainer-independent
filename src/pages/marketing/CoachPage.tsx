@@ -294,7 +294,7 @@ export default function CoachPage() {
             transition={{ delay: 0.2 }}
             className="mb-8"
           >
-            <h2 className="text-2xl font-bold mb-6">Videos by {coach.name}</h2>
+            <h2 className="text-2xl font-bold mb-6">Featured content by {coach.name}</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {videoTips.map(video => (
                 <VideoTipCard key={video._id} video={video} />
