@@ -12,6 +12,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -112,6 +113,10 @@ export default function CycleForm({
   const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
     (cycle?.settings as any)?.cyclus_options ?? []
   );
+  const [durationOptions, setDurationOptions] = useState<number[]>(
+    (cycle?.settings as any)?.duration_options ?? []
+  );
+  const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
   const [customLessonType1, setCustomLessonType1] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
   );
@@ -237,6 +242,7 @@ export default function CycleForm({
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
+      setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
     }
   }, [cycle, open]);
 
@@ -323,6 +329,7 @@ export default function CycleForm({
         cyclus_options: isRegistration && cyclusOptions.filter(co => co.label && co.number_of_sessions > 0).length > 0
           ? cyclusOptions.filter(co => co.label && co.number_of_sessions > 0)
           : undefined,
+        duration_options: isRegistration && durationOptions.length > 0 ? durationOptions : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -1092,6 +1099,56 @@ export default function CycleForm({
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addCyclusOption', 'Add cyclus option')}
                 </Button>
+              </div>
+            )}
+
+            {/* Duration Options builder — for registrations only */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.durationOptions', 'Duration Options')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.durationOptionsHelp', 'How many weeks can a player choose? (e.g. 5, 10 or 15 weeks)')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {durationOptions.sort((a, b) => a - b).map((weeks) => (
+                    <Badge
+                      key={weeks}
+                      variant="secondary"
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm cursor-pointer hover:bg-destructive/10"
+                      onClick={() => setDurationOptions(durationOptions.filter(w => w !== weeks))}
+                    >
+                      {weeks} {t('form.numberOfWeeksColumn', 'weken')}
+                      <Trash2 className="h-3 w-3 ml-1" />
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={52}
+                    placeholder="#"
+                    value={newDurationWeeks}
+                    onChange={(e) => setNewDurationWeeks(parseInt(e.target.value) || '')}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">{t('form.numberOfWeeksColumn', 'weken')}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!newDurationWeeks || durationOptions.includes(Number(newDurationWeeks))}
+                    onClick={() => {
+                      if (newDurationWeeks && !durationOptions.includes(Number(newDurationWeeks))) {
+                        setDurationOptions([...durationOptions, Number(newDurationWeeks)]);
+                        setNewDurationWeeks('');
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t('form.addDurationOption', 'Add option')}
+                  </Button>
+                </div>
               </div>
             )}
 

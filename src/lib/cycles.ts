@@ -97,6 +97,8 @@ export interface CycleSettings {
   confirmation_email_text?: string;
   // Cyclus options (packages) for registration
   cyclus_options?: CyclusOption[];
+  // Duration options (in weeks) players can choose from
+  duration_options?: number[];
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility

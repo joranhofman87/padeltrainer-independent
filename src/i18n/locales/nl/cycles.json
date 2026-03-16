@@ -108,7 +108,11 @@
     "cyclusOptionLabel": "bijv. Cyclus 5 lessen",
     "numberOfSessions": "Aantal lessen",
     "numberOfWeeksColumn": "Weken",
-    "addCyclusOption": "Cyclus optie toevoegen"
+    "addCyclusOption": "Cyclus optie toevoegen",
+    "durationOptions": "Duur opties",
+    "durationOptionsHelp": "Hoeveel weken kan een speler kiezen? (bijv. 5, 10 of 15 weken)",
+    "addDurationOption": "Optie toevoegen",
+    "weeksOption": "{{count}} weken"
   },
   
   "actions": {
@@ -169,6 +173,9 @@
       "preferredDuration": "Gewenste Duur",
       "sessionsPerWeek": "Trainingen per week",
       "chooseCyclus": "Kies je cyclus",
+      "chooseDuration": "Kies je gewenste duur",
+      "preferredWeeks": "Gewenste duur",
+      "weeks": "weken",
       "lessons": "lessen",
       "perLesson": "per les",
       "groupNotes": "Groepsvoorkeuren (optioneel)",

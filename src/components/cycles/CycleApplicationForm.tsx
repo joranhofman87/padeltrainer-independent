@@ -92,11 +92,14 @@ export default function CycleApplicationForm({
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cash'>('online');
   const [selectedCyclusOption, setSelectedCyclusOption] = useState<CyclusOption | null>(null);
+  const [selectedDurationWeeks, setSelectedDurationWeeks] = useState<number | null>(null);
   
   const isEvent = cycle.type === 'event';
   const eventPaymentMethods = (cycle.settings as any)?.payment_methods as EventPaymentMethod | undefined;
   const cyclusOptions = ((cycle.settings as any)?.cyclus_options as CyclusOption[] | undefined) || [];
   const hasCyclusOptions = cyclusOptions.length > 0;
+  const durationOptions = ((cycle.settings as any)?.duration_options as number[] | undefined) || [];
+  const hasDurationOptions = durationOptions.length > 0;
   
   // Load rating systems
   useEffect(() => {
@@ -226,7 +229,10 @@ export default function CycleApplicationForm({
             notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
             language: i18n.language,
-            metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
+            metadata: {
+              ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
+              ...(selectedDurationWeeks ? { preferred_number_of_weeks: selectedDurationWeeks } : {}),
+            },
           },
         });
 
@@ -252,7 +258,10 @@ export default function CycleApplicationForm({
           location_id: values.location_id || undefined,
           notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
-          metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
+          metadata: {
+            ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
+            ...(selectedDurationWeeks ? { preferred_number_of_weeks: selectedDurationWeeks } : {}),
+          },
         });
 
         // Send registration confirmation email (non-blocking)
@@ -624,6 +633,40 @@ export default function CycleApplicationForm({
                     </div>
                     <span className="text-sm font-semibold">
                       {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.total_price)}
+                    </span>
+                  </label>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Duration Option Selector */}
+        {hasDurationOptions && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.chooseDuration', 'Choose your preferred duration')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {durationOptions.sort((a, b) => a - b).map((weeks) => {
+                const isSelected = selectedDurationWeeks === weeks;
+                return (
+                  <label
+                    key={weeks}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
+                      isSelected && "border-primary bg-primary/5"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="duration_option"
+                      checked={isSelected}
+                      onChange={() => setSelectedDurationWeeks(weeks)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-sm font-medium">
+                      {weeks} {t('application.form.weeks', 'weken')}
                     </span>
                   </label>
                 );
