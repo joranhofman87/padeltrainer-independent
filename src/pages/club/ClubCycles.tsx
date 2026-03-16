@@ -24,69 +24,14 @@ export default function ClubCycles() {
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  // Dialog state removed — using dedicated pages now
-  const [trainers, setTrainers] = useState<{ id: string; name: string; hourly_rate?: number }[]>([]);
   const [locations, setLocations] = useState<LocationData[]>([]);
-  const [trainerLocationMap, setTrainerLocationMap] = useState<Record<string, string[]>>({});
 
-  // Fetch club trainers and location for the form
   useEffect(() => {
-    const fetchData = async () => {
-      if (!activeClub) return;
-      try {
-        // Get trainers
-        const clubTrainers = await getClubTrainers(activeClub.id);
-        const trainerList: { id: string; name: string; hourly_rate?: number }[] = [];
-        const trainerIds: string[] = [];
-
-        for (const ct of clubTrainers) {
-          const trainer = ct.trainer_profiles as any;
-          if (!trainer) continue;
-          trainerIds.push(trainer.id);
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('user_id', trainer.user_id)
-            .single();
-          trainerList.push({
-            id: trainer.id,
-            name: profile?.full_name || 'Unknown',
-            hourly_rate: trainer.hourly_rate || undefined,
-          });
-        }
-        setTrainers(trainerList);
-
-        // Club has a single location
-        const clubLocation = activeClub.location;
-        if (clubLocation) {
-          setLocations([{
-            id: clubLocation.id,
-            name: clubLocation.name,
-            city: clubLocation.city || '',
-          }]);
-        }
-
-        // Fetch trainer-location mappings
-        let tlMap: Record<string, string[]> = {};
-        if (trainerIds.length > 0) {
-          const { data: trainerLocs } = await supabase
-            .from('trainer_locations')
-            .select('trainer_id, location_id')
-            .in('trainer_id', trainerIds);
-
-          if (trainerLocs) {
-            for (const tl of trainerLocs) {
-              if (!tlMap[tl.location_id]) tlMap[tl.location_id] = [];
-              tlMap[tl.location_id].push(tl.trainer_id);
-            }
-          }
-        }
-        setTrainerLocationMap(tlMap);
-      } catch (error) {
-        logger.error('Error fetching club data', error as Error, { component: 'ClubCycles', clubId: activeClub?.id });
-      }
-    };
-    fetchData();
+    if (!activeClub) return;
+    const clubLocation = activeClub.location;
+    if (clubLocation) {
+      setLocations([{ id: clubLocation.id, name: clubLocation.name, city: clubLocation.city || '' }]);
+    }
   }, [activeClub]);
 
   const fetchCycles = async () => {
