@@ -186,6 +186,7 @@ Deno.serve(async (req) => {
         location_id: locationId || null,
         notes: notes || null,
         consent_given: consentGiven ?? true,
+        metadata: metadata || {},
         status: "new",
       })
       .select()
