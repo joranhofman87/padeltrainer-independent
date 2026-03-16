@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { List, CalendarDays, AlertCircle } from 'lucide-react';
+import { List, CalendarDays, AlertCircle, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
