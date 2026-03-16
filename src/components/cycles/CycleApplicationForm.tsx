@@ -154,7 +154,7 @@ export default function CycleApplicationForm({
     rating_system: z.string(),
     lesson_types: isEvent ? z.array(z.string()).optional().default([]) : z.array(z.string()).min(1, t('application.form.lessonTypeRequired')),
     preferred_duration_minutes: z.coerce.number(),
-    sessions_per_week: z.coerce.number().min(1).max(7).default(1),
+    sessions_per_week: z.coerce.number().optional().default(1),
     group_notes: z.string().optional(),
     availability: availabilitySchema,
     preferred_trainer_id: z.string().optional(),
@@ -641,39 +641,6 @@ export default function CycleApplicationForm({
           </Card>
         )}
 
-        {/* Duration Option Selector */}
-        {hasDurationOptions && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">{t('application.form.chooseDuration', 'Choose your preferred duration')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {durationOptions.sort((a, b) => a - b).map((weeks) => {
-                const isSelected = selectedDurationWeeks === weeks;
-                return (
-                  <label
-                    key={weeks}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
-                      isSelected && "border-primary bg-primary/5"
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="duration_option"
-                      checked={isSelected}
-                      onChange={() => setSelectedDurationWeeks(weeks)}
-                      className="mt-0.5"
-                    />
-                    <span className="text-sm font-medium">
-                      {weeks} {t('application.form.weeks', 'weken')}
-                    </span>
-                  </label>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Preferences - hide for events */}
         {!isEvent && (
@@ -746,30 +713,35 @@ export default function CycleApplicationForm({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="sessions_per_week"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('application.form.sessionsPerWeek')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={String(field.value)}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n}× {t('application.form.timesPerWeek')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {hasDurationOptions && (
+              <div>
+                <Label className="text-sm font-medium">{t('application.form.preferredWeeks')}</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {durationOptions.sort((a, b) => a - b).map((weeks) => {
+                    const isSelected = selectedDurationWeeks === weeks;
+                    return (
+                      <label
+                        key={weeks}
+                        className={cn(
+                          "flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent/50 transition-colors",
+                          isSelected && "border-primary bg-primary/5"
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="duration_option"
+                          checked={isSelected}
+                          onChange={() => setSelectedDurationWeeks(weeks)}
+                        />
+                        <span className="font-normal cursor-pointer flex-1 m-0 text-sm">
+                          {weeks} {t('application.form.weeks', 'weken')}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <FormField
               control={form.control}
