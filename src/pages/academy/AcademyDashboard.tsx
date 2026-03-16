@@ -438,7 +438,7 @@ export default function AcademyDashboard() {
                       <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
                       <TableCell className="py-2">
                         <Badge variant={reg.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
-                          {reg.status}
+                          {tCycles(`intakeRequests.filters.${reg.status}`, reg.status)}
                         </Badge>
                       </TableCell>
                     </TableRow>
