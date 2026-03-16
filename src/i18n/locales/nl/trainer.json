@@ -56,6 +56,10 @@
     "viewAll": "Bekijk alles",
     "noRegistrations": "Nog geen inschrijvingen",
     "createLesson": "Sessie Aanmaken",
+    "session": "sessie",
+    "sessions": "sessies",
+    "nextSession": "Volgende sessie",
+    "noData": "Nog geen gegevens",
     "trialBanner": {
       "daysLeft": "Nog {{days}} dagen in je gratis proefperiode",
       "lastDay": "Laatste dag van je gratis proefperiode",
