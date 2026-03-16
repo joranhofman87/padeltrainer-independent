@@ -49,9 +49,8 @@ interface CycleFormProps {
   cycle?: Cycle | null;
   ownerType: 'trainer' | 'club' | 'academy';
   ownerId: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   onSuccess?: (cycle: Cycle) => void;
+  onCancel?: () => void;
   trainers?: { id: string; name: string; hourly_rate?: number }[];
   locations?: { id: string; name: string; city: string }[];
   /** Map of location_id -> trainer_ids at that location */
