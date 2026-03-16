@@ -392,6 +392,16 @@
     }
   },
 
+  "unplacedSidebar": {
+    "title": "Unplaced",
+    "search": "Search players...",
+    "noResults": "No players found",
+    "allPlaced": "All players are placed",
+    "showPanel": "Show unplaced players",
+    "playerAssigned": "Player assigned to slot",
+    "playerUnassigned": "Player returned to unplaced pool"
+  },
+
   "skipReasons": {
     "no_matching_slots": {
       "short": "No match",

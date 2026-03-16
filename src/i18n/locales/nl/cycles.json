@@ -421,6 +421,16 @@
     }
   },
 
+  "unplacedSidebar": {
+    "title": "Niet ingedeeld",
+    "search": "Spelers zoeken...",
+    "noResults": "Geen spelers gevonden",
+    "allPlaced": "Alle spelers zijn ingedeeld",
+    "showPanel": "Niet-ingedeelde spelers tonen",
+    "playerAssigned": "Speler toegewezen aan slot",
+    "playerUnassigned": "Speler terug naar niet-ingedeeld"
+  },
+
   "skipReasons": {
     "no_matching_slots": {
       "short": "Geen match",

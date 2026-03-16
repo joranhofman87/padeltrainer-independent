@@ -1,48 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Unplaced Players Sidebar for Proposal Schedule Grid
+## Status: ✅ COMPLETED
 
-### Problem
-When 100+ registrants exist, the auto-generation can't place everyone. Trainers need to see who's unplaced and manually drag them into slots. Currently there's no visibility into unplaced players from the schedule view.
+Implemented on 2026-03-14.
 
-### Approach
-Add a collapsible sticky sidebar to the right of the proposal grid that shows all intake requests that have status `'new'` (with or without `skip_reason`) for the selected cycle — these are people not yet assigned to any slot. Players can be:
-- **Dragged from sidebar → into a slot** (creates a new `proposed_assignment`)
-- **Dragged from a slot → back to sidebar** (deletes the `proposed_assignment`, sets request back to `'new'`)
+## What Changed
 
-The sidebar includes a search bar at the top to filter by name.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### Architecture
+## Sanity Content Types Needed in Studio
 
-**Data flow:** The parent pages (`AcademyIntakeRequests` / `TrainerIntakeRequests`) already have `requests` (all `IntakeRequestWithProposal[]`) and `scheduleSlots`. We compute unplaced players as requests where `status === 'new'` for the selected cycle. Pass these into the grid.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**New props on `ProposalScheduleGrid`:**
-- `unplacedPlayers: IntakeRequest[]` — the pool of unassigned registrants
-- `onAssignPlayer?: (intakeRequestId: string, slotId: string) => void` — create new assignment
-- `onUnassignPlayer?: (assignmentId: string) => void` — remove assignment, return to pool
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**New backend functions in `src/lib/cycles.ts`:**
-- `assignPlayerToSlot(intakeRequestId: string, slotId: string)` — inserts a `proposed_assignment` row and updates intake request status to `'proposed'`
-- `unassignPlayer(assignmentId: string)` — deletes the `proposed_assignment` row and sets the intake request back to `'new'`
+## What Stays Unchanged
 
-**UI in `ProposalScheduleGrid`:**
-- Right sidebar panel (~280px wide), sticky, scrollable, inside the DndContext
-- Search input at top (filters by name, case-insensitive)
-- Each player card is draggable (type: `'unplaced-player'`)  with name, rating, preferred days/times, lesson type as small badges
-- The sidebar itself is a droppable zone (id: `'unplaced-pool'`) — dropping an assigned player here triggers `onUnassignPlayer`
-- Player count badge in sidebar header
-- Collapsible on mobile via a toggle button
-
-**DnD changes:**
-- `handleDragEnd`: handle new drag type `'unplaced-player'` dropping onto a cell → calls `onAssignPlayer`
-- Handle existing `'player'` type dropping onto `'unplaced-pool'` droppable → calls `onUnassignPlayer`
-- DragOverlay already handles player type, reuse for unplaced players
-
-### Files to modify
-- `src/lib/cycles.ts` — add `assignPlayerToSlot` and `unassignPlayer` functions
-- `src/components/cycles/ProposalScheduleGrid.tsx` — add sidebar UI, new draggable/droppable elements, updated drag handlers
-- `src/pages/academy/AcademyIntakeRequests.tsx` — compute unplaced players, pass new props and handlers
-- `src/pages/TrainerIntakeRequests.tsx` — same as above
-- `src/i18n/locales/en/cycles.json` — sidebar translation keys
-- `src/i18n/locales/nl/cycles.json` — sidebar translation keys (NL)
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

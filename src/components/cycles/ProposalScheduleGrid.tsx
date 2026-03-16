@@ -13,14 +13,25 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2 } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock, Pencil, Trash2, Search, PanelRightClose, PanelRightOpen, UserCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
+import { type SlotWithOccupancy, type TrainerAvailabilityWindow, type IntakeRequestWithProposal } from '@/lib/cycles';
+
+export interface UnplacedPlayer {
+  id: string;
+  full_name: string;
+  rating: number | null;
+  rating_system: string | null;
+  preferred_days: string[];
+  lesson_type: string | string[];
+  skip_reason?: string | null;
+}
 
 interface ProposalScheduleGridProps {
   slots: SlotWithOccupancy[];
@@ -34,6 +45,9 @@ interface ProposalScheduleGridProps {
   ) => void;
   onDeleteSlot?: (slotId: string) => void;
   onUndo?: (previousSlots: SlotWithOccupancy[]) => void;
+  unplacedPlayers?: UnplacedPlayer[];
+  onAssignPlayer?: (intakeRequestId: string, slotId: string) => void;
+  onUnassignPlayer?: (assignmentId: string) => void;
 }
 
 type Assignment = SlotWithOccupancy['current_assignments'][number];
@@ -636,18 +650,121 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
   );
 }
 
+// ── Draggable Unplaced Player Card ──
+
+function DraggableUnplacedPlayer({
+  player, onPlayerClick,
+}: {
+  player: UnplacedPlayer;
+  onPlayerClick?: (id: string) => void;
+}) {
+  const { t } = useTranslation('cycles');
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `unplaced-${player.id}`,
+    data: { type: 'unplaced-player', intakeRequestId: player.id, player },
+  });
+
+  const lessonTypes = Array.isArray(player.lesson_type) ? player.lesson_type : [player.lesson_type];
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex items-start gap-1.5 rounded-md border border-border bg-background p-2 text-xs transition-colors',
+        isDragging ? 'opacity-30' : 'hover:bg-accent/50',
+      )}
+    >
+      <button
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing p-0.5 touch-none mt-0.5 shrink-0"
+        aria-label="Drag player"
+      >
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
+      </button>
+      <button
+        onClick={() => onPlayerClick?.(player.id)}
+        className="flex flex-col gap-0.5 cursor-pointer min-w-0 text-left"
+      >
+        <span className="font-medium truncate">{player.full_name}</span>
+        <div className="flex flex-wrap gap-1">
+          {player.rating != null && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">
+              {player.rating}{player.rating_system ? ` ${player.rating_system}` : ''}
+            </Badge>
+          )}
+          {lessonTypes.map(lt => (
+            <Badge key={lt} variant="secondary" className="text-[9px] px-1 py-0 h-3.5">
+              {t(`lessonTypes.${lt}`, { defaultValue: lt })}
+            </Badge>
+          ))}
+          {player.skip_reason && (
+            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
+              {t(`skipReasons.${player.skip_reason}.short`, { defaultValue: 'Skipped' })}
+            </Badge>
+          )}
+        </div>
+        {player.preferred_days.length > 0 && (
+          <span className="text-[10px] text-muted-foreground truncate">
+            {player.preferred_days.slice(0, 3).join(', ')}{player.preferred_days.length > 3 ? '…' : ''}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ── Unplaced Player Drag Overlay ──
+
+function UnplacedPlayerDragOverlay({ player }: { player: UnplacedPlayer }) {
+  return (
+    <div className="flex items-center gap-1 bg-muted rounded-md px-2 py-1 text-xs shadow-lg border border-border">
+      <GripVertical className="h-3 w-3 text-muted-foreground" />
+      <span className="font-medium">{player.full_name}</span>
+      {player.rating != null && (
+        <span className="text-muted-foreground text-[10px]">{player.rating}</span>
+      )}
+    </div>
+  );
+}
+
+// ── Droppable Unplaced Pool ──
+
+function DroppableUnplacedPool({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'unplaced-pool',
+    data: { type: 'unplaced-pool' },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex-1 overflow-y-auto space-y-1.5 p-2 rounded-md transition-colors min-h-[100px]',
+        isOver && 'bg-primary/5 ring-1 ring-primary/30',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
   slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
+  unplacedPlayers, onAssignPlayer, onUnassignPlayer,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
   const [activeData, setActiveData] = useState<{
-    type: 'player' | 'slot';
+    type: 'player' | 'slot' | 'unplaced-player';
     assignment?: Assignment;
     slot?: SlotWithOccupancy;
+    player?: UnplacedPlayer;
   } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Undo stack — stores previous slot snapshots
   const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
@@ -668,6 +785,14 @@ export default function ProposalScheduleGrid({
     setUndoStack(prev => prev.slice(0, -1));
     onUndo?.(last.previousSlots);
   }, [undoStack, onUndo]);
+
+  // Filter unplaced players by search query
+  const filteredUnplaced = useMemo(() => {
+    if (!unplacedPlayers) return [];
+    if (!searchQuery.trim()) return unplacedPlayers;
+    const q = searchQuery.toLowerCase();
+    return unplacedPlayers.filter(p => p.full_name.toLowerCase().includes(q));
+  }, [unplacedPlayers, searchQuery]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -828,6 +953,8 @@ export default function ProposalScheduleGrid({
       setActiveData({ type: 'player', assignment: data.assignment as Assignment });
     } else if (data.type === 'slot') {
       setActiveData({ type: 'slot', slot: data.slot as SlotWithOccupancy });
+    } else if (data.type === 'unplaced-player') {
+      setActiveData({ type: 'unplaced-player', player: data.player as UnplacedPlayer });
     }
   }, []);
 
@@ -979,7 +1106,52 @@ export default function ProposalScheduleGrid({
       pushUndo(t('proposals.undoSlotMove', { defaultValue: 'Slot move' }));
       onMoveSlot(slot.id, newTrainerId, newStart.toISOString(), newEnd.toISOString());
     }
-  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, slotLookup, daySlots, slotRowSpans, selectedDay, trainerAvailabilityWindows, pushUndo, t]);
+    // Unplaced player drag → drop onto a cell (assign to slot)
+    if (activeType === 'unplaced-player' && onAssignPlayer) {
+      const intakeRequestId = active.data.current?.intakeRequestId as string;
+      const overCellId = over.id as string;
+      if (!overCellId.startsWith('cell__')) return;
+
+      const parts = overCellId.split('__');
+      const trainerId = parts[1];
+      const timeRow = parseInt(parts[2]);
+
+      // Find the slot at this cell
+      let resolvedSlot = slotLookup.get(`${trainerId}__${timeRow}`);
+      if (!resolvedSlot) {
+        for (const slot of daySlots) {
+          if (slot.trainer_id !== trainerId) continue;
+          const sMin = Math.floor(isoToMinutes(slot.start_time) / 30) * 30;
+          const span = slotRowSpans.get(slot.id) || 1;
+          if (timeRow >= sMin && timeRow < sMin + span * 30) {
+            resolvedSlot = slot;
+            break;
+          }
+        }
+      }
+
+      if (!resolvedSlot) {
+        toast.warning(t('proposals.noSlotHere', { defaultValue: 'No slot here — drop onto an existing slot' }));
+        return;
+      }
+      if (resolvedSlot.is_blocked) return;
+
+      pushUndo(t('proposals.undoAssign', { defaultValue: 'Player assignment' }));
+      onAssignPlayer(intakeRequestId, resolvedSlot.id);
+      return;
+    }
+
+    // Player drag → drop onto unplaced pool (unassign)
+    if (activeType === 'player' && onUnassignPlayer) {
+      const overData = over.data.current;
+      if (overData?.type === 'unplaced-pool') {
+        const assignmentId = active.data.current?.assignmentId as string;
+        pushUndo(t('proposals.undoUnassign', { defaultValue: 'Player unassignment' }));
+        onUnassignPlayer(assignmentId);
+        return;
+      }
+    }
+  }, [activeData, onMovePlayer, onMoveSlot, onSwapSlots, onAssignPlayer, onUnassignPlayer, slotLookup, daySlots, slotRowSpans, selectedDay, trainerAvailabilityWindows, pushUndo, t]);
 
   if (slots.length === 0 && (!trainerAvailabilityWindows || trainerAvailabilityWindows.length === 0)) {
     return (
@@ -1032,103 +1204,189 @@ export default function ProposalScheduleGrid({
         )}
       </div>
 
-      {/* Time-row × Trainer-column grid */}
+      {/* Time-row × Trainer-column grid + Sidebar */}
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="overflow-x-auto">
-          <div
-            className="relative grid gap-px bg-border/30 rounded-lg"
-            style={{
-              gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
-              gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
-            }}
-          >
-            {/* Header: empty corner */}
-            <div className="bg-background rounded-tl-lg" style={{ gridRow: 1, gridColumn: 1 }} />
+        <div className="flex gap-4">
+          {/* Grid */}
+          <div className="flex-1 overflow-x-auto">
+            <div
+              className="relative grid gap-px bg-border/30 rounded-lg"
+              style={{
+                gridTemplateColumns: `64px repeat(${trainers.length}, minmax(200px, 1fr))`,
+                gridTemplateRows: `auto repeat(${timeRows.length}, minmax(60px, auto))`,
+              }}
+            >
+              {/* Header: empty corner */}
+              <div className="bg-background rounded-tl-lg" style={{ gridRow: 1, gridColumn: 1 }} />
 
-            {/* Header: trainer columns */}
-            {trainers.map((trainer, colIdx) => (
-              <div
-                key={trainer.id}
-                style={{ gridRow: 1, gridColumn: colIdx + 2 }}
-                className="bg-background p-2 flex items-center gap-2 border-b border-border"
-              >
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={trainer.avatar || undefined} />
-                  <AvatarFallback className="text-[10px]">
-                    {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate">{trainer.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {daySlots.filter(s => s.trainer_id === trainer.id).length} slots
-                  </p>
-                </div>
-              </div>
-            ))}
-
-            {/* Grid body */}
-            {timeRows.map((rowMinute, rowIdx) => {
-              const gridRow = rowIdx + 2;
-              return (
-                <React.Fragment key={`row-${rowMinute}`}>
-                  {/* Time label */}
-                  <div
-                    style={{ gridRow, gridColumn: 1 }}
-                    className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
-                  >
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {minutesToHHMM(rowMinute)}
-                    </span>
+              {/* Header: trainer columns */}
+              {trainers.map((trainer, colIdx) => (
+                <div
+                  key={trainer.id}
+                  style={{ gridRow: 1, gridColumn: colIdx + 2 }}
+                  className="bg-background p-2 flex items-center gap-2 border-b border-border"
+                >
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={trainer.avatar || undefined} />
+                    <AvatarFallback className="text-[10px]">
+                      {trainer.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate">{trainer.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {daySlots.filter(s => s.trainer_id === trainer.id).length} slots
+                    </p>
                   </div>
+                </div>
+              ))}
 
-                  {/* Trainer cells */}
-                  {trainers.map((trainer, colIdx) => {
-                    const cellKey = `${trainer.id}__${rowMinute}`;
-                    const gridColumn = colIdx + 2;
+              {/* Grid body */}
+              {timeRows.map((rowMinute, rowIdx) => {
+                const gridRow = rowIdx + 2;
+                return (
+                  <React.Fragment key={`row-${rowMinute}`}>
+                    {/* Time label */}
+                    <div
+                      style={{ gridRow, gridColumn: 1 }}
+                      className="bg-background px-2 py-1 flex items-start justify-end border-r border-border"
+                    >
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {minutesToHHMM(rowMinute)}
+                      </span>
+                    </div>
 
-                    const occupyingSlotId = occupiedCells.get(cellKey);
-                    if (occupyingSlotId) {
-                      // Skip rendering — the spanning slot cell above covers this row
-                      return null;
-                    }
+                    {/* Trainer cells */}
+                    {trainers.map((trainer, colIdx) => {
+                      const cellKey = `${trainer.id}__${rowMinute}`;
+                      const gridColumn = colIdx + 2;
 
-                    const slot = slotLookup.get(cellKey);
-                    const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
-                    const cellId = `cell__${trainer.id}__${rowMinute}`;
+                      const occupyingSlotId = occupiedCells.get(cellKey);
+                      if (occupyingSlotId) {
+                        return null;
+                      }
 
-                    return (
-                      <div
-                        key={cellKey}
-                        style={{
-                          gridRow: rowSpan > 1 ? `${gridRow} / span ${rowSpan}` : gridRow,
-                          gridColumn,
-                        }}
-                        className="bg-background p-0.5"
-                      >
-                        <DroppableCell cellId={cellId} hasSlot={!!slot}>
-                          {slot && slot.is_blocked ? (
-                            <BlockedSlotCard slot={slot} />
-                          ) : slot ? (
-                            <DraggableSlotCard
-                              slot={slot}
-                              onPlayerClick={onPlayerClick}
-                              canDragSlot={canDragSlot}
-                              trainerAvailabilityWindows={trainerAvailabilityWindows}
-                              selectedDay={selectedDay}
-                              daySlots={daySlots}
-                              onMoveSlot={onMoveSlot}
-                              onDeleteSlot={onDeleteSlot}
-                            />
-                          ) : null}
-                        </DroppableCell>
-                      </div>
-                    );
-                  })}
-                </React.Fragment>
-              );
-            })}
+                      const slot = slotLookup.get(cellKey);
+                      const rowSpan = slot ? (slotRowSpans.get(slot.id) || 1) : 1;
+                      const cellId = `cell__${trainer.id}__${rowMinute}`;
+
+                      return (
+                        <div
+                          key={cellKey}
+                          style={{
+                            gridRow: rowSpan > 1 ? `${gridRow} / span ${rowSpan}` : gridRow,
+                            gridColumn,
+                          }}
+                          className="bg-background p-0.5"
+                        >
+                          <DroppableCell cellId={cellId} hasSlot={!!slot}>
+                            {slot && slot.is_blocked ? (
+                              <BlockedSlotCard slot={slot} />
+                            ) : slot ? (
+                              <DraggableSlotCard
+                                slot={slot}
+                                onPlayerClick={onPlayerClick}
+                                canDragSlot={canDragSlot}
+                                trainerAvailabilityWindows={trainerAvailabilityWindows}
+                                selectedDay={selectedDay}
+                                daySlots={daySlots}
+                                onMoveSlot={onMoveSlot}
+                                onDeleteSlot={onDeleteSlot}
+                              />
+                            ) : null}
+                          </DroppableCell>
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Unplaced Players Sidebar */}
+          {unplacedPlayers && unplacedPlayers.length > 0 && (
+            <div className={cn(
+              'shrink-0 sticky top-4 self-start transition-all',
+              sidebarOpen ? 'w-[280px]' : 'w-10',
+            )}>
+              {sidebarOpen ? (
+                <Card className="h-[calc(100vh-200px)] flex flex-col">
+                  <div className="p-3 border-b border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <UserCircle className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">
+                          {t('proposals.unplacedPlayers', { defaultValue: 'Unplaced' })}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {filteredUnplaced.length}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <PanelRightClose className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t('proposals.searchPlayers', { defaultValue: 'Search...' })}
+                        className="h-7 text-xs pl-7"
+                      />
+                    </div>
+                  </div>
+                  <DroppableUnplacedPool>
+                    {filteredUnplaced.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4 italic">
+                        {searchQuery
+                          ? t('proposals.noSearchResults', { defaultValue: 'No players found' })
+                          : t('proposals.allPlaced', { defaultValue: 'All players are placed' })
+                        }
+                      </p>
+                    ) : (
+                      filteredUnplaced.map(player => (
+                        <DraggableUnplacedPlayer
+                          key={player.id}
+                          player={player}
+                          onPlayerClick={onPlayerClick}
+                        />
+                      ))
+                    )}
+                  </DroppableUnplacedPool>
+                </Card>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 relative"
+                        onClick={() => setSidebarOpen(true)}
+                      >
+                        <PanelRightOpen className="h-4 w-4" />
+                        {unplacedPlayers.length > 0 && (
+                          <Badge variant="destructive" className="absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0 h-4 min-w-4 flex items-center justify-center">
+                            {unplacedPlayers.length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {t('proposals.showUnplaced', { defaultValue: 'Show unplaced players' })} ({unplacedPlayers.length})
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          )}
         </div>
 
         <DragOverlay dropAnimation={null}>
@@ -1137,6 +1395,9 @@ export default function ProposalScheduleGrid({
           )}
           {activeData?.type === 'slot' && activeData.slot && (
             <SlotDragOverlay slot={activeData.slot} />
+          )}
+          {activeData?.type === 'unplaced-player' && activeData.player && (
+            <UnplacedPlayerDragOverlay player={activeData.player} />
           )}
         </DragOverlay>
       </DndContext>

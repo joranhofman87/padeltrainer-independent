@@ -21,6 +21,8 @@ import {
   moveSlot,
   swapSlots,
   deleteSlot,
+  assignPlayerToSlot,
+  unassignPlayer,
   type Cycle, 
   type IntakeRequestWithProposal,
   type SlotWithOccupancy,
@@ -193,6 +195,19 @@ export default function TrainerIntakeRequests() {
   const skippedCount = cycleFilteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
   const proposedCount = cycleFilteredRequests.filter(r => r.status === 'proposed').length;
   const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed').length;
+
+  // Unplaced players for the sidebar (status 'new' for selected cycle)
+  const unplacedPlayers = cycleFilteredRequests
+    .filter(r => r.status === 'new')
+    .map(r => ({
+      id: r.id,
+      full_name: r.full_name,
+      rating: r.rating,
+      rating_system: r.rating_system,
+      preferred_days: r.preferred_days,
+      lesson_type: r.lesson_type,
+      skip_reason: r.skip_reason,
+    }));
 
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
@@ -370,6 +385,33 @@ export default function TrainerIntakeRequests() {
           onUndo={(previousSlots) => {
             setScheduleSlots(previousSlots);
             toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
+          }}
+          unplacedPlayers={unplacedPlayers}
+          onAssignPlayer={async (intakeRequestId, slotId) => {
+            try {
+              await assignPlayerToSlot(intakeRequestId, slotId);
+              toast.success(t('proposals.playerAssigned', { defaultValue: 'Player assigned to slot' }));
+              fetchData();
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
+          onUnassignPlayer={async (assignmentId) => {
+            try {
+              await unassignPlayer(assignmentId);
+              toast.success(t('proposals.playerUnassigned', { defaultValue: 'Player returned to unplaced pool' }));
+              fetchData();
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+            } catch (error: any) {
+              toast.error(error.message);
+            }
           }}
         />
       )}

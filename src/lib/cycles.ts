@@ -1418,6 +1418,69 @@ export async function deleteSlot(slotId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Assign an unplaced player to a slot (creates proposed_assignment, updates intake request status)
+export async function assignPlayerToSlot(intakeRequestId: string, slotId: string): Promise<void> {
+  // Get the slot to find the trainer_id
+  const { data: slot, error: slotErr } = await supabase
+    .from('availability_slots')
+    .select('trainer_id')
+    .eq('id', slotId)
+    .single();
+  if (slotErr) throw slotErr;
+
+  // Insert a proposed_assignment
+  const { error: insertErr } = await supabase
+    .from('proposed_assignments')
+    .insert({
+      intake_request_id: intakeRequestId,
+      slot_id: slotId,
+      trainer_id: slot.trainer_id,
+      confidence_score: 0,
+      rationale: [{ type: 'manual_assignment', score: 0, detail: 'Manually assigned by trainer' }],
+    });
+  if (insertErr) throw insertErr;
+
+  // Update intake request status to proposed
+  const { error: updateErr } = await supabase
+    .from('intake_requests')
+    .update({ status: 'proposed', skip_reason: null })
+    .eq('id', intakeRequestId);
+  if (updateErr) throw updateErr;
+}
+
+// Unassign a player from a slot (deletes proposed_assignment, reverts intake request to 'new')
+export async function unassignPlayer(assignmentId: string): Promise<void> {
+  // Get the assignment to find the intake_request_id
+  const { data: assignment, error: getErr } = await supabase
+    .from('proposed_assignments')
+    .select('intake_request_id')
+    .eq('id', assignmentId)
+    .single();
+  if (getErr) throw getErr;
+
+  // Delete the proposed_assignment
+  const { error: delErr } = await supabase
+    .from('proposed_assignments')
+    .delete()
+    .eq('id', assignmentId);
+  if (delErr) throw delErr;
+
+  // Check if there are other assignments for this intake request
+  const { count } = await supabase
+    .from('proposed_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('intake_request_id', assignment.intake_request_id);
+
+  // If no more assignments, set back to 'new'
+  if (count === 0) {
+    const { error: updateErr } = await supabase
+      .from('intake_requests')
+      .update({ status: 'new' })
+      .eq('id', assignment.intake_request_id);
+    if (updateErr) throw updateErr;
+  }
+}
+
 // Atomic swap of two slots using a DB function (single transaction)
 export async function swapSlots(
   slotAId: string,
