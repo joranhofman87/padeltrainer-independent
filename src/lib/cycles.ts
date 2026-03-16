@@ -1088,6 +1088,9 @@ export async function getAvailableSlotsForCycle(cycleId: string): Promise<SlotWi
       trainer_name: trainer.name,
       trainer_avatar: trainer.avatar,
       max_participants: slot.max_participants,
+      min_rating: slot.min_rating ?? null,
+      max_rating: slot.max_rating ?? null,
+      rating_system: slot.rating_system ?? null,
       cyclus_name: slot.cyclus_name,
       is_blocked: false,
       current_assignments: slotAssignments.map(a => {
