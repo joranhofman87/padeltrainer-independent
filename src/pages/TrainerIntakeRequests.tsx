@@ -396,6 +396,15 @@ export default function TrainerIntakeRequests() {
         }}
       />
 
+      {/* Proposal Overview Panel */}
+      <ProposalOverviewPanel
+        open={showOverview}
+        onOpenChange={setShowOverview}
+        slots={scheduleSlots}
+        onApproveAll={() => {}}
+        onBackToEditing={() => setShowOverview(false)}
+      />
+
       {/* Reset Proposals Confirmation */}
       <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
         <AlertDialogContent>
