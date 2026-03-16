@@ -163,7 +163,7 @@ function MockProfile({ t }: { t: (k: string) => string }) {
         ))}
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_profile_slots', { count: 12 })}</span>
+        <span className="text-xs text-primary font-medium">{t('homev2.hero.mock_profile_slots', { count: '12' })}</span>
         <div className="h-8 px-4 rounded-md bg-primary text-primary-foreground flex items-center text-xs font-medium">
           {t('homev2.hero.mock_profile_cta')}
         </div>
