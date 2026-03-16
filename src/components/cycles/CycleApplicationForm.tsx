@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod } from '@/lib/cycles';
+import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod, type CyclusOption } from '@/lib/cycles';
 import { sendEmail } from '@/lib/email';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
