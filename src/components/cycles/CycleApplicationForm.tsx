@@ -253,6 +253,7 @@ export default function CycleApplicationForm({
           location_id: values.location_id || undefined,
           notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
+          metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
         });
 
         // Send registration confirmation email (non-blocking)
