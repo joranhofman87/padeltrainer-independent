@@ -858,13 +858,15 @@ export default function ProposalScheduleGrid({
                         className="bg-background p-0.5"
                       >
                         <DroppableCell cellId={cellId} hasSlot={!!slot}>
-                          {slot && (
+                          {slot && slot.is_blocked ? (
+                            <BlockedSlotCard slot={slot} />
+                          ) : slot ? (
                             <DraggableSlotCard
                               slot={slot}
                               onPlayerClick={onPlayerClick}
                               canDragSlot={canDragSlot}
                             />
-                          )}
+                          ) : null}
                         </DroppableCell>
                       </div>
                     );
