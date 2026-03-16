@@ -639,7 +639,7 @@ function SlotDragOverlay({ slot }: { slot: SlotWithOccupancy }) {
 // ── Main Grid ──
 
 export default function ProposalScheduleGrid({
-  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onUndo,
+  slots, trainerAvailabilityWindows, onPlayerClick, onMovePlayer, onMoveSlot, onSwapSlots, onDeleteSlot, onUndo,
 }: ProposalScheduleGridProps) {
   const { t, i18n } = useTranslation('cycles');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
