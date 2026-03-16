@@ -1,29 +1,23 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Add Price Per Lesson + Cyclus Price to Price Overview
 
-Implemented on 2026-03-14.
+### Problem
+The Price Overview card only shows cyclus totals when `durationOptions` (player-selectable week choices) are configured. When only the form's `number_of_weeks` field is set (e.g. 14), no total is displayed — the card only shows "per lesson" prices.
 
-## What Changed
+### Solution
+Update the Price Overview in `CycleForm.tsx` to fall back to the form's `number_of_weeks` value when `durationOptions` is empty. This ensures the card always shows both "per lesson" and "cyclus price" (price × weeks) columns.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+### Changes
 
-## Sanity Content Types Needed in Studio
+**`src/components/cycles/CycleForm.tsx`** (~line 1120):
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+In the "Per duration columns" section, compute the weeks to display as:
+- If `durationOptions` has entries, use those (current behavior)
+- Otherwise, if `form.watch('number_of_weeks')` has a value, use `[number_of_weeks]` as a single-entry array
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+This means the overview will always show cyclus totals when weeks are known, for both the default price column and any extra price columns (e.g. "Kids").
 
-## What Stays Unchanged
+### Files to modify
+- `src/components/cycles/CycleForm.tsx`
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
