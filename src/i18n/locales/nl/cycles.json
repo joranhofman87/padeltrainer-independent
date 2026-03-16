@@ -255,6 +255,7 @@
     "summary": {
       "title": "Jouw keuze",
       "lessonType": "Lestype",
+      "package": "Pakket",
       "duration": "Duur",
       "lessonLength": "Lesduur",
       "pricePerLesson": "Prijs per les",

@@ -864,17 +864,56 @@ export default function CycleApplicationForm({
           
           if (!firstLessonType) return null;
           
-          // Find price from price_table matching the selected lesson type
-          const priceRow = cycle.price_table?.find(row => {
-            const labelLower = row.label.toLowerCase();
-            return labelLower === firstLessonType.toLowerCase() ||
-              labelLower.includes(firstLessonType.toLowerCase());
-          });
-          const pricePerSession = priceRow?.price ?? cycle.price_per_session;
+          // Determine price: cyclus option > price_table (type+duration) > price_table (type) > cycle fallback
+          let pricePerSession: number | null = null;
+          let totalPrice: number | null = null;
+          let priceSource: 'cyclus_option' | 'price_table' | 'fallback' | null = null;
+
+          if (selectedCyclusOption) {
+            pricePerSession = selectedCyclusOption.price_per_session;
+            totalPrice = selectedCyclusOption.total_price;
+            priceSource = 'cyclus_option';
+          } else if (cycle.price_table && cycle.price_table.length > 0) {
+            const lessonTypeLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
+              ? t(`application.form.lessonTypes.${firstLessonType}`)
+              : firstLessonType;
+            
+            // Try matching by both lesson type and duration
+            const matchWithDuration = watchedDuration ? cycle.price_table.find(row => {
+              const l = row.label.toLowerCase();
+              const typeMatch = l.includes(firstLessonType.toLowerCase()) || l.includes(lessonTypeLabel.toLowerCase());
+              const durationMatch = l.includes(`${watchedDuration}`) || l.includes(`${watchedDuration} min`);
+              return typeMatch && durationMatch;
+            }) : null;
+            
+            // Fall back to type-only match
+            const matchTypeOnly = cycle.price_table.find(row => {
+              const l = row.label.toLowerCase();
+              return l === firstLessonType.toLowerCase() ||
+                l.includes(firstLessonType.toLowerCase()) ||
+                l.includes(lessonTypeLabel.toLowerCase());
+            });
+
+            const priceRow = matchWithDuration || matchTypeOnly;
+            if (priceRow) {
+              pricePerSession = priceRow.price;
+              priceSource = 'price_table';
+            }
+          }
+
+          // Fallback to cycle-level price
+          if (pricePerSession == null && cycle.price_per_session) {
+            pricePerSession = cycle.price_per_session;
+            priceSource = 'fallback';
+          }
+
           const hasPrice = pricePerSession != null && pricePerSession > 0;
-          const total = hasPrice && selectedDurationWeeks ? pricePerSession! * selectedDurationWeeks : null;
+          // Calculate total from weeks if no cyclus option total
+          if (hasPrice && totalPrice == null && selectedDurationWeeks) {
+            totalPrice = pricePerSession! * selectedDurationWeeks;
+          }
           
-          const lessonTypeLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
+          const displayLessonType = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
             ? t(`application.form.lessonTypes.${firstLessonType}`)
             : firstLessonType.charAt(0).toUpperCase() + firstLessonType.slice(1);
           
@@ -889,9 +928,15 @@ export default function CycleApplicationForm({
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t('application.summary.lessonType')}</span>
-                  <span className="font-medium">{lessonTypeLabel}</span>
+                  <span className="font-medium">{displayLessonType}</span>
                 </div>
-                {selectedDurationWeeks && (
+                {selectedCyclusOption && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t('application.summary.package', 'Package')}</span>
+                    <span className="font-medium">{selectedCyclusOption.label}</span>
+                  </div>
+                )}
+                {selectedDurationWeeks && !selectedCyclusOption && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t('application.summary.duration')}</span>
                     <span className="font-medium">{t('application.summary.weeksCount', { count: selectedDurationWeeks })}</span>
@@ -908,13 +953,13 @@ export default function CycleApplicationForm({
                     <div className="border-t border-border my-2" />
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
-                      <span className="font-medium">{formatPrice(pricePerSession!)}</span>
+                      <span className="font-medium">{new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(pricePerSession!)}</span>
                     </div>
-                    {total != null && (
+                    {totalPrice != null && totalPrice > 0 && (
                       <div className="flex justify-between text-base font-semibold">
                         <span>{t('application.summary.total')}</span>
                         <span className="text-primary">
-                          {formatPrice(total)}
+                          {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalPrice)}
                         </span>
                       </div>
                     )}
