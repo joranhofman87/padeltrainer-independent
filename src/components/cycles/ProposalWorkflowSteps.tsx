@@ -1,8 +1,10 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sparkles, Eye, CheckCheck, CalendarDays, Check, RotateCcw, UserPlus, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { Cycle } from '@/lib/cycles';
 
 type StepStatus = 'completed' | 'active' | 'upcoming';
 
@@ -15,10 +17,12 @@ interface Step {
 }
 
 interface ProposalWorkflowStepsProps {
+  cycles: Cycle[];
+  selectedCycleId: string;
+  onCycleChange: (value: string) => void;
   newCount: number;
   proposedCount: number;
   confirmedCount: number;
-  cycleSelected: boolean;
   onGenerate: () => void;
   onApproveAll: () => void;
   onReset: () => void;
@@ -28,10 +32,12 @@ interface ProposalWorkflowStepsProps {
 }
 
 export default function ProposalWorkflowSteps({
+  cycles,
+  selectedCycleId,
+  onCycleChange,
   newCount,
   proposedCount,
   confirmedCount,
-  cycleSelected,
   onGenerate,
   onApproveAll,
   onReset,
@@ -41,28 +47,54 @@ export default function ProposalWorkflowSteps({
 }: ProposalWorkflowStepsProps) {
   const { t } = useTranslation('cycles');
 
+  const cycleSelected = selectedCycleId !== 'all';
+
   // Determine step statuses based on data state
-  const getStepStatus = (): [StepStatus, StepStatus, StepStatus] => {
+  const getStepStatuses = (): [StepStatus, StepStatus, StepStatus, StepStatus] => {
+    if (!cycleSelected) {
+      return ['active', 'upcoming', 'upcoming', 'upcoming'];
+    }
     if (confirmedCount > 0 && newCount === 0 && proposedCount === 0) {
-      return ['completed', 'completed', 'active'];
+      return ['completed', 'completed', 'completed', 'active'];
     }
     if (confirmedCount > 0 && proposedCount > 0) {
-      return ['completed', 'active', 'active'];
+      return ['completed', 'completed', 'active', 'active'];
     }
     if (proposedCount > 0) {
-      return ['completed', 'active', 'upcoming'];
+      return ['completed', 'completed', 'active', 'upcoming'];
     }
-    return ['active', 'upcoming', 'upcoming'];
+    return ['completed', 'active', 'upcoming', 'upcoming'];
   };
 
-  const [s1, s2, s3] = getStepStatus();
+  const [s1, s2, s3, s4] = getStepStatuses();
 
   const steps: Step[] = [
     {
       number: 1,
+      label: t('workflow.selectCycle', { defaultValue: 'Select registration' }),
+      description: cycleSelected
+        ? cycles.find(c => c.id === selectedCycleId)?.name || ''
+        : t('workflow.selectCycleDesc', { defaultValue: 'Choose a registration period' }),
+      status: s1,
+      action: (
+        <Select value={selectedCycleId} onValueChange={onCycleChange}>
+          <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectValue placeholder={t('workflow.selectCyclePlaceholder', { defaultValue: 'Select...' })} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
+            {cycles.map(cycle => (
+              <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ),
+    },
+    {
+      number: 2,
       label: t('workflow.generate', { defaultValue: 'Generate' }),
       description: t('workflow.generateDesc', { defaultValue: '{{count}} new requests', count: newCount }),
-      status: s1,
+      status: s2,
       action: (
         <div className="flex gap-1.5">
           <Button
@@ -87,10 +119,10 @@ export default function ProposalWorkflowSteps({
       ),
     },
     {
-      number: 2,
+      number: 3,
       label: t('workflow.review', { defaultValue: 'Review & Edit' }),
       description: t('workflow.reviewDesc', { defaultValue: '{{count}} proposals', count: proposedCount }),
-      status: s2,
+      status: s3,
       action: proposedCount > 0 ? (
         <Button
           size="sm"
@@ -105,10 +137,10 @@ export default function ProposalWorkflowSteps({
       ) : undefined,
     },
     {
-      number: 3,
+      number: 4,
       label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
       description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
-      status: s3,
+      status: s4,
       action: proposedCount > 0 ? (
         <Button
           size="sm"

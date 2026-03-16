@@ -7,9 +7,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ArrowLeft, Sparkles, CheckCheck, UserPlus, List, CalendarDays, RotateCcw, Info, AlertCircle } from 'lucide-react';
+import { ArrowLeft, List, CalendarDays, AlertCircle } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -30,7 +29,7 @@ import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { logger } from '@/lib/logger';
 
 export default function TrainerIntakeRequests() {
@@ -104,7 +103,6 @@ export default function TrainerIntakeRequests() {
     setFilteredRequests(filtered);
   }, [requests, selectedCycleId, statusFilter]);
 
-  // Fetch slots when switching to grid view for a selected cycle
   useEffect(() => {
     if (viewMode === 'schedule' && selectedCycleId && selectedCycleId !== 'all') {
       getAvailableSlotsForCycle(selectedCycleId)
@@ -118,7 +116,6 @@ export default function TrainerIntakeRequests() {
     }
   }, [viewMode, selectedCycleId, requests]);
 
-  // Auto-switch to schedule view when viewing proposed requests
   useEffect(() => {
     if (statusFilter === 'proposed' && filteredRequests.some(r => r.status === 'proposed')) {
       setViewMode('schedule');
@@ -184,10 +181,16 @@ export default function TrainerIntakeRequests() {
   };
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
-  const newCount = filteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
-  const skippedCount = filteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
-  const proposedCount = filteredRequests.filter(r => r.status === 'proposed').length;
-  const confirmedCount = filteredRequests.filter(r => r.status === 'confirmed').length;
+
+  // All counts derived from cycle-filtered requests (before status filter)
+  const cycleFilteredRequests = selectedCycleId !== 'all' 
+    ? requests.filter(r => r.cycle_id === selectedCycleId)
+    : requests;
+  const allCount = cycleFilteredRequests.length;
+  const newCount = cycleFilteredRequests.filter(r => r.status === 'new' && !r.skip_reason).length;
+  const skippedCount = cycleFilteredRequests.filter(r => r.status === 'new' && r.skip_reason).length;
+  const proposedCount = cycleFilteredRequests.filter(r => r.status === 'proposed').length;
+  const confirmedCount = cycleFilteredRequests.filter(r => r.status === 'confirmed').length;
 
   const skippedReasonCounts = statusFilter === 'skipped'
     ? filteredRequests.reduce((acc, r) => {
@@ -221,56 +224,30 @@ export default function TrainerIntakeRequests() {
             </p>
           </div>
         </div>
-
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div className="flex gap-2 items-center">
-            <Select value={selectedCycleId} onValueChange={handleCycleChange}>
-              <SelectTrigger className={`w-[200px] ${selectedCycleId === 'all' && cycles.length > 0 ? 'border-primary ring-1 ring-primary/30' : ''}`}>
-                <SelectValue placeholder="Select cycle" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('intakeRequests.filters.all')} cycles</SelectItem>
-                {cycles.map(cycle => (
-                  <SelectItem key={cycle.id} value={cycle.id}>{cycle.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-        </div>
       </div>
 
-      {/* Cycle selection hint */}
-      {selectedCycleId === 'all' && cycles.length > 0 && (
-        <Alert variant="default" className="bg-muted/50 border-dashed">
-          <Info className="h-4 w-4" />
-          <AlertDescription>{t('intakeRequests.selectCycleHint')}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Workflow Steps */}
-      {selectedCycleId !== 'all' && (
-        <ProposalWorkflowSteps
-          newCount={newCount}
-          proposedCount={proposedCount}
-          confirmedCount={confirmedCount}
-          cycleSelected={selectedCycleId !== 'all'}
-          onGenerate={() => setShowWizard(true)}
-          onApproveAll={() => {}}
-          onReset={() => setShowResetConfirm(true)}
-          onAddManual={() => setShowAddDialog(true)}
-          isGenerating={isGenerating}
-          isResetting={isResetting}
-        />
-      )}
+      {/* Workflow Steps (always visible, includes cycle selector as step 1) */}
+      <ProposalWorkflowSteps
+        cycles={cycles}
+        selectedCycleId={selectedCycleId}
+        onCycleChange={handleCycleChange}
+        newCount={newCount}
+        proposedCount={proposedCount}
+        confirmedCount={confirmedCount}
+        onGenerate={() => setShowWizard(true)}
+        onApproveAll={() => {}}
+        onReset={() => setShowResetConfirm(true)}
+        onAddManual={() => setShowAddDialog(true)}
+        isGenerating={isGenerating}
+        isResetting={isResetting}
+      />
 
       {/* Status Filter Tabs + View Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <Tabs value={statusFilter} onValueChange={setStatusFilter}>
           <TabsList>
             <TabsTrigger value="all">
-              {t('intakeRequests.filters.all')} ({requests.length})
+              {t('intakeRequests.filters.all')} ({allCount})
             </TabsTrigger>
             <TabsTrigger value="new">
               {t('intakeRequests.filters.new')} ({newCount})
