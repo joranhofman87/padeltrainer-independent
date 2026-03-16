@@ -102,6 +102,9 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
               <tr className="border-b bg-muted/30">
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
+                {priceColumns.map(col => (
+                  <th key={col} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                ))}
                 {[...durationOptions].sort((a, b) => a - b).map(weeks => (
                   <th key={weeks} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
                     {t('detail.weeksColumn', '{{count}} weken', { count: weeks })}
@@ -114,6 +117,14 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
                 <tr key={i} className="border-t">
                   <td className="px-3 py-2">{row.label}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">{currencyFormatter.format(row.price)}</td>
+                  {priceColumns.map(col => {
+                    const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
+                    return (
+                      <td key={col} className="px-3 py-2 text-right whitespace-nowrap">
+                        {ep ? currencyFormatter.format(ep.price) : '–'}
+                      </td>
+                    );
+                  })}
                   {[...durationOptions].sort((a, b) => a - b).map(weeks => (
                     <td key={weeks} className="px-3 py-2 text-right font-medium whitespace-nowrap">
                       {currencyFormatter.format(row.price * weeks)}
