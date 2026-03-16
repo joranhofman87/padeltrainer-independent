@@ -66,7 +66,7 @@ interface CycleApplicationFormProps {
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const STANDARD_LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
-const DURATIONS = [30, 45, 60, 90, 120] as const;
+const DEFAULT_DURATIONS = [30, 45, 60, 90, 120] as const;
 
 export default function CycleApplicationForm({
   cycle,
@@ -101,6 +101,8 @@ export default function CycleApplicationForm({
   const hasCyclusOptions = cyclusOptions.length > 0;
   const durationOptions = ((cycle.settings as any)?.duration_options as number[] | undefined) || [];
   const hasDurationOptions = durationOptions.length > 0;
+  const availableDurations = ((cycle.settings as any)?.available_duration_minutes as number[] | undefined) || [...DEFAULT_DURATIONS];
+  const effectiveDurations = availableDurations.sort((a, b) => a - b);
   
   // Load rating systems
   useEffect(() => {
@@ -179,7 +181,7 @@ export default function CycleApplicationForm({
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
       lesson_types: ['group'] as string[],
-      preferred_duration_minutes: cycle.settings.default_duration_minutes || 60,
+      preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
       availability: {},
       preferred_trainer_id: '',
@@ -695,20 +697,24 @@ export default function CycleApplicationForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('application.form.preferredDuration')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={String(field.value)}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {DURATIONS.map(d => (
-                        <SelectItem key={d} value={String(d)}>
-                          {d} min
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {effectiveDurations.length === 1 ? (
+                    <Input value={`${effectiveDurations[0]} min`} disabled className="bg-muted" />
+                  ) : (
+                    <Select onValueChange={field.onChange} value={String(field.value)}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {effectiveDurations.map(d => (
+                          <SelectItem key={d} value={String(d)}>
+                            {d} min
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

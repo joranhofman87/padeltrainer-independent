@@ -1,32 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Allow Trainers to Configure Lesson Duration Options
+## Status: ✅ COMPLETED
 
-### Problem
-The registration form always shows a hardcoded list of durations (30, 45, 60, 90, 120 min). Trainers want to control which durations are available and optionally add custom ones.
+Implemented on 2026-03-14.
 
-### Changes
+## What Changed
 
-**1. `src/lib/cycles.ts` — Add setting to CycleSettings interface**
-- Add `available_duration_minutes?: number[]` to `CycleSettings` to store the trainer's selected durations.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-**2. `src/components/cycles/CycleForm.tsx` — Add duration picker in the registration form builder**
-- Add state for `availableDurations` (initialized from `cycle.settings.available_duration_minutes` or default `[30, 45, 60, 90, 120]`).
-- In the registration section (near lesson types), add a multi-select UI with checkboxes for the standard durations (30, 45, 60, 90, 120).
-- Add an input + button to add a custom duration (e.g. 75 min).
-- Save to `settings.available_duration_minutes` on submit.
+## Sanity Content Types Needed in Studio
 
-**3. `src/components/cycles/CycleApplicationForm.tsx` — Respect the configured durations**
-- Read `cycle.settings.available_duration_minutes` — if defined, use it instead of the hardcoded `DURATIONS` constant.
-- If only one duration is available, auto-select it and hide the selector.
-- Fall back to the full `DURATIONS` list if not configured.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**4. Translations** — Add keys for the new field labels in `en/cycles.json` and `nl/cycles.json`.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### Files to modify
-- `src/lib/cycles.ts`
-- `src/components/cycles/CycleForm.tsx`
-- `src/components/cycles/CycleApplicationForm.tsx`
-- `src/i18n/locales/en/cycles.json`
-- `src/i18n/locales/nl/cycles.json`
+## What Stays Unchanged
 
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
