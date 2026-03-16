@@ -248,6 +248,8 @@ export default function CycleForm({
       setPriceTable(cycle?.price_table || []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
+      setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
+      setCustomDurationInput('');
     }
   }, [cycle, open]);
 
