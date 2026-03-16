@@ -1,29 +1,49 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Convert Registration Create/Edit from Dialog to Dedicated Page
 
-Implemented on 2026-03-14.
+The CycleForm component (1850 lines) currently renders inside a `Dialog`. As the form has grown with price tables, columns, duration options, etc., a full page is more appropriate. We'll create dedicated pages and routes for both trainer and academy flows.
 
-## What Changed
+### Changes
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+**1. New page: `src/pages/CycleFormPage.tsx`**
+- A wrapper page component that reads route params (`formType`: registration/event, `cycleId` for editing) and query params.
+- Fetches the cycle data if editing (using `cycleId`).
+- For **trainer**: fetches `trainerId`, `hourlyRate`, `ratingSystem`, and `locations` from `trainer_profiles` / `trainer_locations` (same logic as `TrainerCycles.tsx`).
+- For **academy**: fetches trainers, locations, trainerLocationMap (same logic as `AcademyCycles.tsx`).
+- Renders a refactored `CycleForm` (without Dialog wrapper) inside a standard page layout with a back button header.
+- `onSuccess` navigates back to the cycles list.
 
-## Sanity Content Types Needed in Studio
+**2. Refactor `src/components/cycles/CycleForm.tsx`**
+- Extract the form content (everything inside `DialogContent`) into the main export, removing the `Dialog`/`DialogContent`/`DialogHeader` wrapper.
+- Remove `open` and `onOpenChange` props — the component is now always rendered when the page mounts.
+- Replace `DialogFooter` with a regular footer div with the same buttons.
+- Add an `onCancel` prop that navigates back.
+- The component remains ~1850 lines but the outer shell changes from Dialog to a card/section layout.
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+**3. Routes in `src/components/DomainRouter.tsx`**
+- Add under trainer routes:
+  - `cycles/new` → `CycleFormPage` (formType from query param `?type=registration|event`)
+  - `cycles/:cycleId/edit` → `CycleFormPage`
+- Add under academy routes:
+  - `cycles/new` → `CycleFormPage`
+  - `cycles/:cycleId/edit` → `CycleFormPage`
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+**4. Update `src/pages/TrainerCycles.tsx`**
+- Replace `setShowCreateDialog(true)` with `navigate('/app/trainer/cycles/new?type=registration')`.
+- Replace `setShowCreateEventDialog(true)` with `navigate('/app/trainer/cycles/new?type=event')`.
+- Replace `setEditingCycle(c)` with `navigate(`/app/trainer/cycles/${c.id}/edit`)`.
+- Remove `CycleForm` imports and dialog state.
 
-## What Stays Unchanged
+**5. Update `src/pages/academy/AcademyCycles.tsx`**
+- Same pattern: navigate to `/app/academy/cycles/new?type=registration` or `/app/academy/cycles/${c.id}/edit`.
+- Remove `CycleForm` imports and dialog state.
+- Keep the duplicate handler — navigate to `cycles/new?type=registration&duplicateFrom={id}`.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### Files to modify/create
+- `src/components/cycles/CycleForm.tsx` — remove Dialog wrapper
+- `src/pages/CycleFormPage.tsx` — new page component
+- `src/components/DomainRouter.tsx` — add routes
+- `src/pages/TrainerCycles.tsx` — navigate instead of dialog
+- `src/pages/academy/AcademyCycles.tsx` — navigate instead of dialog
+
