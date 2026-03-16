@@ -173,52 +173,12 @@ export default function ClubCycles() {
         <CyclesTable
           cycles={cycles}
           locations={locations}
-          onEdit={(c) => setEditingCycle(c)}
+          onEdit={(c) => navigate(`/app/club/registrations/${c.id}/edit`)}
           onDuplicate={handleDuplicate}
           onDeleted={fetchCycles}
           ownerType="club"
           ownerSlug={activeClub.id}
         />
-      )}
-
-      {/* Create/Edit Dialog */}
-      {activeClub && (
-        <>
-          <CycleForm
-            open={showCreateDialog || (!!editingCycle && editingCycle.type !== 'event')}
-            onOpenChange={(open) => {
-              if (!open) {
-                setShowCreateDialog(false);
-                setEditingCycle(null);
-              }
-            }}
-            cycle={editingCycle && editingCycle.id && editingCycle.type !== 'event' ? editingCycle : undefined}
-            ownerType="club"
-            ownerId={activeClub.id}
-            onSuccess={handleCycleCreated}
-            formType="registration"
-            trainers={trainers}
-            locations={locations}
-            trainerLocationMap={trainerLocationMap}
-          />
-          <CycleForm
-            open={showCreateEventDialog || (!!editingCycle && editingCycle.type === 'event')}
-            onOpenChange={(open) => {
-              if (!open) {
-                setShowCreateEventDialog(false);
-                setEditingCycle(null);
-              }
-            }}
-            cycle={editingCycle?.type === 'event' ? editingCycle : undefined}
-            ownerType="club"
-            ownerId={activeClub.id}
-            onSuccess={handleCycleCreated}
-            formType="event"
-            trainers={trainers}
-            locations={locations}
-            trainerLocationMap={trainerLocationMap}
-          />
-        </>
       )}
     </div>
   );
