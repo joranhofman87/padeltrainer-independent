@@ -98,6 +98,7 @@ const TrainerPlayers = lazy(() => import('@/pages/TrainerPlayers'));
 const TrainerCyclus = lazy(() => import('@/pages/TrainerCyclus'));
 const TrainerCycles = lazy(() => import('@/pages/TrainerCycles'));
 const TrainerIntakeRequests = lazy(() => import('@/pages/TrainerIntakeRequests'));
+const ProposalOverviewPage = lazy(() => import('@/pages/ProposalOverviewPage'));
 const TrainerWaitingList = lazy(() => import('@/pages/TrainerWaitingList'));
 const OpenSlots = lazy(() => import('@/pages/OpenSlots'));
 const BookingSuccess = lazy(() => import('@/pages/BookingSuccess'));
@@ -209,6 +210,7 @@ export function DomainRouter() {
           <Route path="cyclus" element={<TrainerCyclus />} />
           <Route path="cycles" element={<TrainerCycles />} />
           <Route path="intake-requests" element={<TrainerIntakeRequests />} />
+          <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
           <Route path="open-slots" element={<OpenSlots />} />
           
@@ -274,6 +276,7 @@ export function DomainRouter() {
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />
+          <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<AcademyWaitingList />} />
           <Route path="settings" element={<AcademySettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />

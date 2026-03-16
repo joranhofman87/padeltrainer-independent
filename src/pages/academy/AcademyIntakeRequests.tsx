@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
-import ProposalOverviewPanel from '@/components/cycles/ProposalOverviewPanel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getCycles, 
@@ -36,6 +35,7 @@ export default function AcademyIntakeRequests() {
   const { t } = useTranslation('cycles');
   const { activeAcademy } = useAcademyContext();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [requests, setRequests] = useState<IntakeRequestWithProposal[]>([]);
@@ -51,7 +51,7 @@ export default function AcademyIntakeRequests() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<SlotWithOccupancy[]>([]);
-  const [showOverview, setShowOverview] = useState(false);
+  
 
   const fetchData = async () => {
     if (!activeAcademy) return;
@@ -219,8 +219,7 @@ export default function AcademyIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
-        onShowOverview={() => setShowOverview(true)}
-        showOverview={showOverview}
+        onShowOverview={() => navigate('/app/academy/intake-requests/overview', { state: { slots: scheduleSlots, backPath: '/app/academy/intake-requests' } })}
         isGenerating={isGenerating}
         isResetting={isResetting}
       />
@@ -386,14 +385,6 @@ export default function AcademyIntakeRequests() {
         }}
       />
 
-      {/* Proposal Overview Panel */}
-      <ProposalOverviewPanel
-        open={showOverview}
-        onOpenChange={setShowOverview}
-        slots={scheduleSlots}
-        onApproveAll={() => {}}
-        onBackToEditing={() => setShowOverview(false)}
-      />
 
       {/* Reset Proposals Confirmation */}
       <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
