@@ -35,9 +35,15 @@ export function PricingPreview() {
                 <CardTitle className="text-xl">{t('homev2.pricing.players_title')}</CardTitle>
                 <p className="text-3xl font-bold mt-2">{t('homev2.pricing.players_price')}</p>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-muted-foreground text-center">{t('homev2.pricing.players_desc')}</p>
-                <p className="text-muted-foreground text-center">{t('homev2.pricing.players_desc2')}</p>
+              <CardContent className="text-center space-y-4">
+                <p className="text-muted-foreground">{t('homev2.pricing.players_desc')}</p>
+                <p className="text-muted-foreground">{t('homev2.pricing.players_desc2')}</p>
+                <Button size="lg" variant="outline" className="w-full" asChild>
+                  <Link to={getAppUrl('/signup/player')}>
+                    {t('homev2.pricing.players_cta')}
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           </motion.div>
