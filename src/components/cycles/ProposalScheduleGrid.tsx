@@ -671,7 +671,7 @@ function PlayerDragOverlay({ assignment }: { assignment: Assignment }) {
       <GripVertical className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium">{assignment.player_name}</span>
       {assignment.player_rating != null && (
-        <span className="text-muted-foreground text-[10px]">{assignment.player_rating}</span>
+        <span className="text-muted-foreground text-[10px]">{formatRating(assignment.player_rating)}</span>
       )}
       {confScore > 0 && (
         <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5', confClass)}>
