@@ -449,7 +449,33 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fetch intake requests with status 'new'
+    // ===== STEP 0: Reset 'proposed' requests back to 'new' for re-run safety =====
+    console.log(`Resetting proposed requests back to 'new' for cycle ${cycleId}...`);
+    const { error: resetError } = await supabase
+      .from("intake_requests")
+      .update({ status: "new", skip_reason: null })
+      .eq("cycle_id", cycleId)
+      .in("status", ["proposed"]);
+
+    if (resetError) {
+      console.warn("Error resetting proposed requests:", resetError);
+    }
+
+    // Delete old proposed assignments for this cycle's requests
+    const { data: allCycleRequests } = await supabase
+      .from("intake_requests")
+      .select("id")
+      .eq("cycle_id", cycleId);
+
+    if (allCycleRequests && allCycleRequests.length > 0) {
+      const allReqIds = allCycleRequests.map(r => r.id);
+      await supabase
+        .from("proposed_assignments")
+        .delete()
+        .in("intake_request_id", allReqIds);
+    }
+
+    // Fetch intake requests with status 'new' (now includes the ones we just reset)
     const { data: requests, error: requestsError } = await supabase
       .from("intake_requests")
       .select("*")
@@ -468,13 +494,12 @@ Deno.serve(async (req) => {
 
     const effectiveStartDate = startDate || cycle.start_date;
 
-    // ===== STEP 0: Delete old cycle slots before creating new ones =====
+    // ===== Delete old cycle slots before creating new ones =====
     console.log(`Cleaning up old slots for cycle ${cycleId}...`);
-    const { error: deleteOldSlotsError, count: deletedCount } = await supabase
+    const { error: deleteOldSlotsError } = await supabase
       .from("availability_slots")
       .delete()
-      .eq("cyclus_id", cycleId)
-      .select("id", { count: "exact", head: true });
+      .eq("cyclus_id", cycleId);
 
     if (deleteOldSlotsError) {
       console.error("Error deleting old slots:", deleteOldSlotsError);
@@ -498,12 +523,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Collect unique durations requested by intake forms (strict match)
-      const requestedDurations = [...new Set(
-        requests.map(r => r.preferred_duration_minutes || 60)
-      )];
-      console.log(`Requested durations: ${requestedDurations.join(', ')} minutes`);
-
       // Fetch existing non-cycle slots for conflict checking
       const trainerIds = trainerAvailability.map(ta => ta.trainerId);
       const { data: existingSlots } = await supabase
@@ -525,24 +544,9 @@ Deno.serve(async (req) => {
         conflictMap.set(s.trainer_id, existing);
       });
 
-      // Also check existing bookings on those slots
-      const existingSlotIds = (existingSlots || []).map(s => s.id);
-      if (existingSlotIds.length > 0) {
-        const BATCH_SIZE = 200;
-        for (let i = 0; i < existingSlotIds.length; i += BATCH_SIZE) {
-          const batch = existingSlotIds.slice(i, i + BATCH_SIZE);
-          const { data: bookedSlots } = await supabase
-            .from("bookings")
-            .select("slot_id")
-            .in("slot_id", batch)
-            .in("status", ["pending", "confirmed"]);
-          // The slots themselves are already in conflictMap, so bookings don't add new conflicts
-          // but the existing slot times already block the window
-        }
-      }
-
       const cycleEndDate = new Date(cycle.end_date);
       const slotsToInsert: any[] = [];
+      const SLOT_DURATION = 60; // Always 60-min uniform grid
 
       for (const ta of trainerAvailability) {
         const trainerConflicts = conflictMap.get(ta.trainerId) || [];
@@ -561,44 +565,41 @@ Deno.serve(async (req) => {
             current.setDate(current.getDate() + 1);
           }
 
-          // Generate slots for only the first occurrence of this weekday (template week)
+          // Generate uniform 60-min slots for the FULL trainer availability window
           {
-            // For each requested duration, generate slots
-            for (const duration of requestedDurations) {
-              let slotStartMinutes = windowStartMinutes;
-              while (slotStartMinutes + duration <= windowEndMinutes) {
-                const startDateTime = new Date(current);
-                startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
+            let slotStartMinutes = windowStartMinutes;
+            while (slotStartMinutes + SLOT_DURATION <= windowEndMinutes) {
+              const startDateTime = new Date(current);
+              startDateTime.setHours(Math.floor(slotStartMinutes / 60), slotStartMinutes % 60, 0, 0);
 
-                const endMinutes = slotStartMinutes + duration;
-                const endDateTime = new Date(current);
-                endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+              const endMinutes = slotStartMinutes + SLOT_DURATION;
+              const endDateTime = new Date(current);
+              endDateTime.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
 
-                // Check for conflicts with existing non-cycle slots
-                const startMs = startDateTime.getTime();
-                const endMs = endDateTime.getTime();
-                const hasConflict = trainerConflicts.some(c =>
-                  rangesOverlap(startMs, endMs, c.start, c.end)
-                );
+              // Check for conflicts with existing non-cycle slots
+              const startMs = startDateTime.getTime();
+              const endMs = endDateTime.getTime();
+              const hasConflict = trainerConflicts.some(c =>
+                rangesOverlap(startMs, endMs, c.start, c.end)
+              );
 
-                if (!hasConflict) {
-                  slotsToInsert.push({
-                    trainer_id: ta.trainerId,
-                    start_time: startDateTime.toISOString(),
-                    end_time: endDateTime.toISOString(),
-                    is_marked_full: false,
-                    is_public: false,
-                    is_recurring: false,
-                    cyclus_id: cycleId,
-                    max_participants: cycle.settings?.max_group_size || 4,
-                    min_participants: cycle.settings?.min_group_size || null,
-                    academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
-                    location_id: cycle.location_id || null,
-                  });
-                }
-
-                slotStartMinutes += duration;
+              if (!hasConflict) {
+                slotsToInsert.push({
+                  trainer_id: ta.trainerId,
+                  start_time: startDateTime.toISOString(),
+                  end_time: endDateTime.toISOString(),
+                  is_marked_full: false,
+                  is_public: false,
+                  is_recurring: false,
+                  cyclus_id: cycleId,
+                  max_participants: cycle.settings?.max_group_size || 4,
+                  min_participants: cycle.settings?.min_group_size || null,
+                  academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
+                  location_id: cycle.location_id || null,
+                });
               }
+
+              slotStartMinutes += SLOT_DURATION;
             }
           }
         }
@@ -712,26 +713,10 @@ Deno.serve(async (req) => {
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
-      const requestDuration = request.preferred_duration_minutes || 60;
 
-      // STRICT DURATION FILTER: Only consider slots matching the player's preferred duration
-      const durationMatchedSlots = slots.filter(slot => {
-        const duration = slotDurationMinutes(slot);
-        return duration === requestDuration;
-      });
+      // All slots are now uniform 60-min; no duration filter needed
 
-      if (durationMatchedSlots.length === 0) {
-        skipped++;
-        await supabase
-          .from("intake_requests")
-          .update({ skip_reason: "no_matching_slots" })
-          .eq("id", request.id);
-        errors.push(`No slots matching ${requestDuration}min duration for request ${request.id}`);
-        continue;
-      }
-
-      // STRICT AVAILABILITY FILTER: Only consider slots that match player's time windows
-      const matchingSlots = durationMatchedSlots.filter((slot) => {
+      const matchingSlots = slots.filter((slot) => {
         return request.preferred_time_windows.some((tw) =>
           matchesTimeWindow(slot.start_time, tw)
         );
@@ -858,99 +843,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ===== STEP 3: Fill gaps in trainer availability with empty 60-min slots =====
-    if (trainerAvailability && trainerAvailability.length > 0) {
-      console.log("Filling remaining trainer availability gaps with empty slots...");
-
-      // Re-fetch cycle slots after matching to know which times are covered
-      const { data: existingCycleSlots } = await supabase
-        .from("availability_slots")
-        .select("id, trainer_id, start_time, end_time")
-        .eq("cyclus_id", cycleId);
-
-      const fillerSlots: any[] = [];
-      const DEFAULT_FILLER_DURATION = 60; // minutes
-
-      for (const ta of trainerAvailability) {
-        for (const window of ta.windows) {
-          const dayIndex = WEEKDAYS.indexOf(window.day.toLowerCase());
-          if (dayIndex === -1) continue;
-
-          const [wStartH, wStartM] = window.start.split(":").map(Number);
-          const [wEndH, wEndM] = window.end.split(":").map(Number);
-          const windowStartMin = wStartH * 60 + (wStartM || 0);
-          const windowEndMin = wEndH * 60 + (wEndM || 0);
-
-          // Find the first occurrence of this weekday from effectiveStartDate
-          let dayDate = new Date(effectiveStartDate);
-          while (dayDate.getDay() !== dayIndex) {
-            dayDate.setDate(dayDate.getDate() + 1);
-          }
-
-          // Get existing slots for this trainer on this day
-          const trainerDaySlots = (existingCycleSlots || [])
-            .filter(s => {
-              if (s.trainer_id !== ta.trainerId) return false;
-              const slotDate = new Date(s.start_time);
-              return slotDate.getFullYear() === dayDate.getFullYear() &&
-                     slotDate.getMonth() === dayDate.getMonth() &&
-                     slotDate.getDate() === dayDate.getDate();
-            })
-            .map(s => ({
-              startMin: new Date(s.start_time).getHours() * 60 + new Date(s.start_time).getMinutes(),
-              endMin: new Date(s.end_time).getHours() * 60 + new Date(s.end_time).getMinutes(),
-            }))
-            .sort((a, b) => a.startMin - b.startMin);
-
-          // Walk through the window in 60-min increments and fill gaps
-          let cursor = windowStartMin;
-          while (cursor + DEFAULT_FILLER_DURATION <= windowEndMin) {
-            const cursorEnd = cursor + DEFAULT_FILLER_DURATION;
-
-            // Check if this range overlaps with any existing slot
-            const overlapsExisting = trainerDaySlots.some(s =>
-              cursor < s.endMin && cursorEnd > s.startMin
-            );
-
-            if (!overlapsExisting) {
-              const startDt = new Date(dayDate);
-              startDt.setHours(Math.floor(cursor / 60), cursor % 60, 0, 0);
-              const endDt = new Date(dayDate);
-              endDt.setHours(Math.floor(cursorEnd / 60), cursorEnd % 60, 0, 0);
-
-              fillerSlots.push({
-                trainer_id: ta.trainerId,
-                start_time: startDt.toISOString(),
-                end_time: endDt.toISOString(),
-                is_marked_full: false,
-                is_public: false,
-                is_recurring: false,
-                cyclus_id: cycleId,
-                max_participants: cycle.settings?.max_group_size || 4,
-                min_participants: cycle.settings?.min_group_size || null,
-                academy_profile_id: cycle.owner_type === "academy" ? cycle.owner_id : null,
-                location_id: cycle.location_id || null,
-              });
-            }
-
-            cursor += DEFAULT_FILLER_DURATION;
-          }
-        }
-      }
-
-      if (fillerSlots.length > 0) {
-        const { error: fillerError } = await supabase
-          .from("availability_slots")
-          .insert(fillerSlots);
-
-        if (fillerError) {
-          console.error("Error creating filler slots:", fillerError);
-        } else {
-          console.log(`Created ${fillerSlots.length} empty filler slots to complete trainer agendas`);
-          slotsCreated += fillerSlots.length;
-        }
-      }
-    }
+    // Step 3 (gap-filler) removed — Step 1 now creates full coverage with uniform 60-min slots
 
     return new Response(
       JSON.stringify({
