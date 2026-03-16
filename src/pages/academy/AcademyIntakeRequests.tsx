@@ -345,6 +345,19 @@ export default function AcademyIntakeRequests() {
               toast.error(error.message);
             }
           }}
+          onDeleteSlot={async (slotId) => {
+            try {
+              await deleteSlot(slotId);
+              toast.success(t('proposals.slotDeleted', { defaultValue: 'Slot deleted' }));
+              if (selectedCycleId && selectedCycleId !== 'all') {
+                const updatedSlots = await getAvailableSlotsForCycle(selectedCycleId);
+                setScheduleSlots(updatedSlots);
+              }
+              fetchData();
+            } catch (error: any) {
+              toast.error(error.message);
+            }
+          }}
           onUndo={(previousSlots) => {
             setScheduleSlots(previousSlots);
             toast.info(t('proposals.undone', { defaultValue: 'Change undone — save or continue editing' }));
