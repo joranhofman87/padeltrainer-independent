@@ -219,6 +219,8 @@ export default function AcademyIntakeRequests() {
         onApproveAll={() => {}}
         onReset={() => setShowResetConfirm(true)}
         onAddManual={() => setShowAddDialog(true)}
+        onShowOverview={() => setShowOverview(true)}
+        showOverview={showOverview}
         isGenerating={isGenerating}
         isResetting={isResetting}
       />
