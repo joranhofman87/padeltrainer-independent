@@ -110,6 +110,9 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [priceColumns, setPriceColumns] = useState<string[]>(
+    (cycle?.settings as any)?.price_columns ?? []
+  );
   const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
     (cycle?.settings as any)?.cyclus_options ?? []
   );
@@ -246,6 +249,7 @@ export default function CycleForm({
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
+      setPriceColumns((cycle?.settings as any)?.price_columns ?? []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
@@ -338,6 +342,7 @@ export default function CycleForm({
           : undefined,
         duration_options: isRegistration && durationOptions.length > 0 ? durationOptions : undefined,
         available_duration_minutes: isRegistration ? availableDurations.sort((a, b) => a - b) : undefined,
+        price_columns: priceColumns.length > 0 ? priceColumns : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -373,8 +378,8 @@ export default function CycleForm({
         total_price: isEvent ? (values.total_price ? Number(values.total_price) : null) : (isRegistration ? null : (values.total_price ? Number(values.total_price) : null)),
         currency: values.currency,
         terms: terms || null,
-        price_table: priceTable.filter(pt => pt.label && pt.price > 0).length > 0
-          ? priceTable.filter(pt => pt.label && pt.price > 0)
+        price_table: priceTable.filter(pt => pt.label && (pt.price > 0 || (pt.extra_prices && pt.extra_prices.some(ep => ep.price > 0)))).length > 0
+          ? priceTable.filter(pt => pt.label && (pt.price > 0 || (pt.extra_prices && pt.extra_prices.some(ep => ep.price > 0))))
           : null,
       };
 
@@ -953,12 +958,84 @@ export default function CycleForm({
             {/* Price Table / Tarieven — for registrations and events */}
             {(isRegistration || isEvent) && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">{t('form.priceTable', 'Price List (Tarieven)')}</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">{t('form.priceTable', 'Price List (Tarieven)')}</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const newCol = t('form.defaultColumnName', 'Category') + ` ${priceColumns.length + 1}`;
+                      setPriceColumns([...priceColumns, newCol]);
+                      // Add extra_prices entry to existing rows
+                      setPriceTable(priceTable.map(row => ({
+                        ...row,
+                        extra_prices: [...(row.extra_prices || []), { column_name: newCol, price: 0 }],
+                      })));
+                    }}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t('form.addPriceColumn', 'Add price column')}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {t('form.priceTableHelp', 'Add price rows that players can see before applying')}
                 </p>
+
+                {/* Column headers when extra columns exist */}
+                {priceColumns.length > 0 && (
+                  <div className={cn("grid items-end gap-2", `grid-cols-[1fr_repeat(${priceColumns.length + 1},6rem)_auto]`)} style={{ gridTemplateColumns: `1fr repeat(${priceColumns.length + 1}, 6rem) auto` }}>
+                    <span className="text-xs font-medium text-muted-foreground">{t('form.priceLabel', 'Label')}</span>
+                    <span className="text-xs font-medium text-muted-foreground text-center">{t('detail.pricePerSession', 'Price')}</span>
+                    {priceColumns.map((col, ci) => (
+                      <div key={ci} className="flex flex-col gap-0.5">
+                        <Input
+                          value={col}
+                          onChange={(e) => {
+                            const oldName = priceColumns[ci];
+                            const newName = e.target.value;
+                            const updated = [...priceColumns];
+                            updated[ci] = newName;
+                            setPriceColumns(updated);
+                            // Rename in all rows
+                            setPriceTable(priceTable.map(row => ({
+                              ...row,
+                              extra_prices: (row.extra_prices || []).map(ep =>
+                                ep.column_name === oldName ? { ...ep, column_name: newName } : ep
+                              ),
+                            })));
+                          }}
+                          className="h-7 text-xs text-center"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 mx-auto"
+                          onClick={() => {
+                            const colName = priceColumns[ci];
+                            setPriceColumns(priceColumns.filter((_, i) => i !== ci));
+                            setPriceTable(priceTable.map(row => ({
+                              ...row,
+                              extra_prices: (row.extra_prices || []).filter(ep => ep.column_name !== colName),
+                            })));
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                    <span />
+                  </div>
+                )}
+
                 {priceTable.map((row, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
+                  <div
+                    key={index}
+                    className="grid items-center gap-2"
+                    style={{ gridTemplateColumns: priceColumns.length > 0 ? `1fr repeat(${priceColumns.length + 1}, 6rem) auto` : '1fr 8rem auto' }}
+                  >
                     <Input
                       placeholder={t('form.priceLabel', 'e.g. Group lesson (4 players)')}
                       value={row.label}
@@ -968,8 +1045,8 @@ export default function CycleForm({
                         setPriceTable(updated);
                       }}
                     />
-                    <div className="relative w-28">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
                       <Input
                         type="number"
                         min={0}
@@ -981,9 +1058,38 @@ export default function CycleForm({
                           updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
                           setPriceTable(updated);
                         }}
-                        className="pl-7"
+                        className="pl-6 text-sm"
                       />
                     </div>
+                    {priceColumns.map((col, ci) => {
+                      const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
+                      return (
+                        <div key={ci} className="relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="0.00"
+                            value={ep?.price || ''}
+                            onChange={(e) => {
+                              const updated = [...priceTable];
+                              const newPrice = parseFloat(e.target.value) || 0;
+                              const existingExtras = updated[index].extra_prices || [];
+                              const epIdx = existingExtras.findIndex(x => x.column_name === col);
+                              if (epIdx >= 0) {
+                                existingExtras[epIdx] = { ...existingExtras[epIdx], price: newPrice };
+                              } else {
+                                existingExtras.push({ column_name: col, price: newPrice });
+                              }
+                              updated[index] = { ...updated[index], extra_prices: existingExtras };
+                              setPriceTable(updated);
+                            }}
+                            className="pl-6 text-sm"
+                          />
+                        </div>
+                      );
+                    })}
                     <Button
                       type="button"
                       variant="ghost"
@@ -998,7 +1104,11 @@ export default function CycleForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setPriceTable([...priceTable, { label: '', price: 0 }])}
+                  onClick={() => setPriceTable([...priceTable, {
+                    label: '',
+                    price: 0,
+                    extra_prices: priceColumns.map(col => ({ column_name: col, price: 0 })),
+                  }])}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addPriceRow', 'Add price row')}

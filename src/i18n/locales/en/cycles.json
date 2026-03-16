@@ -106,7 +106,9 @@
     "availableDurations": "Lesson Durations",
     "availableDurationsHelp": "Which lesson durations can players choose from?",
     "customDurationPlaceholder": "e.g. 75",
-    "addDuration": "Add"
+    "addDuration": "Add",
+    "addPriceColumn": "Add price column",
+    "defaultColumnName": "Category"
   },
   
   "actions": {

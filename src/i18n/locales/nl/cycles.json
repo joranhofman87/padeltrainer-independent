@@ -107,6 +107,8 @@
     "availableDurationsHelp": "Welke lesduren kunnen spelers kiezen?",
     "customDurationPlaceholder": "bijv. 75",
     "addDuration": "Toevoegen",
+    "addPriceColumn": "Prijskolom toevoegen",
+    "defaultColumnName": "Categorie",
     "cyclusOptions": "Cyclus opties",
     "cyclusOptionsHelp": "Definieer verschillende pakketten waar spelers uit kunnen kiezen (bijv. 5, 10 of 15 lessen)",
     "cyclusOptionLabel": "bijv. Cyclus 5 lessen",
