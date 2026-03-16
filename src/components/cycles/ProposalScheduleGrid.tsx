@@ -945,6 +945,8 @@ export default function ProposalScheduleGrid({
       setActiveData({ type: 'player', assignment: data.assignment as Assignment });
     } else if (data.type === 'slot') {
       setActiveData({ type: 'slot', slot: data.slot as SlotWithOccupancy });
+    } else if (data.type === 'unplaced-player') {
+      setActiveData({ type: 'unplaced-player', player: data.player as UnplacedPlayer });
     }
   }, []);
 
