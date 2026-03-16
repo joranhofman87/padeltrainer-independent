@@ -1,29 +1,33 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+# Fix UX: Cycle Selector as Step 1 + Scoped Tab Counts
 
-Implemented on 2026-03-14.
+## Problem 1: Cycle selector feels disconnected
+The dropdown sits alone above the workflow steps. It should be **part of the workflow** — selecting a registration is the first thing a user does.
 
-## What Changed
+**Fix**: Remove the standalone `Select` from the controls area. Instead, make the cycle selector **Step 0** in the `ProposalWorkflowSteps` component — always visible, even before a cycle is selected. The three existing steps (Generate → Review → Approve) shift to steps 2-4. This also removes the need for the separate "select cycle" hint alert.
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+## Problem 2: Tab counts are cross-cycle
+Line 250: `{t('intakeRequests.filters.all')} ({requests.length})` uses the **unfiltered** `requests` array (all cycles). The other tabs use `filteredRequests` which respects the selected cycle. So "All (5)" shows 5 even when a specific cycle only has 2 requests.
 
-## Sanity Content Types Needed in Studio
+**Fix**: All tab counts should use `filteredRequests` (already filtered by `selectedCycleId`). Change:
+- `requests.length` → `filteredRequests.length` for the "All" tab
+- Counts for new/proposed/confirmed/waitlist should also derive from `filteredRequests` (they already do via `newCount`, `proposedCount`, etc. — but those are computed from `filteredRequests` which is correct). Actually looking again, `newCount` etc. are computed from `filteredRequests` on lines 170-173, so those are already correct. Only the "All" tab count on line 250 is wrong.
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+## Files to change
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+### 1. `src/components/cycles/ProposalWorkflowSteps.tsx`
+- Add a new **Step 1: "Select Registration"** with the cycle dropdown embedded inside it
+- Add props: `cycles`, `selectedCycleId`, `onCycleChange`
+- Shift existing steps to 2, 3, 4
+- Step 1 is "completed" once a cycle is selected, "active" otherwise
 
-## What Stays Unchanged
+### 2. `src/pages/academy/AcademyIntakeRequests.tsx`
+- Remove the standalone `Select` dropdown and the "select cycle hint" alert
+- Always render `ProposalWorkflowSteps` (not just when `selectedCycleId !== 'all'`)
+- Pass `cycles`, `selectedCycleId`, `onCycleChange` to the workflow component
+- Fix line 250: `requests.length` → `filteredRequests.length`
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### 3. `src/pages/TrainerIntakeRequests.tsx`
+- Same changes as above (if it has the same pattern)
+
