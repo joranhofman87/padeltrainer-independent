@@ -139,6 +139,11 @@ function isWithinTrainerWindow(
 // ── Draggable Player Chip ──
 
 /** Check if player rating is outside slot's configured range */
+/** Format a rating to always show 1 decimal place */
+function formatRating(r: number): string {
+  return r.toFixed(1);
+}
+
 function isRatingOutOfRange(
   playerRating: number | null | undefined,
   slotMinRating: number | null | undefined,
@@ -198,7 +203,7 @@ function DraggablePlayerChip({
         <span className="font-medium truncate max-w-[90px]">{assignment.player_name}</span>
         {assignment.player_rating != null && (
           <span className={cn('text-[10px]', outOfRange ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
-            {assignment.player_rating}
+            {formatRating(assignment.player_rating)}
           </span>
         )}
         {outOfRange && (
@@ -209,9 +214,9 @@ function DraggablePlayerChip({
             <TooltipContent side="top" className="text-xs max-w-[200px]">
               {t('proposals.ratingOutOfRange', {
                 defaultValue: 'Rating {{rating}} is outside slot range ({{min}}–{{max}})',
-                rating: assignment.player_rating,
-                min: slotMinRating ?? '?',
-                max: slotMaxRating ?? '?',
+                rating: formatRating(assignment.player_rating!),
+                min: slotMinRating != null ? formatRating(slotMinRating) : '?',
+                max: slotMaxRating != null ? formatRating(slotMaxRating) : '?',
               })}
             </TooltipContent>
           </Tooltip>
@@ -407,7 +412,7 @@ function SlotEditPopover({
                       <span className="font-medium truncate">{a.player_name}</span>
                       {a.player_rating != null && (
                         <span className={cn('text-[10px] shrink-0', oor ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
-                          {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+                          {formatRating(a.player_rating)}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
                         </span>
                       )}
                     </div>
@@ -556,7 +561,7 @@ function DraggableSlotCard({
         {(slot.min_rating != null || slot.max_rating != null) && (
           <div className="text-[10px] text-muted-foreground">
             {slot.rating_system ? `${slot.rating_system} ` : ''}
-            {slot.min_rating ?? '?'}–{slot.max_rating ?? '?'}
+            {slot.min_rating != null ? formatRating(slot.min_rating) : '?'}–{slot.max_rating != null ? formatRating(slot.max_rating) : '?'}
           </div>
         )}
 
@@ -666,7 +671,7 @@ function PlayerDragOverlay({ assignment }: { assignment: Assignment }) {
       <GripVertical className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium">{assignment.player_name}</span>
       {assignment.player_rating != null && (
-        <span className="text-muted-foreground text-[10px]">{assignment.player_rating}</span>
+        <span className="text-muted-foreground text-[10px]">{formatRating(assignment.player_rating)}</span>
       )}
       {confScore > 0 && (
         <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5', confClass)}>
@@ -742,7 +747,7 @@ function DraggableUnplacedPlayer({
         <div className="flex flex-wrap gap-1">
           {player.rating != null && (
             <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">
-              {player.rating}{player.rating_system ? ` ${player.rating_system}` : ''}
+              {formatRating(player.rating)}{player.rating_system ? ` ${player.rating_system}` : ''}
             </Badge>
           )}
           {lessonTypes.map(lt => (
@@ -774,7 +779,7 @@ function UnplacedPlayerDragOverlay({ player }: { player: UnplacedPlayer }) {
       <GripVertical className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium">{player.full_name}</span>
       {player.rating != null && (
-        <span className="text-muted-foreground text-[10px]">{player.rating}</span>
+        <span className="text-muted-foreground text-[10px]">{formatRating(player.rating)}</span>
       )}
     </div>
   );
