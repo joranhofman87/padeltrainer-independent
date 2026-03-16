@@ -180,15 +180,6 @@ export default function ProposalWorkflowSteps({
             </div>
           </div>
 
-          {/* Connector line (desktop only, not after last) */}
-          {idx < steps.length - 1 && (
-            <div className="hidden sm:flex items-center self-stretch px-1 pt-4">
-              <div className={cn(
-                'w-10 h-0.5 flex-shrink-0',
-                step.status === 'completed' ? 'bg-primary' : 'bg-muted-foreground/20',
-              )} />
-            </div>
-          )}
         </React.Fragment>
       ))}
     </div>
