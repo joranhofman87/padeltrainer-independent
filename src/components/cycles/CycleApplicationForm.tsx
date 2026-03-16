@@ -616,7 +616,9 @@ export default function CycleApplicationForm({
                       <div>
                         <span className="text-sm font-medium">{opt.label}</span>
                         <p className="text-xs text-muted-foreground">
-                          {opt.number_of_sessions} {t('application.form.lessons', 'lessen')} · {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
+                          {opt.number_of_sessions} {t('application.form.lessons', 'lessen')}
+                          {opt.number_of_weeks ? ` · ${opt.number_of_weeks} ${t('application.form.weeks', 'weken')}` : ''}
+                          {' · '}{new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
                         </p>
                       </div>
                     </div>
