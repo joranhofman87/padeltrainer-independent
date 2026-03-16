@@ -747,7 +747,7 @@ function DraggableUnplacedPlayer({
         <div className="flex flex-wrap gap-1">
           {player.rating != null && (
             <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">
-              {player.rating}{player.rating_system ? ` ${player.rating_system}` : ''}
+              {formatRating(player.rating)}{player.rating_system ? ` ${player.rating_system}` : ''}
             </Badge>
           )}
           {lessonTypes.map(lt => (
