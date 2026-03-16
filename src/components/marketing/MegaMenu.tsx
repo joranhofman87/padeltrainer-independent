@@ -55,8 +55,8 @@ export function MegaMenu({ label, columns, onNavigate }: MegaMenuProps) {
               transition={{ duration: 0.15 }}
               className="absolute left-1/2 top-[calc(100%+0.75rem)] z-50 -translate-x-1/2"
             >
-              <div className="rounded-xl border bg-popover p-6 shadow-xl min-w-[420px]">
-                <div className={`grid gap-8 ${columns.length >= 3 ? 'grid-cols-3 min-w-[560px]' : columns.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className="rounded-xl border bg-popover p-6 shadow-xl">
+                <div className={`grid gap-10 ${columns.length >= 3 ? 'grid-cols-3 min-w-[680px]' : columns.length === 2 ? 'grid-cols-2 min-w-[520px]' : 'grid-cols-1 min-w-[280px]'}`}>
                   {columns.map((col) => (
                     <div key={col.title}>
                       <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
