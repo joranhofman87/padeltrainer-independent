@@ -210,6 +210,7 @@ export function DomainRouter() {
           <Route path="cyclus" element={<TrainerCyclus />} />
           <Route path="cycles" element={<TrainerCycles />} />
           <Route path="intake-requests" element={<TrainerIntakeRequests />} />
+          <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
           <Route path="open-slots" element={<OpenSlots />} />
           
