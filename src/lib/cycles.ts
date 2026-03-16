@@ -94,6 +94,8 @@ export interface CycleSettings {
   success_message?: string;
   // Custom text included in the confirmation email sent after registration
   confirmation_email_text?: string;
+  // Cyclus options (packages) for registration
+  cyclus_options?: CyclusOption[];
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility
