@@ -223,6 +223,14 @@ export default function CoachPage() {
               )}
             </div>
           </div>
+
+          {/* Disclaimer */}
+          <div className="flex items-start gap-3 rounded-lg bg-muted/50 border border-border p-3 mt-6 text-sm text-muted-foreground">
+            <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+            <p>
+              This creator is independently featured on PadelTrainer.ai for the quality of their content. They are not employed by or formally affiliated with our platform.
+            </p>
+          </div>
         </motion.div>
 
         {/* ── About Section ── */}
