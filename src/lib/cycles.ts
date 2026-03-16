@@ -968,6 +968,9 @@ export interface SlotWithOccupancy {
   trainer_name: string;
   trainer_avatar: string | null;
   max_participants: number | null;
+  min_rating: number | null;
+  max_rating: number | null;
+  rating_system: string | null;
   cyclus_name: string | null;
   is_blocked?: boolean;
   current_assignments: Array<{
