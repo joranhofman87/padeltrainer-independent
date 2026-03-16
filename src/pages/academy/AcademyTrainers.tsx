@@ -292,15 +292,6 @@ export default function AcademyTrainers() {
                             <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {trainer.trainer_profile?.hourly_rate ? (
-                            <span className="font-semibold text-primary">
-                              €{trainer.trainer_profile.hourly_rate}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
                         <TableCell className="text-center">
                           <TooltipProvider>
                             <Tooltip>
