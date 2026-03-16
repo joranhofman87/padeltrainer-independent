@@ -253,7 +253,7 @@ export default function AcademyTrainers() {
                   <TableRow>
                     <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
                      <TableHead>{t('common:locations.title', 'Locations')}</TableHead>
-                     <TableHead className="text-right">{t('trainers.hourlyRate', 'Rate')}</TableHead>
+                     
                      <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
                      <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
                   </TableRow>
@@ -290,15 +290,6 @@ export default function AcademyTrainers() {
                             </div>
                           ) : (
                             <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {trainer.trainer_profile?.hourly_rate ? (
-                            <span className="font-semibold text-primary">
-                              €{trainer.trainer_profile.hourly_rate}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
