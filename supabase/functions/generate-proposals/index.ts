@@ -713,23 +713,8 @@ Deno.serve(async (req) => {
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
-      const requestDuration = request.preferred_duration_minutes || 60;
 
-      // STRICT DURATION FILTER: Only consider slots matching the player's preferred duration
-      const durationMatchedSlots = slots.filter(slot => {
-        const duration = slotDurationMinutes(slot);
-        return duration === requestDuration;
-      });
-
-      if (durationMatchedSlots.length === 0) {
-        skipped++;
-        await supabase
-          .from("intake_requests")
-          .update({ skip_reason: "no_matching_slots" })
-          .eq("id", request.id);
-        errors.push(`No slots matching ${requestDuration}min duration for request ${request.id}`);
-        continue;
-      }
+      // All slots are now uniform 60-min; no duration filter needed
 
       // STRICT AVAILABILITY FILTER: Only consider slots that match player's time windows
       const matchingSlots = durationMatchedSlots.filter((slot) => {
