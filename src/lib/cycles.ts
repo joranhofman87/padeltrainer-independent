@@ -1420,13 +1420,13 @@ export async function deleteSlot(slotId: string): Promise<void> {
 
 // Assign an unplaced player to a slot (creates proposed_assignment, updates intake request status)
 export async function assignPlayerToSlot(intakeRequestId: string, slotId: string): Promise<void> {
-  // Get the intake request to find player info
-  const { data: request, error: reqErr } = await supabase
-    .from('intake_requests')
-    .select('full_name, rating, rating_system')
-    .eq('id', intakeRequestId)
+  // Get the slot to find the trainer_id
+  const { data: slot, error: slotErr } = await supabase
+    .from('availability_slots')
+    .select('trainer_id')
+    .eq('id', slotId)
     .single();
-  if (reqErr) throw reqErr;
+  if (slotErr) throw slotErr;
 
   // Insert a proposed_assignment
   const { error: insertErr } = await supabase
@@ -1434,6 +1434,7 @@ export async function assignPlayerToSlot(intakeRequestId: string, slotId: string
     .insert({
       intake_request_id: intakeRequestId,
       slot_id: slotId,
+      trainer_id: slot.trainer_id,
       confidence_score: 0,
       rationale: [{ type: 'manual_assignment', score: 0, detail: 'Manually assigned by trainer' }],
     });
