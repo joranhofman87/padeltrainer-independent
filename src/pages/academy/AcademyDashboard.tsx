@@ -29,6 +29,7 @@ const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 export default function AcademyDashboard() {
   const { t, i18n } = useTranslation('academy');
   const { t: tTrainer } = useTranslation('trainer');
+  const { t: tCycles } = useTranslation('cycles');
   const navigate = useNavigate();
   const { activeAcademy, isTrialing, trialDaysRemaining, hasActiveSubscription, subscription } = useAcademyContext();
 
@@ -437,7 +438,7 @@ export default function AcademyDashboard() {
                       <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
                       <TableCell className="py-2">
                         <Badge variant={reg.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
-                          {reg.status}
+                          {tCycles(`intakeRequests.filters.${reg.status}`, reg.status)}
                         </Badge>
                       </TableCell>
                     </TableRow>
