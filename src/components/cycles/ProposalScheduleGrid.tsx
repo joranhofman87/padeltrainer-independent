@@ -391,27 +391,34 @@ function SlotEditPopover({
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 {t('proposals.players', { defaultValue: 'Players' })} ({slot.current_assignments.length})
               </p>
-              {slot.current_assignments.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
-                  className="flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium truncate">{a.player_name}</span>
-                    {a.player_rating != null && (
-                      <span className="text-muted-foreground text-[10px] shrink-0">
-                        {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+              {slot.current_assignments.map(a => {
+                const oor = isRatingOutOfRange(a.player_rating, slot.min_rating, slot.max_rating);
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => { onPlayerClick?.(a.intake_request_id); setOpen(false); }}
+                    className={cn(
+                      'flex items-center justify-between w-full rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors',
+                      oor && 'bg-amber-50 dark:bg-amber-950/30',
+                    )}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {oor && <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />}
+                      <span className="font-medium truncate">{a.player_name}</span>
+                      {a.player_rating != null && (
+                        <span className={cn('text-[10px] shrink-0', oor ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-muted-foreground')}>
+                          {a.player_rating}{a.player_rating_system ? ` ${a.player_rating_system}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    {a.confidence_score != null && a.confidence_score > 0 && (
+                      <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
+                        {a.confidence_score}%
                       </span>
                     )}
-                  </div>
-                  {a.confidence_score != null && a.confidence_score > 0 && (
-                    <span className={cn('font-semibold text-[10px] shrink-0', confScoreColor(a.confidence_score))}>
-                      {a.confidence_score}%
-                    </span>
-                  )}
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
