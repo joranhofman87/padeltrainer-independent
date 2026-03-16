@@ -124,7 +124,7 @@ export default function ProposalOverviewPanel({
             <span className="text-muted-foreground">{t('workflow.overviewAssigned', { defaultValue: 'players assigned' })}</span>
           </div>
           {totalUnassigned > 0 && (
-            <div className="flex items-center gap-2 text-sm text-orange-600">
+            <div className="flex items-center gap-2 text-sm text-destructive">
               <Clock className="h-4 w-4" />
               <span className="font-medium">{totalUnassigned}</span>
               <span>{t('workflow.overviewEmpty', { defaultValue: 'empty slots' })}</span>
