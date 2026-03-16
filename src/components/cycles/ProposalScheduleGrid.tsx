@@ -14,7 +14,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CalendarOff, Clock, GripVertical, Move, Undo2 } from 'lucide-react';
+import { Users, CalendarOff, Clock, GripVertical, Move, Undo2, Lock } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { type SlotWithOccupancy, type TrainerAvailabilityWindow } from '@/lib/cycles';
 
@@ -260,6 +261,44 @@ function DraggableSlotCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Blocked Slot Card (non-interactive) ──
+
+function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
+  const { t } = useTranslation('cycles');
+  const duration = getDurationMinutes(slot.start_time, slot.end_time);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Card className="border-l-4 border-l-muted-foreground/30 h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
+            <CardContent className="p-2.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Lock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {getTimeRange(slot.start_time, slot.end_time)}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
+                  <Clock className="h-2.5 w-2.5" />
+                  {duration}'
+                </Badge>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic">
+                {t('proposals.existingLesson', { defaultValue: 'Existing lesson' })}
+              </p>
+            </CardContent>
+          </Card>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{t('proposals.blockedSlotTooltip', { defaultValue: 'This time is already booked in the trainer\'s agenda' })}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -575,7 +614,7 @@ export default function ProposalScheduleGrid({
       }
 
       if (!resolvedSlot || resolvedSlot.id === sourceSlotId) return;
-
+      if (resolvedSlot.is_blocked) return; // Can't drop onto blocked slots
       // #3: Player duration compatibility check
       // Find the source slot to compare durations
       const sourceSlot = daySlots.find(s => s.id === sourceSlotId);
@@ -640,6 +679,11 @@ export default function ProposalScheduleGrid({
       });
 
       if (overlappingSlot) {
+        // Can't swap with blocked slots
+        if (overlappingSlot.is_blocked) {
+          toast.warning(t('proposals.slotBlocked', { defaultValue: 'Cannot move here — trainer has an existing lesson' }));
+          return;
+        }
         // If the overlapping slot is empty (no players), allow swap
         if (overlappingSlot.current_assignments.length === 0 && onSwapSlots) {
           // #2: Duration validation on swap
@@ -819,13 +863,15 @@ export default function ProposalScheduleGrid({
                         className="bg-background p-0.5"
                       >
                         <DroppableCell cellId={cellId} hasSlot={!!slot}>
-                          {slot && (
+                          {slot && slot.is_blocked ? (
+                            <BlockedSlotCard slot={slot} />
+                          ) : slot ? (
                             <DraggableSlotCard
                               slot={slot}
                               onPlayerClick={onPlayerClick}
                               canDragSlot={canDragSlot}
                             />
-                          )}
+                          ) : null}
                         </DroppableCell>
                       </div>
                     );
