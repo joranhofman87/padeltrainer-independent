@@ -130,8 +130,8 @@ export default function CoachPage() {
   return (
     <MarketingLayout>
       <SEO
-        title={coach.seo?.titleTag || `${coach.name} — Padel Coach`}
-        description={coach.seo?.metaDescription || coach.shortTagline || coach.bio || `Learn from ${coach.name} on PadelTrainer.ai`}
+        title={coach.seo?.titleTag || `${coach.name} — Padel Content Creator`}
+        description={coach.seo?.metaDescription || coach.shortTagline || coach.bio || `Watch quality padel content by ${coach.name}, featured on PadelTrainer.ai`}
         url={`/padel-coaches/${slug}`}
         type="article"
         image={coach.profileImageUrl || undefined}
