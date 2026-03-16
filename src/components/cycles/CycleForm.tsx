@@ -384,7 +384,7 @@ export default function CycleForm({
 
       toast.success(isEdit ? 'Cycle updated' : 'Cycle created');
       onSuccess?.(result);
-      onOpenChange(false);
+      // Navigation handled by onSuccess callback
     } catch (error: any) {
       logger.error('Error saving cycle', error instanceof Error ? error : new Error(String(error)), { component: 'CycleForm' });
       toast.error(error.message || 'Failed to save cycle');
