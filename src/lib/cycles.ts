@@ -666,6 +666,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     location_id: input.location_id || null,
     notes: input.notes || null,
     consent_given: input.consent_given,
+    metadata: (input.metadata || {}) as unknown as Json,
     status: 'new' as const,
   };
   
