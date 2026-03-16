@@ -320,7 +320,7 @@ function DroppableCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
+        'h-full min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
         !hasSlot && 'border-border/30',
         isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
         isOver && hasSlot && 'ring-1 ring-primary/30',
@@ -835,18 +835,8 @@ export default function ProposalScheduleGrid({
 
                     const occupyingSlotId = occupiedCells.get(cellKey);
                     if (occupyingSlotId) {
-                      const cellId = `cell__${trainer.id}__${rowMinute}`;
-                      return (
-                        <div
-                          key={cellKey}
-                          style={{ gridRow, gridColumn }}
-                          className="bg-background p-0.5"
-                        >
-                          <DroppableCell cellId={cellId} hasSlot={true}>
-                            {/* Occupied by slot spanning from above */}
-                          </DroppableCell>
-                        </div>
-                      );
+                      // Skip rendering — the spanning slot cell above covers this row
+                      return null;
                     }
 
                     const slot = slotLookup.get(cellKey);
