@@ -44,7 +44,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow } from '@/lib/cycles';
+import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group', 'kids'] as const;
@@ -109,6 +109,9 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
+    (cycle?.settings as any)?.cyclus_options ?? []
+  );
   const [customLessonType1, setCustomLessonType1] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
   );
@@ -233,6 +236,7 @@ export default function CycleForm({
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
+      setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
     }
   }, [cycle, open]);
 
@@ -316,6 +320,9 @@ export default function CycleForm({
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
         success_message: values.success_message?.trim() || undefined,
         confirmation_email_text: values.confirmation_email_text?.trim() || undefined,
+        cyclus_options: isRegistration && cyclusOptions.filter(co => co.label && co.number_of_sessions > 0).length > 0
+          ? cyclusOptions.filter(co => co.label && co.number_of_sessions > 0)
+          : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -984,6 +991,96 @@ export default function CycleForm({
               </div>
             )}
 
+            {/* Cyclus Options builder — for registrations only */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.cyclusOptions', 'Cyclus Options')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('form.cyclusOptionsHelp', 'Define different packages players can choose from (e.g. 5, 10, or 15 lessons)')}
+                </p>
+                {cyclusOptions.map((opt, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_5rem_5rem_5rem_auto] items-center gap-2">
+                    <Input
+                      placeholder={t('form.cyclusOptionLabel', 'e.g. Cyclus 5 lessen')}
+                      value={opt.label}
+                      onChange={(e) => {
+                        const updated = [...cyclusOptions];
+                        updated[index] = { ...updated[index], label: e.target.value };
+                        setCyclusOptions(updated);
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="#"
+                      value={opt.number_of_sessions || ''}
+                      onChange={(e) => {
+                        const updated = [...cyclusOptions];
+                        const sessions = parseInt(e.target.value) || 0;
+                        updated[index] = {
+                          ...updated[index],
+                          number_of_sessions: sessions,
+                          total_price: Math.round(sessions * updated[index].price_per_session * 100) / 100,
+                        };
+                        setCyclusOptions(updated);
+                      }}
+                      title={t('form.numberOfSessions', 'Number of sessions')}
+                    />
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={opt.price_per_session || ''}
+                        onChange={(e) => {
+                          const updated = [...cyclusOptions];
+                          const pps = parseFloat(e.target.value) || 0;
+                          updated[index] = {
+                            ...updated[index],
+                            price_per_session: pps,
+                            total_price: Math.round(updated[index].number_of_sessions * pps * 100) / 100,
+                          };
+                          setCyclusOptions(updated);
+                        }}
+                        className="pl-6"
+                        title={t('form.pricePerSession')}
+                      />
+                    </div>
+                    <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
+                      €{(opt.total_price || 0).toFixed(2)}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setCyclusOptions(cyclusOptions.filter((_, i) => i !== index))}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                {cyclusOptions.length > 0 && (
+                  <div className="grid grid-cols-[1fr_5rem_5rem_5rem_auto] items-center gap-2 text-xs text-muted-foreground">
+                    <span>{t('form.cyclusOptionLabel', 'Label')}</span>
+                    <span>{t('form.sessions', 'Sessions')}</span>
+                    <span>{t('form.pricePerSession', 'Per les')}</span>
+                    <span className="text-right">{t('form.totalPrice', 'Totaal')}</span>
+                    <span />
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCyclusOptions([...cyclusOptions, { label: '', number_of_sessions: 0, price_per_session: 0, total_price: 0 }])}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  {t('form.addCyclusOption', 'Add cyclus option')}
+                </Button>
+              </div>
+            )}
 
             {/* Event: Pricing + Payment Method */}
             {isEvent && (

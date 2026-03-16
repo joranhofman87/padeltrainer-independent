@@ -57,6 +57,13 @@ export interface ExtraCost {
   price: number;
 }
 
+export interface CyclusOption {
+  label: string;
+  number_of_sessions: number;
+  price_per_session: number;
+  total_price: number;
+}
+
 export type EventPaymentMethod = 'online' | 'cash' | 'both';
 
 export interface CycleSettings {
@@ -87,6 +94,8 @@ export interface CycleSettings {
   success_message?: string;
   // Custom text included in the confirmation email sent after registration
   confirmation_email_text?: string;
+  // Cyclus options (packages) for registration
+  cyclus_options?: CyclusOption[];
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility
@@ -119,6 +128,7 @@ export interface IntakeRequest {
   consent_given: boolean;
   status: 'new' | 'proposed' | 'confirmed' | 'rejected' | 'waitlist';
   skip_reason?: 'no_matching_slots' | 'all_slots_full' | 'no_available_trainers' | 'rating_outside_trainer_range' | 'rating_spread_exceeded' | null;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -197,6 +207,7 @@ export interface IntakeRequestInput {
   location_id?: string;
   notes?: string;
   consent_given?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CycleInput {
@@ -655,6 +666,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     location_id: input.location_id || null,
     notes: input.notes || null,
     consent_given: input.consent_given,
+    metadata: (input.metadata || {}) as unknown as Json,
     status: 'new' as const,
   };
   

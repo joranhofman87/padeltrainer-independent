@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod } from '@/lib/cycles';
+import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod, type CyclusOption } from '@/lib/cycles';
 import { sendEmail } from '@/lib/email';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -91,9 +91,12 @@ export default function CycleApplicationForm({
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'cash'>('online');
+  const [selectedCyclusOption, setSelectedCyclusOption] = useState<CyclusOption | null>(null);
   
   const isEvent = cycle.type === 'event';
   const eventPaymentMethods = (cycle.settings as any)?.payment_methods as EventPaymentMethod | undefined;
+  const cyclusOptions = ((cycle.settings as any)?.cyclus_options as CyclusOption[] | undefined) || [];
+  const hasCyclusOptions = cyclusOptions.length > 0;
   
   // Load rating systems
   useEffect(() => {
@@ -223,6 +226,7 @@ export default function CycleApplicationForm({
             notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
             language: i18n.language,
+            metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
           },
         });
 
@@ -248,6 +252,7 @@ export default function CycleApplicationForm({
           location_id: values.location_id || undefined,
           notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
           consent_given: values.consent,
+          metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
         });
 
         // Send registration confirmation email (non-blocking)
@@ -579,6 +584,48 @@ export default function CycleApplicationForm({
                   {new Intl.NumberFormat('nl-NL', { style: 'currency', currency: cycle.currency || 'EUR' }).format(cycle.total_price)}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Cyclus Option Selector */}
+        {hasCyclusOptions && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{t('application.form.chooseCyclus', 'Choose your cyclus')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {cyclusOptions.map((opt, i) => {
+                const isSelected = selectedCyclusOption?.label === opt.label && selectedCyclusOption?.number_of_sessions === opt.number_of_sessions;
+                return (
+                  <label
+                    key={i}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border p-4 cursor-pointer transition-colors",
+                      isSelected && "border-primary bg-primary/5"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="cyclus_option"
+                        checked={isSelected}
+                        onChange={() => setSelectedCyclusOption(opt)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="text-sm font-medium">{opt.label}</span>
+                        <p className="text-xs text-muted-foreground">
+                          {opt.number_of_sessions} {t('application.form.lessons', 'lessen')} · {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.price_per_session)} {t('application.form.perLesson', 'per les')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-semibold">
+                      {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(opt.total_price)}
+                    </span>
+                  </label>
+                );
+              })}
             </CardContent>
           </Card>
         )}
