@@ -1,34 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Show Duration-Based Pricing Table
+## Status: ✅ COMPLETED
 
-The current price table shows cyclus options as fixed packages. The user wants a new table layout that combines **lesson types** (from `price_table`) with **duration options** to show calculated totals per duration.
+Implemented on 2026-03-14.
 
-### Target layout
+## What Changed
 
-```text
-| Type    | Per les  | 5 weken | 10 weken | 15 weken |
-|---------|----------|---------|----------|----------|
-| Privé   | €35.00   | €175.00 | €350.00  | €525.00  |
-| Duo     | €25.00   | €125.00 | €250.00  | €375.00  |
-```
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Columns are dynamic based on `settings.duration_options`.
+## Sanity Content Types Needed in Studio
 
-### Changes
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**`src/components/cycles/CycleDetailDisplay.tsx`**
-- Replace the current cyclus options table and the separate duration badges with a single combined pricing table when both `price_table` (or `price_per_session`) and `duration_options` exist.
-- Table headers: Type | Per les | {N} weken (for each duration option, sorted ascending).
-- Each row: label from `price_table`, price per lesson, and `price × weeks` for each duration column.
-- If no `price_table` but a single `price_per_session` exists on the cycle, show one row using cycle name/type as label.
-- Keep the old cyclus options table as fallback when `duration_options` is empty.
-- Remove the standalone duration badges section (now integrated into the table).
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**`src/i18n/locales/nl/cycles.json`**
-- Add `detail.weeksColumn` key for the column header pattern (e.g. "{{count}} weken").
+## What Stays Unchanged
 
-### Files to modify
-- `src/components/cycles/CycleDetailDisplay.tsx`
-- `src/i18n/locales/nl/cycles.json`
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

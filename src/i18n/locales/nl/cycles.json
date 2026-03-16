@@ -114,6 +114,19 @@
     "addDurationOption": "Optie toevoegen",
     "weeksOption": "{{count}} weken"
   },
+
+  "detail": {
+    "priceTable": "Tarieven",
+    "type": "Type",
+    "pricePerSession": "Per les",
+    "totalPrice": "Totaal",
+    "sessions": "Lessen",
+    "weeks": "weken",
+    "weeksColumn": "{{count}} weken",
+    "cyclusOption": "Optie",
+    "durationOptions": "Beschikbare duur",
+    "terms": "Voorwaarden"
+  },
   
   "actions": {
     "openEnrollment": "Inschrijving Openen",

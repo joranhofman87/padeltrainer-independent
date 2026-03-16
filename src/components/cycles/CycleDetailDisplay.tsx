@@ -90,8 +90,43 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
         </div>
       )}
 
-      {/* Simple Price Table (fallback when no cyclus options) */}
-      {hasPriceTable && (
+      {/* Price Table with Duration Columns */}
+      {hasPriceTable && hasDurationOptions && (
+        <div className="rounded-lg border overflow-hidden">
+          <div className="bg-muted/50 px-3 py-2 text-sm font-medium">
+            {t('detail.priceTable', 'Tarieven')}
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30">
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('detail.type', 'Type')}</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">{t('detail.pricePerSession', 'Per les')}</th>
+                {[...durationOptions].sort((a, b) => a - b).map(weeks => (
+                  <th key={weeks} className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                    {t('detail.weeksColumn', '{{count}} weken', { count: weeks })}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {priceTable!.map((row, i) => (
+                <tr key={i} className="border-t">
+                  <td className="px-3 py-2">{row.label}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{currencyFormatter.format(row.price)}</td>
+                  {[...durationOptions].sort((a, b) => a - b).map(weeks => (
+                    <td key={weeks} className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                      {currencyFormatter.format(row.price * weeks)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Simple Price Table (fallback when no duration options) */}
+      {hasPriceTable && !hasDurationOptions && (
         <div className="rounded-lg border overflow-hidden">
           <div className="bg-muted/50 px-3 py-2 text-sm font-medium">
             {t('detail.priceTable', 'Tarieven')}
@@ -111,11 +146,11 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
         </div>
       )}
 
-      {/* Duration Options */}
-      {hasDurationOptions && (
+      {/* Duration Options (standalone, only when no price table) */}
+      {!hasPriceTable && hasDurationOptions && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
           <span className="font-medium text-foreground">{t('detail.durationOptions', 'Beschikbare duur')}:</span>
-          {durationOptions.sort((a, b) => a - b).map((weeks, i) => (
+          {[...durationOptions].sort((a, b) => a - b).map(weeks => (
             <span key={weeks} className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
               {weeks} {t('detail.weeks', 'weken')}
             </span>
