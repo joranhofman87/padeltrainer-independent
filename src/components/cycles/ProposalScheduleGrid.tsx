@@ -139,6 +139,11 @@ function isWithinTrainerWindow(
 // ── Draggable Player Chip ──
 
 /** Check if player rating is outside slot's configured range */
+/** Format a rating to always show 1 decimal place */
+function formatRating(r: number): string {
+  return r.toFixed(1);
+}
+
 function isRatingOutOfRange(
   playerRating: number | null | undefined,
   slotMinRating: number | null | undefined,
