@@ -265,7 +265,9 @@
       "pricePerLesson": "Prijs per les",
       "total": "Totaal",
       "weeksCount_one": "{{count}} week",
-      "weeksCount_other": "{{count}} weken"
+      "weeksCount_other": "{{count}} weken",
+      "priceIndication": "Prijsindicatie",
+      "indicativeNote": "Indicatieve prijzen — bevestigd na inschrijving"
     },
     
     "success": {
