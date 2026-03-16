@@ -241,6 +241,7 @@ export default function CycleForm({
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
+      setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
     }
   }, [cycle, open]);
 
