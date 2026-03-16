@@ -84,7 +84,7 @@ function MockRegistration({ t }: { t: (k: string, opts?: Record<string, unknown>
   );
 }
 
-function MockPayments({ t }: { t: (k: string) => string }) {
+function MockPayments({ t }: { t: (k: string, opts?: Record<string, unknown>) => string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
