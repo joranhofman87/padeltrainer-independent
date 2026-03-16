@@ -57,6 +57,13 @@ export interface ExtraCost {
   price: number;
 }
 
+export interface CyclusOption {
+  label: string;
+  number_of_sessions: number;
+  price_per_session: number;
+  total_price: number;
+}
+
 export type EventPaymentMethod = 'online' | 'cash' | 'both';
 
 export interface CycleSettings {
