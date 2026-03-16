@@ -714,8 +714,12 @@ Deno.serve(async (req) => {
     // Process each request
     for (let i = 0; i < requests.length; i++) {
       const request = requests[i] as IntakeRequest;
+      const preferredWeeks = request.metadata?.preferred_number_of_weeks as number | undefined;
 
       // All slots are now uniform 60-min; no duration filter needed
+      if (preferredWeeks) {
+        console.log(`Request ${request.id} (${request.full_name}) prefers ${preferredWeeks} weeks`);
+      }
 
       const matchingSlots = slots.filter((slot) => {
         return request.preferred_time_windows.some((tw) =>
