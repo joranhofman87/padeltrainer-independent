@@ -779,7 +779,7 @@ function UnplacedPlayerDragOverlay({ player }: { player: UnplacedPlayer }) {
       <GripVertical className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium">{player.full_name}</span>
       {player.rating != null && (
-        <span className="text-muted-foreground text-[10px]">{player.rating}</span>
+        <span className="text-muted-foreground text-[10px]">{formatRating(player.rating)}</span>
       )}
     </div>
   );
