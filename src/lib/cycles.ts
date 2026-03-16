@@ -99,6 +99,8 @@ export interface CycleSettings {
   cyclus_options?: CyclusOption[];
   // Duration options (in weeks) players can choose from
   duration_options?: number[];
+  // Available lesson duration options (in minutes) players can choose from
+  available_duration_minutes?: number[];
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility

@@ -697,20 +697,24 @@ export default function CycleApplicationForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('application.form.preferredDuration')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={String(field.value)}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {DURATIONS.map(d => (
-                        <SelectItem key={d} value={String(d)}>
-                          {d} min
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {effectiveDurations.length === 1 ? (
+                    <Input value={`${effectiveDurations[0]} min`} disabled className="bg-muted" />
+                  ) : (
+                    <Select onValueChange={field.onChange} value={String(field.value)}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {effectiveDurations.map(d => (
+                          <SelectItem key={d} value={String(d)}>
+                            {d} min
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

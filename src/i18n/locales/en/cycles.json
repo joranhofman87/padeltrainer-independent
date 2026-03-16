@@ -102,7 +102,11 @@
     "confirmationEmailTextPlaceholder": "e.g. Training starts on March 1st. Please bring your own racket.",
     "confirmationEmailTextHelp": "This text is included in the confirmation email sent to players after they register. Leave empty to send a standard confirmation.",
     "registrationAssignedTrainerHelp": "The trainer who will give the lessons for this registration",
-    "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration"
+    "registrationApplicableTrainersHelp": "Which trainers can be assigned to this registration",
+    "availableDurations": "Lesson Durations",
+    "availableDurationsHelp": "Which lesson durations can players choose from?",
+    "customDurationPlaceholder": "e.g. 75",
+    "addDuration": "Add"
   },
   
   "actions": {

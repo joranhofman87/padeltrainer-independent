@@ -1580,6 +1580,77 @@ export default function CycleForm({
             />
             )}
 
+            {/* Available Lesson Durations - for registrations */}
+            {isRegistration && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('form.availableDurations', 'Lesson Durations')}</Label>
+                <FormDescription className="text-xs">
+                  {t('form.availableDurationsHelp', 'Which lesson durations can players choose from?')}
+                </FormDescription>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {STANDARD_DURATIONS.map(d => (
+                    <label key={d} className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={availableDurations.includes(d)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setAvailableDurations(prev => [...prev, d]);
+                          } else {
+                            setAvailableDurations(prev => prev.filter(v => v !== d));
+                          }
+                        }}
+                      />
+                      <span className="text-sm">{d} min</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <Input
+                    type="number"
+                    min={5}
+                    max={300}
+                    step={5}
+                    placeholder={t('form.customDurationPlaceholder', 'e.g. 75')}
+                    value={customDurationInput}
+                    onChange={(e) => setCustomDurationInput(e.target.value ? Number(e.target.value) : '')}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">min</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!customDurationInput || availableDurations.includes(Number(customDurationInput))}
+                    onClick={() => {
+                      if (customDurationInput && !availableDurations.includes(Number(customDurationInput))) {
+                        setAvailableDurations(prev => [...prev, Number(customDurationInput)]);
+                        setCustomDurationInput('');
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {t('form.addDuration', 'Add')}
+                  </Button>
+                </div>
+                {availableDurations.filter(d => !(STANDARD_DURATIONS as readonly number[]).includes(d)).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {availableDurations.filter(d => !(STANDARD_DURATIONS as readonly number[]).includes(d)).sort((a, b) => a - b).map(d => (
+                      <Badge key={d} variant="secondary" className="gap-1">
+                        {d} min
+                        <button
+                          type="button"
+                          className="ml-1 hover:text-destructive"
+                          onClick={() => setAvailableDurations(prev => prev.filter(v => v !== d))}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {ownerType === 'academy' && isRegistration && (
               <FormField
                 control={form.control}
