@@ -30,6 +30,13 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
   const hasCyclusOptions = cyclusOptions.length > 0;
   const hasDurationOptions = durationOptions.length > 0;
   const hasPriceTable = !hasCyclusOptions && priceTable && priceTable.length > 0;
+
+  // Compute number of weeks from cycle dates as fallback
+  const numberOfWeeks = useMemo(() => {
+    if (hasDurationOptions) return 0; // duration options handle their own columns
+    if (!cycle.start_date || !cycle.end_date) return 0;
+    return Math.max(1, Math.round(differenceInWeeks(new Date(cycle.end_date), new Date(cycle.start_date))));
+  }, [cycle.start_date, cycle.end_date, hasDurationOptions]);
   const hasTerms = !!cycle.terms;
   const hasLocation = !hideLocation && !!cycle.location;
   const hasDescription = !!cycle.description;
