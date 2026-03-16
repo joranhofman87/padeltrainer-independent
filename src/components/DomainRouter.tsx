@@ -276,6 +276,7 @@ export function DomainRouter() {
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />
+          <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<AcademyWaitingList />} />
           <Route path="settings" element={<AcademySettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />
