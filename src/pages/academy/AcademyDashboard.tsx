@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
+import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { useQuery } from '@tanstack/react-query';
 
@@ -392,7 +393,7 @@ export default function AcademyDashboard() {
                             <span>{cyclusName} <span className="text-xs">({booking.sessionCount} {booking.sessionCount === 1 ? tTrainer('dashboard.session', 'session') : tTrainer('dashboard.sessions', 'sessions')})</span></span>
                           ) : '—'}
                         </TableCell>
-                        <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM')}</TableCell>
+                        <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</TableCell>
                         <TableCell className="py-2">
                           <Badge variant={booking.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
                             {booking.payment_status === 'paid' && (booking as any).paid_externally
@@ -435,7 +436,7 @@ export default function AcademyDashboard() {
                   {recentRegistrations.map(reg => (
                     <TableRow key={reg.id}>
                       <TableCell className="text-sm py-2">{reg.full_name}</TableCell>
-                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM')}</TableCell>
+                      <TableCell className="text-sm py-2 text-muted-foreground">{format(new Date(reg.created_at), 'dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</TableCell>
                       <TableCell className="py-2">
                         <Badge variant={reg.status === 'confirmed' ? 'default' : 'secondary'} className="text-xs">
                           {tCycles(`intakeRequests.filters.${reg.status}`, reg.status)}
@@ -479,7 +480,7 @@ export default function AcademyDashboard() {
                         {slot.sessionCount} {slot.sessionCount === 1 ? tTrainer('dashboard.session', 'session') : tTrainer('dashboard.sessions', 'sessions')}
                       </TableCell>
                       <TableCell className="text-sm py-2 text-muted-foreground">
-                        <div>{format(new Date(slot.start_time), 'EEE dd MMM')}</div>
+                        <div>{format(new Date(slot.start_time), 'EEE dd MMM', { locale: i18n.language === 'nl' ? nl : enUS })}</div>
                         <div className="text-xs">{format(new Date(slot.start_time), 'HH:mm')}</div>
                       </TableCell>
                     </TableRow>
