@@ -109,6 +109,9 @@ export default function CycleForm({
   );
   const [terms, setTerms] = useState<string>(cycle?.terms || '');
   const [priceTable, setPriceTable] = useState<PriceTableRow[]>(cycle?.price_table || []);
+  const [cyclusOptions, setCyclusOptions] = useState<CyclusOption[]>(
+    (cycle?.settings as any)?.cyclus_options ?? []
+  );
   const [customLessonType1, setCustomLessonType1] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[0] ?? ''
   );
