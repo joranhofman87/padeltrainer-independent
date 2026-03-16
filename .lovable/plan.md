@@ -1,55 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-# Marketing Navigation Mega Menu + Light Theme Default
+## Status: ✅ COMPLETED
 
-## 1. Default Theme → Light
+Implemented on 2026-03-14.
 
-Change `defaultTheme="system"` to `defaultTheme="light"` in `src/App.tsx`. This makes both the marketing site and app default to light mode. Users can still toggle to dark.
+## What Changed
 
-## 2. Mega Menu Navigation (Monday.com / ClickUp style)
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Replace the current small dropdown with a full-width mega menu panel that opens on hover, inspired by the reference screenshots.
+## Sanity Content Types Needed in Studio
 
-### Proposed Navigation Structure
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-```text
-┌──────────────────────────────────────────────────────────┐
-│ Logo    Players ▾    For Trainers ▾    Pricing  Blog     │  Sign In  [Start Free Trial]
-└──────────────────────────────────────────────────────────┘
-         │                │
-    ┌────▼────────────────▼──────────────────────────────┐
-    │  LEARN PADEL          FIND & PLAY         CONTENT  │
-    │  ─────────           ──────────           ──────── │
-    │  📖 Padel Rules       🎾 Find Trainers    📹 Video │
-    │  🏸 Padel Strokes     📍 Find Club          Tips   │
-    │  🏫 Coaches           🏫 Academies        📝 Blog  │
-    └────────────────────────────────────────────────────┘
-```
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**"For Trainers"** dropdown (new):
-```text
-    ┌─────────────────────────────────────┐
-    │  FOR TRAINERS         FOR ACADEMIES │
-    │  ──────────           ───────────── │
-    │  Platform overview    Manage teams  │
-    │  Pricing              Registration  │
-    │  Start free trial     cycles        │
-    │                       Partner with  │
-    │                       us            │
-    └─────────────────────────────────────┘
-```
+## What Stays Unchanged
 
-### Technical Approach
-
-- Build a reusable `MegaMenuPanel` component with multi-column grid layout
-- Each column has a header (uppercase label) and icon+text link items
-- Panel appears on hover with a subtle fade-in animation and a semi-transparent backdrop
-- On mobile: remains an accordion (current pattern works fine)
-- Remove standalone "Home" link (logo already links home)
-- Move "About" into footer or keep as standalone link
-
-### Files to Change
-
-1. **`src/App.tsx`** — Change `defaultTheme="system"` → `defaultTheme="light"`
-2. **`src/components/marketing/MarketingLayout.tsx`** — Replace the simple Players dropdown with mega menu panels, reorganize nav items into "Players" and "For Trainers" mega menus, keep Pricing/Blog/About as standalone links
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
