@@ -105,7 +105,7 @@
   },
   "locations": {
     "title": "Padel Locaties",
-    "subtitle": "Vind trainers op {{count}} locaties in Nederland",
+    "subtitle": "Vind trainers op {{count}} locaties wereldwijd",
     "searchPlaceholder": "Zoek op naam of stad...",
     "filterByCity": "Filter op stad",
     "filterByCountry": "Filter op land",
