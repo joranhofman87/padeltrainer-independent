@@ -884,53 +884,16 @@ export default function CycleApplicationForm({
             totalPrice = selectedCyclusOption.total_price;
             priceSource = 'cyclus_option';
           } else if (cycle.price_table && cycle.price_table.length > 0) {
-            const lessonTypeLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
-              ? t(`application.form.lessonTypes.${firstLessonType}`)
-              : firstLessonType;
-            
-            // Try matching by both lesson type and duration
-            const matchWithDuration = watchedDuration ? cycle.price_table.find(row => {
-              const l = row.label.toLowerCase();
-              const typeMatch = l.includes(firstLessonType.toLowerCase()) || l.includes(lessonTypeLabel.toLowerCase());
-              const durationMatch = l.includes(`${watchedDuration}`) || l.includes(`${watchedDuration} min`);
-              return typeMatch && durationMatch;
-            }) : null;
-            
-            // Fall back to type-only match
-            const matchTypeOnly = cycle.price_table.find(row => {
-              const l = row.label.toLowerCase();
-              return l === firstLessonType.toLowerCase() ||
-                l.includes(firstLessonType.toLowerCase()) ||
-                l.includes(lessonTypeLabel.toLowerCase());
-            });
-
-            const priceRow = matchWithDuration || matchTypeOnly;
+            // Match price_table row by index: rows are ordered to match lesson types
+            const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+            const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
+            const orderedTypes = [...standardAllowedTypes, ...customTypes];
+            const typeIndex = orderedTypes.indexOf(firstLessonType);
+            const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length
+              ? cycle.price_table[typeIndex]
+              : cycle.price_table[0]; // fallback to first row
             if (priceRow) {
-              // Check if price_columns exist and try to match lesson type to a column
-              const priceColumns = cycle.settings?.price_columns;
-              let matchedColumnPrice: number | null = null;
-              let matchedColumnName: string | null = null;
-              
-              if (priceColumns && priceColumns.length > 0 && priceRow.extra_prices) {
-                for (const col of priceColumns) {
-                  const colLower = col.toLowerCase();
-                  const typeLower = firstLessonType.toLowerCase();
-                  const typeLabelLower = lessonTypeLabel.toLowerCase();
-                  if (colLower.includes(typeLower) || typeLower.includes(colLower) ||
-                      colLower.includes(typeLabelLower) || typeLabelLower.includes(colLower)) {
-                    const extraPrice = priceRow.extra_prices.find(
-                      ep => ep.column_name.toLowerCase() === colLower
-                    );
-                    if (extraPrice) {
-                      matchedColumnPrice = extraPrice.price;
-                      matchedColumnName = col;
-                      break;
-                    }
-                  }
-                }
-              }
-              
-              pricePerSession = matchedColumnPrice ?? priceRow.price;
+              pricePerSession = priceRow.price;
               priceSource = 'price_table';
             }
           }
@@ -953,24 +916,8 @@ export default function CycleApplicationForm({
             totalPrice = pricePerSession! * effectiveWeeks;
           }
 
-          // If no match found but price table exists, show price range
-          let priceRange: { min: number; max: number } | null = null;
-          let totalRange: { min: number; max: number } | null = null;
-          if (!hasPrice && cycle.price_table && cycle.price_table.length > 0) {
-            const allPrices = cycle.price_table
-              .flatMap(row => {
-                const prices = [row.price];
-                if (row.extra_prices) prices.push(...row.extra_prices.map(ep => ep.price));
-                return prices;
-              })
-              .filter(p => p > 0);
-            if (allPrices.length > 0) {
-              priceRange = { min: Math.min(...allPrices), max: Math.max(...allPrices) };
-              if (effectiveWeeks) {
-                totalRange = { min: priceRange.min * effectiveWeeks, max: priceRange.max * effectiveWeeks };
-              }
-            }
-          }
+
+
           
           const displayLessonType = (STANDARD_LESSON_TYPES as readonly string[]).includes(firstLessonType)
             ? t(`application.form.lessonTypes.${firstLessonType}`)
@@ -1019,31 +966,6 @@ export default function CycleApplicationForm({
                         <span>{t('application.summary.total')}</span>
                         <span className="text-primary">
                           {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalPrice)}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {!hasPrice && priceRange && (
-                  <>
-                    <div className="border-t border-border my-2" />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('application.summary.pricePerLesson')}</span>
-                      <span className="font-medium">
-                        {priceRange.min === priceRange.max
-                          ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)
-                          : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(priceRange.max)}`
-                        }
-                      </span>
-                    </div>
-                    {totalRange && (
-                      <div className="flex justify-between text-base font-semibold">
-                        <span>{t('application.summary.total')}</span>
-                        <span className="text-primary">
-                          {totalRange.min === totalRange.max
-                            ? new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)
-                            : `${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.min)} – ${new Intl.NumberFormat(i18n.language, { style: 'currency', currency: cycle.currency || 'EUR' }).format(totalRange.max)}`
-                          }
                         </span>
                       </div>
                     )}
