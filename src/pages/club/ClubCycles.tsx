@@ -164,7 +164,7 @@ export default function ClubCycles() {
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
             {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
           </p>
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
