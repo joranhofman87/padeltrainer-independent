@@ -199,7 +199,7 @@ function DraggableSlotCard({
     <Card
       ref={setDragRef}
       className={cn(
-        'border-l-4 transition-all h-full',
+        'border-l-4 transition-all min-h-full',
         isEmpty ? 'border-l-border opacity-60' : getConfidenceBorder(avgConf),
         isDragging && 'opacity-30 scale-95',
       )}
@@ -274,7 +274,7 @@ function BlockedSlotCard({ slot }: { slot: SlotWithOccupancy }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Card className="border-l-4 border-l-muted-foreground/30 h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
+          <Card className="border-l-4 border-l-muted-foreground/30 min-h-full opacity-50 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,hsl(var(--muted))_4px,hsl(var(--muted))_6px)]">
             <CardContent className="p-2.5 space-y-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
@@ -320,7 +320,7 @@ function DroppableCell({
     <div
       ref={setNodeRef}
       className={cn(
-        'min-h-[60px] h-full rounded-md border border-dashed border-transparent transition-all p-0.5',
+        'min-h-[60px] rounded-md border border-dashed border-transparent transition-all p-0.5',
         !hasSlot && 'border-border/30',
         isOver && !hasSlot && 'border-primary/50 bg-primary/5 scale-[1.01]',
         isOver && hasSlot && 'ring-1 ring-primary/30',
