@@ -226,6 +226,8 @@ export default function CycleApplicationForm({
             notes: [values.notes, values.group_notes].filter(Boolean).join('\n\n') || undefined,
             consentGiven: values.consent,
             language: i18n.language,
+            metadata: selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : undefined,
+          },
           },
         });
 
