@@ -133,11 +133,11 @@ export default function ProposalWorkflowSteps({
           </Button>
           <Button
             size="sm"
-            onClick={onApproveAll}
+            onClick={onShowOverview}
             className="h-7 text-xs"
           >
-            <CheckCheck className="h-3 w-3 mr-1" />
-            {t('proposals.approveAll', { defaultValue: 'Approve all' })}
+            <Eye className="h-3 w-3 mr-1" />
+            {t('workflow.continueToOverview', { defaultValue: 'Continue' })}
           </Button>
         </div>
       ) : undefined,
@@ -147,14 +147,14 @@ export default function ProposalWorkflowSteps({
       label: t('workflow.approve', { defaultValue: 'Approve & Book' }),
       description: t('workflow.approveDesc', { defaultValue: '{{count}} confirmed', count: confirmedCount }),
       status: s4,
-      action: proposedCount > 0 ? (
+      action: s4 === 'active' && proposedCount > 0 ? (
         <Button
           size="sm"
-          onClick={onApproveAll}
+          onClick={onShowOverview}
           className="h-7 text-xs"
         >
-          <CheckCheck className="h-3 w-3 mr-1" />
-          {t('proposals.approveAll', { defaultValue: 'Approve all' })}
+          <ClipboardList className="h-3 w-3 mr-1" />
+          {t('workflow.viewOverview', { defaultValue: 'View overview' })}
         </Button>
       ) : undefined,
     },
