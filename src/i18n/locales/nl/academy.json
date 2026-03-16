@@ -358,5 +358,8 @@
     "enableDescription": "Wanneer ingeschakeld kunnen spelers zich op je wachtlijst zetten via je publieke profiel. Je wordt op de hoogte gebracht wanneer iemand zich aanmeldt.",
     "enabled": "Wachtlijst is nu actief op je profiel",
     "disabled": "Wachtlijst is uitgeschakeld"
+  },
+  "calendar": {
+    "created": "Aangemaakt"
   }
 }
