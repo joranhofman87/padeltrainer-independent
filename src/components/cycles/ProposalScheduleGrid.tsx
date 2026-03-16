@@ -561,7 +561,7 @@ function DraggableSlotCard({
         {(slot.min_rating != null || slot.max_rating != null) && (
           <div className="text-[10px] text-muted-foreground">
             {slot.rating_system ? `${slot.rating_system} ` : ''}
-            {slot.min_rating ?? '?'}–{slot.max_rating ?? '?'}
+            {slot.min_rating != null ? formatRating(slot.min_rating) : '?'}–{slot.max_rating != null ? formatRating(slot.max_rating) : '?'}
           </div>
         )}
 
