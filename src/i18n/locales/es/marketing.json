@@ -729,7 +729,7 @@
       "needWebsite_q": "¿Necesito mi propia página web?",
       "needWebsite_a": "No. Tienes una página de reservas que puedes compartir directamente.",
       "onlineBooking_q": "¿Pueden los jugadores reservar online?",
-      "onlineBooking_a": "Sí — a través de tu página de reservas personal. Funciona en móvil.",
+      "onlineBooking_a": "Sí, a través de tu página de reservas personal. Funciona en móvil.",
       "payments_q": "¿Cómo funcionan los pagos?",
       "payments_a": "Los jugadores pagan por iDEAL o tarjeta al reservar. El dinero te llega vía Mollie.",
       "calendarSync_q": "¿Se sincroniza con Google Calendar?",
