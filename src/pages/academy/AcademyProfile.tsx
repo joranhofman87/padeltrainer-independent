@@ -199,6 +199,48 @@ export default function AcademyProfile() {
     img.src = objectUrl;
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeAcademy) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: t('common.error'), description: t('profile.bannerInvalidType'), variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: t('common.error'), description: t('profile.logoTooLarge', 'Logo must be under 5MB'), variant: 'destructive' });
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `academies/${activeAcademy.id}/logo.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const result = await updateAcademyProfile(activeAcademy.id, {
+        logo_url: publicUrlData.publicUrl + '?t=' + Date.now(),
+      });
+
+      if (result) {
+        await refreshAcademies();
+        toast({ title: t('profile.logoUpdated', 'Logo updated'), description: t('profile.logoUpdatedDescription', 'Your logo has been updated.') });
+      }
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error.message, variant: 'destructive' });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   if (!activeAcademy) {
     return null;
   }
