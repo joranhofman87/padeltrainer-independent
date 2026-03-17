@@ -1,41 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Dynamic OG Tags for Registration Links
+## Status: ✅ COMPLETED
 
-When you share a registration link on WhatsApp, it shows generic "PadelTrainer.ai" text because:
-1. The pre-rendering edge function has no route for `/academies/:slug/register/:cycleId` (or clubs/generic register), so it falls through to a generic fallback
-2. The client-side page (`BrandedCycleRegistration.tsx`) doesn't use the `<SEO>` component either
+Implemented on 2026-03-14.
 
-### Plan
+## What Changed
 
-**1. Add registration route handlers to `render-page` edge function**
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-Add three new route patterns before the fallback `else` block:
-- `/academies/:slug/register/:cycleId`
-- `/clubs/:slug/register/:cycleId`  
-- `/register/:cycleId`
+## Sanity Content Types Needed in Studio
 
-Create a `renderCycleRegistration()` function that:
-- Fetches the cycle by ID from `cycles` table (name, start_date, end_date, owner_type, owner_id, location_id)
-- Fetches the owner name (academy or club) from the appropriate profile table
-- Fetches the location name/city if available
-- Generates OG tags like: `"Register for [Cycle Name] | [Owner Name] | PadelTrainer.ai"` with description including dates and location
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**2. Add `<SEO>` component to `BrandedCycleRegistration.tsx`**
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-For client-side rendering (non-bot visitors), add dynamic SEO meta tags using the existing `<SEO>` component with cycle name, owner name, and dates in the title/description.
+## What Stays Unchanged
 
-**3. Add `<SEO>` component to `CycleRegistration.tsx`**
-
-Same treatment for the generic (non-branded) registration page.
-
-### Files to modify
-- `supabase/functions/render-page/index.ts` — add route matching + `renderCycleRegistration()` function
-- `src/pages/BrandedCycleRegistration.tsx` — add `<SEO>` component
-- `src/pages/CycleRegistration.tsx` — add `<SEO>` component
-
-### Result
-WhatsApp previews will show something like:
-> **Register for Padel Lessen Voorjaar 2026 | RL Padel Performance**
-> Sign up for training from 1 Apr - 30 Jun 2026 at [Location], [City].
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

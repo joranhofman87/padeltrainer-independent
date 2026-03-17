@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { SEO } from '@/components/SEO';
 import { trackEvent } from '@/lib/tracking';
 import WelcomeMessageCard from '@/components/shared/WelcomeMessageCard';
 import { useAuth } from '@/hooks/useAuth';
@@ -253,6 +254,18 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
   return (
     <FeatureErrorBoundary featureName="BrandedCycleRegistration" onRetry={() => window.location.reload()}>
+      {cycle && owner && (
+        <SEO
+          title={`${cycle.name} | ${owner.name}`}
+          description={[
+            cycle.name,
+            cycleLocation ? `${cycleLocation.name}, ${cycleLocation.city}` : '',
+            owner.name,
+          ].filter(Boolean).join(' · ')}
+          url={`/${directoryPath}/${slug}/register/${cycleId}`}
+          noIndex
+        />
+      )}
       <ProfileLayout breadcrumbs={breadcrumbs} bannerUrl={owner.banner_url} showBackButton={false}>
         <div className="max-w-2xl mx-auto">
           {/* Owner branding header */}
