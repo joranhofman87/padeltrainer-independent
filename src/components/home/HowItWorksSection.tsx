@@ -89,7 +89,7 @@ export function HowItWorksSection() {
               transition={{ delay: i * 0.12 }}
             >
               <span className="text-5xl font-bold text-primary/20 mb-3 block">{s.num}</span>
-              <div className="mb-4">
+              <div className="mb-4 h-[52px] flex items-center">
                 <s.Visual />
               </div>
               <h3 className="text-xl font-semibold mb-2">{t(`homev2.howItWorks.${s.key}_title`)}</h3>
