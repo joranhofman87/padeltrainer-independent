@@ -729,7 +729,7 @@
       "needWebsite_q": "Brauche ich eine eigene Website?",
       "needWebsite_a": "Nein. Du bekommst eine Buchungsseite, die du direkt teilen kannst.",
       "onlineBooking_q": "Können Spieler online buchen?",
-      "onlineBooking_a": "Ja — über deine persönliche Buchungsseite. Funktioniert auf dem Handy.",
+      "onlineBooking_a": "Ja, über deine persönliche Buchungsseite. Funktioniert auf dem Handy.",
       "payments_q": "Wie funktionieren Zahlungen?",
       "payments_a": "Spieler zahlen per iDEAL oder Karte bei der Buchung. Das Geld geht über Mollie an dich.",
       "calendarSync_q": "Synchronisiert es mit Google Calendar?",
