@@ -1,29 +1,22 @@
 
-# Sanity CMS Integration for Blog & Rules
 
-## Status: ✅ COMPLETED
+## Bug: Academy's success message not visible on branded registration page
 
-Implemented on 2026-03-14.
+### Root Cause
 
-## What Changed
+There are **two competing success views**:
 
-1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
-2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
-3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
-4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
-5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
-6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
-7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
-8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
+1. **`CycleApplicationForm`** (child) — has its own `isSuccess` state that renders a success card including `cycle.settings.success_message` (the message the academy sets per cycle)
+2. **`BrandedCycleRegistration`** (parent) — has its own `isSuccess` state that renders a full-page success view with `owner.welcome_message` (the academy's general welcome message)
 
-## Sanity Content Types Needed in Studio
+When the form submits successfully, it calls `onSuccess()` which sets the **parent's** `isSuccess = true`. On re-render, the parent's success view (checked at line 216, before the form is rendered) takes over — showing `owner.welcome_message` but **not** `cycle.settings.success_message`.
 
-**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
+So the cycle-specific success message configured by the academy owner is never shown on the branded registration page.
 
-**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+### Fix
 
-## What Stays Unchanged
+Add `cycle.settings.success_message` to the parent's success view in `BrandedCycleRegistration.tsx`, right after the title/subtitle and before the "what next" card. This mirrors what the form's own success view does.
 
-- Database `articles` table — kept for the AI generation pipeline
-- Edge functions — untouched
-- Clubs/locations — remain database-driven
+### File to modify
+- **`src/pages/BrandedCycleRegistration.tsx`** — In the `isSuccess` block (~line 223), add a conditional render of `(cycle.settings as any)?.success_message` in a styled card, placed between the success subtitle and the "what next" steps card.
+
