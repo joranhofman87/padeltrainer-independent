@@ -267,6 +267,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         />
       )}
       <ProfileLayout breadcrumbs={breadcrumbs} bannerUrl={owner.banner_url} showBackButton={false}>
+        <div className="max-w-2xl mx-auto">
           {/* Owner branding header */}
           <div className="flex items-center gap-3 mb-6">
             <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border">
