@@ -44,7 +44,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [owner, setOwner] = useState<OwnerBranding | null>(null);
-  const [cycleLocation, setCycleLocation] = useState<{ name: string; city: string } | null>(null);
+  const [cycleLocation, setCycleLocation] = useState<{ name: string; city: string; logo_url: string | null } | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
