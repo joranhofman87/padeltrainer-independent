@@ -44,7 +44,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [owner, setOwner] = useState<OwnerBranding | null>(null);
-  const [cycleLocation, setCycleLocation] = useState<{ name: string; city: string } | null>(null);
+  const [cycleLocation, setCycleLocation] = useState<{ name: string; city: string; logo_url: string | null } | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
@@ -103,7 +103,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         if (cycleData.location_id) {
           const { data: locData } = await supabase
             .from('locations')
-            .select('name, city')
+            .select('name, city, logo_url')
             .eq('id', cycleData.location_id)
             .maybeSingle();
           if (locData) setCycleLocation(locData);
@@ -270,8 +270,8 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         <div className="max-w-2xl mx-auto">
           {/* Owner branding header */}
           <div className="flex items-center gap-3 mb-6">
-            <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border">
-              <AvatarImage src={owner.logo_url || undefined} />
+            <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border bg-muted">
+              <AvatarImage src={owner.logo_url || undefined} className="object-contain p-1" />
               <AvatarFallback>
                 <Building2 className="h-6 w-6" />
               </AvatarFallback>
@@ -289,7 +289,14 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
             {/* Prominent location */}
             {cycleLocation && (
               <div className="flex items-center gap-2 text-base font-medium text-foreground">
-                <MapPin className="h-5 w-5 text-primary shrink-0" />
+                {cycleLocation.logo_url ? (
+                  <Avatar className="h-6 w-6 shrink-0 border">
+                    <AvatarImage src={cycleLocation.logo_url} className="object-contain p-0.5" />
+                    <AvatarFallback><MapPin className="h-3.5 w-3.5" /></AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <MapPin className="h-5 w-5 text-primary shrink-0" />
+                )}
                 <span>{cycleLocation.name}, {cycleLocation.city}</span>
               </div>
             )}
