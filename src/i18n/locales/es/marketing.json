@@ -753,6 +753,13 @@
       "videoTips": "Consejos en vídeo",
       "videoTipsDesc": "Mira y mejora",
       "blogDesc": "Consejos, guías y noticias"
+    },
+    "dualCta": {
+      "headline": "La única plataforma de reservas hecha para pádel.",
+      "body": "Los entrenadores consiguen un sistema que llena sesiones y gestiona pagos. Los jugadores encuentran y reservan fácilmente.",
+      "trainerCta": "Prueba gratis",
+      "playerCta": "Registrarse como jugador",
+      "microcopy": "Sin tarjeta de crédito. Siempre gratis para jugadores."
     }
   },
   "cityPage": {

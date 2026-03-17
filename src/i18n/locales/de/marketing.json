@@ -753,6 +753,13 @@
       "videoTips": "Video-Tipps",
       "videoTipsDesc": "Anschauen & verbessern",
       "blogDesc": "Tipps, Guides & News"
+    },
+    "dualCta": {
+      "headline": "Die einzige Buchungsplattform, die für Padel gebaut wurde.",
+      "body": "Trainer bekommen ein System, das Stunden füllt und Zahlungen abwickelt. Spieler finden und buchen ganz einfach.",
+      "trainerCta": "Kostenlos testen",
+      "playerCta": "Als Spieler anmelden",
+      "microcopy": "Keine Kreditkarte nötig. Für Spieler immer kostenlos."
     }
   },
   "cityPage": {

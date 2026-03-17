@@ -753,6 +753,13 @@
       "videoTips": "Video Tips",
       "videoTipsDesc": "Watch & improve",
       "blogDesc": "Tips, guides & news"
+    },
+    "dualCta": {
+      "headline": "The only booking platform built for padel.",
+      "body": "Trainers get a system that fills sessions and handles payments. Players get a simple way to find and book lessons.",
+      "trainerCta": "Start free trial",
+      "playerCta": "Sign up as player",
+      "microcopy": "No credit card needed. Players are always free."
     }
   },
   "cityPage": {
