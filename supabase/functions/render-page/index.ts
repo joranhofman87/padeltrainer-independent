@@ -1128,3 +1128,92 @@ async function renderTopicPage(slug: string, lang: string): Promise<string> {
 
   return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/topics/${slug}`, lang, structuredData, body });
 }
+
+// ─── Cycle Registration Renderer ────────────────────────────────
+
+async function renderCycleRegistration(supabase: any, cycleId: string, lang: string, cleanPath: string): Promise<string> {
+  const { data: cycle } = await supabase
+    .from('cycles')
+    .select('name, start_date, end_date, owner_type, owner_id, location_id')
+    .eq('id', cycleId)
+    .maybeSingle();
+
+  if (!cycle) {
+    return renderStaticPage('Registration — PadelTrainer.ai', 'Register for padel training.', lang, cleanPath);
+  }
+
+  // Fetch owner name
+  let ownerName = '';
+  if (cycle.owner_type === 'academy') {
+    const { data: academy } = await supabase
+      .from('academy_profiles')
+      .select('name')
+      .eq('id', cycle.owner_id)
+      .maybeSingle();
+    ownerName = academy?.name || '';
+  } else if (cycle.owner_type === 'club') {
+    const { data: club } = await supabase
+      .from('club_profiles')
+      .select('location_id')
+      .eq('id', cycle.owner_id)
+      .maybeSingle();
+    if (club) {
+      const { data: loc } = await supabase
+        .from('locations')
+        .select('name')
+        .eq('id', club.location_id)
+        .maybeSingle();
+      ownerName = loc?.name || '';
+    }
+  } else if (cycle.owner_type === 'trainer') {
+    const { data: trainer } = await supabase
+      .from('trainer_profiles')
+      .select('user_id')
+      .eq('id', cycle.owner_id)
+      .maybeSingle();
+    if (trainer) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', trainer.user_id)
+        .maybeSingle();
+      ownerName = profile?.full_name || '';
+    }
+  }
+
+  // Fetch location
+  let locationStr = '';
+  if (cycle.location_id) {
+    const { data: loc } = await supabase
+      .from('locations')
+      .select('name, city')
+      .eq('id', cycle.location_id)
+      .maybeSingle();
+    if (loc) locationStr = `${loc.name}, ${loc.city}`;
+  }
+
+  const startDate = new Date(cycle.start_date).toLocaleDateString(lang === 'nl' ? 'nl-NL' : 'en-US', { day: 'numeric', month: 'short' });
+  const endDate = new Date(cycle.end_date).toLocaleDateString(lang === 'nl' ? 'nl-NL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const titleParts = [cycle.name];
+  if (ownerName) titleParts.push(ownerName);
+  titleParts.push('PadelTrainer.ai');
+  const title = titleParts.join(' | ');
+
+  const descParts = [
+    lang === 'nl' ? `Schrijf je in voor ${cycle.name}` : `Register for ${cycle.name}`,
+    `${startDate} - ${endDate}`,
+  ];
+  if (locationStr) descParts.push(locationStr);
+  if (ownerName) descParts.push(ownerName);
+  const description = descParts.join(' · ');
+
+  const body = `
+    <h1>${escHtml(cycle.name)}</h1>
+    ${ownerName ? `<p>${lang === 'nl' ? 'Georganiseerd door' : 'Organized by'} <strong>${escHtml(ownerName)}</strong></p>` : ''}
+    <p>${startDate} - ${endDate}${locationStr ? ` · ${escHtml(locationStr)}` : ''}</p>
+    <p><a href="${SITE_URL}/${lang}${cleanPath}">${lang === 'nl' ? 'Bekijk details en schrijf je in' : 'View details and register'}</a></p>
+  `;
+
+  return htmlDoc({ title, description, url: cleanPath, lang, body });
+}
