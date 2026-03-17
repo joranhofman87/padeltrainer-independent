@@ -35,7 +35,7 @@ export function DualCTABanner() {
             <Button
               size="lg"
               variant="outline"
-              className="text-lg px-8 h-14 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
+              className="text-lg px-8 h-14 border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
               asChild
             >
               <Link to={getPath('/app/signup/player')}>
