@@ -103,7 +103,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         if (cycleData.location_id) {
           const { data: locData } = await supabase
             .from('locations')
-            .select('name, city')
+            .select('name, city, logo_url')
             .eq('id', cycleData.location_id)
             .maybeSingle();
           if (locData) setCycleLocation(locData);
