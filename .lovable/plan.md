@@ -1,41 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Update Registration Confirmation Email with Price Calculator
+## Status: ✅ COMPLETED
 
-### What's missing from the email
+Implemented on 2026-03-14.
 
-The form currently collects and displays several fields that are **not** included in the confirmation email:
+## What Changed
 
-1. **Phone number** — collected but not sent
-2. **Birth date** — collected but not sent
-3. **Selected cyclus option** (package) — stored in metadata but not in the email (label, sessions, weeks, total price)
-4. **Selected duration in weeks** — stored in metadata but not in the email
-5. **Price indication/calculator** — the form shows a price summary card with per-lesson and total prices per lesson type, but this is completely absent from the email
-6. **Group notes** — appended to notes but not labeled separately
-7. **Availability** (preferred days/time windows) — submitted but not in the email
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-### Plan
+## Sanity Content Types Needed in Studio
 
-**1. Add new fields to `EmailData` in `src/lib/email.ts`:**
-- `birthDate`, `phone`, `selectedPackageLabel`, `selectedPackagePrice`, `selectedPackageSessions`, `selectedDurationWeeks`, `priceLines` (array of `{ label, perLesson, total }`)
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**2. Pass the new data when calling `sendEmail` in `src/components/cycles/CycleApplicationForm.tsx` (logged-in flow, ~line 300):**
-- Add `phone`, `birthDate`, price lines computed from the same logic as the price calculator card, `selectedPackageLabel`/price/sessions, `selectedDurationWeeks`
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-**3. Pass the same new data in `supabase/functions/submit-guest-intake/index.ts` (guest flow, ~line 349):**
-- Forward the same additional fields to the `send-email` invocation
+## What Stays Unchanged
 
-**4. Update the email template in `supabase/functions/send-email/index.ts` (the `intake_registration_confirmation` case, ~line 630):**
-- Add translations for new labels: phone, birth date, package, duration weeks, price per lesson, total price
-- Add a **Price Summary** section at the bottom of the email (styled like the price calculator card) showing each lesson type with per-lesson price and total for the cycle duration
-- Show selected package info if present
-- Show phone and birth date in the registration summary section
-
-**5. Redeploy edge functions** (`send-email`, `submit-guest-intake`)
-
-### Files to modify
-- `src/lib/email.ts` — add new fields to `EmailData`
-- `src/components/cycles/CycleApplicationForm.tsx` — pass additional data to `sendEmail`
-- `supabase/functions/submit-guest-intake/index.ts` — forward additional data
-- `supabase/functions/send-email/index.ts` — render new fields + price summary in the email template
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven

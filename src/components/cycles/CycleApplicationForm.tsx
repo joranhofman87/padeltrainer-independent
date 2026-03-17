@@ -297,6 +297,43 @@ export default function CycleApplicationForm({
             locationName = locData?.name || undefined;
           }
         } catch {}
+        // Compute price lines for the email (mirrors price calculator logic)
+        const emailCurrency = cycle.currency || 'EUR';
+        const emailFmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: emailCurrency }).format(v);
+        const standardAllowedTypes = ((cycle.settings as any)?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+        const customTypesEmail = ((cycle.settings as any)?.custom_lesson_types as string[] | undefined) || [];
+        const orderedTypesEmail = [...standardAllowedTypes, ...customTypesEmail];
+        const emailEffectiveWeeks = selectedDurationWeeks || (() => {
+          if (!cycle.start_date || !cycle.end_date) return null;
+          return Math.max(1, Math.round(
+            (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
+          ));
+        })();
+
+        const emailPriceLines: { label: string; perLesson: string; total: string }[] = [];
+        for (const lt of values.lesson_types) {
+          const displayLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(lt)
+            ? t(`application.form.lessonTypes.${lt}`)
+            : lt.charAt(0).toUpperCase() + lt.slice(1);
+          let perLesson: number | null = null;
+          if (selectedCyclusOption) {
+            perLesson = selectedCyclusOption.price_per_session;
+          } else if (cycle.price_table && cycle.price_table.length > 0) {
+            const typeIndex = orderedTypesEmail.indexOf(lt);
+            const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length ? cycle.price_table[typeIndex] : null;
+            if (priceRow) perLesson = priceRow.price;
+          }
+          if (perLesson == null && cycle.price_per_session) perLesson = cycle.price_per_session;
+          const total = perLesson && emailEffectiveWeeks ? perLesson * emailEffectiveWeeks : null;
+          if (perLesson != null && perLesson > 0) {
+            emailPriceLines.push({
+              label: displayLabel,
+              perLesson: emailFmt(perLesson),
+              total: total != null ? emailFmt(total) : '',
+            });
+          }
+        }
+
         sendEmail('intake_registration_confirmation', values.email, {
           playerName: values.full_name,
           cycleName: cycle.name,
@@ -313,6 +350,13 @@ export default function CycleApplicationForm({
           rating: values.rating,
           ratingSystem: values.rating_system,
           notes: values.notes || undefined,
+          phone: values.phone || undefined,
+          birthDate: values.birth_date || undefined,
+          selectedPackageLabel: selectedCyclusOption?.label || undefined,
+          selectedPackagePrice: selectedCyclusOption?.price_per_session || undefined,
+          selectedDurationWeeks: emailEffectiveWeeks || undefined,
+          priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
+          currency: emailCurrency,
         }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
 
         // Update player profile if rating/phone/birth_date changed

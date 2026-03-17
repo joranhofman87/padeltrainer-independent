@@ -336,6 +336,44 @@ Deno.serve(async (req) => {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+        // Compute price lines for the email
+        const cycleSettings = cycleData.settings || {};
+        const cyclePriceTable = (cycleSettings as any).price_table || [];
+        const cyclePricePerSession = (cycleData as any).price_per_session;
+        const selectedOption = metadata?.selected_cyclus_option;
+        const durationWeeks = metadata?.preferred_number_of_weeks || (() => {
+          if (!cycleData.start_date || !cycleData.end_date) return null;
+          return Math.max(1, Math.round(
+            (new Date(cycleData.end_date).getTime() - new Date(cycleData.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
+          ));
+        })();
+
+        const standardAllowed = ((cycleSettings as any).lesson_types as string[] | undefined) || ['private', 'duo', 'group', 'kids'];
+        const customLT = ((cycleSettings as any).custom_lesson_types as string[] | undefined) || [];
+        const orderedLT = [...standardAllowed, ...customLT];
+
+        const emailPriceLines: { label: string; perLesson: string; total: string }[] = [];
+        const fmtPrice = (v: number) => `€${v.toFixed(2)}`;
+        for (const lt of (lessonTypes || [])) {
+          let perLesson: number | null = null;
+          if (selectedOption) {
+            perLesson = selectedOption.price_per_session;
+          } else if (cyclePriceTable.length > 0) {
+            const idx = orderedLT.indexOf(lt);
+            const row = idx >= 0 && idx < cyclePriceTable.length ? cyclePriceTable[idx] : null;
+            if (row) perLesson = row.price;
+          }
+          if (perLesson == null && cyclePricePerSession) perLesson = cyclePricePerSession;
+          const total = perLesson && durationWeeks ? perLesson * durationWeeks : null;
+          if (perLesson != null && perLesson > 0) {
+            emailPriceLines.push({
+              label: lt.charAt(0).toUpperCase() + lt.slice(1),
+              perLesson: fmtPrice(perLesson),
+              total: total != null ? fmtPrice(total) : '',
+            });
+          }
+        }
+
         const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: "POST",
           headers: {
@@ -361,6 +399,12 @@ Deno.serve(async (req) => {
               rating: rating || undefined,
               ratingSystem: ratingSystem || undefined,
               notes: notes || undefined,
+              phone: phone || undefined,
+              birthDate: birthDate || undefined,
+              selectedPackageLabel: selectedOption?.label || undefined,
+              selectedPackagePrice: selectedOption?.price_per_session || undefined,
+              selectedDurationWeeks: durationWeeks || undefined,
+              priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
             },
           }),
         });

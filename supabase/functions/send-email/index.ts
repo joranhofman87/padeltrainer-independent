@@ -634,6 +634,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
         detailsTitle: string; startDate: string; endDate: string; deadline: string;
         yourRegistration: string; lessonType: string; duration: string; sessionsWeek: string;
         location: string; level: string; notes: string; min: string;
+        phone: string; birthDate: string; package_: string; durationWeeks: string;
+        pricePerLesson: string; totalPrice: string; priceSummary: string; weeks: string;
       }> = {
         en: {
           subject: `Registration Confirmed: ${data.cycleName || 'Training'} 🎾`,
@@ -653,6 +655,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Level',
           notes: 'Notes',
           min: 'min',
+          phone: 'Phone',
+          birthDate: 'Date of Birth',
+          package_: 'Package',
+          durationWeeks: 'Duration',
+          pricePerLesson: 'Per lesson',
+          totalPrice: 'Total',
+          priceSummary: 'Price Indication',
+          weeks: 'weeks',
         },
         nl: {
           subject: `Inschrijving bevestigd: ${data.cycleName || 'Training'} 🎾`,
@@ -672,6 +682,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Opmerkingen',
           min: 'min',
+          phone: 'Telefoon',
+          birthDate: 'Geboortedatum',
+          package_: 'Pakket',
+          durationWeeks: 'Duur',
+          pricePerLesson: 'Per les',
+          totalPrice: 'Totaal',
+          priceSummary: 'Prijsindicatie',
+          weeks: 'weken',
         },
         es: {
           subject: `Inscripción confirmada: ${data.cycleName || 'Entrenamiento'} 🎾`,
@@ -691,6 +709,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Nivel',
           notes: 'Notas',
           min: 'min',
+          phone: 'Teléfono',
+          birthDate: 'Fecha de nacimiento',
+          package_: 'Paquete',
+          durationWeeks: 'Duración',
+          pricePerLesson: 'Por clase',
+          totalPrice: 'Total',
+          priceSummary: 'Indicación de precio',
+          weeks: 'semanas',
         },
         de: {
           subject: `Anmeldung bestätigt: ${data.cycleName || 'Training'} 🎾`,
@@ -710,6 +736,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Anmerkungen',
           min: 'Min',
+          phone: 'Telefon',
+          birthDate: 'Geburtsdatum',
+          package_: 'Paket',
+          durationWeeks: 'Dauer',
+          pricePerLesson: 'Pro Lektion',
+          totalPrice: 'Gesamt',
+          priceSummary: 'Preisindikation',
+          weeks: 'Wochen',
         },
         fr: {
           subject: `Inscription confirmée : ${data.cycleName || 'Entraînement'} 🎾`,
@@ -729,6 +763,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Remarques',
           min: 'min',
+          phone: 'Téléphone',
+          birthDate: 'Date de naissance',
+          package_: 'Forfait',
+          durationWeeks: 'Durée',
+          pricePerLesson: 'Par cours',
+          totalPrice: 'Total',
+          priceSummary: 'Indication de prix',
+          weeks: 'semaines',
         },
       };
       const t = translations[lang] || translations.en;
@@ -773,9 +815,13 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
 
       // Build registration summary (what they filled out)
       const summaryRows: string[] = [];
+      if (data.phone) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.phone}:</strong> ${data.phone}</p>`);
+      if (data.birthDate) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.birthDate}:</strong> ${formatDate(data.birthDate) || data.birthDate}</p>`);
       if (data.lessonTypes && data.lessonTypes.length > 0) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.lessonType}:</strong> ${data.lessonTypes.join(', ')}</p>`);
       if (data.preferredDurationMinutes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.duration}:</strong> ${data.preferredDurationMinutes} ${t.min}</p>`);
       if (data.sessionsPerWeek) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.sessionsWeek}:</strong> ${data.sessionsPerWeek}</p>`);
+      if (data.selectedPackageLabel) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.package_}:</strong> ${data.selectedPackageLabel}</p>`);
+      if (data.selectedDurationWeeks) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.durationWeeks}:</strong> ${data.selectedDurationWeeks} ${t.weeks}</p>`);
       if (data.rating) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.level}:</strong> ${data.rating}${data.ratingSystem ? ` (${data.ratingSystem.toUpperCase()})` : ''}</p>`);
       if (data.notes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.notes}:</strong> ${data.notes}</p>`);
 
@@ -783,6 +829,32 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
         ? `<div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e5e7eb;">
              <h4 style="margin-top: 0; margin-bottom: 8px; color: #374151;">${t.yourRegistration}</h4>
              ${summaryRows.join('')}
+           </div>`
+        : '';
+
+      // Build price summary block
+      const priceRows = (data.priceLines || []) as Array<{ label: string; perLesson: string; total: string }>;
+      const priceBlock = priceRows.length > 0
+        ? `<div style="background: #fff7ed; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #fed7aa;">
+             <h4 style="margin-top: 0; margin-bottom: 12px; color: #374151;">💰 ${t.priceSummary}</h4>
+             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+               <thead>
+                 <tr style="border-bottom: 1px solid #fdba74;">
+                   <th style="text-align: left; padding: 6px 0; color: #6b7280;">${t.lessonType}</th>
+                   <th style="text-align: right; padding: 6px 0; color: #6b7280;">${t.pricePerLesson}</th>
+                   ${data.selectedDurationWeeks ? `<th style="text-align: right; padding: 6px 0; color: #6b7280;">${t.totalPrice} (${data.selectedDurationWeeks} ${t.weeks})</th>` : ''}
+                 </tr>
+               </thead>
+               <tbody>
+                 ${priceRows.map(row => `
+                   <tr style="border-bottom: 1px solid #f3f4f6;">
+                     <td style="padding: 6px 0;">${row.label}</td>
+                     <td style="text-align: right; padding: 6px 0; font-weight: 600;">${row.perLesson}</td>
+                     ${data.selectedDurationWeeks && row.total ? `<td style="text-align: right; padding: 6px 0; font-weight: 600;">${row.total}</td>` : ''}
+                   </tr>
+                 `).join('')}
+               </tbody>
+             </table>
            </div>`
         : '';
 
@@ -796,6 +868,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             ${confirmationSection}
             ${detailsBlock}
             ${summaryBlock}
+            ${priceBlock}
             <p>${t.footer}</p>
             <p>${t.regards}<br><a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE}; text-decoration: none;">PadelTrainer.ai</a> Team</p>
           </div>
