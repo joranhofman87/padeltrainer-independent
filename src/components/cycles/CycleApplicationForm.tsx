@@ -960,11 +960,6 @@ export default function CycleApplicationForm({
                   </div>
                 )}
 
-                {hasAnyPrice && (
-                  <p className="text-xs italic text-muted-foreground pt-2 border-t border-border">
-                    {t('application.summary.indicativeNote')}
-                  </p>
-                )}
               </CardContent>
             </Card>
           );
