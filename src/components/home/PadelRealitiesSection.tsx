@@ -96,9 +96,12 @@ export function PadelRealitiesSection() {
                 transition={{ delay: i * 0.05 }}
                 className="rounded-xl border bg-card p-5"
               >
-                <p className="text-sm text-muted-foreground line-through decoration-muted-foreground/40 mb-2">
-                  {t(`homev2.realities.${key}_current`)}
-                </p>
+                <div className="flex items-start gap-2 mb-2">
+                  <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground line-through decoration-muted-foreground/40">
+                    {t(`homev2.realities.${key}_current`)}
+                  </p>
+                </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                   <p className="text-[15px] font-medium text-foreground">
