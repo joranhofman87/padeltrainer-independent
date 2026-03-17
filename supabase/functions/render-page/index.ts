@@ -116,6 +116,19 @@ Deno.serve(async (req) => {
       const slug = cleanPath.match(/^\/topics\/([^/]+)$/)![1];
       html = await renderTopicPage(slug, lang);
       cacheMaxAge = 3600;
+    // ─── Registration routes ───
+    } else if (/^\/academies\/([^/]+)\/register\/([^/]+)$/.test(cleanPath)) {
+      const m = cleanPath.match(/^\/academies\/([^/]+)\/register\/([^/]+)$/)!;
+      html = await renderCycleRegistration(supabase, m[2], lang, cleanPath);
+      cacheMaxAge = 1800;
+    } else if (/^\/clubs\/([^/]+)\/register\/([^/]+)$/.test(cleanPath)) {
+      const m = cleanPath.match(/^\/clubs\/([^/]+)\/register\/([^/]+)$/)!;
+      html = await renderCycleRegistration(supabase, m[2], lang, cleanPath);
+      cacheMaxAge = 1800;
+    } else if (/^\/register\/([^/]+)$/.test(cleanPath)) {
+      const cycleId = cleanPath.match(/^\/register\/([^/]+)$/)![1];
+      html = await renderCycleRegistration(supabase, cycleId, lang, cleanPath);
+      cacheMaxAge = 1800;
     // ─── Other static pages ───
     } else if (cleanPath === '/partner') {
       html = renderStaticPage('Become a Partner — PadelTrainer.ai', 'Partner with PadelTrainer.ai to reach thousands of padel players. Promote your brand, products, or services to the padel community.', lang, '/partner');
