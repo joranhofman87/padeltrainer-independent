@@ -729,7 +729,7 @@
       "needWebsite_q": "Do I need my own website?",
       "needWebsite_a": "Nope. You get a booking page you can share directly.",
       "onlineBooking_q": "Can players book online?",
-      "onlineBooking_a": "Yes — through your personal booking page. Works on mobile.",
+      "onlineBooking_a": "Yes, through your personal booking page. Works on mobile.",
       "payments_q": "How do payments work?",
       "payments_a": "Players pay via iDEAL or card when they book. The money goes to you via Mollie.",
       "calendarSync_q": "Does it sync with Google Calendar?",
