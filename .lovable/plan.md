@@ -1,20 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Add Logo Upload to Academy Profile Page
+## Status: ✅ COMPLETED
 
-The academy profile page (`AcademyProfile.tsx`) currently has a banner upload but no logo upload. The `academy_profiles` table already has a `logo_url` column, and the `updateAcademyProfile` function supports updating it.
+Implemented on 2026-03-14.
 
-### Changes
+## What Changed
 
-**`src/pages/academy/AcademyProfile.tsx`**:
-- Add a logo upload section above (or next to) the banner upload card, following the exact same pattern as the banner upload
-- Add a `logoInputRef`, `logoUploading` state
-- `handleLogoUpload`: validate image type/size, upload to `avatars/academies/{id}/logo.{ext}` (same bucket as banner), get public URL, call `updateAcademyProfile({ logo_url: ... })`, refresh
-- Show current logo in a rounded avatar-style preview (square, ~64px), or a placeholder icon if none
-- No dimension constraints needed (unlike banner) — just type + max 5MB size check
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-The UI will be a card at the top with the logo preview on the left, label + hint in the middle, and an upload button on the right — mirroring the existing banner upload card layout.
+## Sanity Content Types Needed in Studio
 
-### Files to modify
-- `src/pages/academy/AcademyProfile.tsx` — add logo upload UI + handler
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
+
+## What Stays Unchanged
+
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
