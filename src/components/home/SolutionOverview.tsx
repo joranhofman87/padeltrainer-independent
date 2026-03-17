@@ -45,11 +45,27 @@ function MiniPhoneBooking() {
   );
 }
 
+function MiniShield() {
+  return (
+    <div className="flex items-center gap-1.5 w-fit" aria-hidden>
+      <div className="h-8 w-6 rounded-sm bg-primary/15 relative overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 h-5 bg-primary/30 rounded-sm" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="h-2 w-2 rounded-full bg-primary/60" />
+        </div>
+      </div>
+      <div className="h-8 w-6 rounded-sm bg-destructive/10 relative overflow-hidden flex items-center justify-center">
+        <div className="w-4 h-px bg-destructive/40 rotate-45" />
+      </div>
+    </div>
+  );
+}
+
 const values = [
-  { icon: CalendarCheck, key: 'filled', Visual: MiniCalendarGrid },
-  { icon: ClipboardMinus, key: 'admin', Visual: MiniChecklist },
-  { icon: ShieldCheck, key: 'noshows', Visual: MiniShield },
-  { icon: Users, key: 'player', Visual: MiniPhoneBooking },
+  { key: 'filled', Visual: MiniCalendarGrid },
+  { key: 'admin', Visual: MiniChecklist },
+  { key: 'noshows', Visual: MiniShield },
+  { key: 'player', Visual: MiniPhoneBooking },
 ];
 
 export function SolutionOverview() {
