@@ -81,6 +81,14 @@ export interface EmailData {
   sessionsPerWeek?: number;
   ratingSystem?: string;
   notes?: string;
+  // Additional intake fields
+  birthDate?: string;
+  selectedPackageLabel?: string;
+  selectedPackagePrice?: number;
+  selectedPackageSessions?: number;
+  selectedDurationWeeks?: number;
+  priceLines?: { label: string; perLesson: string; total: string }[];
+  currency?: string;
 }
 
 /**
