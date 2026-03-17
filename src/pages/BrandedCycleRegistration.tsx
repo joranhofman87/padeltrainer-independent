@@ -271,7 +271,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
           {/* Owner branding header */}
           <div className="flex items-center gap-3 mb-6">
             <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border bg-muted">
-              <AvatarImage src={owner.logo_url || undefined} className="object-contain p-1" />
+              <AvatarImage src={owner.logo_url || undefined} alt={owner.name} />
               <AvatarFallback>
                 <Building2 className="h-6 w-6" />
               </AvatarFallback>
