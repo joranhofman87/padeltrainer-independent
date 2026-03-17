@@ -327,6 +327,18 @@ export default function CycleRegistration() {
 
   return (
     <FeatureErrorBoundary featureName="CycleRegistration" onRetry={() => window.location.reload()}>
+    {cycle && (
+      <SEO
+        title={`${cycle.name}${owner ? ` | ${owner.name}` : ''}`}
+        description={[
+          cycle.name,
+          cycleLocation ? `${cycleLocation.name}, ${cycleLocation.city}` : '',
+          owner?.name,
+        ].filter(Boolean).join(' · ')}
+        url={`/register/${cycleId}`}
+        noIndex
+      />
+    )}
     <MarketingLayout>
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-2xl mx-auto">

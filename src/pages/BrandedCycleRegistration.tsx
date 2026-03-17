@@ -254,8 +254,19 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
   return (
     <FeatureErrorBoundary featureName="BrandedCycleRegistration" onRetry={() => window.location.reload()}>
+      {cycle && owner && (
+        <SEO
+          title={`${cycle.name} | ${owner.name}`}
+          description={[
+            cycle.name,
+            cycleLocation ? `${cycleLocation.name}, ${cycleLocation.city}` : '',
+            owner.name,
+          ].filter(Boolean).join(' · ')}
+          url={`/${directoryPath}/${slug}/register/${cycleId}`}
+          noIndex
+        />
+      )}
       <ProfileLayout breadcrumbs={breadcrumbs} bannerUrl={owner.banner_url} showBackButton={false}>
-        <div className="max-w-2xl mx-auto">
           {/* Owner branding header */}
           <div className="flex items-center gap-3 mb-6">
             <Avatar className="h-10 w-10 sm:h-14 sm:w-14 border">
