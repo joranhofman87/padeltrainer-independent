@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, CheckCircle2, MessageSquare, Phone, CalendarX, CreditCard, Clock, Users } from 'lucide-react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
