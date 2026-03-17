@@ -5,14 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { getAppUrl } from '@/lib/domains';
 
-const cardConfig = [
-  { key: 'chat', icon: MessageSquare },
-  { key: 'oncourt', icon: Clock },
-  { key: 'noshows', icon: CalendarX },
-  { key: 'payments', icon: CreditCard },
-  { key: 'calendar', icon: Phone },
-  { key: 'scale', icon: Users },
-];
+const cardKeys = ['chat', 'oncourt', 'noshows', 'payments', 'calendar', 'scale'];
 
 function ChaosChatMockup() {
   return (
