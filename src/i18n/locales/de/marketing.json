@@ -608,7 +608,7 @@
     },
     "chaos": {
       "headline": "Die meisten Padel-Trainer führen ihr Geschäft im Chaos",
-      "intro": "Du bist Trainer geworden, um auf dem Platz zu stehen — nicht um Terminassistent zu sein. Aber ohne ein richtiges System sieht dein Tag ungefähr so aus:",
+      "intro": "Du bist Trainer geworden, um auf dem Platz zu stehen. Nicht um Terminassistent zu sein. Aber ohne ein richtiges System sieht dein Tag ungefähr so aus:",
       "item_whatsapp": "WhatsApp & Sprachnachrichten, um Verfügbarkeit und Bestätigungen zu koordinieren",
       "item_spreadsheet": "Tabelle oder Notizbuch, um deinen Zeitplan zu verfolgen",
       "item_calendar": "Separater Kalender + separates Zahlungstool",
@@ -624,12 +624,12 @@
       "item_lateReply": "Späte Antworten schaden deiner Konversion von 'interessiert' zu 'gebucht'."
     },
     "solution": {
-      "headline": "Ein Tool für deine Stunden, Zahlungen und deinen Kalender.",
-      "category": "Speziell für Padel-Coaching gebaut — nicht aus einem generischen Terminplanungstool umfunktioniert. Handhabt Gruppenstunden, Plätze, Absagen und alles dazwischen.",
+      "headline": "Schluss mit fünf Apps für dein Coaching.",
+      "category": "Für Padel-Coaching gebaut. Nicht aus einem generischen Terminplanungstool umfunktioniert. Handhabt Gruppenstunden, Plätze, Absagen und alles dazwischen.",
       "value_filled_title": "Absagen schnell füllen",
       "value_filled_desc": "Freie Plätze gehen sofort online. Spieler werden benachrichtigt und können sie mit wenigen Taps buchen.",
       "value_admin_title": "Schluss mit WhatsApp-Planung",
-      "value_admin_desc": "Buchungen, Bestätigungen, Erinnerungen — alles passiert automatisch.",
+      "value_admin_desc": "Buchungen, Bestätigungen, Erinnerungen. Alles automatisch.",
       "value_noshows_title": "Bezahlt werden vor der Stunde",
       "value_noshows_desc": "Online-Zahlungen via iDEAL und Karten. Spieler, die vorab bezahlen, erscheinen auch wirklich.",
       "value_player_title": "Eine Buchungsseite, die deine Spieler mögen",
@@ -651,11 +651,11 @@
       "step2_title": "Link teilen",
       "step2_desc": "Setz ihn in deine WhatsApp-Bio, Instagram, oder schick ihn direkt. Spieler buchen selbst.",
       "step3_title": "Coachen. Wir machen den Rest.",
-      "step3_desc": "Kalender-Sync, Zahlungseinzug, Buchungsbestätigungen, Erinnerungen — alles automatisch."
+      "step3_desc": "Kalender-Sync, Zahlungen, Bestätigungen, Erinnerungen. Läuft von selbst."
     },
     "realities": {
       "headline": "Wie es deinen Tag wirklich verändert",
-      "intro": "Echte Probleme von Padel-Trainern — und wie wir sie lösen.",
+      "intro": "Echte Probleme von Padel-Trainern. Und wie wir sie lösen.",
       "label_before": "Vorher",
       "label_after": "Mit Padel Trainer",
       "chat_current": "Buchungen verstreut in WhatsApp-Threads",
@@ -684,7 +684,7 @@
       "academy_b4": "Jeder Trainer bekommt seine eigene Buchungsseite",
       "trainer_title": "Unabhängige Trainer",
       "trainer_subtitle": "Dein eigenes Ding machen ohne Verwaltungskopfschmerzen.",
-      "trainer_b1": "Spieler buchen und bezahlen online — erledigt",
+      "trainer_b1": "Spieler buchen und bezahlen online. Erledigt.",
       "trainer_b2": "Dein Google Calendar bleibt aktuell",
       "trainer_b3": "Erinnerungen gehen automatisch raus",
       "trainer_b4": "Dein eigenes öffentliches Profil und Buchungslink",
@@ -700,7 +700,7 @@
       "event_season": "Eine neue Saison oder ein neuer Zyklus beginnt und du willst Struktur.",
       "event_independent": "Du machst dich selbstständig und brauchst ein echtes Buchungssystem.",
       "event_noshows": "Absagen und No-Shows zerstören deine Auslastung.",
-      "event_volume": "Du erhöhst das Volumen — mehr Stunden, mehr Standorte.",
+      "event_volume": "Du wächst. Mehr Stunden, mehr Standorte.",
       "event_fulltime": "Du willst Vollzeit coachen ohne Verwaltungs-Overload.",
       "closing": "Wenn das auf dich zutrifft, starte heute deine kostenlose Testphase."
     },
@@ -719,9 +719,9 @@
       "seeAllPlans": "Alle Pläne ansehen →"
     },
     "faq": {
-      "headline": "Fragen",
+      "headline": "Hast du Fragen?",
       "onlyPadel_q": "Ist das nur für Padel?",
-      "onlyPadel_a": "Ja. Von Tag eins für Padel gebaut — Gruppenstunden, Platztypen, Ratings, alles.",
+      "onlyPadel_a": "Ja. Von Tag eins für Padel gebaut. Gruppenstunden, Platztypen, Ratings, alles.",
       "playersFree_q": "Sind Spieler wirklich kostenlos?",
       "playersFree_a": "Komplett. Spieler zahlen uns nie etwas.",
       "trialHow_q": "Wie funktioniert die kostenlose Testphase?",
@@ -729,7 +729,7 @@
       "needWebsite_q": "Brauche ich eine eigene Website?",
       "needWebsite_a": "Nein. Du bekommst eine Buchungsseite, die du direkt teilen kannst.",
       "onlineBooking_q": "Können Spieler online buchen?",
-      "onlineBooking_a": "Ja — über deine persönliche Buchungsseite. Funktioniert auf dem Handy.",
+      "onlineBooking_a": "Ja, über deine persönliche Buchungsseite. Funktioniert auf dem Handy.",
       "payments_q": "Wie funktionieren Zahlungen?",
       "payments_a": "Spieler zahlen per iDEAL oder Karte bei der Buchung. Das Geld geht über Mollie an dich.",
       "calendarSync_q": "Synchronisiert es mit Google Calendar?",
@@ -802,7 +802,7 @@
     "faq4q": "Wie finde ich einen Padel-Trainer in meiner Nähe in {{city}}?",
     "faq4a": "Durchsuche unser Verzeichnis von {{count}} zertifizierten Padel-Trainern in {{city}}. Vergleiche Bewertungen, lies Reviews und buche Stunden direkt über PadelTrainer.ai.",
     "faq5q": "Welches Level brauche ich für Padel-Stunden in {{city}}?",
-    "faq5a": "Padel-Stunden in {{city}} sind für alle Niveaus verfügbar — von kompletten Anfängern bis zu fortgeschrittenen Wettkampfspielern. Die meisten Trainer bieten angepasste Stunden basierend auf deinem aktuellen Level und deinen Zielen.",
+    "faq5a": "Padel-Stunden in {{city}} sind für alle Niveaus verfügbar, von kompletten Anfängern bis zu fortgeschrittenen Wettkampfspielern. Die meisten Trainer bieten angepasste Stunden basierend auf deinem aktuellen Level und deinen Zielen.",
     "faq6q": "Wie buche ich eine Padel-Stunde in {{city}}?",
     "faq6a": "Durchsuche einfach die oben aufgeführten Trainer, sieh dir ihre Profile mit Bewertungen und Verfügbarkeit an und buche eine Stunde direkt über PadelTrainer.ai. Du kannst nach Preis, Erfahrung und Spezialisierung filtern.",
     "academy": "Akademie",
@@ -826,7 +826,7 @@
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer — Terminplanung, Buchungen & Zahlungen für Padel-Trainer",
+      "title": "Padel Trainer | Terminplanung, Buchungen & Zahlungen für Padel-Trainer",
       "description": "Verwalte dein Padel-Coaching von einem Ort aus. Online-Buchung, sichere Zahlungen, Kalendersynchronisierung und weniger Ausfälle. Kostenlose Testphase, dann ab €9/Monat."
     },
     "location": {

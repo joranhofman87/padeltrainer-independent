@@ -608,7 +608,7 @@
     },
     "chaos": {
       "headline": "De meeste padeltrainers runnen hun bedrijf in chaos",
-      "intro": "Je bent trainer geworden om op de baan te staan — niet om een planningsassistent te zijn. Maar zonder een goed systeem ziet je dag er ongeveer zo uit:",
+      "intro": "Je bent trainer geworden om op de baan te staan. Niet om een planningsassistent te zijn. Maar zonder een goed systeem ziet je dag er ongeveer zo uit:",
       "item_whatsapp": "WhatsApp & spraakberichten om beschikbaarheid en bevestigingen te coördineren",
       "item_spreadsheet": "Spreadsheet of notitieboek om je schema bij te houden",
       "item_calendar": "Aparte agenda + apart betaalsysteem",
@@ -624,12 +624,12 @@
       "item_lateReply": "Late reacties schaden je conversie van 'geïnteresseerd' naar 'geboekt'."
     },
     "solution": {
-      "headline": "Eén tool voor je sessies, betalingen en planning.",
-      "category": "Specifiek gebouwd voor padelcoaching — niet een generieke afsprakenapp met een padel-sausje. Handelt groepslessen, baantypes, annuleringen en alles daartussen.",
+      "headline": "Stop met vijf apps jongleren om je coaching te runnen.",
+      "category": "Gebouwd voor padelcoaching. Niet een generieke afsprakenapp met een padel-sausje. Handelt groepslessen, baantypes, annuleringen en alles daartussen.",
       "value_filled_title": "Vul annuleringen snel",
       "value_filled_desc": "Open plekken gaan direct live. Spelers worden genotificeerd en boeken met een paar tikken.",
       "value_admin_title": "Geen WhatsApp-planning meer",
-      "value_admin_desc": "Boekingen, bevestigingen, herinneringen — het gaat allemaal automatisch.",
+      "value_admin_desc": "Boekingen, bevestigingen, herinneringen. Allemaal automatisch.",
       "value_noshows_title": "Betaald vóór de les",
       "value_noshows_desc": "Online betalingen via iDEAL en kaart. Spelers die vooraf betalen komen ook echt opdagen.",
       "value_player_title": "Een boekingspagina die spelers fijn vinden",
@@ -651,11 +651,11 @@
       "step2_title": "Deel je link",
       "step2_desc": "Zet hem in je WhatsApp bio, Instagram, of stuur hem direct. Spelers boeken zelf.",
       "step3_title": "Coach. Wij regelen de rest.",
-      "step3_desc": "Agenda sync, betalingen, boekingsbevestigingen, herinneringen — allemaal automatisch."
+      "step3_desc": "Agenda sync, betalingen, boekingsbevestigingen, herinneringen. Draait vanzelf."
     },
     "realities": {
       "headline": "Hoe het je dag echt verandert",
-      "intro": "Echte problemen waar padeltrainers tegenaan lopen — en hoe wij ze oplossen.",
+      "intro": "Echte problemen waar padeltrainers tegenaan lopen. En hoe wij ze oplossen.",
       "label_before": "Nu",
       "label_after": "Met Padel Trainer",
       "chat_current": "Boekingen verspreid over WhatsApp-gesprekken",
@@ -674,7 +674,7 @@
     },
     "jtbd": {
       "headline": "Werkt voor jouw opzet",
-      "intro": "Of je nu solo traint, een academie runt, of baanplanning doet bij een club.",
+      "intro": "Zelfstandige trainer, academy of club. We hebben het gebouwd voor alle drie.",
       "cta": "Start gratis proefperiode",
       "academy_title": "Academy-eigenaren",
       "academy_subtitle": "Beheer meerdere trainers vanuit één plek.",
@@ -684,7 +684,7 @@
       "academy_b4": "Geef elke trainer een eigen boekingspagina",
       "trainer_title": "Zelfstandige trainers",
       "trainer_subtitle": "Run je eigen ding zonder admin-hoofdpijn.",
-      "trainer_b1": "Spelers boeken en betalen online — klaar",
+      "trainer_b1": "Spelers boeken en betalen online. Klaar.",
       "trainer_b2": "Je Google Calendar blijft up-to-date",
       "trainer_b3": "Herinneringen gaan automatisch uit",
       "trainer_b4": "Je eigen openbare profiel en boekingslink",
@@ -700,7 +700,7 @@
       "event_season": "Een nieuw seizoen of cyclus begint en je wilt structuur.",
       "event_independent": "Je wordt zelfstandig en hebt een echt boekingssysteem nodig.",
       "event_noshows": "Annuleringen en no-shows doden je bezetting.",
-      "event_volume": "Je verhoogt het volume — meer sessies, meer locaties.",
+      "event_volume": "Je groeit. Meer sessies, meer locaties.",
       "event_fulltime": "Je wilt fulltime coachen zonder admin-overload.",
       "closing": "Als dit op jou van toepassing is, start vandaag je gratis proefperiode."
     },
@@ -719,9 +719,9 @@
       "seeAllPlans": "Bekijk alle plannen →"
     },
     "faq": {
-      "headline": "Vragen",
+      "headline": "Heb je vragen?",
       "onlyPadel_q": "Is dit alleen voor padel?",
-      "onlyPadel_a": "Ja. Vanaf dag één gebouwd voor padel — groepslessen, baantypes, ratings, alles.",
+      "onlyPadel_a": "Ja. Vanaf dag één gebouwd voor padel. Groepslessen, baantypes, ratings, alles.",
       "playersFree_q": "Zijn spelers echt gratis?",
       "playersFree_a": "Helemaal. Spelers betalen ons nooit iets.",
       "trialHow_q": "Hoe werkt de gratis proefperiode?",
@@ -729,7 +729,7 @@
       "needWebsite_q": "Heb ik een eigen website nodig?",
       "needWebsite_a": "Nee. Je krijgt een boekingspagina die je direct kunt delen.",
       "onlineBooking_q": "Kunnen spelers online boeken?",
-      "onlineBooking_a": "Ja — via je persoonlijke boekingspagina. Werkt op mobiel.",
+      "onlineBooking_a": "Ja, via je persoonlijke boekingspagina. Werkt op mobiel.",
       "payments_q": "Hoe werken betalingen?",
       "payments_a": "Spelers betalen via iDEAL of kaart bij het boeken. Het geld gaat naar jou via Mollie.",
       "calendarSync_q": "Synct het met Google Calendar?",
@@ -802,7 +802,7 @@
     "faq4q": "Hoe vind ik een padeltrainer bij mij in de buurt in {{city}}?",
     "faq4a": "Blader door onze directory van {{count}} gecertificeerde padeltrainers in {{city}}. Vergelijk beoordelingen, lees reviews en boek lessen direct via PadelTrainer.ai.",
     "faq5q": "Welk niveau heb ik nodig voor padellessen in {{city}}?",
-    "faq5a": "Padellessen in {{city}} zijn beschikbaar voor alle niveaus — van complete beginners tot gevorderde wedstrijdspelers. De meeste trainers bieden aangepaste sessies op basis van je huidige niveau en doelen.",
+    "faq5a": "Padellessen in {{city}} zijn beschikbaar voor alle niveaus, van complete beginners tot gevorderde wedstrijdspelers. De meeste trainers bieden aangepaste sessies op basis van je huidige niveau en doelen.",
     "faq6q": "Hoe boek ik een padelles in {{city}}?",
     "faq6a": "Blader door de trainers hierboven, bekijk hun profielen met beoordelingen en beschikbaarheid, en boek een les direct via PadelTrainer.ai. Je kunt filteren op prijs, ervaring en specialisatie.",
     "academy": "academie",
@@ -826,7 +826,7 @@
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer — Planning, Boekingen & Betalingen voor Padeltrainers",
+      "title": "Padel Trainer | Planning, Boekingen & Betalingen voor Padeltrainers",
       "description": "Beheer je padelcoaching vanuit één plek. Online boeken, veilige betalingen, agendakoppeling en minder no-shows. Gratis proefperiode, daarna vanaf €9/maand."
     },
     "location": {

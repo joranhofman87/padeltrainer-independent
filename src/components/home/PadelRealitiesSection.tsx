@@ -1,18 +1,11 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, CheckCircle2, MessageSquare, Phone, CalendarX, CreditCard, Clock, Users } from 'lucide-react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { getAppUrl } from '@/lib/domains';
 
-const cardConfig = [
-  { key: 'chat', icon: MessageSquare },
-  { key: 'oncourt', icon: Clock },
-  { key: 'noshows', icon: CalendarX },
-  { key: 'payments', icon: CreditCard },
-  { key: 'calendar', icon: Phone },
-  { key: 'scale', icon: Users },
-];
+const cardKeys = ['chat', 'oncourt', 'noshows', 'payments', 'calendar', 'scale'];
 
 function ChaosChatMockup() {
   return (
@@ -94,30 +87,23 @@ export function PadelRealitiesSection() {
 
           {/* Right: before/after list */}
           <div className="space-y-4">
-            {cardConfig.map((card, i) => (
+            {cardKeys.map((key, i) => (
               <motion.div
-                key={card.key}
+                key={key}
                 initial={{ opacity: 0, x: 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.05 }}
                 className="rounded-xl border bg-card p-5"
               >
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <card.icon className="h-4 w-4 text-destructive/60" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-muted-foreground line-through decoration-muted-foreground/40 mb-2">
-                      {t(`homev2.realities.${card.key}_current`)}
-                    </p>
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                      <p className="text-[15px] font-medium text-foreground">
-                        {t(`homev2.realities.${card.key}_with`)}
-                      </p>
-                    </div>
-                  </div>
+                <p className="text-sm text-muted-foreground line-through decoration-muted-foreground/40 mb-2">
+                  {t(`homev2.realities.${key}_current`)}
+                </p>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <p className="text-[15px] font-medium text-foreground">
+                    {t(`homev2.realities.${key}_with`)}
+                  </p>
                 </div>
               </motion.div>
             ))}

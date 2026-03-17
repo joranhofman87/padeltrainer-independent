@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { CalendarCheck, ClipboardMinus, ShieldCheck, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 /* Mini Tailwind-built illustrations for each value prop */
@@ -33,16 +32,6 @@ function MiniChecklist() {
   );
 }
 
-function MiniShield() {
-  return (
-    <div className="relative w-fit" aria-hidden>
-      <ShieldCheck className="h-10 w-10 text-primary/20" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="h-3 w-3 rounded-full bg-primary/60" />
-      </div>
-    </div>
-  );
-}
 
 function MiniPhoneBooking() {
   return (
@@ -56,11 +45,27 @@ function MiniPhoneBooking() {
   );
 }
 
+function MiniShield() {
+  return (
+    <div className="flex items-center gap-1.5 w-fit" aria-hidden>
+      <div className="h-8 w-6 rounded-sm bg-primary/15 relative overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 h-5 bg-primary/30 rounded-sm" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="h-2 w-2 rounded-full bg-primary/60" />
+        </div>
+      </div>
+      <div className="h-8 w-6 rounded-sm bg-destructive/10 relative overflow-hidden flex items-center justify-center">
+        <div className="w-4 h-px bg-destructive/40 rotate-45" />
+      </div>
+    </div>
+  );
+}
+
 const values = [
-  { icon: CalendarCheck, key: 'filled', Visual: MiniCalendarGrid },
-  { icon: ClipboardMinus, key: 'admin', Visual: MiniChecklist },
-  { icon: ShieldCheck, key: 'noshows', Visual: MiniShield },
-  { icon: Users, key: 'player', Visual: MiniPhoneBooking },
+  { key: 'filled', Visual: MiniCalendarGrid },
+  { key: 'admin', Visual: MiniChecklist },
+  { key: 'noshows', Visual: MiniShield },
+  { key: 'player', Visual: MiniPhoneBooking },
 ];
 
 export function SolutionOverview() {
@@ -93,10 +98,7 @@ export function SolutionOverview() {
               transition={{ delay: i * 0.08 }}
               className="rounded-xl border bg-card p-6 flex items-start gap-5"
             >
-              <div className="shrink-0 flex flex-col items-center gap-2">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <v.icon className="h-5 w-5 text-primary" />
-                </div>
+              <div className="shrink-0">
                 <v.Visual />
               </div>
               <div>

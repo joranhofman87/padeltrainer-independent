@@ -608,7 +608,7 @@
     },
     "chaos": {
       "headline": "Most padel trainers run their business on chaos",
-      "intro": "You became a coach to be on court — not to be a scheduling assistant. But without a proper system, your day looks something like this:",
+      "intro": "You became a coach to be on court. Not to manage a calendar. But without a proper system, your day looks something like this:",
       "item_whatsapp": "WhatsApp & voice notes to coordinate availability and confirmations",
       "item_spreadsheet": "Spreadsheet or notepad to track your schedule",
       "item_calendar": "Separate calendar + separate payment tool",
@@ -624,12 +624,12 @@
       "item_lateReply": "Late replies hurt your conversion from 'interested' to 'booked'."
     },
     "solution": {
-      "headline": "One tool for your sessions, payments, and schedule.",
-      "category": "Built specifically for padel coaching — not repurposed from some generic appointment tool. Handles group sessions, courts, cancellations, and everything in between.",
+      "headline": "Stop juggling five apps to run your coaching.",
+      "category": "Built for padel coaching. Not repurposed from some generic appointment tool. Handles group sessions, courts, cancellations, and everything in between.",
       "value_filled_title": "Fill cancellations fast",
       "value_filled_desc": "Open slots go live instantly. Players get notified and can grab them in a few taps.",
       "value_admin_title": "No more WhatsApp planning",
-      "value_admin_desc": "Bookings, confirmations, reminders — it all happens automatically.",
+      "value_admin_desc": "Bookings, confirmations, reminders. All automatic.",
       "value_noshows_title": "Get paid before the lesson",
       "value_noshows_desc": "Online payments via iDEAL and cards. Players who pay upfront actually show up.",
       "value_player_title": "A booking page your players will like",
@@ -651,11 +651,11 @@
       "step2_title": "Share your link",
       "step2_desc": "Drop it in your WhatsApp bio, Instagram, or send it directly. Players book themselves.",
       "step3_title": "Coach. We handle the rest.",
-      "step3_desc": "Calendar sync, payment collection, booking confirmations, reminders — all automatic."
+      "step3_desc": "Calendar sync, payments, confirmations, reminders. Runs itself."
     },
     "realities": {
       "headline": "How it actually changes your day",
-      "intro": "Real problems padel trainers deal with — and how we handle them.",
+      "intro": "Real problems trainers deal with. And how we solve them.",
       "label_before": "Before",
       "label_after": "With Padel Trainer",
       "chat_current": "Bookings scattered across WhatsApp threads",
@@ -674,7 +674,7 @@
     },
     "jtbd": {
       "headline": "Works for your setup",
-      "intro": "Whether you're a solo trainer, running an academy, or managing court schedules at a club.",
+      "intro": "Solo trainer, academy, or club. We built it to work for all three.",
       "cta": "Start free trial",
       "academy_title": "Academy owners",
       "academy_subtitle": "Run multiple trainers from one place.",
@@ -684,7 +684,7 @@
       "academy_b4": "Give each trainer their own booking page",
       "trainer_title": "Independent trainers",
       "trainer_subtitle": "Run your own thing without the admin headache.",
-      "trainer_b1": "Players book and pay online — done",
+      "trainer_b1": "Players book and pay online. Done.",
       "trainer_b2": "Your Google Calendar stays up to date",
       "trainer_b3": "Reminders go out automatically",
       "trainer_b4": "Your own public profile and booking link",
@@ -700,7 +700,7 @@
       "event_season": "A new season or cycle starts and you want structure.",
       "event_independent": "You're going independent and need a real booking system.",
       "event_noshows": "Cancellations and no-shows are killing utilization.",
-      "event_volume": "You're increasing volume — more sessions, more locations.",
+      "event_volume": "You're growing. More sessions, more locations.",
       "event_fulltime": "You want to go full-time coaching without admin overload.",
       "closing": "If any of this is you, start your free trial today."
     },
@@ -719,9 +719,9 @@
       "seeAllPlans": "See all plans →"
     },
     "faq": {
-      "headline": "Questions",
+      "headline": "Got questions?",
       "onlyPadel_q": "Is this only for padel?",
-      "onlyPadel_a": "Yes. Built for padel from day one — group sessions, court types, ratings, the works.",
+      "onlyPadel_a": "Yes. Built for padel from day one. Group sessions, court types, ratings, the works.",
       "playersFree_q": "Are players really free?",
       "playersFree_a": "Completely. Players never pay us anything.",
       "trialHow_q": "How does the free trial work?",
@@ -729,7 +729,7 @@
       "needWebsite_q": "Do I need my own website?",
       "needWebsite_a": "Nope. You get a booking page you can share directly.",
       "onlineBooking_q": "Can players book online?",
-      "onlineBooking_a": "Yes — through your personal booking page. Works on mobile.",
+      "onlineBooking_a": "Yes, through your personal booking page. Works on mobile.",
       "payments_q": "How do payments work?",
       "payments_a": "Players pay via iDEAL or card when they book. The money goes to you via Mollie.",
       "calendarSync_q": "Does it sync with Google Calendar?",
@@ -802,7 +802,7 @@
     "faq4q": "How do I find a padel trainer near me in {{city}}?",
     "faq4a": "Browse our directory of {{count}} certified padel trainers in {{city}}. Compare ratings, read reviews, and book lessons directly through PadelTrainer.ai.",
     "faq5q": "What level do I need to be to take padel lessons in {{city}}?",
-    "faq5a": "Padel lessons in {{city}} are available for all levels — from complete beginners to advanced competitive players. Most trainers offer customized sessions based on your current skill level and goals.",
+    "faq5a": "Padel lessons in {{city}} are available for all levels, from complete beginners to advanced competitive players. Most trainers offer customized sessions based on your current skill level and goals.",
     "faq6q": "How do I book a padel lesson in {{city}}?",
     "faq6a": "Simply browse the trainers listed above, view their profiles with ratings and availability, and book a lesson directly through PadelTrainer.ai. You can filter by price, experience, and specialization to find the perfect match.",
     "academy": "academy",
@@ -826,7 +826,7 @@
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer — Scheduling, Bookings & Payments for Padel Trainers",
+      "title": "Padel Trainer | Scheduling, Bookings & Payments for Padel Trainers",
       "description": "Run your padel coaching business from one place. Online booking, secure payments, calendar sync, and fewer no-shows. Free trial, then from €9/month."
     },
     "location": {

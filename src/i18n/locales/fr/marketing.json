@@ -608,7 +608,7 @@
     },
     "chaos": {
       "headline": "La plupart des entraîneurs de padel gèrent leur activité dans le chaos",
-      "intro": "Vous êtes devenu entraîneur pour être sur le terrain — pas pour être un assistant de planification. Mais sans un système approprié, votre journée ressemble à ça :",
+      "intro": "Vous êtes devenu entraîneur pour être sur le terrain. Pas pour être un assistant de planification. Mais sans un système approprié, votre journée ressemble à ça :",
       "item_whatsapp": "WhatsApp et messages vocaux pour coordonner la disponibilité et les confirmations",
       "item_spreadsheet": "Tableur ou carnet pour suivre votre emploi du temps",
       "item_calendar": "Calendrier séparé + outil de paiement séparé",
@@ -624,12 +624,12 @@
       "item_lateReply": "Les réponses tardives nuisent à votre conversion de 'intéressé' à 'réservé'."
     },
     "solution": {
-      "headline": "Un outil pour vos séances, paiements et planning.",
-      "category": "Conçu spécifiquement pour le coaching padel — pas recyclé d'un outil de rendez-vous générique. Gère les cours collectifs, les terrains, les annulations et tout le reste.",
+      "headline": "Arrêtez de jongler avec cinq applis pour gérer vos cours.",
+      "category": "Conçu pour le coaching padel. Pas recyclé d'un outil de rendez-vous générique. Gère les cours collectifs, les terrains, les annulations et tout le reste.",
       "value_filled_title": "Comblez les annulations vite",
       "value_filled_desc": "Les créneaux libres sont publiés instantanément. Les joueurs sont notifiés et peuvent les réserver en quelques taps.",
       "value_admin_title": "Fini la planification par WhatsApp",
-      "value_admin_desc": "Réservations, confirmations, rappels — tout se fait automatiquement.",
+      "value_admin_desc": "Réservations, confirmations, rappels. Tout automatique.",
       "value_noshows_title": "Soyez payé avant le cours",
       "value_noshows_desc": "Paiements en ligne via iDEAL et cartes. Les joueurs qui paient à l'avance viennent vraiment.",
       "value_player_title": "Une page de réservation que vos joueurs vont aimer",
@@ -651,11 +651,11 @@
       "step2_title": "Partagez votre lien",
       "step2_desc": "Mettez-le dans votre bio WhatsApp, Instagram, ou envoyez-le directement. Les joueurs réservent eux-mêmes.",
       "step3_title": "Coachez. On s'occupe du reste.",
-      "step3_desc": "Synchronisation du calendrier, encaissement des paiements, confirmations de réservation, rappels — tout est automatique."
+      "step3_desc": "Synchronisation du calendrier, paiements, confirmations, rappels. Ça tourne tout seul."
     },
     "realities": {
       "headline": "Comment ça change vraiment votre journée",
-      "intro": "De vrais problèmes d'entraîneurs de padel — et comment nous les résolvons.",
+      "intro": "De vrais problèmes d'entraîneurs de padel. Et comment nous les résolvons.",
       "label_before": "Avant",
       "label_after": "Avec Padel Trainer",
       "chat_current": "Réservations éparpillées dans des fils WhatsApp",
@@ -684,7 +684,7 @@
       "academy_b4": "Chaque entraîneur a sa propre page de réservation",
       "trainer_title": "Entraîneurs indépendants",
       "trainer_subtitle": "Gérez votre activité sans maux de tête administratifs.",
-      "trainer_b1": "Les joueurs réservent et paient en ligne — c'est fait",
+      "trainer_b1": "Les joueurs réservent et paient en ligne. C'est fait.",
       "trainer_b2": "Votre Google Calendar reste à jour",
       "trainer_b3": "Les rappels partent automatiquement",
       "trainer_b4": "Votre propre profil public et lien de réservation",
@@ -700,7 +700,7 @@
       "event_season": "Une nouvelle saison ou un nouveau cycle commence et vous voulez de la structure.",
       "event_independent": "Vous devenez indépendant et avez besoin d'un vrai système de réservation.",
       "event_noshows": "Les annulations et absences tuent votre taux d'occupation.",
-      "event_volume": "Vous augmentez le volume — plus de séances, plus de sites.",
+      "event_volume": "Vous grandissez. Plus de séances, plus de sites.",
       "event_fulltime": "Vous voulez coacher à temps plein sans surcharge administrative.",
       "closing": "Si cela vous concerne, commencez votre essai gratuit aujourd'hui."
     },
@@ -719,9 +719,9 @@
       "seeAllPlans": "Voir tous les plans →"
     },
     "faq": {
-      "headline": "Questions",
+      "headline": "Des questions ?",
       "onlyPadel_q": "C'est uniquement pour le padel ?",
-      "onlyPadel_a": "Oui. Conçu pour le padel dès le premier jour — cours collectifs, types de terrains, classements, tout.",
+      "onlyPadel_a": "Oui. Conçu pour le padel dès le premier jour. Cours collectifs, types de terrains, classements, tout.",
       "playersFree_q": "Les joueurs sont vraiment gratuits ?",
       "playersFree_a": "Totalement. Les joueurs ne nous paient jamais rien.",
       "trialHow_q": "Comment fonctionne l'essai gratuit ?",
@@ -729,7 +729,7 @@
       "needWebsite_q": "Ai-je besoin de mon propre site web ?",
       "needWebsite_a": "Non. Vous obtenez une page de réservation à partager directement.",
       "onlineBooking_q": "Les joueurs peuvent-ils réserver en ligne ?",
-      "onlineBooking_a": "Oui — via votre page de réservation personnelle. Fonctionne sur mobile.",
+      "onlineBooking_a": "Oui, via votre page de réservation personnelle. Fonctionne sur mobile.",
       "payments_q": "Comment fonctionnent les paiements ?",
       "payments_a": "Les joueurs paient par iDEAL ou carte à la réservation. L'argent vous parvient via Mollie.",
       "calendarSync_q": "Ça se synchronise avec Google Calendar ?",
@@ -802,7 +802,7 @@
     "faq4q": "Comment trouver un entraîneur de padel près de moi à {{city}} ?",
     "faq4a": "Parcourez notre annuaire de {{count}} entraîneurs de padel certifiés à {{city}}. Comparez les notes, lisez les avis et réservez des cours directement sur PadelTrainer.ai.",
     "faq5q": "Quel niveau faut-il pour prendre des cours de padel à {{city}} ?",
-    "faq5a": "Les cours de padel à {{city}} sont disponibles pour tous les niveaux — des débutants complets aux joueurs compétitifs avancés. La plupart des entraîneurs proposent des séances adaptées à votre niveau actuel et vos objectifs.",
+    "faq5a": "Les cours de padel à {{city}} sont disponibles pour tous les niveaux, des débutants complets aux joueurs compétitifs avancés. La plupart des entraîneurs proposent des séances adaptées à votre niveau actuel et vos objectifs.",
     "faq6q": "Comment réserver un cours de padel à {{city}} ?",
     "faq6a": "Parcourez simplement les entraîneurs listés ci-dessus, consultez leurs profils avec notes et disponibilités, et réservez un cours directement sur PadelTrainer.ai. Vous pouvez filtrer par prix, expérience et spécialisation.",
     "academy": "académie",
@@ -826,7 +826,7 @@
   },
   "seo": {
     "home": {
-      "title": "Padel Trainer — Planification, Réservations et Paiements pour Entraîneurs de Padel",
+      "title": "Padel Trainer | Planification, Réservations et Paiements pour Entraîneurs de Padel",
       "description": "Gérez votre coaching de padel depuis un seul endroit. Réservation en ligne, paiements sécurisés, synchronisation du calendrier et moins d'absences. Essai gratuit, puis à partir de €9/mois."
     },
     "location": {
