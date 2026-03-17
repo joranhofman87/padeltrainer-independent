@@ -98,10 +98,7 @@ export function SolutionOverview() {
               transition={{ delay: i * 0.08 }}
               className="rounded-xl border bg-card p-6 flex items-start gap-5"
             >
-              <div className="shrink-0 flex flex-col items-center gap-2">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <v.icon className="h-5 w-5 text-primary" />
-                </div>
+              <div className="shrink-0">
                 <v.Visual />
               </div>
               <div>

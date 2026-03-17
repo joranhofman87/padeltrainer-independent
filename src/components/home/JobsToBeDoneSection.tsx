@@ -49,7 +49,6 @@ export function JobsToBeDoneSection() {
                     <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${p.featured ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                       <p.icon className="h-5 w-5" />
                     </div>
-                    <p.Visual />
                   </div>
                   <h3 className="text-lg font-semibold mb-1">{t(`homev2.jtbd.${p.key}_title`)}</h3>
                   <p className="text-sm text-muted-foreground mb-4">{t(`homev2.jtbd.${p.key}_subtitle`)}</p>
