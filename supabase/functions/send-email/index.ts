@@ -868,6 +868,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             ${confirmationSection}
             ${detailsBlock}
             ${summaryBlock}
+            ${priceBlock}
             <p>${t.footer}</p>
             <p>${t.regards}<br><a href="https://padeltrainer.ai" style="color: ${BRAND_ORANGE}; text-decoration: none;">PadelTrainer.ai</a> Team</p>
           </div>
