@@ -248,6 +248,32 @@ export default function AcademyProfile() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Logo Upload */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              {activeAcademy.logo_url ? (
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-muted flex-shrink-0 ring-1 ring-border/50">
+                  <img src={activeAcademy.logo_url} alt="Academy logo" className="object-cover w-full h-full" loading="lazy" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center flex-shrink-0 ring-1 ring-border/50">
+                  <GraduationCap className="h-6 w-6 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{t('profile.logo', 'Logo')}</p>
+                <p className="text-xs text-muted-foreground">{t('profile.logoSizeHint', 'Square image, max 5MB. Shown on your public page.')}</p>
+              </div>
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              <Button type="button" variant="outline" size="sm" onClick={() => logoInputRef.current?.click()} disabled={logoUploading}>
+                <Upload className="h-4 w-4 mr-2" />
+                {logoUploading ? t('common.saving') : activeAcademy.logo_url ? t('profile.changeLogo', 'Change') : t('profile.uploadLogo', 'Upload')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Banner Upload */}
         <Card>
           <CardContent className="pt-6">
