@@ -86,6 +86,7 @@ export default function Home() {
           <SponsorBanner placementSlug="marketing-homepage" />
         </div>
         <HomeFeaturedSections />
+        <DualCTABanner />
       </Suspense>
     </MarketingLayout>
   );
