@@ -634,6 +634,8 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
         detailsTitle: string; startDate: string; endDate: string; deadline: string;
         yourRegistration: string; lessonType: string; duration: string; sessionsWeek: string;
         location: string; level: string; notes: string; min: string;
+        phone: string; birthDate: string; package_: string; durationWeeks: string;
+        pricePerLesson: string; totalPrice: string; priceSummary: string; weeks: string;
       }> = {
         en: {
           subject: `Registration Confirmed: ${data.cycleName || 'Training'} 🎾`,
@@ -653,6 +655,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Level',
           notes: 'Notes',
           min: 'min',
+          phone: 'Phone',
+          birthDate: 'Date of Birth',
+          package_: 'Package',
+          durationWeeks: 'Duration',
+          pricePerLesson: 'Per lesson',
+          totalPrice: 'Total',
+          priceSummary: 'Price Indication',
+          weeks: 'weeks',
         },
         nl: {
           subject: `Inschrijving bevestigd: ${data.cycleName || 'Training'} 🎾`,
@@ -672,6 +682,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Opmerkingen',
           min: 'min',
+          phone: 'Telefoon',
+          birthDate: 'Geboortedatum',
+          package_: 'Pakket',
+          durationWeeks: 'Duur',
+          pricePerLesson: 'Per les',
+          totalPrice: 'Totaal',
+          priceSummary: 'Prijsindicatie',
+          weeks: 'weken',
         },
         es: {
           subject: `Inscripción confirmada: ${data.cycleName || 'Entrenamiento'} 🎾`,
@@ -691,6 +709,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Nivel',
           notes: 'Notas',
           min: 'min',
+          phone: 'Teléfono',
+          birthDate: 'Fecha de nacimiento',
+          package_: 'Paquete',
+          durationWeeks: 'Duración',
+          pricePerLesson: 'Por clase',
+          totalPrice: 'Total',
+          priceSummary: 'Indicación de precio',
+          weeks: 'semanas',
         },
         de: {
           subject: `Anmeldung bestätigt: ${data.cycleName || 'Training'} 🎾`,
@@ -710,6 +736,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Anmerkungen',
           min: 'Min',
+          phone: 'Telefon',
+          birthDate: 'Geburtsdatum',
+          package_: 'Paket',
+          durationWeeks: 'Dauer',
+          pricePerLesson: 'Pro Lektion',
+          totalPrice: 'Gesamt',
+          priceSummary: 'Preisindikation',
+          weeks: 'Wochen',
         },
         fr: {
           subject: `Inscription confirmée : ${data.cycleName || 'Entraînement'} 🎾`,
@@ -729,6 +763,14 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
           level: 'Niveau',
           notes: 'Remarques',
           min: 'min',
+          phone: 'Téléphone',
+          birthDate: 'Date de naissance',
+          package_: 'Forfait',
+          durationWeeks: 'Durée',
+          pricePerLesson: 'Par cours',
+          totalPrice: 'Total',
+          priceSummary: 'Indication de prix',
+          weeks: 'semaines',
         },
       };
       const t = translations[lang] || translations.en;
