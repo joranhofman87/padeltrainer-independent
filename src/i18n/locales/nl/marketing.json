@@ -753,6 +753,13 @@
       "videoTips": "Videotips",
       "videoTipsDesc": "Bekijk & verbeter",
       "blogDesc": "Tips, gidsen & nieuws"
+    },
+    "dualCta": {
+      "headline": "Het enige boekingsplatform gebouwd voor padel.",
+      "body": "Trainers krijgen een systeem dat sessies vult en betalingen afhandelt. Spelers vinden en boeken eenvoudig lessen.",
+      "trainerCta": "Start gratis proefperiode",
+      "playerCta": "Aanmelden als speler",
+      "microcopy": "Geen creditcard nodig. Spelers zijn altijd gratis."
     }
   },
   "cityPage": {
