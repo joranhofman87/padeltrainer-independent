@@ -28,7 +28,9 @@ export default function AcademyProfile() {
   const { activeAcademy, refreshAcademies } = useAcademyContext();
   const [isLoading, setIsLoading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     name: '',
