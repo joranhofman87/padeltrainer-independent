@@ -222,6 +222,13 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
           </div>
           <h1 className="text-2xl font-bold mb-2">{t('application.success.title')}</h1>
           <p className="text-muted-foreground mb-6">{t('application.success.message')}</p>
+          {(cycle?.settings as any)?.success_message && (
+            <Card className="text-left mb-6 border-primary/20 bg-primary/5">
+              <CardContent className="pt-6">
+                <p className="text-sm whitespace-pre-line">{(cycle.settings as any).success_message}</p>
+              </CardContent>
+            </Card>
+          )}
           <Card className="text-left mb-6">
             <CardHeader>
               <CardTitle className="text-base">{t('application.success.whatNext')}</CardTitle>
