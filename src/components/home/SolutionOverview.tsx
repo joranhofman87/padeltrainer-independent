@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { CalendarCheck, ClipboardMinus, ShieldCheck, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 /* Mini Tailwind-built illustrations for each value prop */
