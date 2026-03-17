@@ -32,16 +32,6 @@ function MiniChecklist() {
   );
 }
 
-function MiniShield() {
-  return (
-    <div className="relative w-fit" aria-hidden>
-      <ShieldCheck className="h-10 w-10 text-primary/20" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="h-3 w-3 rounded-full bg-primary/60" />
-      </div>
-    </div>
-  );
-}
 
 function MiniPhoneBooking() {
   return (
