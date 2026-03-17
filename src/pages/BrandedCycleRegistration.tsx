@@ -291,7 +291,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               <div className="flex items-center gap-2 text-base font-medium text-foreground">
                 {cycleLocation.logo_url ? (
                   <Avatar className="h-6 w-6 shrink-0 border">
-                    <AvatarImage src={cycleLocation.logo_url} className="object-contain p-0.5" />
+                    <AvatarImage src={cycleLocation.logo_url} alt={cycleLocation.name} />
                     <AvatarFallback><MapPin className="h-3.5 w-3.5" /></AvatarFallback>
                   </Avatar>
                 ) : (
