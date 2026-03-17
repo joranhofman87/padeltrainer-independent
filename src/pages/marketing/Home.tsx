@@ -17,6 +17,7 @@ const PricingPreview = lazy(() => import('@/components/home/PricingPreview').the
 const FAQSection = lazy(() => import('@/components/home/FAQSection').then(m => ({ default: m.FAQSection })));
 const FinalCTASection = lazy(() => import('@/components/home/FinalCTASection').then(m => ({ default: m.FinalCTASection })));
 const HomeFeaturedSections = lazy(() => import('@/components/home/HomeFeaturedSections').then(m => ({ default: m.HomeFeaturedSections })));
+const DualCTABanner = lazy(() => import('@/components/home/DualCTABanner').then(m => ({ default: m.DualCTABanner })));
 
 export default function Home() {
   const { t } = useTranslation('marketing');
