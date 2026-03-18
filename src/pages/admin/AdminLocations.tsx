@@ -284,6 +284,60 @@ export default function AdminLocations() {
         </div>
       </div>
 
+      {/* Temporary: Pipeline Import */}
+      <div className="rounded-lg border border-dashed border-orange-500/50 bg-orange-500/5 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium text-sm">🔧 Pipeline Import (temporary)</p>
+            <p className="text-xs text-muted-foreground">Pull locations & academies from data pipeline</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePipelineImport(true)}
+              disabled={importingPipeline}
+            >
+              {importingPipeline ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Dry Run
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => handlePipelineImport(false)}
+              disabled={importingPipeline}
+            >
+              {importingPipeline ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Import Now
+            </Button>
+          </div>
+        </div>
+        {pipelineResult && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.inserted_locations}</div>
+              <div className="text-muted-foreground">Locations</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.inserted_academies}</div>
+              <div className="text-muted-foreground">Academies</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.linked}</div>
+              <div className="text-muted-foreground">Linked</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.skipped_duplicate}</div>
+              <div className="text-muted-foreground">Duplicates</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.skipped_invalid}</div>
+              <div className="text-muted-foreground">Invalid</div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Location Edit Dialog */}
       <LocationEditDialog
         open={dialogOpen}
