@@ -247,6 +247,7 @@ export default function CycleForm({
       setPriceColumns((cycle?.settings as any)?.price_columns ?? []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
+      setPricesIncludeVat((cycle?.settings as any)?.prices_include_vat ?? true);
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
       setCustomDurationInput('');
     }
