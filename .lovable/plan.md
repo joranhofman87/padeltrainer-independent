@@ -1,36 +1,29 @@
 
+# Sanity CMS Integration for Blog & Rules
 
-## Import Data Pipeline Edge Function (Temporary)
+## Status: ✅ COMPLETED
 
-### Overview
-Create a temporary admin-only edge function `import-pipeline-data` that pulls locations and academies from the data pipeline project. **This feature is designed to be removed after the import is complete.**
+Implemented on 2026-03-14.
 
-### Edge Function: `supabase/functions/import-pipeline-data/index.ts`
+## What Changed
 
-**Auth**: Admin-only via `getClaims()` + `is_admin()` check.
+1. **Sanity Client** (`src/lib/sanity.ts`) — Connected to project `ru3aqhjn` with GROQ queries for blog posts and rules articles.
+2. **Blog Data Layer** (`src/lib/blog.ts`) — Rewrote all functions to use Sanity GROQ queries instead of Supabase. Types updated (`_id`, `publishedAt`, `mainImage`, Portable Text `body`).
+3. **Blog Pages** — `Blog.tsx` and `BlogPost.tsx` now use Sanity images via `@sanity/image-url` and render body content with `@portabletext/react`.
+4. **Rules Section** — New `Rules.tsx` (listing) and `RulesPage.tsx` (detail) pages using the `rulesArticle` content type from Sanity.
+5. **Routes** — Added `/rules` and `/rules/:slug` routes in `DomainRouter.tsx`.
+6. **Navigation** — Added "Rules" link to marketing nav in `MarketingLayout.tsx`.
+7. **Admin Blog** — `AdminBlog.tsx` now reads from Sanity and links to Sanity Studio for editing.
+8. **CORS** — Added `https://*.lovableproject.com` and `https://padeltrainer.lovable.app` origins.
 
-**Flow**:
-1. Accept `{ dry_run?: boolean }` body
-2. **Phase 1 — Locations**: Paginate source API (`resource: "locations"`, limit 200). For each record: skip if `city` is null/empty, skip if `slug` exists in `locations`, map fields and INSERT
-3. **Phase 2 — Academies**: Paginate source API (`resource: "academies"`, limit 200). Skip if `slug` exists in `academy_profiles`, map fields (including `social_links.facebook` → `social_facebook`, etc.), INSERT
-4. **Phase 3 — Link**: For each academy with `_linked_club_id`, match to location via source internal ID, INSERT into `academy_locations` (skip duplicates)
-5. Return summary: `{ inserted_locations, inserted_academies, linked, skipped_duplicate, skipped_invalid, total_source, dry_run }`
+## Sanity Content Types Needed in Studio
 
-**Source API auth**: Hardcoded anon key for the pipeline project.
+**Blog Post** (`post`): title, slug, excerpt, body (Portable Text), mainImage, author (reference), publishedAt, tags, locale, canonicalRef, metaTitle, metaDescription, primaryKeyword
 
-**Safety**: INSERT-only, no UPDATE/DELETE, dedup by slug, skip invalid records, dry_run mode.
+**Rules Article** (`rulesArticle`): ✅ Already exists with title, slug, pageType, h1, intro, quickAnswer, bodySections, commonMistakes, seo, relatedRules, cta, datePublished, dateModified.
 
-### Admin helper in `src/lib/admin.ts`
-Add `importPipelineData(options)` function to invoke the edge function.
+## What Stays Unchanged
 
-### Cleanup plan
-After successful import, remove:
-- `supabase/functions/import-pipeline-data/` directory
-- `[functions.import-pipeline-data]` from `supabase/config.toml`
-- `importPipelineData()` from `src/lib/admin.ts`
-
-### Files to create/modify
-- **Create** `supabase/functions/import-pipeline-data/index.ts`
-- **Modify** `supabase/config.toml` — add function entry
-- **Modify** `src/lib/admin.ts` — add helper function
-
+- Database `articles` table — kept for the AI generation pipeline
+- Edge functions — untouched
+- Clubs/locations — remain database-driven
