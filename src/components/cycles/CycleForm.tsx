@@ -126,7 +126,7 @@ export default function CycleForm({
   const [customLessonType2, setCustomLessonType2] = useState<string>(
     (cycle?.settings as any)?.custom_lesson_types?.[1] ?? ''
   );
-  const isEdit = !!cycle;
+  const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
 
