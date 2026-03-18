@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
         }
 
         // Track source id → new location id
-        const sourceId = loc.id as string | loc._internal_id as string;
+        const sourceId = (loc.id as string) || (loc._internal_id as string);
         if (sourceId && inserted) {
           sourceIdToLocationId.set(sourceId, inserted.id);
         }

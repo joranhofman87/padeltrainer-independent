@@ -328,6 +328,44 @@ export async function disableBackgroundLogoJob(): Promise<{ success: boolean }> 
   return { success: true };
 }
 
+// Temporary: Import data from pipeline project
+export interface ImportPipelineOptions {
+  dry_run?: boolean;
+}
+
+export interface ImportPipelineSummary {
+  inserted_locations: number;
+  inserted_academies: number;
+  linked: number;
+  skipped_duplicate: number;
+  skipped_invalid: number;
+  total_source: number;
+  dry_run: boolean;
+}
+
+export async function importPipelineData(
+  options: ImportPipelineOptions = {}
+): Promise<ImportPipelineSummary> {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await supabase.functions.invoke("import-pipeline-data", {
+    body: options,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Failed to import pipeline data");
+  }
+
+  return response.data as ImportPipelineSummary;
+}
+
 export async function resetLogoFetchedAt(options: { 
   onlyWithoutLogos?: boolean;
 }): Promise<{ count: number }> {

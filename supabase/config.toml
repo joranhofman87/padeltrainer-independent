@@ -177,3 +177,6 @@ verify_jwt = false
 
 [functions.public-api]
 verify_jwt = false
+
+[functions.import-pipeline-data]
+verify_jwt = false
