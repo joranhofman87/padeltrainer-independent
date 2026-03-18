@@ -235,6 +235,14 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
         </div>
       )}
 
+      {/* VAT notice */}
+      {(hasCyclusOptions || hasPriceTable || hasDurationOptions) && (
+        <p className="text-xs text-muted-foreground italic">
+          {(cycle.settings as any)?.prices_include_vat === false
+            ? t('detail.pricesExcludeVat', 'All prices exclude VAT')
+            : t('detail.pricesIncludeVat', 'All prices include VAT')}
+        </p>
+      )}
       {/* Terms */}
       {hasTerms && (
         <div>

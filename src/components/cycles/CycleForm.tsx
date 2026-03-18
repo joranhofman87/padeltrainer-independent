@@ -111,6 +111,9 @@ export default function CycleForm({
   const [durationOptions, setDurationOptions] = useState<number[]>(
     (cycle?.settings as any)?.duration_options ?? []
   );
+  const [pricesIncludeVat, setPricesIncludeVat] = useState<boolean>(
+    (cycle?.settings as any)?.prices_include_vat ?? true
+  );
   const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
   const STANDARD_DURATIONS = [30, 45, 60, 90, 120] as const;
   const [availableDurations, setAvailableDurations] = useState<number[]>(
@@ -244,6 +247,7 @@ export default function CycleForm({
       setPriceColumns((cycle?.settings as any)?.price_columns ?? []);
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
+      setPricesIncludeVat((cycle?.settings as any)?.prices_include_vat ?? true);
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
       setCustomDurationInput('');
     }
@@ -335,6 +339,7 @@ export default function CycleForm({
         duration_options: isRegistration && durationOptions.length > 0 ? durationOptions : undefined,
         available_duration_minutes: isRegistration ? availableDurations.sort((a, b) => a - b) : undefined,
         price_columns: priceColumns.length > 0 ? priceColumns : undefined,
+        prices_include_vat: pricesIncludeVat,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -1092,6 +1097,23 @@ export default function CycleForm({
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addPriceRow', 'Add price row')}
                 </Button>
+
+                {/* VAT toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                  <Switch
+                    id="prices-include-vat"
+                    checked={pricesIncludeVat}
+                    onCheckedChange={setPricesIncludeVat}
+                  />
+                  <Label htmlFor="prices-include-vat" className="text-sm cursor-pointer">
+                    {t('form.pricesIncludeVat', 'Prices are including VAT (incl. BTW)')}
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {pricesIncludeVat
+                    ? t('form.pricesIncludeVatHint', 'Players will see: "All prices include VAT"')
+                    : t('form.pricesExcludeVatHint', 'Players will see: "All prices exclude VAT"')}
+                </p>
 
                 {/* Price Overview Summary */}
                 {priceTable.length > 0 && priceTable.some(r => r.price > 0 || (r.extra_prices || []).some(ep => ep.price > 0)) && (
