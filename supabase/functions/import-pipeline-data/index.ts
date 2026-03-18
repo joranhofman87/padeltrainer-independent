@@ -234,7 +234,16 @@ Deno.serve(async (req) => {
         google_review_count: (loc.google_review_count as number) || null,
       });
 
+      // Register in all dedup indexes to catch within-batch duplicates
       existingLocSlugSet.add(slug);
+      if (googleMapsUrl) {
+        existingLocByGoogleUrl.add(googleMapsUrl.trim().toLowerCase());
+      }
+      if (streetAddress && city) {
+        existingLocByAddressCity.add(
+          `${streetAddress.trim().toLowerCase()}::${city.trim().toLowerCase()}`
+        );
+      }
     }
 
     console.log(`${locBatch.length} new locations to insert (${summary.skipped_duplicate} duplicates, ${summary.skipped_invalid} invalid)`);
