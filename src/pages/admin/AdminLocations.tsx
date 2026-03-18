@@ -209,7 +209,28 @@ export default function AdminLocations() {
     setLocations(locationsData);
   };
 
-  const toggleActive = async (location: Location) => {
+  const handlePipelineImport = async (dryRun: boolean) => {
+    setImportingPipeline(true);
+    setPipelineResult(null);
+    try {
+      const result = await importPipelineData({ dry_run: dryRun });
+      setPipelineResult(result);
+      toast({
+        title: dryRun ? 'Dry Run Complete' : 'Import Complete',
+        description: `Locations: ${result.inserted_locations} inserted, Academies: ${result.inserted_academies} inserted, Linked: ${result.linked}, Skipped: ${result.skipped_duplicate} dupes + ${result.skipped_invalid} invalid`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Import Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setImportingPipeline(false);
+    }
+  };
+
+
     try {
       await updateLocation(location.id, { is_active: !location.is_active });
       setLocations(prev =>
