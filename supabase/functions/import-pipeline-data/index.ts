@@ -124,14 +124,41 @@ Deno.serve(async (req) => {
       dry_run: dryRun,
     };
 
-    // ─── Phase 1: Fetch all existing slugs upfront ───
-    console.log("Loading existing slugs...");
-    const { data: existingLocRows } = await adminClient
-      .from("locations")
-      .select("slug");
-    const existingLocSlugSet = new Set(
-      (existingLocRows || []).map((r: { slug: string }) => r.slug)
-    );
+    // ─── Phase 1: Fetch all existing location identifiers upfront ───
+    console.log("Loading existing location identifiers...");
+    
+    // Fetch all existing locations with dedup fields (paginate beyond 1000 limit)
+    const existingLocs: { slug: string; google_maps_url: string | null; street_address: string | null; city: string | null }[] = [];
+    let locOffset = 0;
+    const LOC_PAGE = 1000;
+    while (true) {
+      const { data: page } = await adminClient
+        .from("locations")
+        .select("slug, google_maps_url, street_address, city")
+        .range(locOffset, locOffset + LOC_PAGE - 1);
+      if (!page || page.length === 0) break;
+      existingLocs.push(...page);
+      if (page.length < LOC_PAGE) break;
+      locOffset += LOC_PAGE;
+    }
+    
+    // Build dedup indexes: 1) Google Maps URL, 2) address+city, 3) slug
+    const existingLocByGoogleUrl = new Set<string>();
+    const existingLocByAddressCity = new Set<string>();
+    const existingLocSlugSet = new Set<string>();
+    
+    for (const loc of existingLocs) {
+      existingLocSlugSet.add(loc.slug);
+      if (loc.google_maps_url) {
+        existingLocByGoogleUrl.add(loc.google_maps_url.trim().toLowerCase());
+      }
+      if (loc.street_address && loc.city) {
+        existingLocByAddressCity.add(
+          `${loc.street_address.trim().toLowerCase()}::${loc.city.trim().toLowerCase()}`
+        );
+      }
+    }
+    console.log(`Existing locations: ${existingLocs.length} (${existingLocByGoogleUrl.size} with Google Maps URL, ${existingLocByAddressCity.size} with address+city)`);
 
     const { data: existingAcaRows } = await adminClient
       .from("academy_profiles")
@@ -139,7 +166,7 @@ Deno.serve(async (req) => {
     const existingAcaSlugSet = new Set(
       (existingAcaRows || []).map((r: { slug: string }) => r.slug)
     );
-    console.log(`Existing: ${existingLocSlugSet.size} locations, ${existingAcaSlugSet.size} academies`);
+    console.log(`Existing academies: ${existingAcaSlugSet.size}`);
 
     // ─── Phase 2: Locations ───
     console.log("Phase 2: Fetching locations from source...");
@@ -155,6 +182,8 @@ Deno.serve(async (req) => {
       const city = loc.city as string | null;
       const slug = loc.slug as string;
       const sourceId = (loc.id as string) || (loc._internal_id as string);
+      const googleMapsUrl = (loc.google_maps_url as string) || null;
+      const streetAddress = (loc.street_address as string) || null;
 
       // Always track source_id → slug for linking (even if already exists)
       if (sourceId && slug) {
@@ -166,6 +195,21 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // 3-tier duplicate detection:
+      // 1. Google Maps URL match (strongest)
+      if (googleMapsUrl && existingLocByGoogleUrl.has(googleMapsUrl.trim().toLowerCase())) {
+        summary.skipped_duplicate++;
+        continue;
+      }
+      // 2. Address + city match
+      if (streetAddress && city) {
+        const addrKey = `${streetAddress.trim().toLowerCase()}::${city.trim().toLowerCase()}`;
+        if (existingLocByAddressCity.has(addrKey)) {
+          summary.skipped_duplicate++;
+          continue;
+        }
+      }
+      // 3. Slug match (fallback)
       if (!slug || existingLocSlugSet.has(slug)) {
         summary.skipped_duplicate++;
         continue;
