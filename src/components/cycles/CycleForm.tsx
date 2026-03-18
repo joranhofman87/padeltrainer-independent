@@ -1098,6 +1098,23 @@ export default function CycleForm({
                   {t('form.addPriceRow', 'Add price row')}
                 </Button>
 
+                {/* VAT toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                  <Switch
+                    id="prices-include-vat"
+                    checked={pricesIncludeVat}
+                    onCheckedChange={setPricesIncludeVat}
+                  />
+                  <Label htmlFor="prices-include-vat" className="text-sm cursor-pointer">
+                    {t('form.pricesIncludeVat', 'Prices are including VAT (incl. BTW)')}
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {pricesIncludeVat
+                    ? t('form.pricesIncludeVatHint', 'Players will see: "All prices include VAT"')
+                    : t('form.pricesExcludeVatHint', 'Players will see: "All prices exclude VAT"')}
+                </p>
+
                 {/* Price Overview Summary */}
                 {priceTable.length > 0 && priceTable.some(r => r.price > 0 || (r.extra_prices || []).some(ep => ep.price > 0)) && (
                   <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
