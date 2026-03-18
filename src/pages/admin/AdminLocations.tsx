@@ -73,6 +73,8 @@ export default function AdminLocations() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [dataProcessingOpen, setDataProcessingOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [importingPipeline, setImportingPipeline] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<ImportPipelineSummary | null>(null);
 
   // Get verified location IDs from club_profiles
   const [verifiedLocationIds, setVerifiedLocationIds] = useState<Set<string>>(new Set());
