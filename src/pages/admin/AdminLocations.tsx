@@ -230,7 +230,7 @@ export default function AdminLocations() {
     }
   };
 
-
+  const toggleActive = async (location: Location) => {
     try {
       await updateLocation(location.id, { is_active: !location.is_active });
       setLocations(prev =>
