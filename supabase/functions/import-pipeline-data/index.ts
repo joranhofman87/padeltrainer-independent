@@ -28,7 +28,7 @@ interface Summary {
 async function fetchAllPages(resource: string): Promise<SourceRecord[]> {
   const all: SourceRecord[] = [];
   let offset = 0;
-  const limit = 200;
+  const limit = 500;
   let hasMore = true;
 
   while (hasMore) {
@@ -52,6 +52,7 @@ async function fetchAllPages(resource: string): Promise<SourceRecord[]> {
     all.push(...data);
     hasMore = json.has_more === true;
     offset += limit;
+    console.log(`Fetched ${all.length} ${resource} so far...`);
   }
 
   return all;
@@ -76,7 +77,6 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Verify caller identity
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -93,7 +93,6 @@ Deno.serve(async (req) => {
 
     const userId = claimsData.claims.sub as string;
 
-    // Check admin role using service client
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
@@ -112,7 +111,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Parse body
     const body = await req.json().catch(() => ({}));
     const dryRun = body.dry_run === true;
 
@@ -126,37 +124,54 @@ Deno.serve(async (req) => {
       dry_run: dryRun,
     };
 
-    // ─── Phase 1: Locations ───
-    console.log("Phase 1: Fetching locations from source...");
+    // ─── Phase 1: Fetch all existing slugs upfront ───
+    console.log("Loading existing slugs...");
+    const { data: existingLocRows } = await adminClient
+      .from("locations")
+      .select("slug");
+    const existingLocSlugSet = new Set(
+      (existingLocRows || []).map((r: { slug: string }) => r.slug)
+    );
+
+    const { data: existingAcaRows } = await adminClient
+      .from("academy_profiles")
+      .select("slug");
+    const existingAcaSlugSet = new Set(
+      (existingAcaRows || []).map((r: { slug: string }) => r.slug)
+    );
+    console.log(`Existing: ${existingLocSlugSet.size} locations, ${existingAcaSlugSet.size} academies`);
+
+    // ─── Phase 2: Locations ───
+    console.log("Phase 2: Fetching locations from source...");
     const sourceLocations = await fetchAllPages("locations");
     summary.total_source += sourceLocations.length;
     console.log(`Fetched ${sourceLocations.length} locations from source`);
 
-    // Get existing slugs
-    const { data: existingLocSlugs } = await adminClient
-      .from("locations")
-      .select("slug");
-    const existingLocSlugSet = new Set(
-      (existingLocSlugs || []).map((r: { slug: string }) => r.slug)
-    );
-
-    // Map source internal_id → inserted location id for linking
-    const sourceIdToLocationId = new Map<string, string>();
+    // Build batch of new locations, track source_id → slug for linking
+    const sourceIdToSlug = new Map<string, string>();
+    const locBatch: Record<string, unknown>[] = [];
 
     for (const loc of sourceLocations) {
       const city = loc.city as string | null;
+      const slug = loc.slug as string;
+      const sourceId = (loc.id as string) || (loc._internal_id as string);
+
+      // Always track source_id → slug for linking (even if already exists)
+      if (sourceId && slug) {
+        sourceIdToSlug.set(sourceId, slug);
+      }
+
       if (!city || city.trim() === "") {
         summary.skipped_invalid++;
         continue;
       }
 
-      const slug = loc.slug as string;
       if (!slug || existingLocSlugSet.has(slug)) {
         summary.skipped_duplicate++;
         continue;
       }
 
-      const record = {
+      locBatch.push({
         name: loc.name as string,
         slug,
         street_address: (loc.street_address as string) || null,
@@ -173,64 +188,65 @@ Deno.serve(async (req) => {
         google_maps_url: (loc.google_maps_url as string) || null,
         google_rating: (loc.google_rating as number) || null,
         google_review_count: (loc.google_review_count as number) || null,
-      };
-
-      if (!dryRun) {
-        const { data: inserted, error: insertErr } = await adminClient
-          .from("locations")
-          .insert(record)
-          .select("id")
-          .single();
-
-        if (insertErr) {
-          console.error(`Failed to insert location ${slug}:`, insertErr.message);
-          summary.skipped_invalid++;
-          continue;
-        }
-
-        // Track source id → new location id
-        const sourceId = (loc.id as string) || (loc._internal_id as string);
-        if (sourceId && inserted) {
-          sourceIdToLocationId.set(sourceId, inserted.id);
-        }
-      }
+      });
 
       existingLocSlugSet.add(slug);
-      summary.inserted_locations++;
-
-      // Also track source id for dry run
-      if (dryRun) {
-        const sourceId = (loc.id as string) || (loc._internal_id as string);
-        if (sourceId) {
-          sourceIdToLocationId.set(sourceId, `dry-run-${slug}`);
-        }
-      }
     }
 
-    console.log(`Phase 1 complete: ${summary.inserted_locations} locations to insert`);
+    console.log(`${locBatch.length} new locations to insert (${summary.skipped_duplicate} duplicates, ${summary.skipped_invalid} invalid)`);
 
-    // ─── Phase 2: Academies ───
-    console.log("Phase 2: Fetching academies from source...");
+    // Batch insert locations in chunks of 200
+    if (!dryRun && locBatch.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < locBatch.length; i += CHUNK) {
+        const chunk = locBatch.slice(i, i + CHUNK);
+        const { error: insertErr } = await adminClient
+          .from("locations")
+          .insert(chunk);
+
+        if (insertErr) {
+          console.error(`Batch insert locations [${i}..${i + chunk.length}] error:`, insertErr.message);
+          // Fall back to one-by-one for this chunk
+          for (const rec of chunk) {
+            const { error: singleErr } = await adminClient
+              .from("locations")
+              .insert(rec);
+            if (singleErr) {
+              console.error(`Failed location ${rec.slug}:`, singleErr.message);
+              summary.skipped_invalid++;
+            } else {
+              summary.inserted_locations++;
+            }
+          }
+        } else {
+          summary.inserted_locations += chunk.length;
+        }
+        console.log(`Inserted locations batch: ${Math.min(i + CHUNK, locBatch.length)}/${locBatch.length}`);
+      }
+    } else {
+      summary.inserted_locations = locBatch.length;
+    }
+
+    console.log(`Phase 2 complete: ${summary.inserted_locations} locations inserted`);
+
+    // ─── Phase 3: Academies ───
+    console.log("Phase 3: Fetching academies from source...");
     const sourceAcademies = await fetchAllPages("academies");
     summary.total_source += sourceAcademies.length;
     console.log(`Fetched ${sourceAcademies.length} academies from source`);
 
-    // Get existing academy slugs
-    const { data: existingAcaSlugs } = await adminClient
-      .from("academy_profiles")
-      .select("slug");
-    const existingAcaSlugSet = new Set(
-      (existingAcaSlugs || []).map((r: { slug: string }) => r.slug)
-    );
-
-    // Track source academy id → inserted academy id for linking
-    const sourceAcaIdToInserted = new Map<
-      string,
-      { academyId: string; linkedClubId: string | null }
-    >();
+    // Track academy slug → linked_club_id for phase 4
+    const acaSlugToLinkedClubId = new Map<string, string>();
+    const acaBatch: Record<string, unknown>[] = [];
 
     for (const aca of sourceAcademies) {
       const slug = aca.slug as string;
+      const linkedClubId = (aca._linked_club_id as string) || null;
+
+      if (linkedClubId && slug) {
+        acaSlugToLinkedClubId.set(slug, linkedClubId);
+      }
+
       if (!slug || existingAcaSlugSet.has(slug)) {
         summary.skipped_duplicate++;
         continue;
@@ -238,7 +254,7 @@ Deno.serve(async (req) => {
 
       const socialLinks = (aca.social_links as Record<string, string>) || {};
 
-      const record = {
+      acaBatch.push({
         name: aca.name as string,
         slug,
         country: (aca.country as string) || "NL",
@@ -249,82 +265,118 @@ Deno.serve(async (req) => {
         phone: (aca.phone as string) || null,
         social_facebook: socialLinks.facebook || null,
         social_instagram: socialLinks.instagram || null,
-      };
-
-      if (!dryRun) {
-        const { data: inserted, error: insertErr } = await adminClient
-          .from("academy_profiles")
-          .insert(record)
-          .select("id")
-          .single();
-
-        if (insertErr) {
-          console.error(`Failed to insert academy ${slug}:`, insertErr.message);
-          summary.skipped_invalid++;
-          continue;
-        }
-
-        const linkedClubId = (aca._linked_club_id as string) || null;
-        if (inserted) {
-          sourceAcaIdToInserted.set(slug, {
-            academyId: inserted.id,
-            linkedClubId,
-          });
-        }
-      } else {
-        const linkedClubId = (aca._linked_club_id as string) || null;
-        sourceAcaIdToInserted.set(slug, {
-          academyId: `dry-run-${slug}`,
-          linkedClubId,
-        });
-      }
+      });
 
       existingAcaSlugSet.add(slug);
-      summary.inserted_academies++;
     }
 
-    console.log(`Phase 2 complete: ${summary.inserted_academies} academies to insert`);
+    console.log(`${acaBatch.length} new academies to insert`);
 
-    // ─── Phase 3: Link academies to locations ───
-    console.log("Phase 3: Linking academies to locations...");
+    if (!dryRun && acaBatch.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < acaBatch.length; i += CHUNK) {
+        const chunk = acaBatch.slice(i, i + CHUNK);
+        const { error: insertErr } = await adminClient
+          .from("academy_profiles")
+          .insert(chunk);
 
-    for (const [, { academyId, linkedClubId }] of sourceAcaIdToInserted) {
-      if (!linkedClubId) continue;
-
-      const locationId = sourceIdToLocationId.get(linkedClubId);
-      if (!locationId) {
-        console.log(`No location found for linked_club_id ${linkedClubId}`);
-        continue;
+        if (insertErr) {
+          console.error(`Batch insert academies [${i}..${i + chunk.length}] error:`, insertErr.message);
+          for (const rec of chunk) {
+            const { error: singleErr } = await adminClient
+              .from("academy_profiles")
+              .insert(rec);
+            if (singleErr) {
+              console.error(`Failed academy ${rec.slug}:`, singleErr.message);
+              summary.skipped_invalid++;
+            } else {
+              summary.inserted_academies++;
+            }
+          }
+        } else {
+          summary.inserted_academies += chunk.length;
+        }
+        console.log(`Inserted academies batch: ${Math.min(i + CHUNK, acaBatch.length)}/${acaBatch.length}`);
       }
+    } else {
+      summary.inserted_academies = acaBatch.length;
+    }
 
-      if (!dryRun) {
-        // Check if link already exists
-        const { data: existingLink } = await adminClient
-          .from("academy_locations")
-          .select("id")
-          .eq("academy_profile_id", academyId)
-          .eq("location_id", locationId)
-          .maybeSingle();
+    console.log(`Phase 3 complete: ${summary.inserted_academies} academies inserted`);
 
-        if (existingLink) continue;
+    // ─── Phase 4: Link academies to locations via slug lookup ───
+    console.log("Phase 4: Linking academies to locations...");
 
+    // Build a map of slug → location_id from ALL locations in DB
+    const { data: allLocations } = await adminClient
+      .from("locations")
+      .select("id, slug");
+    const slugToLocationId = new Map<string, string>();
+    for (const loc of allLocations || []) {
+      slugToLocationId.set(loc.slug, loc.id);
+    }
+
+    // Build a map of slug → academy_id from ALL academies in DB
+    const { data: allAcademies } = await adminClient
+      .from("academy_profiles")
+      .select("id, slug");
+    const slugToAcademyId = new Map<string, string>();
+    for (const aca of allAcademies || []) {
+      slugToAcademyId.set(aca.slug, aca.id);
+    }
+
+    // Get existing links to avoid duplicates
+    const { data: existingLinks } = await adminClient
+      .from("academy_locations")
+      .select("academy_profile_id, location_id");
+    const existingLinkSet = new Set(
+      (existingLinks || []).map(
+        (l: { academy_profile_id: string; location_id: string }) =>
+          `${l.academy_profile_id}::${l.location_id}`
+      )
+    );
+
+    const linkBatch: { academy_profile_id: string; location_id: string }[] = [];
+
+    for (const [acaSlug, linkedClubId] of acaSlugToLinkedClubId) {
+      const academyId = slugToAcademyId.get(acaSlug);
+      if (!academyId) continue;
+
+      // Resolve linked_club_id → location slug → location id
+      const locSlug = sourceIdToSlug.get(linkedClubId);
+      if (!locSlug) continue;
+
+      const locationId = slugToLocationId.get(locSlug);
+      if (!locationId) continue;
+
+      const key = `${academyId}::${locationId}`;
+      if (existingLinkSet.has(key)) continue;
+
+      linkBatch.push({ academy_profile_id: academyId, location_id: locationId });
+      existingLinkSet.add(key);
+    }
+
+    console.log(`${linkBatch.length} new academy-location links to create`);
+
+    if (!dryRun && linkBatch.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < linkBatch.length; i += CHUNK) {
+        const chunk = linkBatch.slice(i, i + CHUNK);
         const { error: linkErr } = await adminClient
           .from("academy_locations")
-          .insert({
-            academy_profile_id: academyId,
-            location_id: locationId,
-          });
+          .insert(chunk);
 
         if (linkErr) {
-          console.error(`Failed to link academy ${academyId} to location ${locationId}:`, linkErr.message);
-          continue;
+          console.error(`Batch link error [${i}..${i + chunk.length}]:`, linkErr.message);
+        } else {
+          summary.linked += chunk.length;
         }
       }
-
-      summary.linked++;
+    } else {
+      summary.linked = linkBatch.length;
     }
 
-    console.log(`Phase 3 complete: ${summary.linked} links created`);
+    console.log(`Phase 4 complete: ${summary.linked} links created`);
     console.log("Import summary:", JSON.stringify(summary));
 
     return new Response(JSON.stringify(summary), {
