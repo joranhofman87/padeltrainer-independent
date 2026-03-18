@@ -104,6 +104,8 @@ export interface CycleSettings {
   available_duration_minutes?: number[];
   // Named price columns for the price table (e.g. ["Jeugd", "Volwassenen"])
   price_columns?: string[];
+  // Whether the displayed prices include VAT
+  prices_include_vat?: boolean;
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   [key: string]: unknown; // Allow for Json compatibility
