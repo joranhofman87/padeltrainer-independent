@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { isUserAdmin } from '@/lib/admin';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { isUserAdmin, importPipelineData, type ImportPipelineSummary } from '@/lib/admin';
 import {
   Loader2,
   Plus,
@@ -73,6 +73,8 @@ export default function AdminLocations() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [dataProcessingOpen, setDataProcessingOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [importingPipeline, setImportingPipeline] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<ImportPipelineSummary | null>(null);
 
   // Get verified location IDs from club_profiles
   const [verifiedLocationIds, setVerifiedLocationIds] = useState<Set<string>>(new Set());
@@ -207,6 +209,27 @@ export default function AdminLocations() {
     setLocations(locationsData);
   };
 
+  const handlePipelineImport = async (dryRun: boolean) => {
+    setImportingPipeline(true);
+    setPipelineResult(null);
+    try {
+      const result = await importPipelineData({ dry_run: dryRun });
+      setPipelineResult(result);
+      toast({
+        title: dryRun ? 'Dry Run Complete' : 'Import Complete',
+        description: `Locations: ${result.inserted_locations} inserted, Academies: ${result.inserted_academies} inserted, Linked: ${result.linked}, Skipped: ${result.skipped_duplicate} dupes + ${result.skipped_invalid} invalid`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Import Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setImportingPipeline(false);
+    }
+  };
+
   const toggleActive = async (location: Location) => {
     try {
       await updateLocation(location.id, { is_active: !location.is_active });
@@ -259,6 +282,60 @@ export default function AdminLocations() {
             Add Location
           </Button>
         </div>
+      </div>
+
+      {/* Temporary: Pipeline Import */}
+      <div className="rounded-lg border border-dashed border-orange-500/50 bg-orange-500/5 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium text-sm">🔧 Pipeline Import (temporary)</p>
+            <p className="text-xs text-muted-foreground">Pull locations & academies from data pipeline</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePipelineImport(true)}
+              disabled={importingPipeline}
+            >
+              {importingPipeline ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Dry Run
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => handlePipelineImport(false)}
+              disabled={importingPipeline}
+            >
+              {importingPipeline ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Import Now
+            </Button>
+          </div>
+        </div>
+        {pipelineResult && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.inserted_locations}</div>
+              <div className="text-muted-foreground">Locations</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.inserted_academies}</div>
+              <div className="text-muted-foreground">Academies</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.linked}</div>
+              <div className="text-muted-foreground">Linked</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.skipped_duplicate}</div>
+              <div className="text-muted-foreground">Duplicates</div>
+            </div>
+            <div className="rounded bg-muted p-2">
+              <div className="font-medium">{pipelineResult.skipped_invalid}</div>
+              <div className="text-muted-foreground">Invalid</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Location Edit Dialog */}
