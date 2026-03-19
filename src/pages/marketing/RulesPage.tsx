@@ -7,6 +7,7 @@ import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, AlertCircle, BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
