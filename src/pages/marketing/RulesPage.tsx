@@ -26,6 +26,8 @@ interface RulesArticleDetail {
   intro: string;
   quickAnswer: string;
   pageType: 'hub' | 'child';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content: any[] | null;
   bodySections: BodySection[] | null;
   commonMistakes: string[] | null;
   seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string; indexable?: boolean } | null;
