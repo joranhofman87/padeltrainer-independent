@@ -119,6 +119,7 @@ export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current ==
   intro,
   quickAnswer,
   pageType,
+  content,
   bodySections,
   commonMistakes,
   seo,

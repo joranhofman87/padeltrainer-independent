@@ -164,8 +164,17 @@ export default function RulesPage() {
           </div>
         </motion.div>
 
-        {/* Body Sections */}
-        {article.bodySections && article.bodySections.length > 0 && (
+        {/* Body Content — prefer Portable Text (content) over legacy bodySections */}
+        {article.content && article.content.length > 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-8"
+          >
+            <PortableTextRenderer content={article.content} />
+          </motion.div>
+        ) : article.bodySections && article.bodySections.length > 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -181,7 +190,7 @@ export default function RulesPage() {
               </div>
             ))}
           </motion.div>
-        )}
+        ) : null}
 
         {/* Common Mistakes */}
         {article.commonMistakes && article.commonMistakes.length > 0 && (
