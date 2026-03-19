@@ -7,6 +7,7 @@ import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
+import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, AlertCircle, BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,8 @@ interface RulesArticleDetail {
   intro: string;
   quickAnswer: string;
   pageType: 'hub' | 'child';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content: any[] | null;
   bodySections: BodySection[] | null;
   commonMistakes: string[] | null;
   seo: { titleTag: string; metaDescription: string; breadcrumbLabel?: string; indexable?: boolean } | null;
@@ -161,8 +164,17 @@ export default function RulesPage() {
           </div>
         </motion.div>
 
-        {/* Body Sections */}
-        {article.bodySections && article.bodySections.length > 0 && (
+        {/* Body Content — prefer Portable Text (content) over legacy bodySections */}
+        {article.content && article.content.length > 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-8"
+          >
+            <PortableTextRenderer content={article.content} />
+          </motion.div>
+        ) : article.bodySections && article.bodySections.length > 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -178,7 +190,7 @@ export default function RulesPage() {
               </div>
             ))}
           </motion.div>
-        )}
+        ) : null}
 
         {/* Common Mistakes */}
         {article.commonMistakes && article.commonMistakes.length > 0 && (
