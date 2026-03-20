@@ -43,7 +43,7 @@ import {
   ProfileQuickStatsCard,
 } from '@/components/profiles';
 import { getMarketingUrl } from '@/lib/domains';
-import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+
 
 interface TrainerWithProfile {
   id: string;
