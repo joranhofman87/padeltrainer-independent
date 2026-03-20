@@ -106,7 +106,48 @@ Deno.serve(async (req) => {
       .delete()
       .eq("user_id", target_user_id);
 
-    // 3. Preserve club profiles created by this user - just remove the creator reference
+    // 3. Clean up cycles owned by clubs/academies this user created
+    const { data: userClubProfiles } = await supabaseAdmin
+      .from("club_profiles")
+      .select("id")
+      .eq("created_by", target_user_id);
+
+    if (userClubProfiles && userClubProfiles.length > 0) {
+      const clubIds = userClubProfiles.map((c) => c.id);
+      const { data: clubCycles } = await supabaseAdmin
+        .from("cycles")
+        .select("id")
+        .eq("owner_type", "club")
+        .in("owner_id", clubIds);
+
+      if (clubCycles && clubCycles.length > 0) {
+        const cycleIds = clubCycles.map((c) => c.id);
+        await supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds);
+        await supabaseAdmin.from("cycles").delete().in("id", cycleIds);
+      }
+    }
+
+    const { data: userAcademyProfiles } = await supabaseAdmin
+      .from("academy_profiles")
+      .select("id")
+      .eq("created_by", target_user_id);
+
+    if (userAcademyProfiles && userAcademyProfiles.length > 0) {
+      const academyIds = userAcademyProfiles.map((c) => c.id);
+      const { data: academyCycles } = await supabaseAdmin
+        .from("cycles")
+        .select("id")
+        .eq("owner_type", "academy")
+        .in("owner_id", academyIds);
+
+      if (academyCycles && academyCycles.length > 0) {
+        const cycleIds = academyCycles.map((c) => c.id);
+        await supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds);
+        await supabaseAdmin.from("cycles").delete().in("id", cycleIds);
+      }
+    }
+
+    // Preserve club profiles created by this user - just remove the creator reference
     // This keeps the club data (logo, banner, description) intact
     await supabaseAdmin
       .from("club_profiles")
@@ -119,7 +160,7 @@ Deno.serve(async (req) => {
       .delete()
       .eq("user_id", target_user_id);
 
-    // 3b. Preserve academy profiles created by this user - just remove the creator reference
+    // Preserve academy profiles created by this user - just remove the creator reference
     await supabaseAdmin
       .from("academy_profiles")
       .update({ created_by: null })
