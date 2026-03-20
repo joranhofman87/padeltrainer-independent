@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
 import { formatPrice } from '@/lib/pricing';
+import { useTranslation } from 'react-i18next';
 import { BookingConfirmation } from '@/components/booking/BookingConfirmation';
 import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
 import { CycleBundleList } from '@/components/booking/CycleBundleList';
