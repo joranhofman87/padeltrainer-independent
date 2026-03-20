@@ -349,6 +349,7 @@ export function DomainRouter() {
           <Route path="racket-finder" element={<RacketFinder />} />
           <Route path="gear/rackets" element={<RacketListing />} />
           <Route path="gear/rackets/:slug" element={<RacketDetail />} />
+          <Route path="tools/padel-level-test" element={<PadelLevelTest />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />

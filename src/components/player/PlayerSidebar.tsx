@@ -205,6 +205,21 @@ export function PlayerSidebar() {
                     {!collapsed && <span>{t("nav.following")}</span>}
                   </NavLink>
                 </SidebarMenuButton>
+                </SidebarMenuItem>
+
+              {/* Level Test */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.levelTest", "Level Test")}>
+                  <a
+                    href={`/${(profile as any)?.preferred_language || 'en'}/tools/padel-level-test`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2"
+                  >
+                    <Target className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.levelTest", "Level Test")}</span>}
+                  </a>
+                </SidebarMenuButton>
               </SidebarMenuItem>
 
               {/* Account Group */}
