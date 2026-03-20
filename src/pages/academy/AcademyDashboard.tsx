@@ -9,14 +9,16 @@ import {
   Clock,
   AlertTriangle,
   ExternalLink,
+  EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
-import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats } from '@/lib/academy';
+import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats, getAcademyTrainersWithProfiles } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { getMarketingUrl } from '@/lib/domains';
