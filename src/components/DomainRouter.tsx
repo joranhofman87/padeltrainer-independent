@@ -343,6 +343,7 @@ export function DomainRouter() {
           <Route path="clubs/:slug/register/:cycleId" element={<BrandedCycleRegistration ownerType="club" />} />
           <Route path="book/:trainerId" element={<BookLesson />} />
           <Route path="register/:cycleId" element={<CycleRegistration />} />
+          <Route path="racket-finder" element={<RacketFinder />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
