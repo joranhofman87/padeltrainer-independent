@@ -463,8 +463,8 @@ export default function BookLesson() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Book a Lesson</h1>
-            <p className="text-sm text-muted-foreground">with {trainer.profiles.full_name}</p>
+            <h1 className="text-xl font-bold">{t('bookLesson.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('bookLesson.with', { name: trainer.profiles.full_name })}</p>
           </div>
         </div>
       </header>
