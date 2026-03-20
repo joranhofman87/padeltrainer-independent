@@ -138,7 +138,7 @@
         "tracking": "Volg je boekingen"
       }
     },
-  "trainers": {
+    "trainers": {
       "badge": "Voor Trainers",
       "title": "Kies je abonnement",
       "subtitle": "Begin gratis en upgrade naarmate je bedrijf groeit. Lagere platformkosten bij hogere niveaus.",
@@ -158,13 +158,34 @@
           "description": "Alles wat je nodig hebt om je administratie te stroomlijnen.",
           "cta": "Start Gratis",
           "featureList": [
-            { "title": "Trainersprofiel", "description": "Presenteer jezelf aan spelers" },
-            { "title": "Toevoegen aan marktplaats", "description": "Word gevonden & ontvang nieuwe boekingen" },
-            { "title": "Onbeperkt spelers", "description": "Geen limiet op het aantal spelers" },
-            { "title": "Onbeperkt trainingen", "description": "Geen limiet op het aantal sessies" },
-            { "title": "Wachtlijst", "description": "Laat spelers zich inschrijven op je wachtlijst" },
-            { "title": "Open inschrijving", "description": "Open een inschrijving & laat ons systeem alles voor je plannen" },
-            { "title": "€1,00 per boekingskosten", "description": "Laat spelers direct betalen bij het boeken, geen geld meer achterna hoeven te jagen" }
+            {
+              "title": "Trainersprofiel",
+              "description": "Presenteer jezelf aan spelers"
+            },
+            {
+              "title": "Toevoegen aan marktplaats",
+              "description": "Word gevonden & ontvang nieuwe boekingen"
+            },
+            {
+              "title": "Onbeperkt spelers",
+              "description": "Geen limiet op het aantal spelers"
+            },
+            {
+              "title": "Onbeperkt trainingen",
+              "description": "Geen limiet op het aantal sessies"
+            },
+            {
+              "title": "Wachtlijst",
+              "description": "Laat spelers zich inschrijven op je wachtlijst"
+            },
+            {
+              "title": "Open inschrijving",
+              "description": "Open een inschrijving & laat ons systeem alles voor je plannen"
+            },
+            {
+              "title": "€1,00 per boekingskosten",
+              "description": "Laat spelers direct betalen bij het boeken, geen geld meer achterna hoeven te jagen"
+            }
           ]
         },
         "professional": {
@@ -175,9 +196,18 @@
           "description": "Voor serieuze trainers",
           "cta": "Kies Professional",
           "featureList": [
-            { "title": "Alles van Starter", "description": "Alle functies die je nodig hebt om je administratie te stroomlijnen" },
-            { "title": "Handmatige facturatie", "description": "Stuur zelf facturen, wij kunnen ze automatisch voor je genereren" },
-            { "title": "€0,75 per boekingskosten", "description": "Verlaagde kosten voor het incasseren bij spelers wanneer ze een sessie bij je boeken" }
+            {
+              "title": "Alles van Starter",
+              "description": "Alle functies die je nodig hebt om je administratie te stroomlijnen"
+            },
+            {
+              "title": "Handmatige facturatie",
+              "description": "Stuur zelf facturen, wij kunnen ze automatisch voor je genereren"
+            },
+            {
+              "title": "€0,75 per boekingskosten",
+              "description": "Verlaagde kosten voor het incasseren bij spelers wanneer ze een sessie bij je boeken"
+            }
           ]
         },
         "academy": {
@@ -188,59 +218,71 @@
           "description": "Voor trainingsacademies",
           "cta": "Neem Contact Op",
           "featureList": [
-            { "title": "Voeg tot 15 trainers toe", "description": "Beheer & voeg je team toe om de boekingen te stroomlijnen" },
-            { "title": "Voeg spelers toe aan de marktplaats", "description": "Voeg je branding toe aan hun profiel & vergroot boekingen voor je team" },
-            { "title": "Voeg je academie toe aan de marktplaats", "description": "Word uitgelicht in de marktplaats om meer boekingen te ontvangen" },
-            { "title": "€0,50 per boekingskosten", "description": "Stroomlijn je boekhouding. Laat klanten vooraf betalen en synchroniseer facturen met je boekhoudsoftware. Laagste kosten per boeking" }
+            {
+              "title": "Voeg tot 15 trainers toe",
+              "description": "Beheer & voeg je team toe om de boekingen te stroomlijnen"
+            },
+            {
+              "title": "Voeg spelers toe aan de marktplaats",
+              "description": "Voeg je branding toe aan hun profiel & vergroot boekingen voor je team"
+            },
+            {
+              "title": "Voeg je academie toe aan de marktplaats",
+              "description": "Word uitgelicht in de marktplaats om meer boekingen te ontvangen"
+            },
+            {
+              "title": "€0,50 per boekingskosten",
+              "description": "Stroomlijn je boekhouding. Laat klanten vooraf betalen en synchroniseer facturen met je boekhoudsoftware. Laagste kosten per boeking"
+            }
           ]
         }
       }
-  },
-  "clubs": {
-    "badge": "Voor Clubs",
-    "title": "Club Abonnement",
-    "subtitle": "Compleet platform voor het beheren van de trainingsactiviteiten van je club",
-    "price": "€199",
-    "period": "/maand",
-    "billedAnnually": "Jaarlijks gefactureerd voor €2.388/jaar",
-    "trialBadge": "14 dagen gratis proberen",
-    "cta": "Start Gratis Proefperiode",
-    "features": {
-      "trainers": "Onbeperkt trainers",
-      "calendar": "Gecombineerde trainer agenda",
-      "players": "Spelersbeheer",
-      "bookings": "Gecentraliseerd boekingssysteem",
-      "analytics": "Club analytics dashboard",
-      "profile": "Aangepaste club profielpagina",
-      "support": "Prioriteitsondersteuning",
-      "branding": "Club branding"
-    }
-  },
-  "faq": {
-    "title": "Veelgestelde vragen",
-    "questions": {
-      "platformFee": {
-        "q": "Hoe werken de platformkosten?",
-        "a": "Een vast bedrag wordt afgetrokken van elke lesbetaling op basis van je abonnementsniveau. Starter betaalt €1,00 per boeking, Professional betaalt €0,75 en Academy betaalt €0,50."
-      },
-      "changePlans": {
-        "q": "Kan ik later van abonnement wisselen?",
-        "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
-      },
-      "contract": {
-        "q": "Is er een contract of verplichting?",
-        "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
-      },
-      "payouts": {
-        "q": "Hoe werken uitbetalingen?",
-        "a": "Betalingen worden verwerkt via Mollie, onze betrouwbare betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
-      },
-      "clubTrial": {
-        "q": "Hoe werkt de gratis proefperiode voor clubs?",
-        "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. Geen creditcard nodig om te starten. Na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
+    },
+    "clubs": {
+      "badge": "Voor Clubs",
+      "title": "Club Abonnement",
+      "subtitle": "Compleet platform voor het beheren van de trainingsactiviteiten van je club",
+      "price": "€199",
+      "period": "/maand",
+      "billedAnnually": "Jaarlijks gefactureerd voor €2.388/jaar",
+      "trialBadge": "14 dagen gratis proberen",
+      "cta": "Start Gratis Proefperiode",
+      "features": {
+        "trainers": "Onbeperkt trainers",
+        "calendar": "Gecombineerde trainer agenda",
+        "players": "Spelersbeheer",
+        "bookings": "Gecentraliseerd boekingssysteem",
+        "analytics": "Club analytics dashboard",
+        "profile": "Aangepaste club profielpagina",
+        "support": "Prioriteitsondersteuning",
+        "branding": "Club branding"
+      }
+    },
+    "faq": {
+      "title": "Veelgestelde vragen",
+      "questions": {
+        "platformFee": {
+          "q": "Hoe werken de platformkosten?",
+          "a": "Een vast bedrag wordt afgetrokken van elke lesbetaling op basis van je abonnementsniveau. Starter betaalt €1,00 per boeking, Professional betaalt €0,75 en Academy betaalt €0,50."
+        },
+        "changePlans": {
+          "q": "Kan ik later van abonnement wisselen?",
+          "a": "Ja! Je kunt op elk moment upgraden of downgraden. Bij upgraden krijg je direct toegang tot nieuwe functies. Bij downgraden gaan de wijzigingen in aan het einde van je factureringsperiode."
+        },
+        "contract": {
+          "q": "Is er een contract of verplichting?",
+          "a": "Geen langlopende contracten. Alle abonnementen worden maandelijks of jaarlijks gefactureerd en je kunt op elk moment opzeggen. Jaarlijkse abonnementen bieden 20% korting."
+        },
+        "payouts": {
+          "q": "Hoe werken uitbetalingen?",
+          "a": "Betalingen worden verwerkt via Mollie, onze betrouwbare betalingspartner. Nadat een les is voltooid, worden de gelden overgemaakt naar je gekoppelde bankrekening, meestal binnen 2-3 werkdagen."
+        },
+        "clubTrial": {
+          "q": "Hoe werkt de gratis proefperiode voor clubs?",
+          "a": "Clubs krijgen 14 dagen gratis toegang tot alle functies. Geen creditcard nodig om te starten. Na de proefperiode wordt je jaarlijks gefactureerd voor €2.388/jaar."
+        }
       }
     }
-  }
   },
   "about": {
     "hero": {
@@ -864,12 +906,35 @@
     "q4": "Heb je last van je elleboog of arm?",
     "q5": "Heb je een voorkeur voor gewicht?",
     "q6": "Weet je welke vorm je voorkeur heeft?",
-    "a1": { "beginner": "Ik begin net", "intermediate": "Ik speel regelmatig (1-2x per week)", "advanced": "Ik doe mee aan toernooien" },
-    "a2": { "control": "Verdedigen en de rally controleren", "allround": "Een mix van alles", "power": "Aanvallen en punten afmaken met power" },
-    "a3": { "under100": "Onder €100" },
-    "a4": { "yes": "Ja, ik heb iets zachts nodig voor mijn arm", "no": "Geen problemen" },
-    "a5": { "light": "Licht racket (makkelijker zwaaien)", "medium": "Standaard gewicht", "heavy": "Zwaarder (meer stabiliteit)", "any": "Geen voorkeur" },
-    "a6": { "round": "Rond (maximale controle)", "teardrop": "Druppel (balans controle & power)", "diamond": "Diamant (maximale power)", "any": "Weet ik niet — adviseer mij" },
+    "a1": {
+      "beginner": "Ik begin net",
+      "intermediate": "Ik speel regelmatig (1-2x per week)",
+      "advanced": "Ik doe mee aan toernooien"
+    },
+    "a2": {
+      "control": "Verdedigen en de rally controleren",
+      "allround": "Een mix van alles",
+      "power": "Aanvallen en punten afmaken met power"
+    },
+    "a3": {
+      "under100": "Onder €100"
+    },
+    "a4": {
+      "yes": "Ja, ik heb iets zachts nodig voor mijn arm",
+      "no": "Geen problemen"
+    },
+    "a5": {
+      "light": "Licht racket (makkelijker zwaaien)",
+      "medium": "Standaard gewicht",
+      "heavy": "Zwaarder (meer stabiliteit)",
+      "any": "Geen voorkeur"
+    },
+    "a6": {
+      "round": "Rond (maximale controle)",
+      "teardrop": "Druppel (balans controle & power)",
+      "diamond": "Diamant (maximale power)",
+      "any": "Weet ik niet — adviseer mij"
+    },
     "results": {
       "title": "Jouw Perfecte Racket",
       "noResults": "Geen exacte matches gevonden. Probeer je voorkeuren aan te passen.",
@@ -882,5 +947,45 @@
       "viewAll": "Bekijk Volledige Racket Catalogus →"
     },
     "share": "Deel je resultaat"
+  },
+  "gear": {
+    "listing": {
+      "title": "Beste Padel Rackets 2026 — Vergelijk & Kies",
+      "description": "Bekijk en vergelijk alle padel rackets. Filter op niveau, speelstijl, vorm, gewicht en prijs.",
+      "h1": "Padel Rackets",
+      "subtitle": "Vind en vergelijk de beste padel rackets voor elk niveau en speelstijl.",
+      "noResults": "Geen rackets gevonden met deze filters."
+    },
+    "showingCount": "{{filtered}} van {{total}} rackets getoond",
+    "clearAll": "Alles wissen",
+    "filter": {
+      "title": "Filters",
+      "level": "Niveau",
+      "style": "Speelstijl",
+      "shape": "Vorm",
+      "weight": "Gewicht",
+      "price": "Prijs",
+      "brand": "Merk",
+      "armFriendly": "Armvriendelijk",
+      "armFriendlyOnly": "Alleen armvriendelijke rackets"
+    },
+    "breadcrumb": {
+      "home": "Home",
+      "rackets": "Rackets"
+    },
+    "detail": {
+      "notFound": "Racket niet gevonden.",
+      "buyAt": "Koop bij {{shop}}",
+      "checkLocal": "Check beschikbaarheid bij je lokale padelshop",
+      "takeQuiz": "Doe de Quiz",
+      "quickSpecs": "Specificaties",
+      "atAGlance": "In een Oogopslag",
+      "level": "Niveau",
+      "style": "Stijl",
+      "armFriendlyLabel": "Armvriendelijk",
+      "priceLabel": "Prijs",
+      "fullDescription": "Volledige Review",
+      "similarRackets": "Vergelijkbare Rackets"
+    }
   }
 }
