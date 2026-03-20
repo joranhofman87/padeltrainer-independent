@@ -32,6 +32,8 @@ export interface Article {
   cta: CtaFields | null;
   datePublished: string | null;
   dateModified: string | null;
+  language?: string;
+  translationOf?: { _ref: string } | null;
 }
 
 const ARTICLES_PER_PAGE = 12;
@@ -65,7 +67,7 @@ export function calculateReadTime(bodySections: BodySection[] | null, content?: 
   return `${minutes} min read`;
 }
 
-export async function getPublishedArticles(page: number = 1, category?: string) {
+export async function getPublishedArticles(page: number = 1, category?: string, lang: string = 'en') {
   const start = (page - 1) * ARTICLES_PER_PAGE;
   const end = start + ARTICLES_PER_PAGE;
 
@@ -74,13 +76,13 @@ export async function getPublishedArticles(page: number = 1, category?: string) 
 
   if (category) {
     [articles, totalCount] = await Promise.all([
-      sanityClient.fetch<Article[]>(BLOG_POSTS_BY_CATEGORY_QUERY, { category, start, end }),
-      sanityClient.fetch<number>(BLOG_POSTS_BY_CATEGORY_COUNT_QUERY, { category }),
+      sanityClient.fetch<Article[]>(BLOG_POSTS_BY_CATEGORY_QUERY, { category, start, end, lang }),
+      sanityClient.fetch<number>(BLOG_POSTS_BY_CATEGORY_COUNT_QUERY, { category, lang }),
     ]);
   } else {
     [articles, totalCount] = await Promise.all([
-      sanityClient.fetch<Article[]>(BLOG_POSTS_QUERY, { start, end }),
-      sanityClient.fetch<number>(BLOG_POSTS_COUNT_QUERY),
+      sanityClient.fetch<Article[]>(BLOG_POSTS_QUERY, { start, end, lang }),
+      sanityClient.fetch<number>(BLOG_POSTS_COUNT_QUERY, { lang }),
     ]);
   }
 
@@ -92,12 +94,12 @@ export async function getPublishedArticles(page: number = 1, category?: string) 
   };
 }
 
-export async function getArticleBySlug(slug: string): Promise<Article | null> {
-  const data = await sanityClient.fetch(BLOG_POST_BY_SLUG_QUERY, { slug });
+export async function getArticleBySlug(slug: string, lang: string = 'en'): Promise<Article | null> {
+  const data = await sanityClient.fetch(BLOG_POST_BY_SLUG_QUERY, { slug, lang });
   return data || null;
 }
 
-export async function getAllCategories(): Promise<string[]> {
-  const categories = await sanityClient.fetch(ALL_CATEGORIES_QUERY);
+export async function getAllCategories(lang: string = 'en'): Promise<string[]> {
+  const categories = await sanityClient.fetch(ALL_CATEGORIES_QUERY, { lang });
   return (categories || []).filter(Boolean).sort();
 }
