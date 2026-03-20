@@ -922,5 +922,29 @@
       "fullDescription": "Full Review",
       "similarRackets": "Similar Rackets"
     }
+  },
+  "levelQuiz": {
+    "title": "What's Your Padel Level?",
+    "subtitle": "Answer 10 questions about your skills and find out your rating",
+    "selectCountry": "Select your country for a localized rating",
+    "startQuiz": "Start Quiz",
+    "question": "Question",
+    "of": "of",
+    "back": "Back",
+    "next": "Next",
+    "seeResults": "See My Results",
+    "yourLevel": "Your Padel Level",
+    "equivalentIn": "In {{country}}",
+    "strengths": "Your Strengths",
+    "focusAreas": "Focus Areas to Reach Level {{nextLevel}}",
+    "recommendedReading": "Recommended Reading",
+    "strokesToMaster": "Strokes to Master",
+    "fromBlog": "From Our Blog",
+    "findRacket": "Find Your Perfect Racket",
+    "takeRacketQuiz": "Take the Racket Finder Quiz",
+    "shareResult": "Share My Result",
+    "retakeQuiz": "Retake Quiz",
+    "shareText": "I'm a level {{level}} padel player ({{title}})! 🎾 What's your level?",
+    "linkCopied": "Link copied!"
   }
 }
