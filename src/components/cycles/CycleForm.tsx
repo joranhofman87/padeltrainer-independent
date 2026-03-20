@@ -114,6 +114,9 @@ export default function CycleForm({
   const [pricesIncludeVat, setPricesIncludeVat] = useState<boolean>(
     (cycle?.settings as any)?.prices_include_vat ?? true
   );
+  const [pricingNote, setPricingNote] = useState<string>(
+    (cycle?.settings as any)?.pricing_note ?? ''
+  );
   const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
   const STANDARD_DURATIONS = [30, 45, 60, 90, 120] as const;
   const [availableDurations, setAvailableDurations] = useState<number[]>(
