@@ -100,8 +100,17 @@
     "confirmationEmailTextPlaceholder": "ex. L'entraînement commence le 1er mars. Apportez votre propre raquette.",
     "confirmationEmailTextHelp": "Ce texte est inclus dans l'e-mail de confirmation envoyé aux joueurs après leur inscription. Laissez vide pour une confirmation standard.",
     "registrationAssignedTrainerHelp": "L'entraîneur qui donnera les cours pour cette inscription",
-    "registrationApplicableTrainersHelp": "Quels entraîneurs peuvent être assignés à cette inscription"
+    "registrationApplicableTrainersHelp": "Quels entraîneurs peuvent être assignés à cette inscription",
+    "pricesIncludeVat": "Prix TTC (TVA incluse)",
+    "pricesIncludeVatHint": "Les joueurs verront : \"Tous les prix incluent la TVA\"",
+    "pricesExcludeVatHint": "Les joueurs verront : \"Tous les prix sont hors TVA\""
   },
+
+  "detail": {
+    "pricesIncludeVat": "Tous les prix incluent la TVA",
+    "pricesExcludeVat": "Tous les prix sont hors TVA"
+  },
+
   "actions": {
     "openEnrollment": "Ouvrir les inscriptions",
     "closeEnrollment": "Fermer les inscriptions",

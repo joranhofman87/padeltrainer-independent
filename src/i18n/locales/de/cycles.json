@@ -100,8 +100,17 @@
     "confirmationEmailTextPlaceholder": "z.B. Das Training beginnt am 1. März. Bitte eigenen Schläger mitbringen.",
     "confirmationEmailTextHelp": "Dieser Text wird in die Bestätigungsmail aufgenommen, die Spieler nach der Anmeldung erhalten. Leer lassen für eine Standardbestätigung.",
     "registrationAssignedTrainerHelp": "Der Trainer, der die Stunden für diese Anmeldung gibt",
-    "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können"
+    "registrationApplicableTrainersHelp": "Welche Trainer dieser Anmeldung zugewiesen werden können",
+    "pricesIncludeVat": "Preise verstehen sich inkl. MwSt.",
+    "pricesIncludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich inkl. MwSt.\"",
+    "pricesExcludeVatHint": "Spieler sehen: \"Alle Preise verstehen sich zzgl. MwSt.\""
   },
+
+  "detail": {
+    "pricesIncludeVat": "Alle Preise verstehen sich inkl. MwSt.",
+    "pricesExcludeVat": "Alle Preise verstehen sich zzgl. MwSt."
+  },
+
   "actions": {
     "openEnrollment": "Anmeldung öffnen",
     "closeEnrollment": "Anmeldung schließen",
