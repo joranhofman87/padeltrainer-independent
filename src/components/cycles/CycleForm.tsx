@@ -9,6 +9,7 @@ import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 
 import { CalendarIcon, Loader2, Plus, Trash2, Euro } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -344,7 +345,7 @@ export default function CycleForm({
         available_duration_minutes: isRegistration ? availableDurations.sort((a, b) => a - b) : undefined,
         price_columns: priceColumns.length > 0 ? priceColumns : undefined,
         prices_include_vat: pricesIncludeVat,
-        pricing_note: pricingNote.trim() || undefined,
+        pricing_note: pricingNote && pricingNote !== '<p></p>' ? pricingNote : undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -1125,13 +1126,10 @@ export default function CycleForm({
                   <Label htmlFor="pricing-note" className="text-sm font-medium">
                     {t('form.pricingNote', 'Pricing comment')}
                   </Label>
-                  <textarea
-                    id="pricing-note"
+                  <MiniRichTextEditor
                     value={pricingNote}
-                    onChange={(e) => setPricingNote(e.target.value)}
+                    onChange={setPricingNote}
                     placeholder={t('form.pricingNotePlaceholder', 'e.g. "Family discount available on request"')}
-                    className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    rows={2}
                   />
                   <p className="text-xs text-muted-foreground">
                     {t('form.pricingNoteHelp', 'Shown to players below the pricing table. Leave empty to hide.')}
