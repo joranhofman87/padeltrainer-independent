@@ -847,5 +847,40 @@
     "trainer": {
       "description": "Book padel lessons with {{name}} in {{location}}. {{experience}}{{rate}}"
     }
+  },
+  "quiz": {
+    "title": "Find Your Perfect Padel Racket",
+    "subtitle": "Answer 5 quick questions",
+    "intro": "Not sure which padel racket to buy? Our racket finder quiz matches you with the ideal racket based on your playing level, style, budget, and physical needs. Whether you're a beginner looking for your first racket or an advanced player upgrading your weapon, we'll point you in the right direction.",
+    "start": "Start Quiz",
+    "back": "← Back",
+    "seo": {
+      "title": "Padel Racket Finder — Find Your Perfect Racket",
+      "description": "Answer 5 quick questions and we'll recommend the perfect padel racket for your level, playing style, and budget."
+    },
+    "q1": "What's your padel level?",
+    "q2": "How would you describe your game?",
+    "q3": "What's your budget?",
+    "q4": "Do you have any arm or elbow issues?",
+    "q5": "Do you have a weight preference?",
+    "q6": "Do you know which shape you prefer?",
+    "a1": { "beginner": "Just starting out", "intermediate": "I play regularly (1-2x per week)", "advanced": "I compete in tournaments" },
+    "a2": { "control": "Defend and control the rally", "allround": "A mix of everything", "power": "Attack and finish points with power" },
+    "a3": { "under100": "Under €100" },
+    "a4": { "yes": "Yes, I need something soft on my arm", "no": "No issues" },
+    "a5": { "light": "Light racket (easier to swing)", "medium": "Standard weight", "heavy": "Heavier (more stability)", "any": "No preference" },
+    "a6": { "round": "Round (maximum control)", "teardrop": "Teardrop (balance of control & power)", "diamond": "Diamond (maximum power)", "any": "Not sure — recommend for me" },
+    "results": {
+      "title": "Your Perfect Racket Match",
+      "noResults": "No exact matches found. Try adjusting your preferences.",
+      "topPick": "#1 Pick for You",
+      "alternative": "Great Alternative",
+      "budget": "Budget-Friendly",
+      "checkPrice": "Check Price",
+      "readReview": "Read Review",
+      "retake": "Not quite right? Retake Quiz",
+      "viewAll": "View Full Racket Catalogue →"
+    },
+    "share": "Share your result"
   }
 }

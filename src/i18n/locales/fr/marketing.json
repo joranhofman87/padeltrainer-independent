@@ -847,5 +847,40 @@
     "trainer": {
       "description": "Réservez des cours de padel avec {{name}} à {{location}}. {{experience}}{{rate}}"
     }
+  },
+  "quiz": {
+    "title": "Trouvez Votre Raquette de Padel Idéale",
+    "subtitle": "Répondez à 5 questions rapides",
+    "intro": "Vous ne savez pas quelle raquette de padel acheter ? Notre quiz vous aide à trouver la raquette idéale en fonction de votre niveau, style de jeu, budget et besoins physiques. Que vous soyez débutant à la recherche de votre première raquette ou joueur avancé en quête d'upgrade, nous vous guidons dans la bonne direction.",
+    "start": "Commencer le Quiz",
+    "back": "← Retour",
+    "seo": {
+      "title": "Trouvez Votre Raquette de Padel — Guide d'Achat Interactif",
+      "description": "Répondez à 5 questions rapides et nous vous recommanderons la raquette de padel parfaite pour votre niveau, style de jeu et budget."
+    },
+    "q1": "Quel est votre niveau de padel ?",
+    "q2": "Comment décririez-vous votre jeu ?",
+    "q3": "Quel est votre budget ?",
+    "q4": "Avez-vous des problèmes de coude ou de bras ?",
+    "q5": "Avez-vous une préférence de poids ?",
+    "q6": "Savez-vous quelle forme vous préférez ?",
+    "a1": { "beginner": "Je débute", "intermediate": "Je joue régulièrement (1-2x par semaine)", "advanced": "Je participe à des tournois" },
+    "a2": { "control": "Défendre et contrôler l'échange", "allround": "Un mélange de tout", "power": "Attaquer et finir les points en puissance" },
+    "a3": { "under100": "Moins de 100€" },
+    "a4": { "yes": "Oui, j'ai besoin de quelque chose de doux pour mon bras", "no": "Aucun problème" },
+    "a5": { "light": "Raquette légère (plus facile à manier)", "medium": "Poids standard", "heavy": "Plus lourde (plus de stabilité)", "any": "Pas de préférence" },
+    "a6": { "round": "Ronde (contrôle maximum)", "teardrop": "Goutte d'eau (équilibre contrôle & puissance)", "diamond": "Diamant (puissance maximum)", "any": "Pas sûr — recommandez-moi" },
+    "results": {
+      "title": "Votre Raquette Idéale",
+      "noResults": "Aucune correspondance exacte trouvée. Essayez d'ajuster vos préférences.",
+      "topPick": "Meilleur Choix Pour Vous",
+      "alternative": "Excellente Alternative",
+      "budget": "Option Économique",
+      "checkPrice": "Voir le Prix",
+      "readReview": "Lire le Test",
+      "retake": "Pas tout à fait ça ? Refaire le Quiz",
+      "viewAll": "Voir le Catalogue Complet de Raquettes →"
+    },
+    "share": "Partagez votre résultat"
   }
 }

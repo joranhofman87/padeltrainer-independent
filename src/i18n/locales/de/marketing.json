@@ -847,5 +847,40 @@
     "trainer": {
       "description": "Buche Padel-Stunden bei {{name}} in {{location}}. {{experience}}{{rate}}"
     }
+  },
+  "quiz": {
+    "title": "Finde Deinen Perfekten Padel Schläger",
+    "subtitle": "Beantworte 5 kurze Fragen",
+    "intro": "Nicht sicher, welchen Padelschläger du kaufen sollst? Unser Schläger-Finder Quiz findet den idealen Schläger basierend auf deinem Spielniveau, Stil, Budget und körperlichen Bedürfnissen. Ob Anfänger auf der Suche nach dem ersten Schläger oder Fortgeschrittener beim Upgrade — wir zeigen dir die richtige Richtung.",
+    "start": "Quiz Starten",
+    "back": "← Zurück",
+    "seo": {
+      "title": "Padel Schläger Finder — Finde Deinen Perfekten Schläger",
+      "description": "Beantworte 5 kurze Fragen und wir empfehlen dir den perfekten Padelschläger für dein Level, deinen Spielstil und dein Budget."
+    },
+    "q1": "Was ist dein Padel Level?",
+    "q2": "Wie würdest du deinen Spielstil beschreiben?",
+    "q3": "Was ist dein Budget?",
+    "q4": "Hast du Ellenbogen- oder Armprobleme?",
+    "q5": "Hast du eine Gewichtspräferenz?",
+    "q6": "Weißt du welche Form du bevorzugst?",
+    "a1": { "beginner": "Ich fange gerade an", "intermediate": "Ich spiele regelmäßig (1-2x pro Woche)", "advanced": "Ich spiele Turniere" },
+    "a2": { "control": "Verteidigen und den Ballwechsel kontrollieren", "allround": "Eine Mischung aus allem", "power": "Angreifen und Punkte mit Power abschließen" },
+    "a3": { "under100": "Unter €100" },
+    "a4": { "yes": "Ja, ich brauche etwas Schonendes für meinen Arm", "no": "Keine Probleme" },
+    "a5": { "light": "Leichter Schläger (einfacher zu schwingen)", "medium": "Standardgewicht", "heavy": "Schwerer (mehr Stabilität)", "any": "Keine Präferenz" },
+    "a6": { "round": "Rund (maximale Kontrolle)", "teardrop": "Tropfen (Balance aus Kontrolle & Power)", "diamond": "Diamant (maximale Power)", "any": "Nicht sicher — empfiehl mir" },
+    "results": {
+      "title": "Dein Perfekter Schläger",
+      "noResults": "Keine genauen Treffer gefunden. Versuche deine Präferenzen anzupassen.",
+      "topPick": "Beste Wahl Für Dich",
+      "alternative": "Tolle Alternative",
+      "budget": "Budget-Freundlich",
+      "checkPrice": "Preis Prüfen",
+      "readReview": "Review Lesen",
+      "retake": "Nicht ganz passend? Nochmal versuchen",
+      "viewAll": "Vollständigen Schläger Katalog ansehen →"
+    },
+    "share": "Teile dein Ergebnis"
   }
 }

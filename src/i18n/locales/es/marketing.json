@@ -847,5 +847,40 @@
     "trainer": {
       "description": "Reserva clases de pádel con {{name}} en {{location}}. {{experience}}{{rate}}"
     }
+  },
+  "quiz": {
+    "title": "Encuentra Tu Pala de Pádel Ideal",
+    "subtitle": "Responde 5 preguntas rápidas",
+    "intro": "¿No sabes qué pala de pádel comprar? Nuestro quiz te empareja con la pala ideal según tu nivel de juego, estilo, presupuesto y necesidades físicas. Ya seas principiante buscando tu primera pala o un jugador avanzado mejorando su equipo, te guiamos en la dirección correcta.",
+    "start": "Empezar Test",
+    "back": "← Atrás",
+    "seo": {
+      "title": "Buscador de Palas de Pádel — Encuentra Tu Pala Ideal",
+      "description": "Responde 5 preguntas rápidas y te recomendaremos la pala de pádel perfecta para tu nivel, estilo de juego y presupuesto."
+    },
+    "q1": "¿Cuál es tu nivel de pádel?",
+    "q2": "¿Cómo describirías tu juego?",
+    "q3": "¿Cuál es tu presupuesto?",
+    "q4": "¿Tienes problemas de codo o brazo?",
+    "q5": "¿Tienes preferencia de peso?",
+    "q6": "¿Sabes qué forma prefieres?",
+    "a1": { "beginner": "Estoy empezando", "intermediate": "Juego regularmente (1-2x por semana)", "advanced": "Compito en torneos" },
+    "a2": { "control": "Defender y controlar el punto", "allround": "Una mezcla de todo", "power": "Atacar y cerrar puntos con potencia" },
+    "a3": { "under100": "Menos de €100" },
+    "a4": { "yes": "Sí, necesito algo suave para mi brazo", "no": "Sin problemas" },
+    "a5": { "light": "Pala ligera (más fácil de mover)", "medium": "Peso estándar", "heavy": "Más pesada (más estabilidad)", "any": "Sin preferencia" },
+    "a6": { "round": "Redonda (máximo control)", "teardrop": "Lágrima (equilibrio control y potencia)", "diamond": "Diamante (máxima potencia)", "any": "No estoy seguro — recomiéndame" },
+    "results": {
+      "title": "Tu Pala Ideal",
+      "noResults": "No se encontraron coincidencias exactas. Intenta ajustar tus preferencias.",
+      "topPick": "Mejor Opción Para Ti",
+      "alternative": "Gran Alternativa",
+      "budget": "Opción Económica",
+      "checkPrice": "Ver Precio",
+      "readReview": "Leer Reseña",
+      "retake": "¿No es lo que buscas? Repetir Test",
+      "viewAll": "Ver Catálogo Completo de Palas →"
+    },
+    "share": "Comparte tu resultado"
   }
 }

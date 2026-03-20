@@ -847,5 +847,40 @@
     "trainer": {
       "description": "Boek padellessen bij {{name}} in {{location}}. {{experience}}{{rate}}"
     }
+  },
+  "quiz": {
+    "title": "Vind Jouw Perfecte Padel Racket",
+    "subtitle": "Beantwoord 5 snelle vragen",
+    "intro": "Niet zeker welk padelracket je moet kopen? Onze racket finder quiz matcht je met het ideale racket op basis van je speelniveau, stijl, budget en fysieke behoeften. Of je nu een beginner bent die zijn eerste racket zoekt of een gevorderde speler die upgradet, wij wijzen je de juiste richting.",
+    "start": "Start Quiz",
+    "back": "← Terug",
+    "seo": {
+      "title": "Padel Racket Finder — Vind Jouw Perfecte Racket",
+      "description": "Beantwoord 5 snelle vragen en wij adviseren het perfecte padelracket voor jouw niveau, speelstijl en budget."
+    },
+    "q1": "Wat is je padel niveau?",
+    "q2": "Hoe zou je je speelstijl omschrijven?",
+    "q3": "Wat is je budget?",
+    "q4": "Heb je last van je elleboog of arm?",
+    "q5": "Heb je een voorkeur voor gewicht?",
+    "q6": "Weet je welke vorm je voorkeur heeft?",
+    "a1": { "beginner": "Ik begin net", "intermediate": "Ik speel regelmatig (1-2x per week)", "advanced": "Ik doe mee aan toernooien" },
+    "a2": { "control": "Verdedigen en de rally controleren", "allround": "Een mix van alles", "power": "Aanvallen en punten afmaken met power" },
+    "a3": { "under100": "Onder €100" },
+    "a4": { "yes": "Ja, ik heb iets zachts nodig voor mijn arm", "no": "Geen problemen" },
+    "a5": { "light": "Licht racket (makkelijker zwaaien)", "medium": "Standaard gewicht", "heavy": "Zwaarder (meer stabiliteit)", "any": "Geen voorkeur" },
+    "a6": { "round": "Rond (maximale controle)", "teardrop": "Druppel (balans controle & power)", "diamond": "Diamant (maximale power)", "any": "Weet ik niet — adviseer mij" },
+    "results": {
+      "title": "Jouw Perfecte Racket",
+      "noResults": "Geen exacte matches gevonden. Probeer je voorkeuren aan te passen.",
+      "topPick": "Beste Keuze Voor Jou",
+      "alternative": "Goed Alternatief",
+      "budget": "Budget-Vriendelijk",
+      "checkPrice": "Bekijk Prijs",
+      "readReview": "Lees Review",
+      "retake": "Niet helemaal goed? Opnieuw proberen",
+      "viewAll": "Bekijk Volledige Racket Catalogus →"
+    },
+    "share": "Deel je resultaat"
   }
 }
