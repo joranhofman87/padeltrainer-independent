@@ -117,6 +117,10 @@ const resources = {
     common: { ...nlCommon, ...nlNotifications },
     marketing: nlMarketing,
   },
+  en: {
+    common: { ...enCommon, ...enNotifications },
+    marketing: enMarketing,
+  },
 };
 
 i18n
