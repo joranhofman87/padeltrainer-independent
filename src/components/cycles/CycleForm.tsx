@@ -1119,6 +1119,24 @@ export default function CycleForm({
                     : t('form.pricesExcludeVatHint', 'Players will see: "All prices exclude VAT"')}
                 </p>
 
+                {/* Pricing note */}
+                <div className="space-y-1.5 pt-2">
+                  <Label htmlFor="pricing-note" className="text-sm font-medium">
+                    {t('form.pricingNote', 'Pricing comment')}
+                  </Label>
+                  <textarea
+                    id="pricing-note"
+                    value={pricingNote}
+                    onChange={(e) => setPricingNote(e.target.value)}
+                    placeholder={t('form.pricingNotePlaceholder', 'e.g. "Family discount available on request"')}
+                    className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('form.pricingNoteHelp', 'Shown to players below the pricing table. Leave empty to hide.')}
+                  </p>
+                </div>
+
                 {/* Price Overview Summary */}
                 {priceTable.length > 0 && priceTable.some(r => r.price > 0 || (r.extra_prices || []).some(ep => ep.price > 0)) && (
                   <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
