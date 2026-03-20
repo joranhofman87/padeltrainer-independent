@@ -74,15 +74,27 @@ const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
   fr: createLazyLoader('fr'),
 };
 
-// Track which languages have been loaded
-const loadedLanguages = new Set<string>(['nl', 'en']);
+// Track which languages have had ALL namespaces loaded
+// NL and EN start with only common+marketing eagerly loaded — extended namespaces are lazy
+const loadedLanguages = new Set<string>();
 let nlExtendedLoaded = false;
+let enExtendedLoaded = false;
 
 async function loadLanguage(lng: string): Promise<void> {
   if (lng === 'nl') {
     if (!nlExtendedLoaded) {
       nlExtendedLoaded = true;
       await loadNlExtended();
+    }
+    return;
+  }
+  if (lng === 'en') {
+    if (!enExtendedLoaded) {
+      enExtendedLoaded = true;
+      const bundles = await lazyLoaders['en']!();
+      Object.entries(bundles).forEach(([ns, resources]) => {
+        i18n.addResourceBundle('en', ns, resources, true, true);
+      });
     }
     return;
   }
@@ -142,19 +154,20 @@ i18n
   });
 
 // Load initial language (including NL extended namespaces)
-if (initialLang !== 'nl') {
-  loadLanguage(initialLang).then(() => {
-    if (i18n.language !== initialLang) {
-      i18n.changeLanguage(initialLang);
-    }
-  });
-}
+// Load extended namespaces for initial language
+loadLanguage(initialLang).then(() => {
+  if (i18n.language !== initialLang) {
+    i18n.changeLanguage(initialLang);
+  }
+});
 
-// Deferred load of NL extended namespaces after initial render
+// Deferred load of NL and EN extended namespaces after initial render
+const deferredLangs = ['nl', 'en'].filter(l => l !== initialLang);
+const loadDeferred = () => deferredLangs.forEach(l => loadLanguage(l));
 if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-  (window as any).requestIdleCallback(() => loadLanguage('nl'));
+  (window as any).requestIdleCallback(loadDeferred);
 } else {
-  setTimeout(() => loadLanguage('nl'), 500);
+  setTimeout(loadDeferred, 500);
 }
 
 // Auto-load language bundles on language change
