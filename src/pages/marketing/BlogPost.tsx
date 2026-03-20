@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +16,8 @@ import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getArticleBySlug, calculateReadTime } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 function BlogPostSkeleton() {
   return (
