@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Dumbbell, MapPin, BookOpen, Video, PenLine } from 'lucide-react';
+import { Dumbbell, MapPin, BookOpen, Video, PenLine, Target } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 
@@ -9,6 +9,7 @@ const playerLinks = [
   { to: '/padel-rules', icon: BookOpen, labelKey: 'homev2.playerBanner.rules', descKey: 'homev2.playerBanner.rulesDesc' },
   { to: '/video-tips', icon: Video, labelKey: 'homev2.playerBanner.videoTips', descKey: 'homev2.playerBanner.videoTipsDesc' },
   { to: '/blog', icon: PenLine, labelKey: 'nav.blog', descKey: 'homev2.playerBanner.blogDesc' },
+  { to: '/racket-finder', icon: Target, labelKey: 'quiz.title', descKey: 'quiz.subtitle' },
 ];
 
 export function PlayerBanner() {
@@ -32,7 +33,7 @@ export function PlayerBanner() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
             {playerLinks.map((link) => (
               <LocalizedLink
                 key={link.to}

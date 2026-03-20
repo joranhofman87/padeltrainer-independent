@@ -68,6 +68,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
       items: [
         { to: '/video-tips', label: t('footer.videoTips', 'Video Tips'), description: t('megamenu.videoDesc', 'Watch & learn'), icon: <Video className="h-4 w-4" /> },
         { to: '/blog', label: t('nav.blog', 'Blog'), description: t('megamenu.blogDesc', 'News & insights'), icon: <PenLine className="h-4 w-4" /> },
+        { to: '/racket-finder', label: t('quiz.title', 'Racket Finder'), description: t('quiz.subtitle', 'Find your perfect racket'), icon: <Target className="h-4 w-4" /> },
       ],
     },
   ];
@@ -267,6 +268,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                 <li><LocalizedLink to="/padel-coaches" className="hover:text-primary transition-colors">{t('footer.coaches', 'Coaches')}</LocalizedLink></li>
                 <li><LocalizedLink to="/video-tips" className="hover:text-primary transition-colors">{t('footer.videoTips', 'Video Tips')}</LocalizedLink></li>
                 <li><LocalizedLink to="/blog" className="hover:text-primary transition-colors">{t('nav.blog')}</LocalizedLink></li>
+                <li><LocalizedLink to="/racket-finder" className="hover:text-primary transition-colors">{t('quiz.title', 'Racket Finder')}</LocalizedLink></li>
               </ul>
             </div>
 
