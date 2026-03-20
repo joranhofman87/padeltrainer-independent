@@ -987,5 +987,29 @@
       "fullDescription": "Test Complet",
       "similarRackets": "Raquettes Similaires"
     }
+  },
+  "levelQuiz": {
+    "title": "Quel est votre niveau de padel ?",
+    "subtitle": "Répondez à 10 questions sur vos compétences et découvrez votre classement",
+    "selectCountry": "Sélectionnez votre pays pour un classement localisé",
+    "startQuiz": "Commencer le Test",
+    "question": "Question",
+    "of": "sur",
+    "back": "Retour",
+    "next": "Suivant",
+    "seeResults": "Voir Mes Résultats",
+    "yourLevel": "Votre Niveau de Padel",
+    "equivalentIn": "En {{country}}",
+    "strengths": "Vos Points Forts",
+    "focusAreas": "Axes d'Amélioration pour Atteindre le Niveau {{nextLevel}}",
+    "recommendedReading": "Lectures Recommandées",
+    "strokesToMaster": "Coups à Maîtriser",
+    "fromBlog": "De Notre Blog",
+    "findRacket": "Trouvez Votre Raquette Parfaite",
+    "takeRacketQuiz": "Faites le Quiz Raquette",
+    "shareResult": "Partager Mon Résultat",
+    "retakeQuiz": "Refaire le Test",
+    "shareText": "Je suis niveau {{level}} au padel ({{title}}) ! 🎾 Et vous, quel est votre niveau ?",
+    "linkCopied": "Lien copié !"
   }
 }

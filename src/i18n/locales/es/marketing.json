@@ -987,5 +987,29 @@
       "fullDescription": "Reseña Completa",
       "similarRackets": "Palas Similares"
     }
+  },
+  "levelQuiz": {
+    "title": "¿Cuál es tu nivel de pádel?",
+    "subtitle": "Responde 10 preguntas sobre tus habilidades y descubre tu clasificación",
+    "selectCountry": "Selecciona tu país para una clasificación localizada",
+    "startQuiz": "Empezar Test",
+    "question": "Pregunta",
+    "of": "de",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "seeResults": "Ver Mis Resultados",
+    "yourLevel": "Tu Nivel de Pádel",
+    "equivalentIn": "En {{country}}",
+    "strengths": "Tus Puntos Fuertes",
+    "focusAreas": "Áreas de Mejora para Alcanzar el Nivel {{nextLevel}}",
+    "recommendedReading": "Lecturas Recomendadas",
+    "strokesToMaster": "Golpes que Dominar",
+    "fromBlog": "De Nuestro Blog",
+    "findRacket": "Encuentra Tu Pala Perfecta",
+    "takeRacketQuiz": "Haz el Test de Palas",
+    "shareResult": "Compartir Mi Resultado",
+    "retakeQuiz": "Repetir Test",
+    "shareText": "¡Soy nivel {{level}} en pádel ({{title}})! 🎾 ¿Cuál es tu nivel?",
+    "linkCopied": "¡Enlace copiado!"
   }
 }

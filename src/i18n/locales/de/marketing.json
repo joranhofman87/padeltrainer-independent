@@ -987,5 +987,29 @@
       "fullDescription": "Vollständiger Test",
       "similarRackets": "Ähnliche Schläger"
     }
+  },
+  "levelQuiz": {
+    "title": "Was ist dein Padel-Level?",
+    "subtitle": "Beantworte 10 Fragen zu deinen Fähigkeiten und finde dein Niveau heraus",
+    "selectCountry": "Wähle dein Land für eine lokale Einstufung",
+    "startQuiz": "Test Starten",
+    "question": "Frage",
+    "of": "von",
+    "back": "Zurück",
+    "next": "Weiter",
+    "seeResults": "Ergebnis Anzeigen",
+    "yourLevel": "Dein Padel-Level",
+    "equivalentIn": "In {{country}}",
+    "strengths": "Deine Stärken",
+    "focusAreas": "Verbesserungsbereiche für Level {{nextLevel}}",
+    "recommendedReading": "Empfohlene Artikel",
+    "strokesToMaster": "Schläge zum Meistern",
+    "fromBlog": "Aus Unserem Blog",
+    "findRacket": "Finde Deinen Perfekten Schläger",
+    "takeRacketQuiz": "Zum Schläger-Finder",
+    "shareResult": "Ergebnis Teilen",
+    "retakeQuiz": "Nochmal Machen",
+    "shareText": "Ich bin Level {{level}} im Padel ({{title}})! 🎾 Was ist dein Level?",
+    "linkCopied": "Link kopiert!"
   }
 }
