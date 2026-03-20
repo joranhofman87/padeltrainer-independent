@@ -211,7 +211,7 @@ export function PlayerSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={t("nav.levelTest", "Level Test")}>
                   <a
-                    href={`/${(t as any)('nav.dashboard') ? 'en' : 'en'}/tools/padel-level-test`}
+                    href={`/${i18n.language || 'en'}/tools/padel-level-test`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2"
