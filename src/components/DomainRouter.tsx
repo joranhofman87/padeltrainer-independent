@@ -116,7 +116,7 @@ const AdminTrainers = lazy(() => import('@/pages/admin/AdminTrainers'));
 const AdminAcademies = lazy(() => import('@/pages/admin/AdminAcademies'));
 const AdminPricing = lazy(() => import('@/pages/admin/AdminPricing'));
 const AdminOnboardingEmails = lazy(() => import('@/pages/admin/AdminOnboardingEmails'));
-const AdminBanners = lazy(() => import('@/pages/admin/AdminBanners'));
+
 const AdminClubClaims = lazy(() => import('@/pages/admin/AdminClubClaims'));
 const AdminPlayerRatings = lazy(() => import('@/pages/admin/AdminPlayerRatings'));
 const AdminBlog = lazy(() => import('@/pages/admin/AdminBlog'));
