@@ -77,7 +77,7 @@ export default function BlogPost() {
     );
   }
 
-  const readTime = calculateReadTime(post.bodySections);
+  const readTime = calculateReadTime(post.bodySections, post.content);
 
   const articleStructuredData = {
     "@context": "https://schema.org",
