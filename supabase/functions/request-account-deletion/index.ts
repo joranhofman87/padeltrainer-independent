@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { deleteUserData } from "../_shared/delete-user-data.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,171 +61,12 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .single();
 
-    // Clean up related data in order (respecting foreign key constraints)
-    // 1. Delete calendar events
-    await supabaseAdmin
-      .from("calendar_events")
-      .delete()
-      .eq("user_id", user.id);
-
-    // 2. Delete notification preferences
-    await supabaseAdmin
-      .from("notification_preferences")
-      .delete()
-      .eq("user_id", user.id);
-
-    // 3. Get club profiles created by this user and delete them
-    const { data: userClubProfiles } = await supabaseAdmin
-      .from("club_profiles")
-      .select("id")
-      .eq("created_by", user.id);
-
-    if (userClubProfiles && userClubProfiles.length > 0) {
-      const clubIds = userClubProfiles.map((c) => c.id);
-      
-      // Delete club-related data first
-      await supabaseAdmin
-        .from("club_trainer_invitations")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_players")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_mollie_accounts")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      await supabaseAdmin
-        .from("club_managers")
-        .delete()
-        .in("club_profile_id", clubIds);
-
-      // Delete the club profiles
-      await supabaseAdmin
-        .from("club_profiles")
-        .delete()
-        .in("id", clubIds);
-    }
-
-    // 4. Delete remaining club manager associations (where user was manager but not creator)
-    await supabaseAdmin
-      .from("club_managers")
-      .delete()
-      .eq("user_id", user.id);
-
-    // 5. Get trainer profile ID if exists
-    const { data: trainerProfile } = await supabaseAdmin
-      .from("trainer_profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (trainerProfile) {
-      // Delete trainer-related data
-      await supabaseAdmin
-        .from("trainer_locations")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
-        .from("trainer_followers")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
-        .from("trainer_profile_views")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
-        .from("availability_slots")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
-        .from("guest_players")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      await supabaseAdmin
-        .from("invoices")
-        .delete()
-        .eq("trainer_id", trainerProfile.id);
-
-      // Delete trainer profile
-      await supabaseAdmin
-        .from("trainer_profiles")
-        .delete()
-        .eq("user_id", user.id);
-    }
-
-    // 6. Get player profile ID if exists
-    const { data: playerProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (playerProfile) {
-      // Delete player-related data
-      await supabaseAdmin
-        .from("player_locations")
-        .delete()
-        .eq("profile_id", playerProfile.id);
-
-      await supabaseAdmin
-        .from("player_rating_history")
-        .delete()
-        .eq("profile_id", playerProfile.id);
-
-      await supabaseAdmin
-        .from("trainer_followers")
-        .delete()
-        .eq("player_id", playerProfile.id);
-
-      // Anonymize bookings (keep for record-keeping but remove player reference)
-      await supabaseAdmin
-        .from("bookings")
-        .update({ player_id: null })
-        .eq("player_id", playerProfile.id);
-
-      // Anonymize reviews
-      await supabaseAdmin
-        .from("reviews")
-        .update({ is_anonymous: true })
-        .eq("player_id", playerProfile.id);
-    }
-
-    // 7. Delete user roles
-    await supabaseAdmin
-      .from("user_roles")
-      .delete()
-      .eq("user_id", user.id);
-
-    // 8. Delete profile
-    await supabaseAdmin
-      .from("profiles")
-      .delete()
-      .eq("user_id", user.id);
-
-    // 9. Finally, delete the auth user
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-
-    if (deleteError) {
-      console.error("Error deleting auth user:", deleteError);
-      return new Response(
-        JSON.stringify({ error: "Failed to delete user from auth system" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Delete all user data
+    await deleteUserData(supabaseAdmin, user.id);
 
     // Log the self-deletion action for audit
     await supabaseAdmin.from("admin_impersonation_logs").insert({
-      admin_user_id: user.id, // Self-delete, user is their own admin
+      admin_user_id: user.id,
       target_user_id: user.id,
       action: 'self_delete_account',
       details: { 
