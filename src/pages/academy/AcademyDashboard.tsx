@@ -57,6 +57,18 @@ export default function AcademyDashboard() {
     staleTime: DASHBOARD_STALE_TIME,
   });
 
+  // Trainers query
+  const { data: trainers = [] } = useQuery({
+    queryKey: ['academy-trainers-dashboard', academyId],
+    queryFn: () => getAcademyTrainersWithProfiles(academyId!),
+    enabled: !!academyId,
+    staleTime: DASHBOARD_STALE_TIME,
+  });
+
+  const activeTrainers = trainers
+    .filter((t: any) => t.status === 'active' && t.trainer_profile)
+    .slice(0, 6);
+
   // Activity data query - consolidated into one query with parallelized sub-fetches
   const { data: activity } = useQuery({
     queryKey: ['academy-activity', academyId],
