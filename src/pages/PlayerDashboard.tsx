@@ -12,7 +12,7 @@ import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
-import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
