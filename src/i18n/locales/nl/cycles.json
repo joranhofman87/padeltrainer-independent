@@ -178,8 +178,8 @@
       "name": "Volledige Naam",
       "email": "E-mail",
       "phone": "Telefoon (optioneel)",
-      "rating": "Je Rating/Niveau",
-      "ratingLabel": "Rating/Niveau",
+      "rating": "Actuele Rating",
+      "ratingLabel": "Actuele Rating",
       "ratingSystem": "Ratingsysteem",
       
       "preferences": "Trainingsvoorkeuren",
