@@ -170,6 +170,25 @@ Deno.serve(async (req) => {
         .delete()
         .eq("trainer_id", trainerProfile.id);
 
+      // Delete cycles owned by this trainer and their intake requests
+      const { data: trainerCycles } = await supabaseAdmin
+        .from("cycles")
+        .select("id")
+        .eq("owner_type", "trainer")
+        .eq("owner_id", trainerProfile.id);
+
+      if (trainerCycles && trainerCycles.length > 0) {
+        const cycleIds = trainerCycles.map((c) => c.id);
+        await supabaseAdmin
+          .from("intake_requests")
+          .delete()
+          .in("cycle_id", cycleIds);
+        await supabaseAdmin
+          .from("cycles")
+          .delete()
+          .in("id", cycleIds);
+      }
+
       // Delete trainer profile
       await supabaseAdmin
         .from("trainer_profiles")
