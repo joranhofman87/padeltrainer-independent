@@ -155,8 +155,8 @@
       "name": "Full Name",
       "email": "Email",
       "phone": "Phone (optional)",
-      "rating": "Your Rating/Level",
-      "ratingLabel": "Rating/Level",
+      "rating": "Current Rating",
+      "ratingLabel": "Current Rating",
       "ratingSystem": "Rating System",
       
       "preferences": "Training Preferences",
