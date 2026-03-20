@@ -1,26 +1,21 @@
 
 
-# Fix: Delete-user function doesn't clean up cycles
+# Clean Up: Delete 6 Orphaned Onboarding Email Records
 
-## Problem
-When a user is deleted via the admin `delete-user` edge function, their **cycles** (registrations/events) are not cleaned up. This leaves orphaned cycle records with `status: open` that still appear on location pages.
+## What
+Delete 6 orphaned records left behind by previously deleted test accounts. These are the only legacy records in the entire database.
 
-The "Voorjaar 2026" cycle (`fc800a92...`) is an example — its owner trainer profile is gone but the cycle persists.
+## Records to delete
+- **3 rows** from `onboarding_email_queue` (IDs: `596187af...`, `00cf8959...`, `24e92324...`)
+- **3 rows** from `onboarding_email_logs` (IDs: `d72525f2...`, `d903f366...`, `73cbe8cd...`)
 
-## Fix
+All have `status: sent` and belong to deleted users — no functional impact.
 
-Two changes needed:
+## How
+Use the database insert tool to run two `DELETE` statements filtering by the 3 orphaned `user_id` values:
+- `2d176d26-aac0-4df1-a4e3-9a3f218f14f8`
+- `855883a7-a0ce-4e5d-9344-45d501b8e5d4`
+- `33d4bf56-d5a4-41fc-9241-31140f80d9be`
 
-### 1. Clean up the orphaned cycle now
-Delete the specific orphaned cycle `fc800a92-c340-4135-a07e-b07108c56da6` and its related `intake_requests` via a database migration.
-
-### 2. Update `delete-user` edge function
-Add cycle cleanup to the trainer and academy/club deletion sections:
-
-- **Trainer block** (after getting `trainerProfile.id`): Delete `intake_requests` where `cycle_id` matches any cycle owned by this trainer, then delete cycles where `owner_type = 'trainer'` and `owner_id = trainerProfile.id`.
-- **Before deleting profiles**: Also delete cycles where `owner_type = 'club'` or `owner_type = 'academy'` owned by any club/academy profiles this user created (already handled via `created_by: null` updates, but cycles remain).
-
-### Files changed
-- `supabase/functions/delete-user/index.ts` — add cycle + intake_requests cleanup
-- 1 database migration — remove the orphaned "Voorjaar 2026" cycle
+No code or schema changes needed.
 
