@@ -346,6 +346,8 @@ export function DomainRouter() {
           <Route path="book/:trainerId" element={<BookLesson />} />
           <Route path="register/:cycleId" element={<CycleRegistration />} />
           <Route path="racket-finder" element={<RacketFinder />} />
+          <Route path="gear/rackets" element={<RacketListing />} />
+          <Route path="gear/rackets/:slug" element={<RacketDetail />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
