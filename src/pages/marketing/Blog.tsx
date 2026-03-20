@@ -13,6 +13,7 @@ import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useState } from 'react';
+import { BannerZone } from '@/components/sponsors/BannerZone';
 
 function BlogPostCardSkeleton() {
   return (
