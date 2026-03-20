@@ -120,7 +120,10 @@
     "durationOptions": "Duur opties",
     "durationOptionsHelp": "Hoeveel weken kan een speler kiezen? (bijv. 5, 10 of 15 weken)",
     "addDurationOption": "Optie toevoegen",
-    "weeksOption": "{{count}} weken"
+    "weeksOption": "{{count}} weken",
+    "pricesIncludeVat": "Prijzen zijn inclusief BTW",
+    "pricesIncludeVatHint": "Spelers zien: \"Alle prijzen zijn inclusief BTW\"",
+    "pricesExcludeVatHint": "Spelers zien: \"Alle prijzen zijn exclusief BTW\""
   },
 
   "detail": {
@@ -133,7 +136,9 @@
     "weeksColumn": "{{count}} weken",
     "cyclusOption": "Optie",
     "durationOptions": "Beschikbare duur",
-    "terms": "Voorwaarden"
+    "terms": "Voorwaarden",
+    "pricesIncludeVat": "Alle prijzen zijn inclusief BTW",
+    "pricesExcludeVat": "Alle prijzen zijn exclusief BTW"
   },
   
   "actions": {

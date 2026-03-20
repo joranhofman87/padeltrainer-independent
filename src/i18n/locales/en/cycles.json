@@ -110,7 +110,15 @@
     "addPriceColumn": "Add price column",
     "defaultColumnName": "Category",
     "priceOverview": "Price Overview",
-    "perLesson": "Per lesson"
+    "perLesson": "Per lesson",
+    "pricesIncludeVat": "Prices are including VAT (incl. BTW)",
+    "pricesIncludeVatHint": "Players will see: \"All prices include VAT\"",
+    "pricesExcludeVatHint": "Players will see: \"All prices exclude VAT\""
+  },
+
+  "detail": {
+    "pricesIncludeVat": "All prices include VAT",
+    "pricesExcludeVat": "All prices exclude VAT"
   },
   
   "actions": {
