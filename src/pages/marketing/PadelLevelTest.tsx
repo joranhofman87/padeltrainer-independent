@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import posthog from 'posthog-js';
 
 import { SEO } from '@/components/SEO';
-import { MarketingLayout } from '@/components/MarketingLayout';
+import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
