@@ -3,7 +3,7 @@ import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 const SUPPORTED_LANGUAGES = ['en', 'nl', 'es', 'de', 'fr'];
-const DEFAULT_LANGUAGE = 'nl';
+const DEFAULT_LANGUAGE = 'en';
 
 export function LanguageRouter() {
   const { lang } = useParams<{ lang: string }>();
