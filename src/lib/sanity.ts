@@ -78,7 +78,12 @@ export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category =
   cta,
   datePublished,
   dateModified,
-  bodySections
+  bodySections,
+  content,
+  audience,
+  "topics": topics[]->{ _id, title, "slug": slug.current },
+  "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
+  "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
 export const BLOG_POSTS_BY_CATEGORY_COUNT_QUERY = `count(*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))])`;
