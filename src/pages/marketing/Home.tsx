@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { trackEvent } from '@/lib/tracking';
 import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
-import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+
 
 // Lazy-load below-fold sections to reduce initial JS parsing on mobile
 const PlayerBanner = lazy(() => import('@/components/home/PlayerBanner').then(m => ({ default: m.PlayerBanner })));
