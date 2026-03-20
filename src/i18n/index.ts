@@ -75,7 +75,7 @@ const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
 };
 
 // Track which languages have been loaded
-const loadedLanguages = new Set<string>(['nl']);
+const loadedLanguages = new Set<string>(['nl', 'en']);
 let nlExtendedLoaded = false;
 
 async function loadLanguage(lng: string): Promise<void> {
