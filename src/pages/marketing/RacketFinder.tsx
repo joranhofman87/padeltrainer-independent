@@ -102,7 +102,8 @@ export default function RacketFinder() {
   const { lang = 'en' } = useParams<{ lang: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const steps = useSteps(t);
+  const tFn = (k: string, d?: string) => t(k, d ?? '') as string;
+  const steps = useSteps(tFn);
 
   // Check for shared URL on mount
   const initialAnswers = useMemo(() => parseAnswersFromParams(searchParams), []);
