@@ -9,6 +9,7 @@ import { VideoTipCard, type VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
 import { Video, X } from 'lucide-react';
 import { sanityClient, VIDEO_TIPS_LIST_QUERY } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 
 export default function VideoTips() {
   const { i18n } = useTranslation();

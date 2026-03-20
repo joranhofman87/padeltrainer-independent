@@ -14,6 +14,7 @@ import type { VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, MapPin, Globe, User, Instagram, Youtube, Info } from 'lucide-react';
 import { sanityClient, COACH_BY_SLUG_QUERY, VIDEO_TIPS_BY_TRAINER_QUERY } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
 
 interface CoachDetail {

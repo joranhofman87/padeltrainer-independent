@@ -8,6 +8,7 @@ import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 import type { SeoFields } from '@/lib/sanity';
 
 interface CoachListItem {
