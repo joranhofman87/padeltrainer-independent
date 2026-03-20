@@ -246,9 +246,10 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
 
       {/* Pricing note */}
       {(cycle.settings as any)?.pricing_note && (
-        <p className="text-sm text-muted-foreground">
-          {(cycle.settings as any).pricing_note}
-        </p>
+        <div 
+          className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none [&_p]:my-1"
+          dangerouslySetInnerHTML={{ __html: (cycle.settings as any).pricing_note }}
+        />
       )}
       {/* Terms */}
       {hasTerms && (
