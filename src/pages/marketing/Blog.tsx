@@ -186,7 +186,7 @@ export default function Blog() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            {calculateReadTime(featuredPost.bodySections)}
+                            {calculateReadTime(featuredPost.bodySections, featuredPost.content)}
                           </span>
                           {featuredPost.authorName && (
                             <span>by {featuredPost.authorName}</span>
