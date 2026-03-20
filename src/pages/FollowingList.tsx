@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Users, Bell, BellOff, UserMinus, MapPin } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { useTranslation } from 'react-i18next';
 
 interface FollowedTrainer {
   id: string;
@@ -29,6 +30,7 @@ export default function FollowingList() {
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
   const { toast } = useToast();
+  const { t } = useTranslation('player');
 
   const [following, setFollowing] = useState<FollowedTrainer[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -41,7 +43,6 @@ export default function FollowingList() {
 
   const fetchFollowing = async () => {
     try {
-      // Get player's profile ID
       const { data: playerProfile } = await supabase
         .from('profiles')
         .select('id')
@@ -50,7 +51,6 @@ export default function FollowingList() {
 
       if (!playerProfile) return;
 
-      // Get followed trainers
       const { data: follows, error } = await supabase
         .from('trainer_followers')
         .select('id, trainer_id, notify_new_availability')
@@ -63,7 +63,6 @@ export default function FollowingList() {
         return;
       }
 
-      // Get trainer profiles
       const trainerIds = follows.map((f) => f.trainer_id);
       const { data: trainers } = await supabase
         .from('trainer_profiles')
@@ -76,7 +75,6 @@ export default function FollowingList() {
         return;
       }
 
-      // Get user profiles (using public view to protect PII)
       const userIds = trainers.map((t) => t.user_id);
       const { data: profiles } = await supabase
         .from('profiles_public')
@@ -106,7 +104,7 @@ export default function FollowingList() {
     } catch (error: any) {
       logger.error('Error fetching following', error as Error, { component: 'FollowingList' });
       toast({
-        title: 'Error loading data',
+        title: t('followingList.notificationsDisabled'),
         description: error.message,
         variant: 'destructive',
       });
@@ -131,14 +129,14 @@ export default function FollowingList() {
       );
 
       toast({
-        title: !currentValue ? 'Notifications enabled' : 'Notifications disabled',
+        title: !currentValue ? t('followingList.notificationsEnabled') : t('followingList.notificationsDisabled'),
         description: !currentValue
-          ? "You'll receive emails when this trainer adds availability"
-          : "You won't receive availability notifications",
+          ? t('followingList.notificationsEnabledDescription')
+          : t('followingList.notificationsDisabledDescription'),
       });
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: t('followingList.notificationsDisabled'),
         description: error.message,
         variant: 'destructive',
       });
@@ -146,7 +144,7 @@ export default function FollowingList() {
   };
 
   const unfollow = async (followId: string, trainerName: string | null) => {
-    if (!confirm(`Unfollow ${trainerName || 'this trainer'}?`)) return;
+    if (!confirm(t('followingList.unfollowConfirm', { name: trainerName || 'this trainer' }))) return;
 
     try {
       const { error } = await supabase
@@ -157,10 +155,10 @@ export default function FollowingList() {
       if (error) throw error;
 
       setFollowing((prev) => prev.filter((f) => f.id !== followId));
-      toast({ title: 'Unfollowed', description: `You unfollowed ${trainerName || 'the trainer'}` });
+      toast({ title: t('followingList.unfollowed'), description: t('followingList.unfollowedDescription', { name: trainerName || 'the trainer' }) });
     } catch (error: any) {
       toast({
-        title: 'Error',
+        title: t('followingList.notificationsDisabled'),
         description: error.message,
         variant: 'destructive',
       });
@@ -183,20 +181,20 @@ export default function FollowingList() {
   return (
     <main className="container mx-auto px-4 py-8 max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Trainers You Follow</h1>
+        <h1 className="text-2xl font-bold mb-2">{t('followingList.title')}</h1>
         <p className="text-muted-foreground">
-          Manage your followed trainers and notification preferences.
+          {t('followingList.subtitle')}
         </p>
       </div>
 
         {following.length === 0 ? (
           <Card className="p-8 text-center">
             <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h3 className="font-semibold mb-2">Not following any trainers yet</h3>
+            <h3 className="font-semibold mb-2">{t('followingList.notFollowingYet')}</h3>
             <p className="text-muted-foreground mb-4">
-              Follow trainers to get notified when they add new availability slots.
+              {t('followingList.followDescription')}
             </p>
-            <Button onClick={() => navigate(localizePath('/trainers'))}>Browse Trainers</Button>
+            <Button onClick={() => navigate(localizePath('/trainers'))}>{t('followingList.browseTrainers')}</Button>
           </Card>
         ) : (
           <div className="space-y-4">
@@ -263,7 +261,7 @@ export default function FollowingList() {
 
       <div className="mt-8 text-center">
         <Button variant="outline" onClick={() => navigate(localizePath('/trainers'))}>
-          Find More Trainers
+          {t('followingList.findMore')}
         </Button>
       </div>
     </main>

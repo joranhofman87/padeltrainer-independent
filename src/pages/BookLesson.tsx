@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
 import { formatPrice } from '@/lib/pricing';
+import { useTranslation } from 'react-i18next';
 import { BookingConfirmation } from '@/components/booking/BookingConfirmation';
 import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
 import { CycleBundleList } from '@/components/booking/CycleBundleList';
@@ -82,6 +83,7 @@ export default function BookLesson() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation('player');
 
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
   const [cyclusBundles, setCyclusBundles] = useState<CyclusBundle[]>([]);
@@ -270,7 +272,7 @@ export default function BookLesson() {
     if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
 
     if (applicableTerms && !termsAccepted) {
-      toast({ title: 'Terms Required', description: 'Please accept the general terms before booking.', variant: 'destructive' });
+      toast({ title: t('bookLesson.termsRequired'), description: t('bookLesson.termsRequiredDescription'), variant: 'destructive' });
       return;
     }
 
@@ -323,7 +325,7 @@ export default function BookLesson() {
             }},
           });
           setRequestSent(true);
-          toast({ title: 'Request Sent!', description: `Your booking request for ${selectedCyclus.slots.length} sessions has been sent.` });
+          toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
         } else if (paymentTiming === 'manual' || paymentTiming === 'invoice_after_weeks') {
           await supabase.functions.invoke('send-email', {
             body: { type: 'manual_booking_confirmation', to: profile.email, data: {
@@ -338,7 +340,7 @@ export default function BookLesson() {
         } else {
           const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, false);
           if (!paymentSetup.valid) {
-            toast({ title: 'Payment Not Available', description: paymentSetup.message || 'This trainer has not set up payments yet', variant: 'destructive' });
+            toast({ title: t('bookLesson.paymentNotAvailable'), description: paymentSetup.message || t('bookLesson.paymentNotAvailable'), variant: 'destructive' });
             setBooking(false);
             return;
           }
@@ -381,7 +383,7 @@ export default function BookLesson() {
           }},
         });
         setRequestSent(true);
-        toast({ title: 'Request Sent!', description: 'The trainer will review your booking request.' });
+        toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
       } else if (useManualInvoicing) {
         const { data: bookingData, error } = await supabase.from('bookings').insert({
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'confirmed', payment_status: 'pending',
@@ -404,7 +406,7 @@ export default function BookLesson() {
       } else {
         const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, trainer.use_manual_invoicing ?? false);
         if (!paymentSetup.valid) {
-          toast({ title: 'Payment Not Available', description: paymentSetup.message || 'This trainer has not set up payments yet', variant: 'destructive' });
+          toast({ title: t('bookLesson.paymentNotAvailable'), description: paymentSetup.message || t('bookLesson.paymentNotAvailable'), variant: 'destructive' });
           setBooking(false);
           return;
         }
@@ -420,7 +422,7 @@ export default function BookLesson() {
       }
     } catch (error: any) {
       logger.error('Booking failed', error instanceof Error ? error : new Error(error?.message || 'Unknown booking error'), { component: 'BookLesson', action: 'handleBooking' });
-      toast({ title: 'Booking Failed', description: error.message || 'Could not complete booking', variant: 'destructive' });
+      toast({ title: t('bookLesson.bookingFailed'), description: error.message || t('bookLesson.bookingFailed'), variant: 'destructive' });
       setBooking(false);
     }
   };
@@ -437,8 +439,8 @@ export default function BookLesson() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="p-8 text-center">
-          <h2 className="text-xl font-semibold mb-2">Trainer not found</h2>
-          <Button onClick={() => navigate('/app/player')}>Browse Trainers</Button>
+          <h2 className="text-xl font-semibold mb-2">{t('bookLesson.trainerNotFound')}</h2>
+          <Button onClick={() => navigate('/app/player')}>{t('bookLesson.browseTrainers')}</Button>
         </Card>
       </div>
     );
@@ -461,8 +463,8 @@ export default function BookLesson() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Book a Lesson</h1>
-            <p className="text-sm text-muted-foreground">with {trainer.profiles.full_name}</p>
+            <h1 className="text-xl font-bold">{t('bookLesson.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('bookLesson.with', { name: trainer.profiles.full_name })}</p>
           </div>
         </div>
       </header>

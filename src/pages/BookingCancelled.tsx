@@ -5,11 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { XCircle, ArrowLeft, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { useTranslation } from 'react-i18next';
 
 export default function BookingCancelled() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
+  const { t } = useTranslation('player');
 
   const bookingId = searchParams.get('booking_id');
 
@@ -50,20 +52,20 @@ export default function BookingCancelled() {
           <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center mx-auto mb-4">
             <XCircle className="h-8 w-8 text-orange-600" />
           </div>
-          <CardTitle className="text-orange-600">Betaling niet voltooid</CardTitle>
+          <CardTitle className="text-orange-600">{t('bookingCancelled.title')}</CardTitle>
           <CardDescription>
-            De betaling is geannuleerd of niet afgerond. Er is geen bedrag afgeschreven.
+            {t('bookingCancelled.description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3">
             <Button className="w-full" onClick={() => navigate(tryAgainPath)}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Opnieuw proberen
+              {t('bookingCancelled.tryAgain')}
             </Button>
             <Button variant="outline" className="w-full" onClick={() => navigate('/app/player/bookings')}>
               <Calendar className="h-4 w-4 mr-2" />
-              Mijn boekingen bekijken
+              {t('bookingCancelled.viewBookings')}
             </Button>
           </div>
         </CardContent>

@@ -75,6 +75,39 @@
       "title": "Entrenadores destacados",
       "viewAll": "Ver todos los entrenadores",
       "book": "Reservar"
+    },
+    "myProfile": {
+      "title": "Mi Perfil",
+      "description": "Actualiza tus datos"
+    },
+    "viewSchedule": "Ver tu agenda",
+    "browseAvailableTrainers": "Explorar entrenadores disponibles",
+    "upcomingBookings": "Próximas Reservas",
+    "viewAll": "Ver todo",
+    "noUpcomingBookings": "No hay reservas próximas",
+    "followedTrainers": "Entrenadores Seguidos",
+    "allTrainers": "Todos los entrenadores",
+    "notFollowingYet": "Aún no sigues a ningún entrenador",
+    "openSlots": "Plazas Disponibles",
+    "browse": "Explorar",
+    "openSlotsDescription": "Sesiones disponibles de entrenadores que sigues",
+    "noOpenSlots": "No hay plazas de entrenadores seguidos",
+    "openSession": "Sesión Abierta",
+    "sessions": "sesiones",
+    "starting": "Desde {{date}}",
+    "myClubs": "Mis Clubes",
+    "allClubs": "Todos los clubes",
+    "noClubsYet": "Aún no eres miembro de ningún club",
+    "tableSession": "Sesión",
+    "tableDate": "Fecha",
+    "tableStatus": "Estado",
+    "tableTrainer": "Entrenador",
+    "tableProfile": "Perfil",
+    "tableClub": "Club",
+    "status": {
+      "confirmed": "Confirmado",
+      "pendingPayment": "Pago pendiente",
+      "awaitingApproval": "Esperando aprobación"
     }
   },
   "trainers": {
@@ -149,6 +182,7 @@
   },
   "bookings": {
     "title": "Mis reservas",
+    "subtitle": "Ver y gestionar tus reservas de clases",
     "empty": "Sin reservas todavía",
     "emptyDescription": "¡Reserva tu primera sesión para empezar!",
     "findTrainer": "Buscar un entrenador",
@@ -156,18 +190,86 @@
       "upcoming": "Próximas",
       "past": "Pasadas"
     },
+    "invoices": "Facturas",
+    "noUpcoming": "No hay reservas próximas",
+    "findTrainerDescription": "¡Encuentra un entrenador y reserva tu primera clase!",
+    "browseTrainers": "Explorar Entrenadores",
+    "noPast": "No hay reservas pasadas",
+    "trainingSession": "Sesión de entrenamiento",
+    "coach": "Coach",
+    "reviewed": "Reseñado",
+    "leaveReview": "Dejar Reseña",
+    "confirmCancel": "¿Estás seguro de que quieres cancelar esta reserva?",
+    "cancelSuccess": "Reserva cancelada",
+    "cancelError": "Error al cancelar la reserva",
+    "loadError": "Error al cargar las reservas",
     "status": {
       "confirmed": "Confirmada",
       "pending": "Pendiente",
-      "cancelled": "Cancelada"
+      "cancelled": "Cancelada",
+      "pendingPayment": "Pago pendiente",
+      "awaitingApproval": "Esperando aprobación",
+      "completed": "Completada"
+    },
+    "payment": {
+      "paid": "Pagado",
+      "waived": "Exonerado",
+      "refunded": "Reembolsado",
+      "unpaid": "Sin pagar"
     },
     "cancelBooking": "Cancelar reserva"
   },
+  "bookingSuccess": {
+    "verifying": "Verificando pago",
+    "verifyingDescription": "Espera mientras confirmamos tu pago...",
+    "success": "¡Pago exitoso!",
+    "successDescription": "Tu reserva ha sido confirmada",
+    "issue": "Problema de pago",
+    "somethingWrong": "Algo salió mal",
+    "whatsNext": "¿Qué sigue?",
+    "confirmationSent": "Email de confirmación enviado",
+    "addToCalendar": "Añadir a tu calendario",
+    "viewBookings": "Ver mis reservas",
+    "bookAnother": "Reservar otra clase",
+    "noBookingId": "No se proporcionó ID de reserva.",
+    "paymentNotCompleted": "El pago no se completó. Inténtalo de nuevo o contacta con soporte.",
+    "paymentSuccessToast": "Pago exitoso",
+    "bookingConfirmedToast": "¡Tu reserva ha sido confirmada!"
+  },
+  "bookingCancelled": {
+    "title": "Pago no completado",
+    "description": "El pago fue cancelado o no se completó. No se ha cobrado ningún importe.",
+    "tryAgain": "Intentar de nuevo",
+    "viewBookings": "Ver mis reservas"
+  },
+  "bookLesson": {
+    "title": "Reservar una clase",
+    "with": "con {{name}}",
+    "trainerNotFound": "Entrenador no encontrado",
+    "browseTrainers": "Explorar Entrenadores",
+    "requestSent": "¡Solicitud enviada!",
+    "requestSentDescription": "El entrenador revisará tu solicitud de reserva.",
+    "termsRequired": "Términos requeridos",
+    "termsRequiredDescription": "Acepta los términos generales antes de reservar.",
+    "bookingFailed": "Reserva fallida",
+    "paymentNotAvailable": "Pago no disponible"
+  },
   "followingList": {
-    "title": "Siguiendo",
+    "title": "Entrenadores que sigues",
+    "subtitle": "Gestiona tus entrenadores seguidos y preferencias de notificación.",
     "empty": "Aún no sigues a ningún entrenador",
     "emptyDescription": "Sigue a entrenadores para recibir notificaciones de nueva disponibilidad.",
     "browseTrainers": "Explorar entrenadores",
-    "notifyAvailability": "Notificarme de nueva disponibilidad"
+    "notifyAvailability": "Notificarme de nueva disponibilidad",
+    "notFollowingYet": "Aún no sigues a ningún entrenador",
+    "followDescription": "Sigue a entrenadores para recibir notificaciones cuando añadan disponibilidad.",
+    "findMore": "Encontrar más entrenadores",
+    "notificationsEnabled": "Notificaciones activadas",
+    "notificationsDisabled": "Notificaciones desactivadas",
+    "notificationsEnabledDescription": "Recibirás emails cuando este entrenador añada disponibilidad",
+    "notificationsDisabledDescription": "No recibirás notificaciones de disponibilidad",
+    "unfollowConfirm": "¿Dejar de seguir a {{name}}?",
+    "unfollowed": "Dejado de seguir",
+    "unfollowedDescription": "Ya no sigues a {{name}}"
   }
 }

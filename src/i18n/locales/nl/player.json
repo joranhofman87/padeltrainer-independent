@@ -75,6 +75,39 @@
       "title": "Uitgelichte Trainers",
       "viewAll": "Bekijk Alle Trainers",
       "book": "Boek"
+    },
+    "myProfile": {
+      "title": "Mijn Profiel",
+      "description": "Werk je gegevens bij"
+    },
+    "viewSchedule": "Bekijk je planning",
+    "browseAvailableTrainers": "Bekijk beschikbare trainers",
+    "upcomingBookings": "Aankomende Boekingen",
+    "viewAll": "Alles bekijken",
+    "noUpcomingBookings": "Geen aankomende boekingen",
+    "followedTrainers": "Gevolgde Trainers",
+    "allTrainers": "Alle trainers",
+    "notFollowingYet": "Je volgt nog geen trainers",
+    "openSlots": "Open Plekken",
+    "browse": "Bekijken",
+    "openSlotsDescription": "Beschikbare sessies van trainers die je volgt",
+    "noOpenSlots": "Geen open plekken van gevolgde trainers",
+    "openSession": "Open Sessie",
+    "sessions": "sessies",
+    "starting": "Start {{date}}",
+    "myClubs": "Mijn Clubs",
+    "allClubs": "Alle clubs",
+    "noClubsYet": "Nog geen lid van een club",
+    "tableSession": "Sessie",
+    "tableDate": "Datum",
+    "tableStatus": "Status",
+    "tableTrainer": "Trainer",
+    "tableProfile": "Profiel",
+    "tableClub": "Club",
+    "status": {
+      "confirmed": "Bevestigd",
+      "pendingPayment": "Betaling in afwachting",
+      "awaitingApproval": "Wacht op goedkeuring"
     }
   },
   "trainers": {
@@ -149,6 +182,7 @@
   },
   "bookings": {
     "title": "Mijn Boekingen",
+    "subtitle": "Bekijk en beheer je lesboekingen",
     "empty": "Nog geen boekingen",
     "emptyDescription": "Boek je eerste sessie om te beginnen!",
     "findTrainer": "Vind een Trainer",
@@ -156,18 +190,86 @@
       "upcoming": "Aankomend",
       "past": "Afgelopen"
     },
+    "invoices": "Facturen",
+    "noUpcoming": "Geen aankomende boekingen",
+    "findTrainerDescription": "Vind een trainer en boek je eerste les!",
+    "browseTrainers": "Bekijk Trainers",
+    "noPast": "Geen eerdere boekingen",
+    "trainingSession": "Trainingssessie",
+    "coach": "Coach",
+    "reviewed": "Beoordeeld",
+    "leaveReview": "Review Schrijven",
+    "confirmCancel": "Weet je zeker dat je deze boeking wilt annuleren?",
+    "cancelSuccess": "Boeking geannuleerd",
+    "cancelError": "Annuleren van boeking mislukt",
+    "loadError": "Boekingen laden mislukt",
     "status": {
       "confirmed": "Bevestigd",
       "pending": "In afwachting",
-      "cancelled": "Geannuleerd"
+      "cancelled": "Geannuleerd",
+      "pendingPayment": "Betaling in afwachting",
+      "awaitingApproval": "Wacht op goedkeuring",
+      "completed": "Voltooid"
+    },
+    "payment": {
+      "paid": "Betaald",
+      "waived": "Kwijtgescholden",
+      "refunded": "Terugbetaald",
+      "unpaid": "Onbetaald"
     },
     "cancelBooking": "Boeking Annuleren"
   },
+  "bookingSuccess": {
+    "verifying": "Betaling verifiëren",
+    "verifyingDescription": "Even geduld terwijl we je betaling bevestigen...",
+    "success": "Betaling geslaagd!",
+    "successDescription": "Je boeking is bevestigd",
+    "issue": "Betalingsprobleem",
+    "somethingWrong": "Er is iets misgegaan",
+    "whatsNext": "Wat nu?",
+    "confirmationSent": "Bevestigingsmail verzonden",
+    "addToCalendar": "Toevoegen aan je agenda",
+    "viewBookings": "Mijn Boekingen Bekijken",
+    "bookAnother": "Nog een Les Boeken",
+    "noBookingId": "Geen boekings-ID opgegeven.",
+    "paymentNotCompleted": "Betaling is niet voltooid. Probeer het opnieuw of neem contact op met support.",
+    "paymentSuccessToast": "Betaling geslaagd",
+    "bookingConfirmedToast": "Je boeking is bevestigd!"
+  },
+  "bookingCancelled": {
+    "title": "Betaling niet voltooid",
+    "description": "De betaling is geannuleerd of niet afgerond. Er is geen bedrag afgeschreven.",
+    "tryAgain": "Opnieuw proberen",
+    "viewBookings": "Mijn boekingen bekijken"
+  },
+  "bookLesson": {
+    "title": "Boek een Les",
+    "with": "met {{name}}",
+    "trainerNotFound": "Trainer niet gevonden",
+    "browseTrainers": "Bekijk Trainers",
+    "requestSent": "Verzoek Verzonden!",
+    "requestSentDescription": "De trainer zal je boekingsverzoek beoordelen.",
+    "termsRequired": "Voorwaarden Vereist",
+    "termsRequiredDescription": "Accepteer de algemene voorwaarden voordat je boekt.",
+    "bookingFailed": "Boeking Mislukt",
+    "paymentNotAvailable": "Betaling Niet Beschikbaar"
+  },
   "followingList": {
-    "title": "Volgend",
+    "title": "Trainers die je Volgt",
+    "subtitle": "Beheer je gevolgde trainers en meldingsvoorkeuren.",
     "empty": "Je volgt nog geen trainers",
     "emptyDescription": "Volg trainers om meldingen te ontvangen wanneer ze nieuwe beschikbaarheid toevoegen.",
     "browseTrainers": "Bekijk Trainers",
-    "notifyAvailability": "Meld mij bij nieuwe beschikbaarheid"
+    "notifyAvailability": "Meld mij bij nieuwe beschikbaarheid",
+    "notFollowingYet": "Je volgt nog geen trainers",
+    "followDescription": "Volg trainers om een melding te krijgen wanneer ze nieuwe beschikbaarheid toevoegen.",
+    "findMore": "Meer Trainers Vinden",
+    "notificationsEnabled": "Meldingen ingeschakeld",
+    "notificationsDisabled": "Meldingen uitgeschakeld",
+    "notificationsEnabledDescription": "Je ontvangt e-mails wanneer deze trainer beschikbaarheid toevoegt",
+    "notificationsDisabledDescription": "Je ontvangt geen meldingen over beschikbaarheid",
+    "unfollowConfirm": "{{name}} ontvolgen?",
+    "unfollowed": "Ontvolgd",
+    "unfollowedDescription": "Je volgt {{name}} niet meer"
   }
 }
