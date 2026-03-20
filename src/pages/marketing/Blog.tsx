@@ -201,6 +201,9 @@ export default function Blog() {
             </section>
           )}
 
+          {/* Sponsor Banner */}
+          <BannerZone zone="blog-listing" category={selectedCategory} className="container mx-auto px-4 py-6" />
+
           {/* Recent Posts Grid */}
           {recentPosts.length > 0 && (
             <section className="py-12">

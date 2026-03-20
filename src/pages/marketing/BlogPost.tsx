@@ -161,6 +161,9 @@ export default function BlogPost() {
           )}
         </motion.div>
 
+        {/* Sponsor Banner */}
+        <BannerZone zone="in-article" category={post.category} className="my-8" />
+
         {/* CTA */}
         <CTASection cta={post.cta} />
       </article>

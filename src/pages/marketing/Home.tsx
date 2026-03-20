@@ -75,6 +75,7 @@ export default function Home() {
       />
       <HeroSection />
       <SocialProofStrip />
+      <BannerZone zone="homepage-hero" className="container mx-auto px-4 py-6" />
       <Suspense fallback={null}>
         <PlayerBanner />
         <PadelRealitiesSection />
