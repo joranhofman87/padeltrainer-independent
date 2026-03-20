@@ -50,7 +50,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 
 export function PlayerSidebar() {
-  const { t } = useTranslation("player");
+  const { t, i18n } = useTranslation("player");
   const navigate = useNavigate();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
