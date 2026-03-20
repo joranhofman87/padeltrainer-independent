@@ -16,6 +16,15 @@ export interface Article {
   h1: string;
   excerpt: string | null;
   bodySections: BodySection[] | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content?: any[] | null;
+  audience?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  topics?: any[] | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  relatedGuides?: any[] | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  relatedStrokes?: any[] | null;
   authorName: string | null;
   category: string | null;
   isFeatured: boolean | null;
@@ -27,13 +36,31 @@ export interface Article {
 
 const ARTICLES_PER_PAGE = 12;
 
-export function calculateReadTime(bodySections: BodySection[] | null): string {
-  if (!bodySections || bodySections.length === 0) return '1 min read';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function countWordsInPortableText(blocks: any[]): number {
   let words = 0;
-  for (const section of bodySections) {
-    if (section.heading) words += section.heading.split(/\s+/).filter(Boolean).length;
-    if (section.content) words += section.content.split(/\s+/).filter(Boolean).length;
+  for (const block of blocks) {
+    if (block._type === 'block' && block.children) {
+      for (const child of block.children) {
+        if (child.text) words += child.text.split(/\s+/).filter(Boolean).length;
+      }
+    }
   }
+  return words;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function calculateReadTime(bodySections: BodySection[] | null, content?: any[] | null): string {
+  let words = 0;
+  if (content && content.length > 0) {
+    words = countWordsInPortableText(content);
+  } else if (bodySections && bodySections.length > 0) {
+    for (const section of bodySections) {
+      if (section.heading) words += section.heading.split(/\s+/).filter(Boolean).length;
+      if (section.content) words += section.content.split(/\s+/).filter(Boolean).length;
+    }
+  }
+  if (words === 0) return '1 min read';
   const minutes = Math.max(1, Math.ceil(words / 200));
   return `${minutes} min read`;
 }

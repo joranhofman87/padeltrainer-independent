@@ -153,7 +153,11 @@ export default function BlogPost() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <BodySections sections={post.bodySections} />
+          {post.content && post.content.length > 0 ? (
+            <PortableTextRenderer content={post.content} />
+          ) : (
+            <BodySections sections={post.bodySections} />
+          )}
         </motion.div>
 
         {/* CTA */}
