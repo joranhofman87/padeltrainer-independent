@@ -347,3 +347,48 @@ export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current ==
     "slug": slug.current
   }
 }`;
+
+// ── Racket / Gear Queries ──
+
+export const RACKETS_LIST_QUERY = `*[_type == "product" && category == "racket" && language == $lang && !(_id in path("drafts.**"))] | order(brand asc, name asc) {
+  _id, name, "slug": slug.current, brand, level, priceRange, priceMidpoint,
+  shape, playingStyle, weight, armFriendly,
+  shortDescription, image
+}`;
+
+export const RACKET_BY_SLUG_QUERY = `*[_type == "product" && category == "racket" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
+  _id,
+  name,
+  "slug": slug.current,
+  brand,
+  level,
+  priceRange,
+  priceMidpoint,
+  shape,
+  playingStyle,
+  weight,
+  armFriendly,
+  shortDescription,
+  specs,
+  description,
+  image,
+  affiliateUrl,
+  shop,
+  isAvailable,
+  seo {
+    titleTag,
+    metaDescription,
+    breadcrumbLabel
+  },
+  language,
+  translationOf,
+  "manualRelated": relatedProducts[]-> {
+    _id, name, "slug": slug.current, brand, priceRange, shortDescription, shape, image, level, playingStyle
+  }
+}`;
+
+export const RELATED_RACKETS_QUERY = `*[_type == "product" && category == "racket" && language == $lang
+  && playingStyle == $playingStyle && level == $level
+  && slug.current != $slug && !(_id in path("drafts.**"))] | order(priceMidpoint asc) [0..3] {
+  _id, name, "slug": slug.current, brand, priceRange, shortDescription, shape, image, level, playingStyle
+}`;
