@@ -712,7 +712,7 @@ export const QUIZ_QUESTIONS: Record<string, QuizQuestion[]> = {
         { text: 'Je deviens nerveux et fais beaucoup de fautes', points: 0 },
         { text: 'Je tiens le coup mais joue plus prudemment', points: 1 },
         { text: 'Je reste assez calme et suis mon plan de jeu', points: 2 },
-        { text: 'Je m'épanouis sous pression et élève mon niveau dans les grands moments', points: 3 },
+        { text: "Je m'épanouis sous pression et élève mon niveau dans les grands moments", points: 3 },
       ],
     },
   ],
