@@ -422,7 +422,7 @@ export default function BookLesson() {
       }
     } catch (error: any) {
       logger.error('Booking failed', error instanceof Error ? error : new Error(error?.message || 'Unknown booking error'), { component: 'BookLesson', action: 'handleBooking' });
-      toast({ title: 'Booking Failed', description: error.message || 'Could not complete booking', variant: 'destructive' });
+      toast({ title: t('bookLesson.bookingFailed'), description: error.message || t('bookLesson.bookingFailed'), variant: 'destructive' });
       setBooking(false);
     }
   };
