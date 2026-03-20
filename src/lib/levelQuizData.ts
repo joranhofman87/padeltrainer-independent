@@ -673,7 +673,7 @@ export const QUIZ_QUESTIONS: Record<string, QuizQuestion[]> = {
     {
       question: 'Quels coups au-dessus de la tête maîtrisez-vous ?',
       options: [
-        { text: 'Je ne peux pas vraiment frapper en hauteur / j'essaie de bloquer', points: 0 },
+        { text: "Je ne peux pas vraiment frapper en hauteur / j'essaie de bloquer", points: 0 },
         { text: 'Je peux faire un smash basique mais il sort souvent', points: 1 },
         { text: "Je peux smasher et j'apprends la bandeja ou la víbora", points: 2 },
         { text: "J'utilise bandeja, víbora et smash selon la situation", points: 3 },
