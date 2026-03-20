@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { trackEvent } from '@/lib/tracking';
 import { HeroSection } from '@/components/home/HeroSection';
 import { SocialProofStrip } from '@/components/home/SocialProofStrip';
+import { BannerZone } from '@/components/sponsors/BannerZone';
 
 
 // Lazy-load below-fold sections to reduce initial JS parsing on mobile
