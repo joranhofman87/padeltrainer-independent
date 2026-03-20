@@ -37,7 +37,7 @@ export default function PadelLevelTest() {
   const sharedCountry = searchParams.get('country');
 
   const [country, setCountry] = useState<QuizCountry>(
-    (sharedCountry as QuizCountry) || getDefaultCountry(currentLang)
+    () => ((sharedCountry && QUIZ_COUNTRIES.some(c => c.value === sharedCountry) ? sharedCountry : getDefaultCountry(currentLang)) as QuizCountry)
   );
   const [phase, setPhase] = useState<Phase>(sharedResult ? 'results' : 'intro');
   const [currentQ, setCurrentQ] = useState(0);
