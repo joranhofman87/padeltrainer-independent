@@ -58,7 +58,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <HelmetProvider>
-        <App />
+        <TranslationsProvider>
+          <App />
+        </TranslationsProvider>
       </HelmetProvider>
     </ErrorBoundary>
   </StrictMode>
