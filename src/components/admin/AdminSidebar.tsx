@@ -44,7 +44,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Mail,
-  ImageIcon,
+  
   FileText,
   ListTodo,
 } from "lucide-react";
