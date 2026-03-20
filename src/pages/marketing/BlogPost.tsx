@@ -10,6 +10,7 @@ import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { BodySections } from '@/components/sanity/BodySections';
 import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
 import { CTASection } from '@/components/sanity/CTASection';
+import { BannerZone } from '@/components/sponsors/BannerZone';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getArticleBySlug, calculateReadTime } from '@/lib/blog';
@@ -159,6 +160,9 @@ export default function BlogPost() {
             <BodySections sections={post.bodySections} />
           )}
         </motion.div>
+
+        {/* Sponsor Banner */}
+        <BannerZone zone="in-article" category={post.category} className="my-8" />
 
         {/* CTA */}
         <CTASection cta={post.cta} />

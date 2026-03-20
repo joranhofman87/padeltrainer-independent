@@ -13,6 +13,7 @@ import type { Article } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { useState } from 'react';
+import { BannerZone } from '@/components/sponsors/BannerZone';
 
 function BlogPostCardSkeleton() {
   return (
@@ -199,6 +200,9 @@ export default function Blog() {
               </div>
             </section>
           )}
+
+          {/* Sponsor Banner */}
+          <BannerZone zone="blog-listing" category={selectedCategory} className="container mx-auto px-4 py-6" />
 
           {/* Recent Posts Grid */}
           {recentPosts.length > 0 && (
