@@ -882,5 +882,45 @@
       "viewAll": "View Full Racket Catalogue →"
     },
     "share": "Share your result"
+  },
+  "gear": {
+    "listing": {
+      "title": "Best Padel Rackets 2026 — Compare & Choose",
+      "description": "Browse and compare all padel rackets. Filter by level, playing style, shape, weight, and price to find your perfect match.",
+      "h1": "Padel Rackets",
+      "subtitle": "Find and compare the best padel rackets for every level and playing style.",
+      "noResults": "No rackets match your filters."
+    },
+    "showingCount": "Showing {{filtered}} of {{total}} rackets",
+    "clearAll": "Clear all",
+    "filter": {
+      "title": "Filters",
+      "level": "Level",
+      "style": "Playing Style",
+      "shape": "Shape",
+      "weight": "Weight",
+      "price": "Price",
+      "brand": "Brand",
+      "armFriendly": "Arm-friendly",
+      "armFriendlyOnly": "Only arm-friendly rackets"
+    },
+    "breadcrumb": {
+      "home": "Home",
+      "rackets": "Rackets"
+    },
+    "detail": {
+      "notFound": "Racket not found.",
+      "buyAt": "Buy at {{shop}}",
+      "checkLocal": "Check availability at your local padel shop",
+      "takeQuiz": "Take the Quiz",
+      "quickSpecs": "Quick Specs",
+      "atAGlance": "At a Glance",
+      "level": "Level",
+      "style": "Style",
+      "armFriendlyLabel": "Arm-friendly",
+      "priceLabel": "Price",
+      "fullDescription": "Full Review",
+      "similarRackets": "Similar Rackets"
+    }
   }
 }

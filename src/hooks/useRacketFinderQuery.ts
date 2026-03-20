@@ -25,6 +25,12 @@ export interface RacketResult {
   armFriendly: boolean;
   affiliateUrl: string;
   slug: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  image?: any;
+  shop?: string;
+  isAvailable?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  description?: any[];
 }
 
 function getLevels(level: string): string[] {

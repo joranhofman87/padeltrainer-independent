@@ -138,7 +138,7 @@
         "tracking": "Track your bookings"
       }
     },
-  "trainers": {
+    "trainers": {
       "badge": "For Trainers",
       "title": "Choose your plan",
       "subtitle": "Start free and upgrade as your business grows. Lower platform fees with higher tiers.",
@@ -158,13 +158,34 @@
           "description": "Everything you need to streamline your admin.",
           "cta": "Start Free",
           "featureList": [
-            { "title": "Trainer profile", "description": "Showcase yourself to players" },
-            { "title": "Add to marketplace", "description": "Be found & receive new bookings" },
-            { "title": "Unlimited players", "description": "No limitation on the number of players" },
-            { "title": "Unlimited trainings", "description": "No limitations on the number of sessions" },
-            { "title": "Waiting list", "description": "Allow players to sign up to your waiting list" },
-            { "title": "Open registration", "description": "Open up a registration & have our system plan things for you" },
-            { "title": "€1.00 per booking fee", "description": "Charge players right when they book a session, no need to chase money anymore" }
+            {
+              "title": "Trainer profile",
+              "description": "Showcase yourself to players"
+            },
+            {
+              "title": "Add to marketplace",
+              "description": "Be found & receive new bookings"
+            },
+            {
+              "title": "Unlimited players",
+              "description": "No limitation on the number of players"
+            },
+            {
+              "title": "Unlimited trainings",
+              "description": "No limitations on the number of sessions"
+            },
+            {
+              "title": "Waiting list",
+              "description": "Allow players to sign up to your waiting list"
+            },
+            {
+              "title": "Open registration",
+              "description": "Open up a registration & have our system plan things for you"
+            },
+            {
+              "title": "€1.00 per booking fee",
+              "description": "Charge players right when they book a session, no need to chase money anymore"
+            }
           ]
         },
         "professional": {
@@ -175,9 +196,18 @@
           "description": "For serious trainers",
           "cta": "Get Professional",
           "featureList": [
-            { "title": "Everything from Starter", "description": "All the features you need to streamline your admin processes" },
-            { "title": "Manual invoicing", "description": "Send invoices yourself, we can auto generate these for you" },
-            { "title": "€0.75 per booking fee", "description": "Reduced fee for charging players when they book a session with you" }
+            {
+              "title": "Everything from Starter",
+              "description": "All the features you need to streamline your admin processes"
+            },
+            {
+              "title": "Manual invoicing",
+              "description": "Send invoices yourself, we can auto generate these for you"
+            },
+            {
+              "title": "€0.75 per booking fee",
+              "description": "Reduced fee for charging players when they book a session with you"
+            }
           ]
         },
         "academy": {
@@ -188,59 +218,71 @@
           "description": "For training academies",
           "cta": "Contact Sales",
           "featureList": [
-            { "title": "Add up to 15 trainers", "description": "Manage & add your team to streamline the bookings" },
-            { "title": "Add players to the marketplace", "description": "Add your branding to their profile & increase bookings for your team" },
-            { "title": "Add academy to the marketplace", "description": "Be marked as featured in the marketplace to receive more bookings" },
-            { "title": "€0.50 per booking fee", "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking" }
+            {
+              "title": "Add up to 15 trainers",
+              "description": "Manage & add your team to streamline the bookings"
+            },
+            {
+              "title": "Add players to the marketplace",
+              "description": "Add your branding to their profile & increase bookings for your team"
+            },
+            {
+              "title": "Add academy to the marketplace",
+              "description": "Be marked as featured in the marketplace to receive more bookings"
+            },
+            {
+              "title": "€0.50 per booking fee",
+              "description": "Streamline your book keeping. Charge clients upfront and sync invoices to your book keeping software. Lowest fee per booking"
+            }
           ]
         }
       }
-  },
-  "clubs": {
-    "badge": "For Clubs",
-    "title": "Club Plan",
-    "subtitle": "Complete platform for managing your club's training operations",
-    "price": "€199",
-    "period": "/month",
-    "billedAnnually": "Billed annually at €2,388/year",
-    "trialBadge": "14-day free trial",
-    "cta": "Start Free Trial",
-    "features": {
-      "trainers": "Unlimited trainers",
-      "calendar": "Unified trainer calendar",
-      "players": "Player management",
-      "bookings": "Centralized booking system",
-      "analytics": "Club analytics dashboard",
-      "profile": "Custom club profile page",
-      "support": "Priority support",
-      "branding": "Club branding"
-    }
-  },
-  "faq": {
-    "title": "Frequently asked questions",
-    "questions": {
-      "platformFee": {
-        "q": "How does the platform fee work?",
-        "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
-      },
-      "changePlans": {
-        "q": "Can I change plans later?",
-        "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
-      },
-      "contract": {
-        "q": "Is there a contract or commitment?",
-        "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
-      },
-      "payouts": {
-        "q": "How do payouts work?",
-        "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
-      },
-      "clubTrial": {
-        "q": "How does the club free trial work?",
-        "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+    },
+    "clubs": {
+      "badge": "For Clubs",
+      "title": "Club Plan",
+      "subtitle": "Complete platform for managing your club's training operations",
+      "price": "€199",
+      "period": "/month",
+      "billedAnnually": "Billed annually at €2,388/year",
+      "trialBadge": "14-day free trial",
+      "cta": "Start Free Trial",
+      "features": {
+        "trainers": "Unlimited trainers",
+        "calendar": "Unified trainer calendar",
+        "players": "Player management",
+        "bookings": "Centralized booking system",
+        "analytics": "Club analytics dashboard",
+        "profile": "Custom club profile page",
+        "support": "Priority support",
+        "branding": "Club branding"
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "questions": {
+        "platformFee": {
+          "q": "How does the platform fee work?",
+          "a": "A flat fee is deducted from each lesson payment based on your subscription tier. Starter pays €1.00 per booking, Professional pays €0.75, and Academy pays €0.50."
+        },
+        "changePlans": {
+          "q": "Can I change plans later?",
+          "a": "Yes! You can upgrade or downgrade your plan at any time. When upgrading, you get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle."
+        },
+        "contract": {
+          "q": "Is there a contract or commitment?",
+          "a": "No long-term contracts. All plans are billed monthly or yearly, and you can cancel anytime. Yearly plans offer 20% savings."
+        },
+        "payouts": {
+          "q": "How do payouts work?",
+          "a": "Payments are processed through Mollie, our trusted payment partner. After a lesson is completed, funds are transferred to your connected bank account, typically within 2-3 business days."
+        },
+        "clubTrial": {
+          "q": "How does the club free trial work?",
+          "a": "Clubs get a 14-day free trial with full access to all features. No credit card required to start. After the trial, you'll be billed annually at €2,388/year."
+        }
       }
     }
-  }
   },
   "about": {
     "hero": {
@@ -864,12 +906,35 @@
     "q4": "Hast du Ellenbogen- oder Armprobleme?",
     "q5": "Hast du eine Gewichtspräferenz?",
     "q6": "Weißt du welche Form du bevorzugst?",
-    "a1": { "beginner": "Ich fange gerade an", "intermediate": "Ich spiele regelmäßig (1-2x pro Woche)", "advanced": "Ich spiele Turniere" },
-    "a2": { "control": "Verteidigen und den Ballwechsel kontrollieren", "allround": "Eine Mischung aus allem", "power": "Angreifen und Punkte mit Power abschließen" },
-    "a3": { "under100": "Unter €100" },
-    "a4": { "yes": "Ja, ich brauche etwas Schonendes für meinen Arm", "no": "Keine Probleme" },
-    "a5": { "light": "Leichter Schläger (einfacher zu schwingen)", "medium": "Standardgewicht", "heavy": "Schwerer (mehr Stabilität)", "any": "Keine Präferenz" },
-    "a6": { "round": "Rund (maximale Kontrolle)", "teardrop": "Tropfen (Balance aus Kontrolle & Power)", "diamond": "Diamant (maximale Power)", "any": "Nicht sicher — empfiehl mir" },
+    "a1": {
+      "beginner": "Ich fange gerade an",
+      "intermediate": "Ich spiele regelmäßig (1-2x pro Woche)",
+      "advanced": "Ich spiele Turniere"
+    },
+    "a2": {
+      "control": "Verteidigen und den Ballwechsel kontrollieren",
+      "allround": "Eine Mischung aus allem",
+      "power": "Angreifen und Punkte mit Power abschließen"
+    },
+    "a3": {
+      "under100": "Unter €100"
+    },
+    "a4": {
+      "yes": "Ja, ich brauche etwas Schonendes für meinen Arm",
+      "no": "Keine Probleme"
+    },
+    "a5": {
+      "light": "Leichter Schläger (einfacher zu schwingen)",
+      "medium": "Standardgewicht",
+      "heavy": "Schwerer (mehr Stabilität)",
+      "any": "Keine Präferenz"
+    },
+    "a6": {
+      "round": "Rund (maximale Kontrolle)",
+      "teardrop": "Tropfen (Balance aus Kontrolle & Power)",
+      "diamond": "Diamant (maximale Power)",
+      "any": "Nicht sicher — empfiehl mir"
+    },
     "results": {
       "title": "Dein Perfekter Schläger",
       "noResults": "Keine genauen Treffer gefunden. Versuche deine Präferenzen anzupassen.",
@@ -882,5 +947,45 @@
       "viewAll": "Vollständigen Schläger Katalog ansehen →"
     },
     "share": "Teile dein Ergebnis"
+  },
+  "gear": {
+    "listing": {
+      "title": "Beste Padel Schläger 2026 — Vergleichen & Wählen",
+      "description": "Alle Padel Schläger durchsuchen und vergleichen. Filtere nach Level, Spielstil, Form, Gewicht und Preis.",
+      "h1": "Padel Schläger",
+      "subtitle": "Finde und vergleiche die besten Padel Schläger für jedes Level und jeden Spielstil.",
+      "noResults": "Keine Schläger mit diesen Filtern gefunden."
+    },
+    "showingCount": "{{filtered}} von {{total}} Schlägern angezeigt",
+    "clearAll": "Alle löschen",
+    "filter": {
+      "title": "Filter",
+      "level": "Level",
+      "style": "Spielstil",
+      "shape": "Form",
+      "weight": "Gewicht",
+      "price": "Preis",
+      "brand": "Marke",
+      "armFriendly": "Armschonend",
+      "armFriendlyOnly": "Nur armschonende Schläger"
+    },
+    "breadcrumb": {
+      "home": "Start",
+      "rackets": "Schläger"
+    },
+    "detail": {
+      "notFound": "Schläger nicht gefunden.",
+      "buyAt": "Kaufen bei {{shop}}",
+      "checkLocal": "Verfügbarkeit im lokalen Padel Shop prüfen",
+      "takeQuiz": "Quiz machen",
+      "quickSpecs": "Spezifikationen",
+      "atAGlance": "Auf einen Blick",
+      "level": "Level",
+      "style": "Stil",
+      "armFriendlyLabel": "Armschonend",
+      "priceLabel": "Preis",
+      "fullDescription": "Vollständiger Test",
+      "similarRackets": "Ähnliche Schläger"
+    }
   }
 }

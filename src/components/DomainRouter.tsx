@@ -54,6 +54,8 @@ const BookLesson = lazy(() => import('@/pages/BookLesson'));
 const CycleRegistration = lazy(() => import('@/pages/CycleRegistration'));
 const BrandedCycleRegistration = lazy(() => import('@/pages/BrandedCycleRegistration'));
 const RacketFinder = lazy(() => import('@/pages/marketing/RacketFinder'));
+const RacketListing = lazy(() => import('@/pages/marketing/RacketListing'));
+const RacketDetail = lazy(() => import('@/pages/marketing/RacketDetail'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
@@ -344,6 +346,8 @@ export function DomainRouter() {
           <Route path="book/:trainerId" element={<BookLesson />} />
           <Route path="register/:cycleId" element={<CycleRegistration />} />
           <Route path="racket-finder" element={<RacketFinder />} />
+          <Route path="gear/rackets" element={<RacketListing />} />
+          <Route path="gear/rackets/:slug" element={<RacketDetail />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />
