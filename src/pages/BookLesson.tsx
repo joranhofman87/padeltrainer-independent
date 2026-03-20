@@ -325,7 +325,7 @@ export default function BookLesson() {
             }},
           });
           setRequestSent(true);
-          toast({ title: 'Request Sent!', description: `Your booking request for ${selectedCyclus.slots.length} sessions has been sent.` });
+          toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
         } else if (paymentTiming === 'manual' || paymentTiming === 'invoice_after_weeks') {
           await supabase.functions.invoke('send-email', {
             body: { type: 'manual_booking_confirmation', to: profile.email, data: {
