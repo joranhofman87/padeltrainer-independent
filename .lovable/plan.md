@@ -1,26 +1,26 @@
 
 
-# Fix: Flash of Translation Keys on Initial Load
+# Fix: Delete-user function doesn't clean up cycles
 
 ## Problem
-When visiting `/en` (or any non-Dutch page), raw translation keys like `homev2.hero.h1` flash briefly because:
-1. Only Dutch (`nl`) translations are eagerly bundled
-2. English is set as `fallbackLng` but its resources are loaded **asynchronously**
-3. During the async load, i18next has no English strings to fall back to → shows raw keys
+When a user is deleted via the admin `delete-user` edge function, their **cycles** (registrations/events) are not cleaned up. This leaves orphaned cycle records with `status: open` that still appear on location pages.
+
+The "Voorjaar 2026" cycle (`fc800a92...`) is an example — its owner trainer profile is gone but the cycle persists.
 
 ## Fix
 
-**Eagerly import English `common` + `marketing` translations** alongside Dutch in `src/i18n/index.ts`.
+Two changes needed:
 
-English must always be available synchronously because it's the `fallbackLng`. This ensures:
-- Visiting `/en` → English strings available immediately, no flash
-- Visiting `/nl` → Dutch strings available immediately (already works)
-- Visiting `/es`, `/de`, `/fr` → English fallback shown instantly while the target language loads async (acceptable — no raw keys)
+### 1. Clean up the orphaned cycle now
+Delete the specific orphaned cycle `fc800a92-c340-4135-a07e-b07108c56da6` and its related `intake_requests` via a database migration.
 
-### Changes to `src/i18n/index.ts`
-- Add eager imports for `en/common.json`, `en/marketing.json`, `en/notifications.json`
-- Add `en` to the `resources` object passed to `i18n.init()`
-- Mark `en` as already loaded in `loadedLanguages` set (`new Set(['nl', 'en'])`)
+### 2. Update `delete-user` edge function
+Add cycle cleanup to the trainer and academy/club deletion sections:
 
-This is a 1-file change (~8 lines added/modified). No other files affected.
+- **Trainer block** (after getting `trainerProfile.id`): Delete `intake_requests` where `cycle_id` matches any cycle owned by this trainer, then delete cycles where `owner_type = 'trainer'` and `owner_id = trainerProfile.id`.
+- **Before deleting profiles**: Also delete cycles where `owner_type = 'club'` or `owner_type = 'academy'` owned by any club/academy profiles this user created (already handled via `created_by: null` updates, but cycles remain).
+
+### Files changed
+- `supabase/functions/delete-user/index.ts` — add cycle + intake_requests cleanup
+- 1 database migration — remove the orphaned "Voorjaar 2026" cycle
 
