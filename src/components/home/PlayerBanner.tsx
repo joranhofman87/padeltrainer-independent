@@ -9,6 +9,7 @@ const playerLinks = [
   { to: '/padel-rules', icon: BookOpen, labelKey: 'homev2.playerBanner.rules', descKey: 'homev2.playerBanner.rulesDesc' },
   { to: '/video-tips', icon: Video, labelKey: 'homev2.playerBanner.videoTips', descKey: 'homev2.playerBanner.videoTipsDesc' },
   { to: '/blog', icon: PenLine, labelKey: 'nav.blog', descKey: 'homev2.playerBanner.blogDesc' },
+  { to: '/racket-finder', icon: Target, labelKey: 'quiz.title', descKey: 'quiz.subtitle' },
 ];
 
 export function PlayerBanner() {
