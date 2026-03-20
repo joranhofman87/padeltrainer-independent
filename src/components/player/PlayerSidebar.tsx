@@ -40,6 +40,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Gift,
+  Target,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
