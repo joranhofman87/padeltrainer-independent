@@ -383,7 +383,7 @@ export default function BookLesson() {
           }},
         });
         setRequestSent(true);
-        toast({ title: 'Request Sent!', description: 'The trainer will review your booking request.' });
+        toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
       } else if (useManualInvoicing) {
         const { data: bookingData, error } = await supabase.from('bookings').insert({
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'confirmed', payment_status: 'pending',
