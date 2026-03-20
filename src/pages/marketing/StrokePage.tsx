@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,8 @@ import { ArrowLeft, ArrowRight, Lightbulb } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { sanityClient, STROKE_BY_SLUG_QUERY, VIDEO_TIPS_BY_STROKE_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields, BodySection } from '@/lib/sanity';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface StrokeDetail {
   _id: string;
