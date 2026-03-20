@@ -1125,13 +1125,10 @@ export default function CycleForm({
                   <Label htmlFor="pricing-note" className="text-sm font-medium">
                     {t('form.pricingNote', 'Pricing comment')}
                   </Label>
-                  <textarea
-                    id="pricing-note"
+                  <MiniRichTextEditor
                     value={pricingNote}
-                    onChange={(e) => setPricingNote(e.target.value)}
+                    onChange={setPricingNote}
                     placeholder={t('form.pricingNotePlaceholder', 'e.g. "Family discount available on request"')}
-                    className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    rows={2}
                   />
                   <p className="text-xs text-muted-foreground">
                     {t('form.pricingNoteHelp', 'Shown to players below the pricing table. Leave empty to hide.')}
