@@ -1,0 +1,2 @@
+DELETE FROM public.onboarding_email_queue WHERE user_id IN ('2d176d26-aac0-4df1-a4e3-9a3f218f14f8', '855883a7-a0ce-4e5d-9344-45d501b8e5d4', '33d4bf56-d5a4-41fc-9241-31140f80d9be');
+DELETE FROM public.onboarding_email_logs WHERE user_id IN ('2d176d26-aac0-4df1-a4e3-9a3f218f14f8', '855883a7-a0ce-4e5d-9344-45d501b8e5d4', '33d4bf56-d5a4-41fc-9241-31140f80d9be');
