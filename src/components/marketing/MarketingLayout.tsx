@@ -68,6 +68,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
       items: [
         { to: '/video-tips', label: t('footer.videoTips', 'Video Tips'), description: t('megamenu.videoDesc', 'Watch & learn'), icon: <Video className="h-4 w-4" /> },
         { to: '/blog', label: t('nav.blog', 'Blog'), description: t('megamenu.blogDesc', 'News & insights'), icon: <PenLine className="h-4 w-4" /> },
+        { to: '/racket-finder', label: t('quiz.title', 'Racket Finder'), description: t('quiz.subtitle', 'Find your perfect racket'), icon: <Target className="h-4 w-4" /> },
       ],
     },
   ];
