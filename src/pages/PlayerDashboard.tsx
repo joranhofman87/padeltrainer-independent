@@ -606,8 +606,6 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Sponsor Banner */}
-        <SponsorBanner placementSlug="app-dashboard" />
       </div>
     </main>
   );

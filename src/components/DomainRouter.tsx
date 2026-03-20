@@ -244,7 +244,7 @@ export function DomainRouter() {
           <Route path="academies" element={<AdminAcademies />} />
           <Route path="pricing" element={<AdminPricing />} />
           <Route path="onboarding-emails" element={<AdminOnboardingEmails />} />
-          <Route path="banners" element={<AdminBanners />} />
+          
           <Route path="player-ratings" element={<AdminPlayerRatings />} />
           <Route path="blog" element={<AdminBlog />} />
           <Route path="blog/new" element={<AdminBlogEditor />} />
