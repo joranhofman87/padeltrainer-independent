@@ -657,7 +657,7 @@ export const QUIZ_QUESTIONS: Record<string, QuizQuestion[]> = {
       options: [
         { text: 'Je reste surtout au fond du court', points: 0 },
         { text: 'Je vais au filet mais je rate souvent mes volées', points: 1 },
-        { text: 'Je suis à l'aise au filet et peux diriger la plupart des volées', points: 2 },
+        { text: "Je suis à l'aise au filet et peux diriger la plupart des volées", points: 2 },
         { text: 'Je volée avec contrôle et placement, même sur les balles rapides', points: 3 },
       ],
     },
