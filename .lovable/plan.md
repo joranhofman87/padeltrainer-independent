@@ -1,69 +1,52 @@
 
 
-# Build: Padel Racket Finder Quiz
+# Updated Plan: Padel Racket Product Pages (with Manual Related Products)
 
-## Overview
-An interactive 5-6 question quiz at `/:lang/racket-finder` that matches users to recommended rackets from Sanity CMS. Premium UI with animated transitions, progress bar, shareable results, and full PostHog tracking.
+## What changed from the approved plan
+One addition: the `RACKET_BY_SLUG_QUERY` now includes a `manualRelated` projection from the new `relatedProducts` reference array. The detail page uses a hybrid approach — manual picks if available, auto-query fallback otherwise.
 
 ## Files to Create/Modify
 
-### 1. New page: `src/pages/marketing/RacketFinder.tsx`
-Main quiz page with three states: intro, quiz, results.
-- Intro: SEO-friendly text block + "Start Quiz" CTA
-- Quiz: Single question per screen with large option buttons (emoji + label), progress bar, slide animations via framer-motion
-- Results: 1-3 racket cards with badges, affiliate/review links, share buttons, retake option
-- Reads query params on mount to restore shared results
-- Uses `MarketingLayout` wrapper like other marketing pages
-- SEO component with Quiz structured data
+### 1. `src/lib/sanity.ts` — Add 3 GROQ queries
+- `RACKET_BY_SLUG_QUERY`: Single racket with all fields + SEO + `"manualRelated": relatedProducts[]-> { _id, name, slug, brand, priceRange, shortDescription, shape, image, level, playingStyle }`
+- `RELATED_RACKETS_QUERY`: Auto-fallback (same style + level, exclude current, limit 4)
+- `RACKETS_LIST_QUERY`: All rackets for listing page
 
-### 2. New component: `src/components/racketfinder/QuizQuestion.tsx`
-Reusable animated question component with option buttons. Handles slide-left/right transitions via `AnimatePresence`.
+### 2. `src/pages/marketing/RacketListing.tsx` — Listing page
+Grid with client-side filters (brand, level, style, shape, weight, price, armFriendly), URL param sync, result count, clear-all. Uses `RacketCard` grid.
 
-### 3. New component: `src/components/racketfinder/QuizResults.tsx`
-Results display: racket cards with badges (#1 Pick, Great Alternative, Budget-Friendly), specs grid, affiliate/review buttons, share buttons (WhatsApp, X, copy link), retake button.
+### 3. `src/pages/marketing/RacketDetail.tsx` — Detail page
+Hero (image/fallback + name/brand/price/CTA), Quick Specs grid (parsed from pipe-delimited string), At a Glance badges, full description (Portable Text), Similar Rackets section, Product JSON-LD, breadcrumbs, PostHog tracking.
 
-### 4. New hook: `src/hooks/useRacketFinderQuery.ts`
-Handles the GROQ query logic:
-- Maps quiz answers to filter params (levels array, styles array, maxPrice, armFriendly, weight, shape)
-- Fetches from Sanity with progressive relaxation (drop weight filter, then shape filter) if < 2 results
-- Beginner auto-sets style to "control" and skips Q2
+**Related rackets logic:**
+```tsx
+const related = racket.manualRelated?.length > 0
+  ? racket.manualRelated
+  : autoRelatedRackets
+```
+Only fire the auto-fallback query when `manualRelated` is empty.
 
-### 5. i18n translations (5 files)
-Add quiz keys to `marketing.json` for each language (en, nl, es, de, fr) with all the translations provided.
+### 4. `src/components/gear/RacketCard.tsx`
+Reusable card with image/fallback, level badge (green/blue/purple), style badge (teal/amber/red), armFriendly badge, price, "View Details" link.
 
-### 6. Route registration: `src/components/DomainRouter.tsx`
-Add lazy import for `RacketFinder` and route `<Route path="racket-finder" element={<RacketFinder />} />` inside the `/:lang` marketing routes.
+### 5. `src/components/gear/RacketImage.tsx`
+Brand-colored fallback with shape icon when no image. Brand color map for ~12 brands.
 
-### 7. PostHog tracking
-Fire events via existing `src/lib/posthog.ts` utilities:
-- `quiz_started`, `quiz_step_completed`, `quiz_completed`, `quiz_result_click`, `quiz_shared`, `quiz_retake`
+### 6. `src/components/gear/RacketFilters.tsx`
+Filter controls: brand checkboxes, single-select badges for level/style/shape/weight, price buckets, armFriendly toggle.
 
-## Technical Details
+### 7. `src/components/DomainRouter.tsx`
+Add lazy imports + routes for `gear/rackets` and `gear/rackets/:slug`.
 
-### Sanity GROQ Query
-The `product` schema already has all required fields: `category`, `level`, `playingStyle`, `shape`, `weight`, `armFriendly`, `priceMidpoint`, `priceRange`, `affiliateUrl`, `shortDescription`, `specs`, `brand`, `name`, `slug`, `language`.
+### 8. i18n files (5 locales)
+Add `gear.*` keys: page titles, filter labels, badge labels, CTA text, breadcrumb labels, specs icon labels.
 
-Query filters `_type == "product" && category == "racket" && language == $lang` plus dynamic filters based on answers. Level mapping: beginner -> `["beginner", "all"]`, intermediate -> `["intermediate", "beginner", "all"]`, advanced -> `["advanced", "intermediate", "all"]`. Style always includes `"allround"` alongside selection.
+### 9. `src/hooks/useRacketFinderQuery.ts`
+Extend `RacketResult` interface with `image`, `shop`, `isAvailable`, `description` fields.
 
-### Quiz State Machine
-- Steps stored in state array; current step index tracked
-- Beginner skips Q2 (playing style auto-set to "control")
-- On final answer, build query params, update URL for shareability, fetch results
-- Back button decrements step (skipping Q2 for beginners)
-
-### Shareable URLs
-Results encoded as query params: `?level=intermediate&style=control&budget=150&arm=true&weight=medium&shape=any`
-On page load, if params present, skip to results view immediately.
-
-### Design
-- Progress bar using existing `Progress` component
-- `framer-motion` `AnimatePresence` for slide transitions between questions
-- Large touch-friendly buttons (min 48x48px) with emoji icons as specified
-- Mobile-first responsive layout
-- Dark green/white/orange accent color palette matching existing brand
-
-### SEO
-- `<SEO>` component with quiz-specific title/description per language
-- FAQPage structured data covering common racket selection questions
-- Intro text block rendered above quiz for indexing
+## Technical Notes
+- Affiliate links use `rel="nofollow noopener sponsored"`
+- Product JSON-LD with `AggregateOffer` parsed from `priceRange`
+- "Take the Quiz" CTA links to `/gear/racket-finder?level={level}&style={playingStyle}`
+- Auto-fallback query only enabled when `!racket.manualRelated?.length`
 
