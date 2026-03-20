@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +16,8 @@ import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { getArticleBySlug, calculateReadTime } from '@/lib/blog';
 import { useTranslation } from 'react-i18next';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 function BlogPostSkeleton() {
   return (
@@ -38,13 +41,30 @@ function BlogPostSkeleton() {
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
   const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: post, isLoading, error } = useQuery({
-    queryKey: ['blog-post', slug],
-    queryFn: () => getArticleBySlug(slug!),
+    queryKey: ['blog-post', slug, lang],
+    queryFn: () => getArticleBySlug(slug!, lang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });
+
+  // Fetch translations for language switcher + hreflang
+  const { setTranslations, clearTranslations } = useTranslationsContext();
+  const { data: translationsList = [] } = useQuery({
+    queryKey: ['translations', 'blogPost', post?._id],
+    queryFn: () => getTranslations(post!._id, 'blogPost', lang, post!.translationOf?._ref),
+    enabled: !!post?._id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    if (translationsList.length > 0) {
+      setTranslations(translationsList, 'blog');
+    }
+    return () => clearTranslations();
+  }, [translationsList, setTranslations, clearTranslations]);
 
   const dateLocale = i18n.language === 'nl' ? 'nl-NL' : i18n.language === 'de' ? 'de-DE' : i18n.language === 'es' ? 'es-ES' : i18n.language === 'fr' ? 'fr-FR' : 'en-US';
 
@@ -107,6 +127,8 @@ export default function BlogPost() {
         type="article"
         structuredData={articleStructuredData}
         noIndex={post.seo?.indexable === false}
+        translations={translationsList}
+        pathPrefix="blog"
       />
 
       {/* Back Button */}

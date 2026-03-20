@@ -24,6 +24,8 @@ export interface LearningArticleDetail extends LearningArticleSummary {
   content: any[]; // Portable Text blocks
   commonMistakes: string[] | null;
   cta: CtaFields | null;
+  language?: string;
+  translationOf?: { _ref: string } | null;
   relatedGuides: {
     _id: string;
     title: string;
@@ -86,19 +88,21 @@ const LEARNING_ARTICLE_FIELDS = `
   "topics": topics[]-> { _id, title, "slug": slug.current }
 `;
 
-export const LEARNING_ARTICLES_LIST_QUERY = `*[_type == "learningArticle" && !(_id in path("drafts.**"))] | order(pageType asc, datePublished desc) {
+export const LEARNING_ARTICLES_LIST_QUERY = `*[_type == "learningArticle" && language == $lang && !(_id in path("drafts.**"))] | order(pageType asc, datePublished desc) {
   ${LEARNING_ARTICLE_FIELDS}
 }`;
 
-export const LEARNING_ARTICLES_BY_TYPE_QUERY = `*[_type == "learningArticle" && contentType == $contentType && !(_id in path("drafts.**"))] | order(pageType asc, datePublished desc) {
+export const LEARNING_ARTICLES_BY_TYPE_QUERY = `*[_type == "learningArticle" && contentType == $contentType && language == $lang && !(_id in path("drafts.**"))] | order(pageType asc, datePublished desc) {
   ${LEARNING_ARTICLE_FIELDS}
 }`;
 
-export const LEARNING_ARTICLE_BY_SLUG_QUERY = `*[_type == "learningArticle" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const LEARNING_ARTICLE_BY_SLUG_QUERY = `*[_type == "learningArticle" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   ${LEARNING_ARTICLE_FIELDS},
   content,
   commonMistakes,
   cta,
+  language,
+  translationOf,
   "relatedGuides": relatedGuides[]-> {
     _id,
     title,
@@ -145,16 +149,16 @@ export const LEARNING_ARTICLE_BY_SLUG_QUERY = `*[_type == "learningArticle" && s
 
 // ── Fetch helpers ──
 
-export async function getLearningArticleBySlug(slug: string): Promise<LearningArticleDetail | null> {
-  return sanityClient.fetch<LearningArticleDetail | null>(LEARNING_ARTICLE_BY_SLUG_QUERY, { slug });
+export async function getLearningArticleBySlug(slug: string, lang: string = 'en'): Promise<LearningArticleDetail | null> {
+  return sanityClient.fetch<LearningArticleDetail | null>(LEARNING_ARTICLE_BY_SLUG_QUERY, { slug, lang });
 }
 
-export async function getLearningArticles(): Promise<LearningArticleSummary[]> {
-  return sanityClient.fetch<LearningArticleSummary[]>(LEARNING_ARTICLES_LIST_QUERY);
+export async function getLearningArticles(lang: string = 'en'): Promise<LearningArticleSummary[]> {
+  return sanityClient.fetch<LearningArticleSummary[]>(LEARNING_ARTICLES_LIST_QUERY, { lang });
 }
 
-export async function getLearningArticlesByType(contentType: string): Promise<LearningArticleSummary[]> {
-  return sanityClient.fetch<LearningArticleSummary[]>(LEARNING_ARTICLES_BY_TYPE_QUERY, { contentType });
+export async function getLearningArticlesByType(contentType: string, lang: string = 'en'): Promise<LearningArticleSummary[]> {
+  return sanityClient.fetch<LearningArticleSummary[]>(LEARNING_ARTICLES_BY_TYPE_QUERY, { contentType, lang });
 }
 
 // ── Content type labels ──

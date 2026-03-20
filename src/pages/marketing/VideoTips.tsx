@@ -9,11 +9,15 @@ import { VideoTipCard, type VideoTip } from '@/components/sanity/VideoTipCard';
 import { motion } from 'framer-motion';
 import { Video, X } from 'lucide-react';
 import { sanityClient, VIDEO_TIPS_LIST_QUERY } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 
 export default function VideoTips() {
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
+
   const { data: videos = [], isLoading } = useQuery({
-    queryKey: ['video-tips-list'],
-    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_LIST_QUERY),
+    queryKey: ['video-tips-list', lang],
+    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_LIST_QUERY, { lang }),
     staleTime: 1000 * 60 * 10,
   });
 

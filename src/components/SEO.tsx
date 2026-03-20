@@ -1,7 +1,8 @@
 import { Helmet } from 'react-helmet-async';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import type { Translation } from '@/lib/translations';
 
 interface SEOProps {
   title: string;
@@ -11,6 +12,10 @@ interface SEOProps {
   type?: 'website' | 'article' | 'place';
   structuredData?: object | object[];
   noIndex?: boolean;
+  /** Translated slugs from Sanity — when provided, hreflang uses actual translated URLs */
+  translations?: Translation[];
+  /** URL path prefix for translated content, e.g. 'blog', 'padel-rules' */
+  pathPrefix?: string;
 }
 
 const OG_LOCALE_MAP: Record<string, string> = {
@@ -25,6 +30,8 @@ export function SEO({
   type = 'website',
   structuredData,
   noIndex = false,
+  translations,
+  pathPrefix,
 }: SEOProps) {
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
@@ -41,10 +48,28 @@ export function SEO({
   
   const defaultImage = `${MARKETING_DOMAIN}/og-image.png`;
 
-  const alternateUrls = SUPPORTED_LANGUAGES.map(langCode => ({
-    lang: langCode,
-    url: `${baseUrl}/${langCode}${pathWithoutLang}`
-  }));
+  // If we have CMS translations with actual slugs, use those for hreflang
+  const hasTranslatedSlugs = translations && translations.length > 0 && pathPrefix;
+
+  const alternateUrls = hasTranslatedSlugs
+    ? translations.map(t => ({
+        lang: t.language,
+        url: `${baseUrl}/${t.language}/${pathPrefix}/${t.slug}`
+      }))
+    : SUPPORTED_LANGUAGES.map(langCode => ({
+        lang: langCode,
+        url: `${baseUrl}/${langCode}${pathWithoutLang}`
+      }));
+
+  // x-default: use Dutch translation if available, else fall back to nl prefix
+  const xDefaultUrl = hasTranslatedSlugs
+    ? (() => {
+        const nlTranslation = translations.find(t => t.language === 'nl');
+        return nlTranslation
+          ? `${baseUrl}/nl/${pathPrefix}/${nlTranslation.slug}`
+          : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
+      })()
+    : `${MARKETING_DOMAIN}/nl${pathWithoutLang}`;
 
   return (
     <Helmet>
@@ -72,7 +97,7 @@ export function SEO({
       <link 
         rel="alternate" 
         hrefLang="x-default" 
-        href={`${MARKETING_DOMAIN}/nl${pathWithoutLang}`} 
+        href={xDefaultUrl} 
       />
       
       {/* Open Graph */}

@@ -8,6 +8,7 @@ import { SEO } from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { ArrowRight, User, MapPin, Info } from 'lucide-react';
 import { sanityClient, COACHES_LIST_QUERY } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 import type { SeoFields } from '@/lib/sanity';
 
 interface CoachListItem {
@@ -23,9 +24,12 @@ interface CoachListItem {
 }
 
 export default function Coaches() {
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
+
   const { data: coaches = [], isLoading } = useQuery({
-    queryKey: ['coaches-list'],
-    queryFn: () => sanityClient.fetch<CoachListItem[]>(COACHES_LIST_QUERY),
+    queryKey: ['coaches-list', lang],
+    queryFn: () => sanityClient.fetch<CoachListItem[]>(COACHES_LIST_QUERY, { lang }),
     staleTime: 1000 * 60 * 10,
   });
 

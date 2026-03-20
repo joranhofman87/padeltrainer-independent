@@ -25,11 +25,12 @@ interface RulesArticle {
 }
 
 export default function Rules() {
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: articles = [], isLoading } = useQuery({
-    queryKey: ['rules-articles'],
-    queryFn: () => sanityClient.fetch<RulesArticle[]>(RULES_LIST_QUERY),
+    queryKey: ['rules-articles', lang],
+    queryFn: () => sanityClient.fetch<RulesArticle[]>(RULES_LIST_QUERY, { lang }),
     staleTime: 1000 * 60 * 10,
   });
 

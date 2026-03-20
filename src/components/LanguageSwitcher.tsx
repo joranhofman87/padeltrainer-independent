@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Globe } from 'lucide-react';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -23,10 +24,21 @@ export function LanguageSwitcher() {
   const navigate = useNavigate();
   const location = useLocation();
   const { lang } = useParams<{ lang: string }>();
+  const { translations, pathPrefix } = useTranslationsContext();
 
   const currentLanguage = languages.find(l => l.code === i18n.language) || languages[0];
 
   const handleLanguageChange = (newLang: string) => {
+    // If we have CMS translations, link to the translated slug
+    if (translations.length > 0 && pathPrefix) {
+      const translation = translations.find(t => t.language === newLang);
+      if (translation) {
+        navigate(`/${newLang}/${pathPrefix}/${translation.slug}`);
+        i18n.changeLanguage(newLang);
+        return;
+      }
+    }
+
     // Check if we're on a language-prefixed route
     const isLanguagePrefixedRoute = lang && SUPPORTED_LANGUAGES.includes(lang);
     
@@ -50,16 +62,23 @@ export function LanguageSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {languages.map((language) => (
-          <DropdownMenuItem
-            key={language.code}
-            onClick={() => handleLanguageChange(language.code)}
-            className={i18n.language === language.code ? 'bg-accent' : ''}
-          >
-            <span className="mr-2">{language.flag}</span>
-            {language.name}
-          </DropdownMenuItem>
-        ))}
+        {languages.map((language) => {
+          // If we have translations, check if this language is available
+          const hasTranslation = translations.length === 0 || translations.some(t => t.language === language.code);
+          
+          return (
+            <DropdownMenuItem
+              key={language.code}
+              onClick={() => handleLanguageChange(language.code)}
+              className={i18n.language === language.code ? 'bg-accent' : ''}
+              disabled={!hasTranslation}
+            >
+              <span className="mr-2">{language.flag}</span>
+              {language.name}
+              {!hasTranslation && <span className="ml-auto text-xs text-muted-foreground">—</span>}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -229,36 +229,78 @@ Deno.serve(async (req) => {
       }
 
       // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
+      // Fetch with language + translationOf to build proper hreflang groups
       const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics] = await Promise.all([
-        sanity.fetch<{ slug: string }[]>(`*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
-        sanity.fetch<{ slug: string }[]>(`*[_type == "stroke" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
-        sanity.fetch<{ slug: string }[]>(`*[_type == "trainer" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
-        sanity.fetch<{ slug: string }[]>(`*[_type == "videoTip" && !(_id in path("drafts.**"))]{ "slug": slug.current }`),
-        sanity.fetch<{ slug: string; seo: { indexable?: boolean } | null }[]>(
-          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ "slug": slug.current, seo }`
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
+          `*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        ),
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
+          `*[_type == "stroke" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        ),
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
+          `*[_type == "trainer" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        ),
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
+          `*[_type == "videoTip" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
+        ),
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null; seo: { indexable?: boolean } | null }[]>(
+          `*[_type == "learningArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf, seo }`
         ),
         sanity.fetch<{ slug: string; isIndexable: boolean }[]>(
           `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true) }`
         ),
       ]);
 
-      for (const rule of sanityRules || []) {
-        xml += generateUrlEntry(`/padel-rules/${rule.slug}`, today, 'weekly', '0.7');
+      // Helper to generate language-aware entries with proper hreflang alternates
+      function generateSanityEntries(
+        // deno-lint-ignore no-explicit-any
+        docs: any[],
+        pathPrefix: string,
+        priority: string,
+        // deno-lint-ignore no-explicit-any
+        filterFn?: (doc: any) => boolean
+      ): string {
+        let result = '';
+        // Group by translation chain
+        // deno-lint-ignore no-explicit-any
+        const groups = new Map<string, any[]>();
+        for (const doc of docs) {
+          if (filterFn && !filterFn(doc)) continue;
+          const lang = doc.language || 'en';
+          const rootId = doc.translationOf?._ref || doc._id;
+          const group = groups.get(rootId) || [];
+          group.push({ ...doc, language: lang });
+          groups.set(rootId, group);
+        }
+
+        for (const [, group] of groups) {
+          for (const doc of group) {
+            const fullUrl = `${SITE_URL}/${doc.language}/${pathPrefix}/${doc.slug}`;
+            result += '  <url>\n';
+            result += `    <loc>${fullUrl}</loc>\n`;
+            result += `    <lastmod>${today}</lastmod>\n`;
+            result += `    <changefreq>weekly</changefreq>\n`;
+            result += `    <priority>${priority}</priority>\n`;
+            // Add hreflang alternates for all translations in the group
+            for (const alt of group) {
+              result += `    <xhtml:link rel="alternate" hreflang="${alt.language}" href="${SITE_URL}/${alt.language}/${pathPrefix}/${alt.slug}"/>\n`;
+            }
+            const nlVersion = group.find((a: { language: string }) => a.language === 'nl') || group[0];
+            result += `    <xhtml:link rel="alternate" hreflang="x-default" href="${SITE_URL}/${nlVersion.language}/${pathPrefix}/${nlVersion.slug}"/>\n`;
+            result += '  </url>\n';
+          }
+        }
+        return result;
       }
-      for (const stroke of sanityStrokes || []) {
-        xml += generateUrlEntry(`/padel-strokes/${stroke.slug}`, today, 'weekly', '0.7');
-      }
-      for (const coach of sanityCoaches || []) {
-        xml += generateUrlEntry(`/padel-coaches/${coach.slug}`, today, 'weekly', '0.7');
-      }
-      for (const video of sanityVideoTips || []) {
-        xml += generateUrlEntry(`/video-tips/${video.slug}`, today, 'weekly', '0.6');
-      }
-      for (const la of sanityLearningArticles || []) {
-        // Respect seo.indexable — exclude noindex pages from sitemap
-        if (la.seo?.indexable === false) continue;
-        xml += generateUrlEntry(`/learn/${la.slug}`, today, 'weekly', '0.7');
-      }
+
+      xml += generateSanityEntries(sanityRules, 'padel-rules', '0.7');
+      xml += generateSanityEntries(sanityStrokes, 'padel-strokes', '0.7');
+      xml += generateSanityEntries(sanityCoaches, 'padel-coaches', '0.7');
+      xml += generateSanityEntries(sanityVideoTips, 'video-tips', '0.6');
+      xml += generateSanityEntries(
+        sanityLearningArticles, 'learn', '0.7',
+        (doc) => doc.seo?.indexable !== false
+      );
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
         xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');

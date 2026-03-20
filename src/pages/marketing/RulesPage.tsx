@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,8 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, AlertCircle, BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { sanityClient, RULES_BY_SLUG_QUERY } from '@/lib/sanity';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface BodySection {
   heading: string;
@@ -55,11 +58,12 @@ function RulesPageSkeleton() {
 
 export default function RulesPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: article, isLoading, error } = useQuery({
-    queryKey: ['rules-page', slug],
-    queryFn: () => sanityClient.fetch<RulesArticleDetail>(RULES_BY_SLUG_QUERY, { slug }),
+    queryKey: ['rules-page', slug, lang],
+    queryFn: () => sanityClient.fetch<RulesArticleDetail>(RULES_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });

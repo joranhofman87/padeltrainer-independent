@@ -42,7 +42,7 @@ export interface BodySection {
 
 // ── Blog Queries ──
 
-export const BLOG_POSTS_QUERY = `*[_type == "blogPost" && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
+export const BLOG_POSTS_QUERY = `*[_type == "blogPost" && language == $lang && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
   _id,
   title,
   "slug": slug.current,
@@ -58,14 +58,15 @@ export const BLOG_POSTS_QUERY = `*[_type == "blogPost" && !(_id in path("drafts.
   bodySections,
   content,
   audience,
+  language,
   "topics": topics[]->{ _id, title, "slug": slug.current },
   "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
   "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
-export const BLOG_POSTS_COUNT_QUERY = `count(*[_type == "blogPost" && !(_id in path("drafts.**"))])`;
+export const BLOG_POSTS_COUNT_QUERY = `count(*[_type == "blogPost" && language == $lang && !(_id in path("drafts.**"))])`;
 
-export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
+export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category == $category && language == $lang && !(_id in path("drafts.**"))] | order(datePublished desc) [$start...$end] {
   _id,
   title,
   "slug": slug.current,
@@ -81,14 +82,15 @@ export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category =
   bodySections,
   content,
   audience,
+  language,
   "topics": topics[]->{ _id, title, "slug": slug.current },
   "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
   "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
-export const BLOG_POSTS_BY_CATEGORY_COUNT_QUERY = `count(*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))])`;
+export const BLOG_POSTS_BY_CATEGORY_COUNT_QUERY = `count(*[_type == "blogPost" && category == $category && language == $lang && !(_id in path("drafts.**"))])`;
 
-export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "blogPost" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "blogPost" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
@@ -104,16 +106,18 @@ export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "blogPost" && slug.current ==
   cta,
   datePublished,
   dateModified,
+  language,
+  translationOf,
   "topics": topics[]->{ _id, title, "slug": slug.current },
   "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
   "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
-export const ALL_CATEGORIES_QUERY = `array::unique(*[_type == "blogPost" && !(_id in path("drafts.**"))].category)`;
+export const ALL_CATEGORIES_QUERY = `array::unique(*[_type == "blogPost" && language == $lang && !(_id in path("drafts.**"))].category)`;
 
 // ── Rules Queries ──
 
-export const RULES_LIST_QUERY = `*[_type == "rulesArticle" && !(_id in path("drafts.**"))] | order(datePublished desc) {
+export const RULES_LIST_QUERY = `*[_type == "rulesArticle" && language == $lang && !(_id in path("drafts.**"))] | order(datePublished desc) {
   _id,
   title,
   "slug": slug.current,
@@ -126,7 +130,7 @@ export const RULES_LIST_QUERY = `*[_type == "rulesArticle" && !(_id in path("dra
   dateModified
 }`;
 
-export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
@@ -141,6 +145,8 @@ export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current ==
   cta,
   datePublished,
   dateModified,
+  language,
+  translationOf,
   "relatedRules": relatedRules[]-> {
     _id,
     title,
@@ -162,7 +168,7 @@ export const RULES_BY_SLUG_QUERY = `*[_type == "rulesArticle" && slug.current ==
 
 // ── Stroke Queries ──
 
-export const STROKES_LIST_QUERY = `*[_type == "stroke" && !(_id in path("drafts.**"))] | order(title asc) {
+export const STROKES_LIST_QUERY = `*[_type == "stroke" && language == $lang && !(_id in path("drafts.**"))] | order(title asc) {
   _id,
   title,
   "slug": slug.current,
@@ -173,7 +179,7 @@ export const STROKES_LIST_QUERY = `*[_type == "stroke" && !(_id in path("drafts.
   seo
 }`;
 
-export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
@@ -186,6 +192,8 @@ export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slu
   commonMistakes,
   seo,
   cta,
+  language,
+  translationOf,
   "relatedStrokes": relatedStrokes[]-> {
     _id,
     title,
@@ -207,7 +215,7 @@ export const STROKE_BY_SLUG_QUERY = `*[_type == "stroke" && slug.current == $slu
 
 // ── Coach (CMS Trainer) Queries ──
 
-export const COACHES_LIST_QUERY = `*[_type == "trainer" && !(_id in path("drafts.**"))] | order(name asc) {
+export const COACHES_LIST_QUERY = `*[_type == "trainer" && language == $lang && !(_id in path("drafts.**"))] | order(name asc) {
   _id,
   name,
   "slug": slug.current,
@@ -219,7 +227,7 @@ export const COACHES_LIST_QUERY = `*[_type == "trainer" && !(_id in path("drafts
   seo
 }`;
 
-export const COACH_BY_SLUG_QUERY = `*[_type == "trainer" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const COACH_BY_SLUG_QUERY = `*[_type == "trainer" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   name,
   "slug": slug.current,
@@ -237,12 +245,14 @@ export const COACH_BY_SLUG_QUERY = `*[_type == "trainer" && slug.current == $slu
   websiteUrl,
   platformProfileUrl,
   seo,
-  cta
+  cta,
+  language,
+  translationOf
 }`;
 
 // ── Video Tip Queries ──
 
-export const VIDEO_TIPS_BY_STROKE_QUERY = `*[_type == "videoTip" && references($strokeId) && !(_id in path("drafts.**"))] | order(datePublished desc) {
+export const VIDEO_TIPS_BY_STROKE_QUERY = `*[_type == "videoTip" && references($strokeId) && language == $lang && !(_id in path("drafts.**"))] | order(datePublished desc) {
   _id,
   title,
   "slug": slug.current,
@@ -263,7 +273,7 @@ export const VIDEO_TIPS_BY_STROKE_QUERY = `*[_type == "videoTip" && references($
   }
 }`;
 
-export const VIDEO_TIPS_BY_TRAINER_QUERY = `*[_type == "videoTip" && trainer._ref == $trainerId && !(_id in path("drafts.**"))] | order(datePublished desc) {
+export const VIDEO_TIPS_BY_TRAINER_QUERY = `*[_type == "videoTip" && trainer._ref == $trainerId && language == $lang && !(_id in path("drafts.**"))] | order(datePublished desc) {
   _id,
   title,
   "slug": slug.current,
@@ -284,7 +294,7 @@ export const VIDEO_TIPS_BY_TRAINER_QUERY = `*[_type == "videoTip" && trainer._re
   }
 }`;
 
-export const VIDEO_TIPS_LIST_QUERY = `*[_type == "videoTip" && !(_id in path("drafts.**"))] | order(isFeatured desc, datePublished desc) {
+export const VIDEO_TIPS_LIST_QUERY = `*[_type == "videoTip" && language == $lang && !(_id in path("drafts.**"))] | order(isFeatured desc, datePublished desc) {
   _id,
   title,
   "slug": slug.current,
@@ -308,7 +318,7 @@ export const VIDEO_TIPS_LIST_QUERY = `*[_type == "videoTip" && !(_id in path("dr
   }
 }`;
 
-export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current == $slug && language == $lang && !(_id in path("drafts.**"))][0] {
   _id,
   title,
   "slug": slug.current,
@@ -323,6 +333,8 @@ export const VIDEO_TIP_BY_SLUG_QUERY = `*[_type == "videoTip" && slug.current ==
   cta,
   datePublished,
   dateModified,
+  language,
+  translationOf,
   "trainer": trainer-> {
     _id,
     name,

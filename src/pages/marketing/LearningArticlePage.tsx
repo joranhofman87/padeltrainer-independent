@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,8 @@ import { useTranslation } from 'react-i18next';
 import { getLearningArticleBySlug, CONTENT_TYPE_LABELS, SKILL_LEVEL_LABELS } from '@/lib/learningArticles';
 import type { LearningArticleDetail } from '@/lib/learningArticles';
 import { MARKETING_DOMAIN } from '@/lib/domains';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 function ArticleSkeleton() {
   return (
@@ -138,8 +141,8 @@ export default function LearningArticlePage() {
   const currentLang = i18n.language || 'en';
 
   const { data: article, isLoading, error } = useQuery({
-    queryKey: ['learning-article', slug],
-    queryFn: () => getLearningArticleBySlug(slug!),
+    queryKey: ['learning-article', slug, currentLang],
+    queryFn: () => getLearningArticleBySlug(slug!, currentLang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 10,
   });

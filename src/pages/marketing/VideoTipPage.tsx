@@ -12,6 +12,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, User } from 'lucide-react';
 import { sanityClient, VIDEO_TIP_BY_SLUG_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields } from '@/lib/sanity';
+import { useTranslation } from 'react-i18next';
 import { parseVideoUrl } from '@/lib/videoEmbed';
 
 interface VideoTipDetail {
@@ -35,10 +36,12 @@ interface VideoTipDetail {
 
 export default function VideoTipPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
 
   const { data: video, isLoading, error } = useQuery({
-    queryKey: ['video-tip', slug],
-    queryFn: () => sanityClient.fetch<VideoTipDetail>(VIDEO_TIP_BY_SLUG_QUERY, { slug }),
+    queryKey: ['video-tip', slug, lang],
+    queryFn: () => sanityClient.fetch<VideoTipDetail>(VIDEO_TIP_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });

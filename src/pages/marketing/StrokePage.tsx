@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,8 @@ import { ArrowLeft, ArrowRight, Lightbulb } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { sanityClient, STROKE_BY_SLUG_QUERY, VIDEO_TIPS_BY_STROKE_QUERY } from '@/lib/sanity';
 import type { SeoFields, CtaFields, BodySection } from '@/lib/sanity';
+import { getTranslations } from '@/lib/translations';
+import { useTranslationsContext } from '@/contexts/TranslationsContext';
 
 interface StrokeDetail {
   _id: string;
@@ -53,18 +56,19 @@ interface StrokeDetail {
 
 export default function StrokePage() {
   const { slug } = useParams<{ slug: string }>();
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: stroke, isLoading, error } = useQuery({
-    queryKey: ['stroke-page', slug],
-    queryFn: () => sanityClient.fetch<StrokeDetail>(STROKE_BY_SLUG_QUERY, { slug }),
+    queryKey: ['stroke-page', slug, lang],
+    queryFn: () => sanityClient.fetch<StrokeDetail>(STROKE_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });
 
   const { data: videoTips = [] } = useQuery({
-    queryKey: ['stroke-videos', stroke?._id],
-    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_BY_STROKE_QUERY, { strokeId: stroke!._id }),
+    queryKey: ['stroke-videos', stroke?._id, lang],
+    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_BY_STROKE_QUERY, { strokeId: stroke!._id, lang }),
     enabled: !!stroke?._id,
     staleTime: 1000 * 60 * 5,
   });

@@ -37,9 +37,11 @@ export default function LearnIndex() {
   const activeType = searchParams.get('type');
   const activeTopic = searchParams.get('topic');
 
+  const lang = i18n?.language || 'en';
+
   const { data: articles = [], isLoading } = useQuery({
-    queryKey: ['learning-articles'],
-    queryFn: getLearningArticles,
+    queryKey: ['learning-articles', lang],
+    queryFn: () => getLearningArticles(lang),
     staleTime: 1000 * 60 * 10,
   });
 
