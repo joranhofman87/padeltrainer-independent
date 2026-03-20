@@ -505,6 +505,57 @@ export default function AcademyDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Trainers Section */}
+      {activeTrainers.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold">{t('trainers.title')}</h2>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/trainers')}>
+              {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activeTrainers.map((trainer: any) => {
+              const profile = trainer.profile;
+              const tp = trainer.trainer_profile;
+              const initials = (profile?.full_name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+
+              return (
+                <Card key={trainer.id} className="flex items-start gap-3 p-4">
+                  <Avatar className="h-10 w-10 shrink-0">
+                    {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile?.full_name || ''} />}
+                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-sm truncate">{profile?.full_name || '—'}</span>
+                      {trainer.show_on_academy_page ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                          <Eye className="h-3 w-3 mr-0.5" /> {t('trainers.visible', 'Visible')}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+                          <EyeOff className="h-3 w-3 mr-0.5" /> {t('trainers.hidden', 'Hidden')}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {(tp?.specializations || []).slice(0, 2).map((s: string) => (
+                        <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {tp?.hourly_rate != null && <span>€{tp.hourly_rate}/h</span>}
+                      {tp?.experience_years != null && <span>{tp.experience_years} {t('trainers.yearsExp', 'yr exp')}</span>}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
