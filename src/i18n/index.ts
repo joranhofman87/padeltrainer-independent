@@ -2,10 +2,13 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-// Only import the bare minimum eagerly for the landing page
+// Eagerly import NL + EN (fallback) for instant rendering
 import nlCommon from './locales/nl/common.json';
 import nlMarketing from './locales/nl/marketing.json';
 import nlNotifications from './locales/nl/notifications.json';
+import enCommon from './locales/en/common.json';
+import enMarketing from './locales/en/marketing.json';
+import enNotifications from './locales/en/notifications.json';
 
 const SUPPORTED_LANGS = ['en', 'nl', 'es', 'de', 'fr'] as const;
 const NAMESPACES = ['common', 'marketing', 'auth', 'player', 'trainer', 'club', 'cycles', 'admin', 'academy', 'waitingList'] as const;
@@ -72,7 +75,7 @@ const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
 };
 
 // Track which languages have been loaded
-const loadedLanguages = new Set<string>(['nl']);
+const loadedLanguages = new Set<string>(['nl', 'en']);
 let nlExtendedLoaded = false;
 
 async function loadLanguage(lng: string): Promise<void> {
@@ -113,6 +116,10 @@ const resources = {
   nl: {
     common: { ...nlCommon, ...nlNotifications },
     marketing: nlMarketing,
+  },
+  en: {
+    common: { ...enCommon, ...enNotifications },
+    marketing: enMarketing,
   },
 };
 
