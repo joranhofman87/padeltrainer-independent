@@ -190,7 +190,7 @@
       
       "availability": "Your Availability",
       "availabilityLabel": "Availability",
-      "availabilityHelp": "Select the days and times you're available for training",
+      "availabilityHelp": "Select the days and times you're available for training. The more times you indicate, the greater the chance you'll be assigned.",
       "preferredDays": "Preferred Days",
       "days": {
         "monday": "Monday",

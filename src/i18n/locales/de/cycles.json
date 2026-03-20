@@ -175,7 +175,7 @@
       "location": "Bevorzugter Standort",
       "availability": "Deine Verfügbarkeit",
       "availabilityLabel": "Verfügbarkeit",
-      "availabilityHelp": "Wähle die Tage und Zeiten, an denen du für Training verfügbar bist",
+      "availabilityHelp": "Wähle die Tage und Zeiten, an denen du für Training verfügbar bist. Je mehr Zeiten du angibst, desto größer ist die Chance, eingeteilt zu werden.",
       "preferredDays": "Bevorzugte Tage",
       "days": {
         "monday": "Montag",

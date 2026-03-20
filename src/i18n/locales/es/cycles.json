@@ -175,7 +175,7 @@
       "location": "Ubicación preferida",
       "availability": "Tu disponibilidad",
       "availabilityLabel": "Disponibilidad",
-      "availabilityHelp": "Selecciona los días y horarios en los que estás disponible para entrenar",
+      "availabilityHelp": "Selecciona los días y horarios en los que estás disponible para entrenar. Cuantos más horarios indiques, mayor será la probabilidad de ser asignado.",
       "preferredDays": "Días preferidos",
       "days": {
         "monday": "Lunes",

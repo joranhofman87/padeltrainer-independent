@@ -216,7 +216,7 @@
       
       "availability": "Je Beschikbaarheid",
       "availabilityLabel": "Beschikbaarheid",
-      "availabilityHelp": "Selecteer de dagen en tijden waarop je beschikbaar bent voor training",
+      "availabilityHelp": "Selecteer de dagen en tijden waarop je beschikbaar bent voor training, hoe meer tijden je aangeeft hoe groter de kans dat je wordt ingedeeld.",
       "preferredDays": "Voorkeursdagen",
       "days": {
         "monday": "Maandag",
