@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { trackEvent } from '@/lib/tracking';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '@/components/LanguageRouter';
+import { useTranslation } from 'react-i18next';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 15;
@@ -43,6 +44,7 @@ export default function BookingSuccess() {
   const { toast } = useToast();
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang && SUPPORTED_LANGUAGES.includes(lang) ? lang : DEFAULT_LANGUAGE;
+  const { t } = useTranslation('player');
 
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
@@ -54,7 +56,7 @@ export default function BookingSuccess() {
 
   useEffect(() => {
     if (!bookingId) {
-      setError('No booking ID provided.');
+      setError(t('bookingSuccess.noBookingId'));
       setVerifying(false);
       return;
     }
@@ -74,14 +76,12 @@ export default function BookingSuccess() {
         return 'pending';
       }
 
-      // Detect terminal failure states early
       if (data?.payment_status && ['failed', 'canceled', 'expired'].includes(data.payment_status)) {
         logger.info('Payment terminal status detected', { component: 'BookingSuccess', bookingId, status: data.payment_status });
         return 'terminal';
       }
 
       if (data?.payment_status === 'paid') {
-        // Fetch trainer details once we know it's paid
         const slot = (data as any).availability_slots;
         if (slot?.trainer_id) {
           const { data: trainer } = await supabase
@@ -136,12 +136,12 @@ export default function BookingSuccess() {
         setVerified(true);
         setVerifying(false);
         trackEvent('booking_paid', { booking_id: bookingId });
-        toast({ title: 'Payment Successful', description: 'Your booking has been confirmed!' });
+        toast({ title: t('bookingSuccess.paymentSuccessToast'), description: t('bookingSuccess.bookingConfirmedToast') });
         return;
       }
 
       if (result === 'terminal') {
-        setError('Payment was not completed. Please try again or contact support.');
+        setError(t('bookingSuccess.paymentNotCompleted'));
         setVerifying(false);
         return;
       }
@@ -160,11 +160,10 @@ export default function BookingSuccess() {
 
       if (fallbackPaid) {
         setVerified(true);
-        // Re-fetch details after fallback confirms paid
         await checkDatabase();
-        toast({ title: 'Payment Successful', description: 'Your booking has been confirmed!' });
+        toast({ title: t('bookingSuccess.paymentSuccessToast'), description: t('bookingSuccess.bookingConfirmedToast') });
       } else {
-        setError('Payment was not completed. Please try again or contact support.');
+        setError(t('bookingSuccess.paymentNotCompleted'));
       }
       setVerifying(false);
     };
@@ -190,35 +189,35 @@ export default function BookingSuccess() {
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-              <CardTitle>Verifying Payment</CardTitle>
-              <CardDescription>Please wait while we confirm your payment...</CardDescription>
+              <CardTitle>{t('bookingSuccess.verifying')}</CardTitle>
+              <CardDescription>{t('bookingSuccess.verifyingDescription')}</CardDescription>
             </>
           ) : verified ? (
             <>
               <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
-              <CardTitle className="text-green-600">Payment Successful!</CardTitle>
-              <CardDescription>Your booking has been confirmed</CardDescription>
+              <CardTitle className="text-green-600">{t('bookingSuccess.success')}</CardTitle>
+              <CardDescription>{t('bookingSuccess.successDescription')}</CardDescription>
             </>
           ) : (
             <>
               <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center mx-auto mb-4">
                 <XCircle className="h-8 w-8 text-red-600" />
               </div>
-              <CardTitle className="text-red-600">Payment Issue</CardTitle>
-              <CardDescription>{error || 'Something went wrong'}</CardDescription>
+              <CardTitle className="text-red-600">{t('bookingSuccess.issue')}</CardTitle>
+              <CardDescription>{error || t('bookingSuccess.somethingWrong')}</CardDescription>
             </>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
           {verified && (
             <div className="bg-muted p-4 rounded-lg text-center">
-              <p className="text-sm text-muted-foreground mb-2">What's next?</p>
+              <p className="text-sm text-muted-foreground mb-2">{t('bookingSuccess.whatsNext')}</p>
               <ul className="text-sm space-y-2">
                 <li className="flex items-center gap-2 justify-center">
                   <Check className="h-4 w-4 text-green-600" />
-                  Confirmation email sent
+                  {t('bookingSuccess.confirmationSent')}
                 </li>
                 <li className="flex items-center gap-2 justify-center">
                   <Calendar className="h-4 w-4 text-primary" />
@@ -229,10 +228,10 @@ export default function BookingSuccess() {
                       rel="noopener noreferrer"
                       className="underline hover:text-primary transition-colors"
                     >
-                      Add to your calendar
+                      {t('bookingSuccess.addToCalendar')}
                     </a>
                   ) : (
-                    'Add to your calendar'
+                    t('bookingSuccess.addToCalendar')
                   )}
                 </li>
               </ul>
@@ -250,10 +249,10 @@ export default function BookingSuccess() {
           <div className="flex flex-col gap-3">
             <Button className="w-full" onClick={() => navigate('/app/player/bookings')}>
               <Calendar className="h-4 w-4 mr-2" />
-              View My Bookings
+              {t('bookingSuccess.viewBookings')}
             </Button>
             <Button variant="outline" className="w-full" onClick={() => navigate(bookAgainPath)}>
-              Book Another Lesson
+              {t('bookingSuccess.bookAnother')}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>

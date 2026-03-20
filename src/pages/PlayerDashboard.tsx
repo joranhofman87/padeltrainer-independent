@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { logger } from '@/lib/logger';
 import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 interface FollowedTrainer {
   id: string;
@@ -241,6 +242,7 @@ async function fetchPlayerClubsData(profileId: string): Promise<PlayerClub[]> {
 export default function PlayerDashboard() {
   const { profile, loading } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('player');
   const profileId = profile?.id;
 
   const { data: upcomingBookings = [], isLoading: statsLoading } = useQuery({
@@ -279,11 +281,11 @@ export default function PlayerDashboard() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <Badge variant="default">Confirmed</Badge>;
+        return <Badge variant="default">{t('dashboard.status.confirmed')}</Badge>;
       case 'pending':
-        return <Badge variant="secondary">Pending Payment</Badge>;
+        return <Badge variant="secondary">{t('dashboard.status.pendingPayment')}</Badge>;
       case 'pending_approval':
-        return <Badge variant="outline">Awaiting Approval</Badge>;
+        return <Badge variant="outline">{t('dashboard.status.awaitingApproval')}</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -294,10 +296,10 @@ export default function PlayerDashboard() {
       {/* Welcome Section */}
       <div>
         <h1 className="text-3xl font-bold mb-2">
-          Welcome back, {profile?.full_name?.split(' ')[0] || 'Player'}! 👋
+          {t('dashboard.welcome', { name: profile?.full_name?.split(' ')[0] || 'Player' })}
         </h1>
         <p className="text-muted-foreground">
-          Find your next training session and improve your padel skills
+          {t('dashboard.subtitle')}
         </p>
       </div>
 
@@ -322,8 +324,8 @@ export default function PlayerDashboard() {
                 <Search className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="font-semibold">Find Trainers</p>
-                <p className="text-sm text-muted-foreground">Browse available trainers</p>
+                <p className="font-semibold">{t('dashboard.quickActions.findTrainers.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.browseAvailableTrainers')}</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -340,8 +342,8 @@ export default function PlayerDashboard() {
                 <Calendar className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="font-semibold">My Bookings</p>
-                <p className="text-sm text-muted-foreground">View your schedule</p>
+                <p className="font-semibold">{t('dashboard.quickActions.myBookings.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.viewSchedule')}</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -358,8 +360,8 @@ export default function PlayerDashboard() {
                 <User className="h-5 w-5 text-orange-600" />
               </div>
               <div>
-                <p className="font-semibold">My Profile</p>
-                <p className="text-sm text-muted-foreground">Update your details</p>
+                <p className="font-semibold">{t('dashboard.myProfile.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.myProfile.description')}</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -375,10 +377,10 @@ export default function PlayerDashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-primary" />
-                Upcoming Bookings
+                {t('dashboard.upcomingBookings')}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => navigate('/app/player/bookings')} className="gap-1">
-                View all <ChevronRight className="h-4 w-4" />
+                {t('dashboard.viewAll')} <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
@@ -388,14 +390,14 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : upcomingBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No upcoming bookings</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noUpcomingBookings')}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Session</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t('dashboard.tableSession')}</TableHead>
+                    <TableHead>{t('dashboard.tableDate')}</TableHead>
+                    <TableHead>{t('dashboard.tableStatus')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -428,10 +430,10 @@ export default function PlayerDashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                Followed Trainers
+                {t('dashboard.followedTrainers')}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
-                All trainers <ChevronRight className="h-4 w-4" />
+                {t('dashboard.allTrainers')} <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
@@ -441,13 +443,13 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : followedTrainers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Not following any trainers yet</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.notFollowingYet')}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Trainer</TableHead>
-                    <TableHead className="text-right">Profile</TableHead>
+                    <TableHead>{t('dashboard.tableTrainer')}</TableHead>
+                    <TableHead className="text-right">{t('dashboard.tableProfile')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -485,13 +487,13 @@ export default function PlayerDashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Clock className="h-5 w-5 text-primary" />
-                Open Slots
+                {t('dashboard.openSlots')}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('trainers'))} className="gap-1">
-                Browse <ChevronRight className="h-4 w-4" />
+                {t('dashboard.browse')} <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <CardDescription>Available sessions from trainers you follow</CardDescription>
+            <CardDescription>{t('dashboard.openSlotsDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             {slotsLoading ? (
@@ -499,13 +501,13 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : followedTrainerSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No open slots from followed trainers</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noOpenSlots')}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Session</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>{t('dashboard.tableSession')}</TableHead>
+                    <TableHead>{t('dashboard.tableDate')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -518,9 +520,9 @@ export default function PlayerDashboard() {
                       <TableCell>
                         <div>
                           <p className="font-medium truncate">
-                            {slot.cyclusName || 'Open Session'}
+                            {slot.cyclusName || t('dashboard.openSession')}
                             {slot.type === 'cycle' && slot.sessionCount && (
-                              <span className="text-xs text-muted-foreground ml-1">· {slot.sessionCount} sessions</span>
+                              <span className="text-xs text-muted-foreground ml-1">· {slot.sessionCount} {t('dashboard.sessions')}</span>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">{slot.trainerName}{slot.location ? ` • ${slot.location}` : ''}</p>
@@ -528,7 +530,7 @@ export default function PlayerDashboard() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         <div>
-                          <p className="text-sm">{slot.type === 'cycle' ? `Starting ${format(slot.startTime, 'MMM d')}` : format(slot.startTime, 'EEE, MMM d')}</p>
+                          <p className="text-sm">{slot.type === 'cycle' ? t('dashboard.starting', { date: format(slot.startTime, 'MMM d') }) : format(slot.startTime, 'EEE, MMM d')}</p>
                           <p className="text-xs text-muted-foreground">{format(slot.startTime, 'HH:mm')}</p>
                         </div>
                       </TableCell>
@@ -546,10 +548,10 @@ export default function PlayerDashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Building2 className="h-5 w-5 text-primary" />
-                My Clubs
+                {t('dashboard.myClubs')}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => navigate(getMarketingPath('locations'))} className="gap-1">
-                All clubs <ChevronRight className="h-4 w-4" />
+                {t('dashboard.allClubs')} <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
@@ -559,13 +561,13 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : playerClubs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Not a member of any club yet</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noClubsYet')}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Club</TableHead>
-                    <TableHead className="text-right">Profile</TableHead>
+                    <TableHead>{t('dashboard.tableClub')}</TableHead>
+                    <TableHead className="text-right">{t('dashboard.tableProfile')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
