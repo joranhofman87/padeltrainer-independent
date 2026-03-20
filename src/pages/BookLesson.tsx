@@ -83,6 +83,7 @@ export default function BookLesson() {
   const { user, profile, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t } = useTranslation('player');
 
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
   const [cyclusBundles, setCyclusBundles] = useState<CyclusBundle[]>([]);
