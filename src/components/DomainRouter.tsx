@@ -54,6 +54,8 @@ const BookLesson = lazy(() => import('@/pages/BookLesson'));
 const CycleRegistration = lazy(() => import('@/pages/CycleRegistration'));
 const BrandedCycleRegistration = lazy(() => import('@/pages/BrandedCycleRegistration'));
 const RacketFinder = lazy(() => import('@/pages/marketing/RacketFinder'));
+const RacketListing = lazy(() => import('@/pages/marketing/RacketListing'));
+const RacketDetail = lazy(() => import('@/pages/marketing/RacketDetail'));
 
 // API callback pages
 const MollieCallback = lazy(() => import('@/pages/MollieCallback'));
