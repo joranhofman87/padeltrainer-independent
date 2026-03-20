@@ -75,6 +75,39 @@
       "title": "Featured Trainers",
       "viewAll": "View All Trainers",
       "book": "Book"
+    },
+    "myProfile": {
+      "title": "My Profile",
+      "description": "Update your details"
+    },
+    "viewSchedule": "View your schedule",
+    "browseAvailableTrainers": "Browse available trainers",
+    "upcomingBookings": "Upcoming Bookings",
+    "viewAll": "View all",
+    "noUpcomingBookings": "No upcoming bookings",
+    "followedTrainers": "Followed Trainers",
+    "allTrainers": "All trainers",
+    "notFollowingYet": "Not following any trainers yet",
+    "openSlots": "Open Slots",
+    "browse": "Browse",
+    "openSlotsDescription": "Available sessions from trainers you follow",
+    "noOpenSlots": "No open slots from followed trainers",
+    "openSession": "Open Session",
+    "sessions": "sessions",
+    "starting": "Starting {{date}}",
+    "myClubs": "My Clubs",
+    "allClubs": "All clubs",
+    "noClubsYet": "Not a member of any club yet",
+    "tableSession": "Session",
+    "tableDate": "Date",
+    "tableStatus": "Status",
+    "tableTrainer": "Trainer",
+    "tableProfile": "Profile",
+    "tableClub": "Club",
+    "status": {
+      "confirmed": "Confirmed",
+      "pendingPayment": "Pending Payment",
+      "awaitingApproval": "Awaiting Approval"
     }
   },
   "trainers": {
@@ -149,6 +182,7 @@
   },
   "bookings": {
     "title": "My Bookings",
+    "subtitle": "View and manage your lesson bookings",
     "empty": "No bookings yet",
     "emptyDescription": "Book your first session to get started!",
     "findTrainer": "Find a Trainer",
@@ -156,18 +190,86 @@
       "upcoming": "Upcoming",
       "past": "Past"
     },
+    "invoices": "Invoices",
+    "noUpcoming": "No upcoming bookings",
+    "findTrainerDescription": "Find a trainer and book your first lesson!",
+    "browseTrainers": "Browse Trainers",
+    "noPast": "No past bookings",
+    "trainingSession": "Training Session",
+    "coach": "Coach",
+    "reviewed": "Reviewed",
+    "leaveReview": "Leave Review",
+    "confirmCancel": "Are you sure you want to cancel this booking?",
+    "cancelSuccess": "Booking cancelled",
+    "cancelError": "Failed to cancel booking",
+    "loadError": "Failed to load bookings",
     "status": {
       "confirmed": "Confirmed",
       "pending": "Pending",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "pendingPayment": "Pending Payment",
+      "awaitingApproval": "Awaiting Approval",
+      "completed": "Completed"
+    },
+    "payment": {
+      "paid": "Paid",
+      "waived": "Waived",
+      "refunded": "Refunded",
+      "unpaid": "Unpaid"
     },
     "cancelBooking": "Cancel Booking"
   },
+  "bookingSuccess": {
+    "verifying": "Verifying Payment",
+    "verifyingDescription": "Please wait while we confirm your payment...",
+    "success": "Payment Successful!",
+    "successDescription": "Your booking has been confirmed",
+    "issue": "Payment Issue",
+    "somethingWrong": "Something went wrong",
+    "whatsNext": "What's next?",
+    "confirmationSent": "Confirmation email sent",
+    "addToCalendar": "Add to your calendar",
+    "viewBookings": "View My Bookings",
+    "bookAnother": "Book Another Lesson",
+    "noBookingId": "No booking ID provided.",
+    "paymentNotCompleted": "Payment was not completed. Please try again or contact support.",
+    "paymentSuccessToast": "Payment Successful",
+    "bookingConfirmedToast": "Your booking has been confirmed!"
+  },
+  "bookingCancelled": {
+    "title": "Payment not completed",
+    "description": "The payment was cancelled or not completed. No amount was charged.",
+    "tryAgain": "Try again",
+    "viewBookings": "View my bookings"
+  },
+  "bookLesson": {
+    "title": "Book a Lesson",
+    "with": "with {{name}}",
+    "trainerNotFound": "Trainer not found",
+    "browseTrainers": "Browse Trainers",
+    "requestSent": "Request Sent!",
+    "requestSentDescription": "The trainer will review your booking request.",
+    "termsRequired": "Terms Required",
+    "termsRequiredDescription": "Please accept the general terms before booking.",
+    "bookingFailed": "Booking Failed",
+    "paymentNotAvailable": "Payment Not Available"
+  },
   "followingList": {
-    "title": "Following",
+    "title": "Trainers You Follow",
+    "subtitle": "Manage your followed trainers and notification preferences.",
     "empty": "You're not following any trainers yet",
     "emptyDescription": "Follow trainers to get notified when they add new availability.",
     "browseTrainers": "Browse Trainers",
-    "notifyAvailability": "Notify me of new availability"
+    "notifyAvailability": "Notify me of new availability",
+    "notFollowingYet": "Not following any trainers yet",
+    "followDescription": "Follow trainers to get notified when they add new availability slots.",
+    "findMore": "Find More Trainers",
+    "notificationsEnabled": "Notifications enabled",
+    "notificationsDisabled": "Notifications disabled",
+    "notificationsEnabledDescription": "You'll receive emails when this trainer adds availability",
+    "notificationsDisabledDescription": "You won't receive availability notifications",
+    "unfollowConfirm": "Unfollow {{name}}?",
+    "unfollowed": "Unfollowed",
+    "unfollowedDescription": "You unfollowed {{name}}"
   }
 }
