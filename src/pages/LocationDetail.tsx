@@ -43,7 +43,7 @@ import {
   ProfileQuickStatsCard,
 } from '@/components/profiles';
 import { getMarketingUrl } from '@/lib/domains';
-import { SponsorBanner } from '@/components/sponsors/SponsorBanner';
+
 
 interface TrainerWithProfile {
   id: string;
@@ -602,10 +602,6 @@ export default function LocationDetail() {
               </Card>
             )}
 
-            {/* Sponsor Banner - Sidebar */}
-            {!clubProfile?.subscription_tier || clubProfile.subscription_tier === 'starter' ? (
-              <SponsorBanner placementSlug="location-detail-sidebar" locationId={location?.id} />
-            ) : null}
           </ProfileSidebarColumn>
         </ProfileContentGrid>
 

@@ -44,7 +44,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Mail,
-  ImageIcon,
+  
   FileText,
   ListTodo,
 } from "lucide-react";
@@ -72,7 +72,7 @@ const settingsNavItems = [
   { title: "Review Tags", url: "/app/admin/review-tags", icon: Tags },
   { title: "Pricing Plans", url: "/app/admin/pricing", icon: CreditCard },
   { title: "Onboarding Emails", url: "/app/admin/onboarding-emails", icon: Mail },
-  { title: "Partner Banners", url: "/app/admin/banners", icon: ImageIcon },
+  
 ];
 
 export function AdminSidebar() {
