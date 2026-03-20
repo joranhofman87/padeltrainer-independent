@@ -55,7 +55,12 @@ export const BLOG_POSTS_QUERY = `*[_type == "blogPost" && !(_id in path("drafts.
   cta,
   datePublished,
   dateModified,
-  bodySections
+  bodySections,
+  content,
+  audience,
+  "topics": topics[]->{ _id, title, "slug": slug.current },
+  "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
+  "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
 export const BLOG_POSTS_COUNT_QUERY = `count(*[_type == "blogPost" && !(_id in path("drafts.**"))])`;
@@ -73,7 +78,12 @@ export const BLOG_POSTS_BY_CATEGORY_QUERY = `*[_type == "blogPost" && category =
   cta,
   datePublished,
   dateModified,
-  bodySections
+  bodySections,
+  content,
+  audience,
+  "topics": topics[]->{ _id, title, "slug": slug.current },
+  "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
+  "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
 export const BLOG_POSTS_BY_CATEGORY_COUNT_QUERY = `count(*[_type == "blogPost" && category == $category && !(_id in path("drafts.**"))])`;
@@ -85,13 +95,18 @@ export const BLOG_POST_BY_SLUG_QUERY = `*[_type == "blogPost" && slug.current ==
   h1,
   excerpt,
   bodySections,
+  content,
+  audience,
   authorName,
   category,
   isFeatured,
   seo,
   cta,
   datePublished,
-  dateModified
+  dateModified,
+  "topics": topics[]->{ _id, title, "slug": slug.current },
+  "relatedGuides": relatedGuides[]->{ _id, title, "slug": slug.current, h1 },
+  "relatedStrokes": relatedStrokes[]->{ _id, title, "slug": slug.current, h1, category, difficulty }
 }`;
 
 export const ALL_CATEGORIES_QUERY = `array::unique(*[_type == "blogPost" && !(_id in path("drafts.**"))].category)`;

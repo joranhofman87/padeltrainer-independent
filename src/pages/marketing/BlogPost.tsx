@@ -8,6 +8,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import { SEO } from '@/components/SEO';
 import { Breadcrumbs } from '@/components/sanity/Breadcrumbs';
 import { BodySections } from '@/components/sanity/BodySections';
+import { PortableTextRenderer } from '@/components/sanity/PortableTextRenderer';
 import { CTASection } from '@/components/sanity/CTASection';
 import { motion } from 'framer-motion';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
@@ -76,7 +77,7 @@ export default function BlogPost() {
     );
   }
 
-  const readTime = calculateReadTime(post.bodySections);
+  const readTime = calculateReadTime(post.bodySections, post.content);
 
   const articleStructuredData = {
     "@context": "https://schema.org",
@@ -152,7 +153,11 @@ export default function BlogPost() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <BodySections sections={post.bodySections} />
+          {post.content && post.content.length > 0 ? (
+            <PortableTextRenderer content={post.content} />
+          ) : (
+            <BodySections sections={post.bodySections} />
+          )}
         </motion.div>
 
         {/* CTA */}
