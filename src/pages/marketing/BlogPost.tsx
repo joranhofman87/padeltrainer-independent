@@ -127,6 +127,8 @@ export default function BlogPost() {
         type="article"
         structuredData={articleStructuredData}
         noIndex={post.seo?.indexable === false}
+        translations={translationsList}
+        pathPrefix="blog"
       />
 
       {/* Back Button */}
