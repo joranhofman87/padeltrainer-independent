@@ -439,8 +439,8 @@ export default function BookLesson() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="p-8 text-center">
-          <h2 className="text-xl font-semibold mb-2">Trainer not found</h2>
-          <Button onClick={() => navigate('/app/player')}>Browse Trainers</Button>
+          <h2 className="text-xl font-semibold mb-2">{t('bookLesson.trainerNotFound')}</h2>
+          <Button onClick={() => navigate('/app/player')}>{t('bookLesson.browseTrainers')}</Button>
         </Card>
       </div>
     );
