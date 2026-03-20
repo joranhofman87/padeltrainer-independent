@@ -272,7 +272,7 @@ export default function BookLesson() {
     if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
 
     if (applicableTerms && !termsAccepted) {
-      toast({ title: 'Terms Required', description: 'Please accept the general terms before booking.', variant: 'destructive' });
+      toast({ title: t('bookLesson.termsRequired'), description: t('bookLesson.termsRequiredDescription'), variant: 'destructive' });
       return;
     }
 
