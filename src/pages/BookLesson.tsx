@@ -406,7 +406,7 @@ export default function BookLesson() {
       } else {
         const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, trainer.use_manual_invoicing ?? false);
         if (!paymentSetup.valid) {
-          toast({ title: 'Payment Not Available', description: paymentSetup.message || 'This trainer has not set up payments yet', variant: 'destructive' });
+          toast({ title: t('bookLesson.paymentNotAvailable'), description: paymentSetup.message || t('bookLesson.paymentNotAvailable'), variant: 'destructive' });
           setBooking(false);
           return;
         }
