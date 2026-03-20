@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Dumbbell, MapPin, BookOpen, Video, PenLine } from 'lucide-react';
+import { Dumbbell, MapPin, BookOpen, Video, PenLine, Target } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LocalizedLink } from '@/components/LocalizedLink';
 
