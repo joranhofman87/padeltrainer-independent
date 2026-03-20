@@ -64,7 +64,7 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
             </CardDescription>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>{article.datePublished ? new Date(article.datePublished).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' }) : ''}</span>
-              <span>{calculateReadTime(article.bodySections)}</span>
+              <span>{calculateReadTime(article.bodySections, article.content)}</span>
             </div>
           </CardContent>
         </Card>
