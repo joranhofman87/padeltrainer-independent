@@ -74,15 +74,27 @@ const lazyLoaders: Record<string, () => Promise<Record<string, any>>> = {
   fr: createLazyLoader('fr'),
 };
 
-// Track which languages have been loaded
-const loadedLanguages = new Set<string>(['nl', 'en']);
+// Track which languages have had ALL namespaces loaded
+// NL and EN start with only common+marketing eagerly loaded — extended namespaces are lazy
+const loadedLanguages = new Set<string>();
 let nlExtendedLoaded = false;
+let enExtendedLoaded = false;
 
 async function loadLanguage(lng: string): Promise<void> {
   if (lng === 'nl') {
     if (!nlExtendedLoaded) {
       nlExtendedLoaded = true;
       await loadNlExtended();
+    }
+    return;
+  }
+  if (lng === 'en') {
+    if (!enExtendedLoaded) {
+      enExtendedLoaded = true;
+      const bundles = await lazyLoaders['en']!();
+      Object.entries(bundles).forEach(([ns, resources]) => {
+        i18n.addResourceBundle('en', ns, resources, true, true);
+      });
     }
     return;
   }
