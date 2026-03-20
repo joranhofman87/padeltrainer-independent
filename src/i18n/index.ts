@@ -103,7 +103,7 @@ const detectLanguage = (): string => {
   const navLang = navigator.language?.split('-')[0];
   if (navLang && SUPPORTED_LANGS.includes(navLang as any)) return navLang;
   
-  return 'nl';
+  return 'en';
 };
 
 const initialLang = detectLanguage();
