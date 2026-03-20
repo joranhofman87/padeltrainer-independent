@@ -7,7 +7,9 @@
     "settings": "Settings",
     "editProfile": "Edit Profile",
     "notifications": "Notifications",
-    "calendarSync": "Calendar Sync"
+    "calendarSync": "Calendar Sync",
+    "levelTest": "Level Test",
+    "profile": "My Profile"
   },
   "settings": {
     "title": "Settings",
