@@ -175,7 +175,7 @@
       "location": "Lieu préféré",
       "availability": "Vos disponibilités",
       "availabilityLabel": "Disponibilité",
-      "availabilityHelp": "Sélectionnez les jours et heures où vous êtes disponible pour l'entraînement",
+      "availabilityHelp": "Sélectionnez les jours et heures où vous êtes disponible pour l'entraînement. Plus vous indiquez de créneaux, plus vous avez de chances d'être placé.",
       "preferredDays": "Jours préférés",
       "days": {
         "monday": "Lundi",
