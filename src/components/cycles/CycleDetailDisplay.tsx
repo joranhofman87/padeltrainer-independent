@@ -243,6 +243,13 @@ export default function CycleDetailDisplay({ cycle, hideLocation = false }: Cycl
             : t('detail.pricesIncludeVat', 'All prices include VAT')}
         </p>
       )}
+
+      {/* Pricing note */}
+      {(cycle.settings as any)?.pricing_note && (
+        <p className="text-sm text-muted-foreground">
+          {(cycle.settings as any).pricing_note}
+        </p>
+      )}
       {/* Terms */}
       {hasTerms && (
         <div>

@@ -114,6 +114,9 @@ export default function CycleForm({
   const [pricesIncludeVat, setPricesIncludeVat] = useState<boolean>(
     (cycle?.settings as any)?.prices_include_vat ?? true
   );
+  const [pricingNote, setPricingNote] = useState<string>(
+    (cycle?.settings as any)?.pricing_note ?? ''
+  );
   const [newDurationWeeks, setNewDurationWeeks] = useState<number | ''>('');
   const STANDARD_DURATIONS = [30, 45, 60, 90, 120] as const;
   const [availableDurations, setAvailableDurations] = useState<number[]>(
@@ -248,6 +251,7 @@ export default function CycleForm({
       setCyclusOptions((cycle?.settings as any)?.cyclus_options ?? []);
       setDurationOptions((cycle?.settings as any)?.duration_options ?? []);
       setPricesIncludeVat((cycle?.settings as any)?.prices_include_vat ?? true);
+      setPricingNote((cycle?.settings as any)?.pricing_note ?? '');
       setAvailableDurations((cycle?.settings as any)?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
       setCustomDurationInput('');
     }
@@ -340,6 +344,7 @@ export default function CycleForm({
         available_duration_minutes: isRegistration ? availableDurations.sort((a, b) => a - b) : undefined,
         price_columns: priceColumns.length > 0 ? priceColumns : undefined,
         prices_include_vat: pricesIncludeVat,
+        pricing_note: pricingNote.trim() || undefined,
       };
 
       // For cyclus, auto-generate name from day + time
@@ -1114,6 +1119,24 @@ export default function CycleForm({
                     ? t('form.pricesIncludeVatHint', 'Players will see: "All prices include VAT"')
                     : t('form.pricesExcludeVatHint', 'Players will see: "All prices exclude VAT"')}
                 </p>
+
+                {/* Pricing note */}
+                <div className="space-y-1.5 pt-2">
+                  <Label htmlFor="pricing-note" className="text-sm font-medium">
+                    {t('form.pricingNote', 'Pricing comment')}
+                  </Label>
+                  <textarea
+                    id="pricing-note"
+                    value={pricingNote}
+                    onChange={(e) => setPricingNote(e.target.value)}
+                    placeholder={t('form.pricingNotePlaceholder', 'e.g. "Family discount available on request"')}
+                    className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('form.pricingNoteHelp', 'Shown to players below the pricing table. Leave empty to hide.')}
+                  </p>
+                </div>
 
                 {/* Price Overview Summary */}
                 {priceTable.length > 0 && priceTable.some(r => r.price > 0 || (r.extra_prices || []).some(ep => ep.price > 0)) && (
