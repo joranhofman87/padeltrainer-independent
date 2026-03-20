@@ -154,19 +154,20 @@ i18n
   });
 
 // Load initial language (including NL extended namespaces)
-if (initialLang !== 'nl') {
-  loadLanguage(initialLang).then(() => {
-    if (i18n.language !== initialLang) {
-      i18n.changeLanguage(initialLang);
-    }
-  });
-}
+// Load extended namespaces for initial language
+loadLanguage(initialLang).then(() => {
+  if (i18n.language !== initialLang) {
+    i18n.changeLanguage(initialLang);
+  }
+});
 
-// Deferred load of NL extended namespaces after initial render
+// Deferred load of NL and EN extended namespaces after initial render
+const deferredLangs = ['nl', 'en'].filter(l => l !== initialLang);
+const loadDeferred = () => deferredLangs.forEach(l => loadLanguage(l));
 if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-  (window as any).requestIdleCallback(() => loadLanguage('nl'));
+  (window as any).requestIdleCallback(loadDeferred);
 } else {
-  setTimeout(() => loadLanguage('nl'), 500);
+  setTimeout(loadDeferred, 500);
 }
 
 // Auto-load language bundles on language change
