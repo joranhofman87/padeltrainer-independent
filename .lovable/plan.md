@@ -1,36 +1,49 @@
 
 
-# Fix Blog Content Not Rendering
+# CMS Banner / Sponsor Ad System
 
-## Problem
-Exact same issue we fixed for Rules pages. The blogPost schema in Sanity now uses a `content` field (Portable Text), but the frontend queries only fetch `bodySections` (legacy plain-text format) and renders via `BodySections` component which expects simple `{heading, content}` objects.
+## What we're building
+A reusable banner system that fetches ad banners from Sanity CMS, renders them in designated zones across the site, and tracks impressions + clicks via PostHog.
 
-## Changes
+## Files to create
 
-### 1. Update GROQ queries to include `content` field
-In `src/lib/sanity.ts`, add `content` to all three blog queries:
-- `BLOG_POSTS_QUERY`
-- `BLOG_POSTS_BY_CATEGORY_QUERY`  
-- `BLOG_POST_BY_SLUG_QUERY`
+### 1. `src/lib/banners.ts` — Query helper
+- `getBannersByZone(zone, options?)` — GROQ query fetching active banners where `isActive == true`, sponsor is active, and date range is valid
+- Client-side filtering for `targetLanguages` and `targetCategories`
+- `pickWeightedBanner(banners)` — weighted random selection (higher weight = more impressions)
+- Uses existing `sanityClient` from `src/lib/sanity.ts`
 
-Also add the related fields from the screenshot: `audience`, `relatedGuides`, `relatedStrokes`, `topics`.
+### 2. `src/components/sponsors/BannerAd.tsx` — Render component
+- Receives a single banner object, renders image with click-through link
+- `IntersectionObserver` (50% threshold) fires `banner_impression` event once per mount
+- Click handler fires `banner_click` event
+- Uses existing `trackEvent` from `src/lib/tracking.ts` (not `usePostHog` hook — this app doesn't use the PostHog React provider)
+- `rel="noopener noreferrer sponsored"` on links for SEO
+- "Sponsored" label on hover, lazy-loaded image, optional CTA badge
 
-### 2. Update Article type in `src/lib/blog.ts`
-Add `content?: any[]` to the `Article` interface.
+### 3. `src/components/sponsors/BannerZone.tsx` — Zone wrapper
+- Takes `zone`, optional `language`, `category`, `className` props
+- Uses `useQuery` (TanStack) to fetch banners with 10-min staleTime (matches existing caching pattern)
+- Picks a weighted-random banner from results via `useMemo`
+- Renders `<BannerAd>` or `null` if no banners available
+- Gets current language from `useTranslation` hook automatically
 
-### 3. Update `BlogPost.tsx` rendering logic
-Prioritize `content` over `bodySections`, same pattern as Rules:
+### 4. Initial placements
+Drop `<BannerZone>` into these pages:
+- **Home.tsx** — `zone="homepage-hero"` after SocialProofStrip
+- **BlogPost.tsx** — `zone="in-article"` after article content
+- **Blog.tsx** — `zone="blog-listing"` in the listing page (passes category)
 
-```tsx
-{post.content && post.content.length > 0 ? (
-  <PortableTextRenderer content={post.content} />
-) : (
-  <BodySections sections={post.bodySections} />
-)}
-```
+## PostHog events
+Both events include: `banner_id`, `banner_tracking_id`, `banner_title`, `sponsor_name`, `sponsor_slug`, `sponsor_plan`, `zone`, `click_url`
 
-Import `PortableTextRenderer` (already exists in the project).
+| Event | Trigger |
+|---|---|
+| `banner_impression` | Banner 50% visible (once per mount) |
+| `banner_click` | User clicks banner link |
 
-### 4. Fix `calculateReadTime` in `src/lib/blog.ts`
-Update to handle Portable Text blocks in `content` field, not just legacy `bodySections`.
+## Technical notes
+- No new dependencies needed — uses existing `sanityClient`, `trackEvent`, `useQuery`, `useTranslation`
+- Adapts the user's prompt from Next.js patterns (server components, `usePostHog`) to this app's React/Vite architecture
+- Banner zone values match Sanity schema exactly: `header`, `sidebar`, `in-article`, `footer`, `blog-listing`, `homepage-hero`
 
