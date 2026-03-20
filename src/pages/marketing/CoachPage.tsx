@@ -47,17 +47,19 @@ function TikTokIcon({ className }: { className?: string }) {
 
 export default function CoachPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
 
   const { data: coach, isLoading, error } = useQuery({
-    queryKey: ['coach-page', slug],
-    queryFn: () => sanityClient.fetch<CoachDetail>(COACH_BY_SLUG_QUERY, { slug }),
+    queryKey: ['coach-page', slug, lang],
+    queryFn: () => sanityClient.fetch<CoachDetail>(COACH_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });
 
   const { data: videoTips = [] } = useQuery({
-    queryKey: ['coach-videos', coach?._id],
-    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_BY_TRAINER_QUERY, { trainerId: coach!._id }),
+    queryKey: ['coach-videos', coach?._id, lang],
+    queryFn: () => sanityClient.fetch<VideoTip[]>(VIDEO_TIPS_BY_TRAINER_QUERY, { trainerId: coach!._id, lang }),
     enabled: !!coach?._id,
     staleTime: 1000 * 60 * 5,
   });

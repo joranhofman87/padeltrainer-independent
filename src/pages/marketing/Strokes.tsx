@@ -23,11 +23,12 @@ interface StrokeListItem {
 }
 
 export default function Strokes() {
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: strokes = [], isLoading } = useQuery({
-    queryKey: ['strokes-list'],
-    queryFn: () => sanityClient.fetch<StrokeListItem[]>(STROKES_LIST_QUERY),
+    queryKey: ['strokes-list', lang],
+    queryFn: () => sanityClient.fetch<StrokeListItem[]>(STROKES_LIST_QUERY, { lang }),
     staleTime: 1000 * 60 * 10,
   });
 

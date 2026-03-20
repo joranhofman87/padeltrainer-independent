@@ -55,11 +55,12 @@ function RulesPageSkeleton() {
 
 export default function RulesPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { t } = useTranslation('marketing');
+  const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: article, isLoading, error } = useQuery({
-    queryKey: ['rules-page', slug],
-    queryFn: () => sanityClient.fetch<RulesArticleDetail>(RULES_BY_SLUG_QUERY, { slug }),
+    queryKey: ['rules-page', slug, lang],
+    queryFn: () => sanityClient.fetch<RulesArticleDetail>(RULES_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });

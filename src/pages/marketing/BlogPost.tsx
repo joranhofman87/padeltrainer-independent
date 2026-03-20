@@ -38,10 +38,11 @@ function BlogPostSkeleton() {
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
   const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
 
   const { data: post, isLoading, error } = useQuery({
-    queryKey: ['blog-post', slug],
-    queryFn: () => getArticleBySlug(slug!),
+    queryKey: ['blog-post', slug, lang],
+    queryFn: () => getArticleBySlug(slug!, lang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });

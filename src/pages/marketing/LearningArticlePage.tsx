@@ -138,8 +138,8 @@ export default function LearningArticlePage() {
   const currentLang = i18n.language || 'en';
 
   const { data: article, isLoading, error } = useQuery({
-    queryKey: ['learning-article', slug],
-    queryFn: () => getLearningArticleBySlug(slug!),
+    queryKey: ['learning-article', slug, currentLang],
+    queryFn: () => getLearningArticleBySlug(slug!, currentLang),
     enabled: !!slug,
     staleTime: 1000 * 60 * 10,
   });

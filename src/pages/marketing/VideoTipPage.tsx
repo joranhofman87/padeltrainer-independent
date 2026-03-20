@@ -35,10 +35,12 @@ interface VideoTipDetail {
 
 export default function VideoTipPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
 
   const { data: video, isLoading, error } = useQuery({
-    queryKey: ['video-tip', slug],
-    queryFn: () => sanityClient.fetch<VideoTipDetail>(VIDEO_TIP_BY_SLUG_QUERY, { slug }),
+    queryKey: ['video-tip', slug, lang],
+    queryFn: () => sanityClient.fetch<VideoTipDetail>(VIDEO_TIP_BY_SLUG_QUERY, { slug, lang }),
     enabled: !!slug,
     staleTime: 1000 * 60 * 5,
   });

@@ -76,18 +76,19 @@ function ArticleCard({ article, dateLocale, index }: { article: Article; dateLoc
 
 export default function Blog() {
   const { t, i18n } = useTranslation('marketing');
+  const lang = i18n.language || 'en';
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['blog-posts', page, selectedCategory],
-    queryFn: () => getPublishedArticles(page, selectedCategory),
+    queryKey: ['blog-posts', page, selectedCategory, lang],
+    queryFn: () => getPublishedArticles(page, selectedCategory, lang),
     staleTime: 1000 * 60 * 5,
   });
 
   const { data: categories = [] } = useQuery({
-    queryKey: ['blog-categories'],
-    queryFn: () => getAllCategories(),
+    queryKey: ['blog-categories', lang],
+    queryFn: () => getAllCategories(lang),
     staleTime: 1000 * 60 * 10,
   });
 

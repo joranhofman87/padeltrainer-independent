@@ -23,9 +23,12 @@ interface CoachListItem {
 }
 
 export default function Coaches() {
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
+
   const { data: coaches = [], isLoading } = useQuery({
-    queryKey: ['coaches-list'],
-    queryFn: () => sanityClient.fetch<CoachListItem[]>(COACHES_LIST_QUERY),
+    queryKey: ['coaches-list', lang],
+    queryFn: () => sanityClient.fetch<CoachListItem[]>(COACHES_LIST_QUERY, { lang }),
     staleTime: 1000 * 60 * 10,
   });
 
