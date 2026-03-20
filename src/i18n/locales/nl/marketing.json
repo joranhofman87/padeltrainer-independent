@@ -987,5 +987,29 @@
       "fullDescription": "Volledige Review",
       "similarRackets": "Vergelijkbare Rackets"
     }
+  },
+  "levelQuiz": {
+    "title": "Wat is jouw padelniveau?",
+    "subtitle": "Beantwoord 10 vragen over je vaardigheden en ontdek je speelsterkte",
+    "selectCountry": "Selecteer je land voor een lokale classificatie",
+    "startQuiz": "Start Test",
+    "question": "Vraag",
+    "of": "van",
+    "back": "Terug",
+    "next": "Volgende",
+    "seeResults": "Bekijk Mijn Resultaat",
+    "yourLevel": "Jouw Padelniveau",
+    "equivalentIn": "In {{country}}",
+    "strengths": "Jouw Sterke Punten",
+    "focusAreas": "Aandachtspunten om Niveau {{nextLevel}} te Bereiken",
+    "recommendedReading": "Aanbevolen Artikelen",
+    "strokesToMaster": "Slagen om te Beheersen",
+    "fromBlog": "Van Onze Blog",
+    "findRacket": "Vind Jouw Perfecte Racket",
+    "takeRacketQuiz": "Doe de Racket Finder Quiz",
+    "shareResult": "Deel Mijn Resultaat",
+    "retakeQuiz": "Opnieuw Doen",
+    "shareText": "Ik ben niveau {{level}} in padel ({{title}})! 🎾 Wat is jouw niveau?",
+    "linkCopied": "Link gekopieerd!"
   }
 }

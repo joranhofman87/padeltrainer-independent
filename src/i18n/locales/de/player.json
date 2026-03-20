@@ -7,7 +7,8 @@
     "settings": "Einstellungen",
     "editProfile": "Profil bearbeiten",
     "notifications": "Benachrichtigungen",
-    "calendarSync": "Kalender-Synchronisation"
+    "calendarSync": "Kalender-Synchronisation",
+    "levelTest": "Level-Test"
   },
   "settings": {
     "title": "Einstellungen",

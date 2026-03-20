@@ -40,6 +40,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Gift,
+  Target,
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
@@ -49,7 +50,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
 
 export function PlayerSidebar() {
-  const { t } = useTranslation("player");
+  const { t, i18n } = useTranslation("player");
   const navigate = useNavigate();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
@@ -203,6 +204,21 @@ export function PlayerSidebar() {
                     <Users className="h-4 w-4" />
                     {!collapsed && <span>{t("nav.following")}</span>}
                   </NavLink>
+                </SidebarMenuButton>
+                </SidebarMenuItem>
+
+              {/* Level Test */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav.levelTest", "Level Test")}>
+                  <a
+                    href={`/${i18n.language || 'en'}/tools/padel-level-test`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2"
+                  >
+                    <Target className="h-4 w-4" />
+                    {!collapsed && <span>{t("nav.levelTest", "Level Test")}</span>}
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 

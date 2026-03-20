@@ -7,7 +7,8 @@
     "settings": "Instellingen",
     "editProfile": "Profiel Bewerken",
     "notifications": "Meldingen",
-    "calendarSync": "Kalender Sync"
+    "calendarSync": "Kalender Sync",
+    "levelTest": "Niveautest"
   },
   "settings": {
     "title": "Instellingen",
