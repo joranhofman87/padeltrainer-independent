@@ -1,85 +1,83 @@
 
 
-# Build: "What's Your Padel Level?" Self-Assessment Quiz
+# Split "Group" into "Group (3 players)" and "Group (4 players)"
 
-## Overview
-A 10-question self-assessment quiz at `/:lang/tools/padel-level-test` that scores players on the 1.0–7.0 international scale with country-specific rating equivalents. Fully frontend — no Sanity schema needed. Results include personalized tips, content recommendations, and a racket finder CTA. Also adds a link in the Player Sidebar.
+## What Changes
 
-## Files to Create
+Replace the single `group` lesson type with two separate types: `group3` and `group4`. This affects the registration form, the admin cycle creation form, the proposal scheduling, display logic, and the database constraint.
 
-### 1. `src/pages/marketing/PadelLevelTest.tsx`
-Main page with three states: **intro**, **quiz**, **results**.
+## 1. Database Migration
 
-- **Intro**: SEO text, country selector (auto-detected from `lang`), "Start Quiz" CTA
-- **Quiz**: 10 questions, one per screen, 4 options each (A=0pts, B=1pt, C=2pts, D=3pts), progress bar, animated slide transitions (reuse `framer-motion` pattern from racket finder), Back/Next navigation
-- **Results**: Level gauge (3.5 / 7.0), country-specific equivalent, level title + description, strengths list, focus areas, content recommendations (articles, strokes, blog posts — hardcoded links per level tier), racket finder CTA, share buttons, retake button
-- Shareable URL via `?result=3.5&country=netherlands` — if params present, show results directly
-- SEO: Quiz JSON-LD, localized title/description, hreflang
+Update the check constraint on `intake_requests.lesson_type` to allow the new values:
 
-### 2. `src/components/levelquiz/LevelQuizQuestion.tsx`
-Single question component with 4 large option buttons (A/B/C/D), each showing the answer text. Animated transitions between questions. Similar pattern to existing `QuizQuestion.tsx` but with point-based selection instead of value-based.
+```sql
+ALTER TABLE public.intake_requests DROP CONSTRAINT IF EXISTS intake_requests_lesson_types_check;
+ALTER TABLE public.intake_requests 
+ADD CONSTRAINT intake_requests_lesson_types_check 
+CHECK (lesson_type <@ ARRAY['private', 'duo', 'group', 'group3', 'group4', 'kids']::TEXT[]);
+```
 
-### 3. `src/components/levelquiz/LevelQuizResults.tsx`
-Results display with:
-- Visual level gauge/progress indicator (3.5 out of 7.0)
-- Country rating equivalent card
-- Strengths (green checkmarks) and focus areas (improvement arrows)
-- Content recommendation sections: articles, strokes, blog posts (all as `LocalizedLink`s)
-- Racket finder CTA linking to `/:lang/racket-finder?level={racketLevel}`
-- Share buttons (WhatsApp, X, Facebook, copy link)
-- Retake quiz button
+Keep `group` in the allowed list for backward compatibility with existing data. Also update the `waiting_list` table if it has a similar constraint.
 
-### 4. `src/lib/levelQuizData.ts`
-All hardcoded quiz data:
-- 10 questions with 4 options each, all 5 languages (en/es/nl/de/fr)
-- `calculateLevel(totalPoints)` scoring function (0–30 → 1.0–6.5)
-- `RATING_MAP` — country conversion table (spain, netherlands, belgium, france, sweden, uk, germany, other)
-- `LEVEL_INFO` — title, description, strengths, focusAreas, racketLevel per level
-- `CONTENT_LINKS` — curated article/stroke/blog slugs per tier (beginner/intermediate/advanced)
-- `COUNTRIES` array with flag emojis and labels
-- `getDefaultCountry(lang)` helper
+## 2. Constants Update
+
+**`src/components/cycles/CycleForm.tsx`** — Change `LESSON_TYPES`:
+```ts
+const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
+```
+
+**`src/components/cycles/CycleApplicationForm.tsx`** — Change `STANDARD_LESSON_TYPES`:
+```ts
+const STANDARD_LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
+```
+
+**`src/lib/cycles.ts`** — Update `CycleSettings.lesson_types` type and `IntakeRequest.lesson_type` type to include `'group3' | 'group4'`.
+
+**`src/components/cycles/AddIntakeRequestDialog.tsx`** — Update the inline `standardTypes` array.
+
+**`src/lib/waitingList.ts`** — Update `LessonType` union.
+
+**`src/components/waitingList/WaitingListForm.tsx`** — Update the inline array.
+
+## 3. Default Value Updates
+
+In `CycleForm.tsx`, update the default `lesson_types` from `['private', 'duo', 'group']` to `['private', 'duo', 'group3', 'group4']`.
+
+## 4. i18n Updates (5 locales × 2 namespaces)
+
+Add translation keys for the new types in `cycles.json` and `waitingList.json`:
+
+| Key | EN | NL | ES | DE | FR |
+|-----|----|----|----|----|-----|
+| `group3` | Group (3 players) | Groep (3 spelers) | Grupo (3 jugadores) | Gruppe (3 Spieler) | Groupe (3 joueurs) |
+| `group4` | Group (4 players) | Groep (4 spelers) | Grupo (4 jugadores) | Gruppe (4 Spieler) | Groupe (4 joueurs) |
+
+Remove the old `group` key from cycles.json (keep in waitingList if needed for legacy).
+
+## 5. Proposal Generator (Edge Function)
+
+**`supabase/functions/generate-proposals/index.ts`** — No changes needed. The lesson_type is only used to check `!== 'private'` for rating spread logic, and slots use `max_group_size` from cycle settings. The new `group3`/`group4` values pass this check correctly.
+
+## 6. Guest Intake Edge Function
+
+**`supabase/functions/submit-guest-intake/index.ts`** — Update the fallback `standardAllowed` array to include `group3` and `group4` instead of `group`.
+
+## 7. Display Logic (Backward Compatibility)
+
+In all places that render lesson type labels via `t('lessonTypes.${type}')`, add fallback keys for the old `group` value so existing data still displays correctly. Add `group` translations as a legacy fallback in all locale files.
+
+## 8. ProposalScheduleGrid
+
+**`src/components/cycles/ProposalScheduleGrid.tsx`** — Already uses dynamic `t('lessonTypes.${lt}')`, so just the i18n keys handle it.
 
 ## Files to Modify
-
-### 5. `src/components/DomainRouter.tsx`
-Add lazy import for `PadelLevelTest` and route `tools/padel-level-test` inside `/:lang` marketing routes.
-
-### 6. `src/components/player/PlayerSidebar.tsx`
-Add a "Level Test" nav item (using `Target` or `Trophy` icon) linking to `/:lang/tools/padel-level-test` as an external marketing page link. Place it after "Following" and before the "Account" group. Uses `i18next` current language to build the URL.
-
-### 7. i18n files (5 locales: `marketing.json`)
-Add `levelQuiz.*` translation keys for all UI text (title, subtitle, selectCountry, startQuiz, question X of Y, back, next, seeResults, yourLevel, strengths, focusAreas, share, retake, etc.) — all translations provided in the prompt.
-
-### 8. `src/i18n/locales/*/player.json`
-Add `nav.levelTest` key for the sidebar label (e.g., "Level Test", "Niveautest", "Test de Nivel", etc.).
-
-## Technical Details
-
-### Scoring
-```typescript
-function calculateLevel(totalPoints: number): number {
-  if (totalPoints <= 2) return 1.0;
-  if (totalPoints <= 4) return 1.5;
-  // ... up to 6.5 for 29-30
-}
-```
-
-### Country auto-detection
-```typescript
-function getDefaultCountry(lang: string): string {
-  switch(lang) {
-    case 'es': return 'spain';
-    case 'nl': return 'netherlands';
-    case 'de': return 'germany';
-    case 'fr': return 'france';
-    default: return 'other';
-  }
-}
-```
-
-### PostHog events
-`level_quiz_started`, `level_quiz_answer` (per question), `level_quiz_completed` (with level + country rating), `level_quiz_shared`, `level_quiz_content_click`
-
-### Player Sidebar link
-Opens in a new context (marketing page, not `/app/` route) — uses `window.open` or an `<a>` tag with the localized marketing URL.
+1. **Database migration** — Update check constraint
+2. `src/components/cycles/CycleForm.tsx` — LESSON_TYPES constant + defaults
+3. `src/components/cycles/CycleApplicationForm.tsx` — STANDARD_LESSON_TYPES constant
+4. `src/components/cycles/AddIntakeRequestDialog.tsx` — standardTypes array
+5. `src/lib/cycles.ts` — TypeScript types
+6. `src/lib/waitingList.ts` — LessonType union
+7. `src/components/waitingList/WaitingListForm.tsx` — Inline array
+8. `supabase/functions/submit-guest-intake/index.ts` — standardAllowed fallback
+9. **10 i18n files** — `{en,nl,es,de,fr}/cycles.json` and `{en,nl,es,de,fr}/waitingList.json`
 
