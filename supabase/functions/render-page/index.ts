@@ -1137,6 +1137,98 @@ async function renderTopicPage(slug: string, lang: string): Promise<string> {
   return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/topics/${slug}`, lang, structuredData, body });
 }
 
+// ─── Product / Racket Renderer ──────────────────────────────────
+
+async function renderProductPage(slug: string, lang: string): Promise<string> {
+  const query = `*[_type == "product" && slug.current == $slug && !(_id in path("drafts.**"))][0] {
+    name,
+    h1,
+    shortDescription,
+    "slug": slug.current,
+    language,
+    seo,
+    brand,
+    level,
+    playingStyle,
+    shape,
+    priceRange,
+    isAvailable,
+    "imageUrl": mainImage.asset->url,
+    "translations": *[_type == "product" && (
+      translationOf._ref == ^._id ||
+      _id == ^.translationOf._ref ||
+      (translationOf._ref == ^.translationOf._ref && defined(^.translationOf._ref))
+    ) && !(_id in path("drafts.**"))] {
+      language,
+      "slug": slug.current
+    }
+  }`;
+
+  const doc = await sanityFetch(query, { slug });
+  if (!doc) return renderNotFound(lang);
+
+  const title = doc.seo?.titleTag || doc.h1 || doc.name || slug;
+  const description = doc.seo?.metaDescription || doc.shortDescription || `${title} - Padel racket on PadelTrainer.ai`;
+
+  const structuredData: object[] = [
+    breadcrumbSchema([
+      { name: 'Home', url: '/' },
+      { name: 'Gear', url: '/gear/rackets' },
+      { name: 'Rackets', url: '/gear/rackets' },
+      { name: title },
+    ], lang),
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": title,
+      "description": typeof description === 'string' ? description : '',
+      ...(doc.brand ? { "brand": { "@type": "Brand", "name": doc.brand } } : {}),
+      "category": "Padel Racket",
+      ...(doc.imageUrl ? { "image": doc.imageUrl } : {}),
+      ...(doc.priceRange ? {
+        "offers": {
+          "@type": "AggregateOffer",
+          "priceCurrency": "EUR",
+          ...(doc.priceRange.match(/€(\d+)/) ? { "lowPrice": doc.priceRange.match(/€(\d+)/)[1] } : {}),
+          ...(doc.priceRange.match(/€\d+[–\-]€?(\d+)/) ? { "highPrice": doc.priceRange.match(/€\d+[–\-]€?(\d+)/)[1] } : {}),
+          "availability": doc.isAvailable !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        }
+      } : {}),
+    }
+  ];
+
+  // Build hreflang-aware HTML
+  const allVersions = [{ lang: doc.language || lang, slug: doc.slug }];
+  if (doc.translations) {
+    for (const t of doc.translations) {
+      if (t.slug && t.language) allVersions.push({ lang: t.language, slug: t.slug });
+    }
+  }
+
+  const specsHtml = [
+    doc.brand && `<li><strong>Brand:</strong> ${escHtml(doc.brand)}</li>`,
+    doc.level && `<li><strong>Level:</strong> ${escHtml(doc.level)}</li>`,
+    doc.playingStyle && `<li><strong>Style:</strong> ${escHtml(doc.playingStyle)}</li>`,
+    doc.shape && `<li><strong>Shape:</strong> ${escHtml(doc.shape)}</li>`,
+    doc.priceRange && `<li><strong>Price:</strong> ${escHtml(doc.priceRange)}</li>`,
+  ].filter(Boolean).join('');
+
+  const body = `
+    ${breadcrumb([
+      { name: 'Home', url: '/' },
+      { name: 'Rackets', url: '/gear/rackets' },
+      { name: title },
+    ], lang)}
+    <h1>${escHtml(title)}</h1>
+    ${doc.imageUrl ? `<img src="${doc.imageUrl}?w=600&h=400&fit=crop" alt="${escHtml(title)}" style="max-width:100%;border-radius:8px;margin-bottom:1rem;">` : ''}
+    <p>${escHtml(typeof description === 'string' ? description : '')}</p>
+    ${specsHtml ? `<h2>Specifications</h2><ul>${specsHtml}</ul>` : ''}
+  `;
+
+  // Build custom hreflang tags via htmlDoc with translated URL
+  return htmlDoc({ title: `${title} | PadelTrainer.ai`, description: typeof description === 'string' ? description : '', url: `/gear/rackets/${slug}`, lang, image: doc.imageUrl, structuredData, body });
+}
+
 // ─── Cycle Registration Renderer ────────────────────────────────
 
 async function renderCycleRegistration(supabase: any, cycleId: string, lang: string, cleanPath: string): Promise<string> {
