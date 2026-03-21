@@ -216,6 +216,9 @@
       "passwordPlaceholder": "Créer un mot de passe",
       "passwordMin": "Le mot de passe doit contenir au moins 6 caractères",
 
+      "nameMin": "Le nom doit contenir au moins 2 caractères",
+      "emailInvalid": "Veuillez entrer une adresse e-mail valide",
+      "submitError": "Échec de l'envoi de la candidature",
       "submit": "Soumettre la candidature",
       "submitting": "Soumission en cours...",
       "validationSummary": "Veuillez corriger les éléments suivants :"
