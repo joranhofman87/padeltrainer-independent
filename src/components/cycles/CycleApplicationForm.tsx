@@ -931,7 +931,8 @@ export default function CycleApplicationForm({
           })();
 
           // Build price lines per selected lesson type
-          const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+          const rawStdTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+          const standardAllowedTypes = rawStdTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
           const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
           const orderedTypes = [...standardAllowedTypes, ...customTypes];
 
