@@ -34,6 +34,7 @@
   "toggleTheme": "Changer le thème",
   "theme": { "light": "Clair", "dark": "Sombre", "system": "Système" },
   "navigation": { "home": "Accueil", "pricing": "Tarifs", "about": "À propos", "blog": "Blog", "trainers": "Entraîneurs", "dashboard": "Tableau de bord", "profile": "Profil", "settings": "Paramètres" },
+  "breadcrumbs": { "blog": "Blog", "videoTips": "Conseils vidéo", "strokes": "Coups", "creators": "Créateurs", "registration": "Inscription", "back": "Retour" },
   "footer": { "description": "Connecter les joueurs de padel avec les meilleurs entraîneurs.", "platform": "Plateforme", "legal": "Mentions légales", "privacy": "Politique de confidentialité", "terms": "Conditions d'utilisation", "rights": "Tous droits réservés." },
   "validation": { "required": "Ce champ est obligatoire", "invalidEmail": "Adresse e-mail invalide", "passwordMinLength": "Le mot de passe doit contenir au moins 6 caractères" },
   "time": { "minutes": "minutes", "hours": "heures", "days": "jours", "minRead": "{{count}} min de lecture" },

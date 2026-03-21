@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -34,6 +35,7 @@ export function ProfileLayout({
   showBackButton = true,
 }: ProfileLayoutProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
@@ -56,7 +58,7 @@ export function ProfileLayout({
             {showBackButton && (
               <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(-1)}>
                 <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Back</span>
+                <span className="hidden sm:inline">{t('common:breadcrumbs.back', 'Back')}</span>
               </Button>
             )}
             {breadcrumbs && breadcrumbs.length > 0 && (

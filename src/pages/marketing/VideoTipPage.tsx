@@ -36,7 +36,7 @@ interface VideoTipDetail {
 
 export default function VideoTipPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const lang = i18n.language || 'en';
 
   const { data: video, isLoading, error } = useQuery({
@@ -85,7 +85,7 @@ export default function VideoTipPage() {
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">
         <Breadcrumbs items={[
-          { label: 'Video Tips', href: '/video-tips' },
+          { label: t('common:breadcrumbs.videoTips', 'Video Tips'), href: '/video-tips' },
           { label: video.seo?.breadcrumbLabel || video.title },
         ]} />
 

@@ -178,10 +178,10 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const directoryPath = ownerType === 'academy' ? 'academies' : 'clubs';
 
   const breadcrumbs = [
-    { label: t('common:home', 'Home'), path: '/' },
+    { label: t('common:navigation.home', 'Home'), path: '/' },
     { label: ownerType === 'academy' ? t('common:academies', 'Academies') : t('common:clubs', 'Clubs'), path: `/${directoryPath}` },
     ...(owner ? [{ label: owner.name, path: `/${directoryPath}/${owner.slug}` }] : []),
-    { label: t('registration.title', 'Registration') },
+    { label: t('common:breadcrumbs.registration', 'Registration') },
   ];
 
   if (isLoading || authLoading) {

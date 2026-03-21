@@ -47,6 +47,14 @@
     "profile": "Profile",
     "settings": "Settings"
   },
+  "breadcrumbs": {
+    "blog": "Blog",
+    "videoTips": "Video Tips",
+    "strokes": "Strokes",
+    "creators": "Creators",
+    "registration": "Registration",
+    "back": "Back"
+  },
   "footer": {
     "description": "Connecting padel players with top trainers worldwide.",
     "platform": "Platform",

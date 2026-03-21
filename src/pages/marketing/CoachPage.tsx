@@ -48,7 +48,7 @@ function TikTokIcon({ className }: { className?: string }) {
 
 export default function CoachPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const lang = i18n.language || 'en';
 
   const { data: coach, isLoading, error } = useQuery({
@@ -152,7 +152,7 @@ export default function CoachPage() {
 
       <article className="container mx-auto px-4 py-8 max-w-4xl">
         <Breadcrumbs items={[
-          { label: 'Creators', href: '/padel-coaches' },
+          { label: t('common:breadcrumbs.creators', 'Creators'), href: '/padel-coaches' },
           { label: coach.seo?.breadcrumbLabel || coach.name },
         ]} />
 
