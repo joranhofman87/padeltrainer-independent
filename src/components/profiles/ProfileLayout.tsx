@@ -35,6 +35,7 @@ export function ProfileLayout({
   showBackButton = true,
 }: ProfileLayoutProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-background to-orange-100/30 dark:from-orange-950/20 dark:via-background dark:to-orange-900/10">
