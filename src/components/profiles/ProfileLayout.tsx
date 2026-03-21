@@ -56,7 +56,8 @@ export function ProfileLayout({
             {showBackButton && (
               <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(-1)}>
                 <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Back</span>
+                <span className="hidden sm:inline">{t('common:breadcrumbs.back', 'Back')}</span>
+              </Button>
               </Button>
             )}
             {breadcrumbs && breadcrumbs.length > 0 && (

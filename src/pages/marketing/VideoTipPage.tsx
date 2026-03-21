@@ -85,7 +85,7 @@ export default function VideoTipPage() {
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">
         <Breadcrumbs items={[
-          { label: 'Video Tips', href: '/video-tips' },
+          { label: t('common:breadcrumbs.videoTips', 'Video Tips'), href: '/video-tips' },
           { label: video.seo?.breadcrumbLabel || video.title },
         ]} />
 

@@ -152,7 +152,7 @@ export default function CoachPage() {
 
       <article className="container mx-auto px-4 py-8 max-w-4xl">
         <Breadcrumbs items={[
-          { label: 'Creators', href: '/padel-coaches' },
+          { label: t('common:breadcrumbs.creators', 'Creators'), href: '/padel-coaches' },
           { label: coach.seo?.breadcrumbLabel || coach.name },
         ]} />
 

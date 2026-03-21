@@ -47,6 +47,14 @@
     "profile": "Profiel",
     "settings": "Instellingen"
   },
+  "breadcrumbs": {
+    "blog": "Blog",
+    "videoTips": "Videotips",
+    "strokes": "Slagen",
+    "creators": "Creators",
+    "registration": "Inschrijving",
+    "back": "Terug"
+  },
   "footer": {
     "description": "We verbinden padelspelers met toptrainers wereldwijd.",
     "platform": "Platform",

@@ -144,7 +144,7 @@ export default function BlogPost() {
       {/* Article */}
       <article className="container mx-auto px-4 py-8 max-w-3xl">
         <Breadcrumbs items={[
-          { label: 'Blog', href: '/blog' },
+          { label: t('common:breadcrumbs.blog', 'Blog'), href: '/blog' },
           { label: post.seo?.breadcrumbLabel || post.h1 || post.title },
         ]} />
 

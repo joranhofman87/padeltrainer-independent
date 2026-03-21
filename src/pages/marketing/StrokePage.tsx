@@ -140,7 +140,7 @@ export default function StrokePage() {
 
       <article className="container mx-auto px-4 py-8 max-w-3xl">
         <Breadcrumbs items={[
-          { label: 'Strokes', href: '/padel-strokes' },
+          { label: t('common:breadcrumbs.strokes', 'Strokes'), href: '/padel-strokes' },
           { label: stroke.seo?.breadcrumbLabel || stroke.h1 },
         ]} />
 

@@ -47,6 +47,14 @@
     "profile": "Perfil",
     "settings": "Configuración"
   },
+  "breadcrumbs": {
+    "blog": "Blog",
+    "videoTips": "Consejos en vídeo",
+    "strokes": "Golpes",
+    "creators": "Creadores",
+    "registration": "Inscripción",
+    "back": "Volver"
+  },
   "footer": {
     "description": "Conectando jugadores de pádel con los mejores entrenadores.",
     "platform": "Plataforma",
