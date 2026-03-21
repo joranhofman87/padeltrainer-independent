@@ -65,7 +65,7 @@ interface CycleApplicationFormProps {
 }
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-const STANDARD_LESSON_TYPES = ['private', 'duo', 'group', 'group3', 'group4', 'kids'] as const;
+const STANDARD_LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
 const DEFAULT_DURATIONS = [30, 45, 60, 90, 120] as const;
 
 export default function CycleApplicationForm({
@@ -180,7 +180,7 @@ export default function CycleApplicationForm({
       
       rating: playerRating || undefined,
       rating_system: playerRatingSystem,
-      lesson_types: ['group'] as string[],
+      lesson_types: ['group3'] as string[],
       preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
       availability: {},
@@ -300,7 +300,8 @@ export default function CycleApplicationForm({
         // Compute price lines for the email (mirrors price calculator logic)
         const emailCurrency = cycle.currency || 'EUR';
         const emailFmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: emailCurrency }).format(v);
-        const standardAllowedTypes = ((cycle.settings as any)?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+        const rawStandardAllowedTypes = ((cycle.settings as any)?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+        const standardAllowedTypes = rawStandardAllowedTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
         const customTypesEmail = ((cycle.settings as any)?.custom_lesson_types as string[] | undefined) || [];
         const orderedTypesEmail = [...standardAllowedTypes, ...customTypesEmail];
         const emailEffectiveWeeks = selectedDurationWeeks || (() => {
@@ -431,7 +432,9 @@ export default function CycleApplicationForm({
     );
   }
 
-  const standardAllowed = (cycle.settings.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+  const rawStandardAllowed = (cycle.settings.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+  // Migrate legacy 'group' → 'group3' + 'group4'
+  const standardAllowed = rawStandardAllowed.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
   const customTypes = (cycle.settings.custom_lesson_types as string[] | undefined) || [];
   const allowedLessonTypes = [...standardAllowed, ...customTypes];
   const showTrainerPreference = cycle.settings.show_preferred_trainer && trainers.length > 0;
@@ -928,7 +931,8 @@ export default function CycleApplicationForm({
           })();
 
           // Build price lines per selected lesson type
-          const standardAllowedTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+          const rawStdTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
+          const standardAllowedTypes = rawStdTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
           const customTypes = (cycle.settings?.custom_lesson_types as string[] | undefined) || [];
           const orderedTypes = [...standardAllowedTypes, ...customTypes];
 
