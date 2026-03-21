@@ -384,6 +384,72 @@ export default function AcademyPublicProfile() {
           </ProfileSidebarColumn>
         </ProfileContentGrid>
 
+        {/* Full Width - Open Registrations */}
+        <ProfileFullWidthSection>
+          <AcademyOpenCycles 
+            academyId={academy.id!}
+            academyName={academy.name || 'Academy'}
+            academySlug={academy.slug || ''}
+          />
+          {/* Waiting List Card - only when enabled */}
+          {(academy as any).waiting_list_enabled && (
+            <div className="mt-6">
+              <WaitingListCard
+                ownerType="academy"
+                ownerId={academy.id!}
+                ownerName={academy.name || 'Academy'}
+              />
+            </div>
+          )}
+        </ProfileFullWidthSection>
+
+        {/* Full Width - Locations Section */}
+        {locations.length > 0 && (
+          <ProfileFullWidthSection>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <MapPin className="h-6 w-6 text-primary" />
+                {t('locations.title')}
+              </h2>
+              <Badge variant="secondary" className="text-sm">
+                {locations.length} {locations.length === 1 ? t('common:location', 'Location') : t('stats.locations')}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {locations.map(loc => (
+                <Card
+                  key={loc.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
+                  onClick={() => navigate(localizePath(`/locations/${loc.location.slug}`))}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-14 w-14 rounded-lg">
+                        <AvatarImage src={loc.location.logo_url || ''} />
+                        <AvatarFallback className="rounded-lg">{getInitials(loc.location.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">{loc.location.name}</h3>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {loc.location.city}
+                        </p>
+                        {loc.contract_type === 'exclusive' && (
+                          <Badge variant="outline" className="mt-2 text-xs">
+                            <Award className="h-3 w-3 mr-1" />
+                            {t('locations.exclusive')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </ProfileFullWidthSection>
+        )}
+
         {/* Full Width - Trainers Section */}
         {trainers.length > 0 && (
           <ProfileFullWidthSection>
@@ -449,25 +515,6 @@ export default function AcademyPublicProfile() {
           </ProfileFullWidthSection>
         )}
 
-        {/* Full Width - Open Registrations */}
-        <ProfileFullWidthSection>
-          <AcademyOpenCycles 
-            academyId={academy.id!}
-            academyName={academy.name || 'Academy'}
-            academySlug={academy.slug || ''}
-          />
-          {/* Waiting List Card - only when enabled */}
-          {(academy as any).waiting_list_enabled && (
-            <div className="mt-6">
-              <WaitingListCard
-                ownerType="academy"
-                ownerId={academy.id!}
-                ownerName={academy.name || 'Academy'}
-              />
-            </div>
-          )}
-        </ProfileFullWidthSection>
-
         {/* Full Width - Reviews Section */}
         <ProfileFullWidthSection>
           <AcademyReviews academyId={academy.id!} />
@@ -477,53 +524,6 @@ export default function AcademyPublicProfile() {
         <ProfileFullWidthSection>
           <VideoGallery academyProfileId={academy.id!} />
         </ProfileFullWidthSection>
-
-        {/* Full Width - Locations Section */}
-        {locations.length > 0 && (
-          <ProfileFullWidthSection>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-semibold flex items-center gap-2">
-                <MapPin className="h-6 w-6 text-primary" />
-                {t('locations.title')}
-              </h2>
-              <Badge variant="secondary" className="text-sm">
-                {locations.length} {locations.length === 1 ? t('common:location', 'Location') : t('stats.locations')}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {locations.map(loc => (
-                <Card
-                  key={loc.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary/50"
-                  onClick={() => navigate(localizePath(`/locations/${loc.location.slug}`))}
-                >
-                  <CardContent className="pt-6">
-                    <div className="flex items-start gap-4">
-                      <Avatar className="h-14 w-14 rounded-lg">
-                        <AvatarImage src={loc.location.logo_url || ''} />
-                        <AvatarFallback className="rounded-lg">{getInitials(loc.location.name)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold truncate">{loc.location.name}</h3>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {loc.location.city}
-                        </p>
-                        {loc.contract_type === 'exclusive' && (
-                          <Badge variant="outline" className="mt-2 text-xs">
-                            <Award className="h-3 w-3 mr-1" />
-                            {t('locations.exclusive')}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </ProfileFullWidthSection>
-        )}
       </ProfileLayout>
     </>
   );
