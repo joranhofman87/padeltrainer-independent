@@ -10,6 +10,8 @@
       "private": "Einzelstunde",
       "duo": "Duo-Stunde (2 Spieler)",
       "group": "Gruppentraining",
+      "group3": "Gruppe (3 Spieler)",
+      "group4": "Gruppe (4 Spieler)",
       "kids": "Kindertraining"
     },
     "hasGroup": "Hast du bereits Trainingspartner?",

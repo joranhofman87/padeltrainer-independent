@@ -160,6 +160,8 @@
         "private": "Privada (1:1)",
         "duo": "Dúo (2 jugadores)",
         "group": "Grupo (3 o 4 jugadores)",
+        "group3": "Grupo (3 jugadores)",
+        "group4": "Grupo (4 jugadores)",
         "kids": "Entrenamiento infantil"
       },
       "preferredDuration": "Duración preferida",

@@ -10,6 +10,8 @@
       "private": "Clase privada",
       "duo": "Clase dúo (2 jugadores)",
       "group": "Entrenamiento grupal",
+      "group3": "Grupo (3 jugadores)",
+      "group4": "Grupo (4 jugadores)",
       "kids": "Entrenamiento infantil"
     },
     "hasGroup": "¿Ya tienes compañeros de entrenamiento?",

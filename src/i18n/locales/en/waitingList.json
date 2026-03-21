@@ -10,6 +10,8 @@
       "private": "Private lesson",
       "duo": "Duo lesson (2 players)",
       "group": "Group training",
+      "group3": "Group (3 players)",
+      "group4": "Group (4 players)",
       "kids": "Kids training"
     },
     "hasGroup": "Do you already have training partners?",
