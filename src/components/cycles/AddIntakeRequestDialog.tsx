@@ -451,7 +451,7 @@ export default function AddIntakeRequestDialog({
                   name="lesson_types"
                   render={() => {
                     const selectedCycle = cycles.find(c => c.id === selectedCycleId || c.id === cycleId);
-                    const standardTypes = ['private', 'duo', 'group', 'kids'] as const;
+                    const standardTypes = ['private', 'duo', 'group', 'group3', 'group4', 'kids'] as const;
                     const customTypes = (selectedCycle?.settings?.custom_lesson_types as string[] | undefined) || [];
                     const allTypes: string[] = [...standardTypes, ...customTypes];
                     

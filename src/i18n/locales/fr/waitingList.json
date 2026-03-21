@@ -10,6 +10,8 @@
       "private": "Cours privé",
       "duo": "Cours duo (2 joueurs)",
       "group": "Entraînement en groupe",
+      "group3": "Groupe (3 joueurs)",
+      "group4": "Groupe (4 joueurs)",
       "kids": "Entraînement enfants"
     },
     "hasGroup": "Avez-vous déjà des partenaires d'entraînement ?",

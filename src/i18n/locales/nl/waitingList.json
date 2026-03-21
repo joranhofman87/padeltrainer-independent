@@ -10,6 +10,8 @@
       "private": "Privéles",
       "duo": "Duoles (2 spelers)",
       "group": "Groepstraining",
+      "group3": "Groep (3 spelers)",
+      "group4": "Groep (4 spelers)",
       "kids": "Kindertraining"
     },
     "hasGroup": "Heb je al trainingspartners?",

@@ -194,7 +194,7 @@ export default function WaitingListForm({
               onValueChange={(val) => setLessonType(val as LessonType)}
               className="grid grid-cols-2 gap-2"
             >
-              {(['private', 'duo', 'group', 'kids'] as const).map((type) => (
+              {(['private', 'duo', 'group3', 'group4', 'kids'] as const).map((type) => (
                 <div key={type} className="flex items-center space-x-2">
                   <RadioGroupItem value={type} id={`lesson-${type}`} />
                   <Label htmlFor={`lesson-${type}`} className="font-normal cursor-pointer">
