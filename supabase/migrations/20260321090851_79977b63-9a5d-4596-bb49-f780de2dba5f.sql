@@ -1,0 +1,1 @@
+ALTER TABLE public.intake_requests DROP CONSTRAINT IF EXISTS intake_requests_lesson_types_check;
