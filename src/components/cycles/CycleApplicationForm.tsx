@@ -434,7 +434,7 @@ export default function CycleApplicationForm({
 
   const rawStandardAllowed = (cycle.settings.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
   // Migrate legacy 'group' → 'group3' + 'group4'
-  const standardAllowed = rawStandardAllowed.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
+  const standardAllowed = [...new Set(rawStandardAllowed.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]))];
   const customTypes = (cycle.settings.custom_lesson_types as string[] | undefined) || [];
   const allowedLessonTypes = [...standardAllowed, ...customTypes];
   const showTrainerPreference = cycle.settings.show_preferred_trainer && trainers.length > 0;
