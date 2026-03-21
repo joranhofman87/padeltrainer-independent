@@ -34,6 +34,7 @@
   "toggleTheme": "Design wechseln",
   "theme": { "light": "Hell", "dark": "Dunkel", "system": "System" },
   "navigation": { "home": "Startseite", "pricing": "Preise", "about": "Über uns", "blog": "Blog", "trainers": "Trainer", "dashboard": "Dashboard", "profile": "Profil", "settings": "Einstellungen" },
+  "breadcrumbs": { "blog": "Blog", "videoTips": "Videotipps", "strokes": "Schläge", "creators": "Creators", "registration": "Anmeldung", "back": "Zurück" },
   "footer": { "description": "Padel-Spieler mit Top-Trainern verbinden.", "platform": "Plattform", "legal": "Rechtliches", "privacy": "Datenschutz", "terms": "AGB", "rights": "Alle Rechte vorbehalten." },
   "validation": { "required": "Dieses Feld ist erforderlich", "invalidEmail": "Ungültige E-Mail-Adresse", "passwordMinLength": "Passwort muss mindestens 6 Zeichen lang sein" },
   "time": { "minutes": "Minuten", "hours": "Stunden", "days": "Tage", "minRead": "{{count}} Min. Lesezeit" },
