@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
           ));
         })();
 
-        const standardAllowed = ((cycleSettings as any).lesson_types as string[] | undefined) || ['private', 'duo', 'group', 'kids'];
+        const standardAllowed = ((cycleSettings as any).lesson_types as string[] | undefined) || ['private', 'duo', 'group', 'group3', 'group4', 'kids'];
         const customLT = ((cycleSettings as any).custom_lesson_types as string[] | undefined) || [];
         const orderedLT = [...standardAllowed, ...customLT];
 
