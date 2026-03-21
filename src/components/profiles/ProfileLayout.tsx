@@ -60,7 +60,6 @@ export function ProfileLayout({
                 <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">{t('common:breadcrumbs.back', 'Back')}</span>
               </Button>
-              </Button>
             )}
             {breadcrumbs && breadcrumbs.length > 0 && (
               <Breadcrumb className="min-w-0">
