@@ -216,6 +216,9 @@
       "passwordPlaceholder": "Passwort erstellen",
       "passwordMin": "Passwort muss mindestens 6 Zeichen haben",
 
+      "nameMin": "Name muss mindestens 2 Zeichen haben",
+      "emailInvalid": "Bitte gib eine gültige E-Mail-Adresse ein",
+      "submitError": "Bewerbung konnte nicht eingereicht werden",
       "submit": "Bewerbung einreichen",
       "submitting": "Wird eingereicht...",
       "validationSummary": "Bitte korrigiere folgende Felder:"

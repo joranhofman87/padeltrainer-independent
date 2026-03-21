@@ -216,6 +216,9 @@
       "passwordPlaceholder": "Crea una contraseña",
       "passwordMin": "La contraseña debe tener al menos 6 caracteres",
 
+      "nameMin": "El nombre debe tener al menos 2 caracteres",
+      "emailInvalid": "Introduce una dirección de correo válida",
+      "submitError": "Error al enviar la solicitud",
       "submit": "Enviar solicitud",
       "submitting": "Enviando...",
       "validationSummary": "Por favor corrige lo siguiente:"

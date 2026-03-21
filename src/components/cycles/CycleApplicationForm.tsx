@@ -148,8 +148,8 @@ export default function CycleApplicationForm({
       });
 
   const formSchema = z.object({
-    full_name: z.string().min(2),
-    email: z.string().email(),
+    full_name: z.string().min(2, t('application.form.nameMin')),
+    email: z.string().email(t('application.form.emailInvalid')),
     phone: z.string().optional(),
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
@@ -385,7 +385,7 @@ export default function CycleApplicationForm({
       onSuccess?.();
     } catch (error: any) {
       logger.error('Error submitting application', error instanceof Error ? error : new Error(String(error)), { component: 'CycleApplicationForm' });
-      toast.error(error.message || 'Failed to submit application');
+      toast.error(error.message || t('application.form.submitError'));
     } finally {
       setIsSubmitting(false);
     }

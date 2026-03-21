@@ -232,6 +232,9 @@
       "passwordPlaceholder": "Create a password",
       "passwordMin": "Password must be at least 6 characters",
 
+      "nameMin": "Name must be at least 2 characters",
+      "emailInvalid": "Please enter a valid email address",
+      "submitError": "Failed to submit application",
       "submit": "Submit Application",
       "submitting": "Submitting...",
       "validationSummary": "Please fix the following:"

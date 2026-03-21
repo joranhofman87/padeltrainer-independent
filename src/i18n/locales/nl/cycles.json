@@ -258,6 +258,9 @@
       "passwordPlaceholder": "Kies een wachtwoord",
       "passwordMin": "Wachtwoord moet minimaal 6 tekens bevatten",
 
+      "nameMin": "Naam moet minimaal 2 tekens bevatten",
+      "emailInvalid": "Vul een geldig e-mailadres in",
+      "submitError": "Aanmelding kon niet worden verzonden",
       "submit": "Aanmelding Indienen",
       "submitting": "Bezig met indienen...",
       "validationSummary": "Controleer de volgende velden:"
