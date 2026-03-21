@@ -148,8 +148,8 @@ export default function CycleApplicationForm({
       });
 
   const formSchema = z.object({
-    full_name: z.string().min(2),
-    email: z.string().email(),
+    full_name: z.string().min(2, t('application.form.nameMin')),
+    email: z.string().email(t('application.form.emailInvalid')),
     phone: z.string().optional(),
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
