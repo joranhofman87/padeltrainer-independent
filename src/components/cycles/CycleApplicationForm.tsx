@@ -301,7 +301,7 @@ export default function CycleApplicationForm({
         const emailCurrency = cycle.currency || 'EUR';
         const emailFmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: emailCurrency }).format(v);
         const rawStandardAllowedTypes = ((cycle.settings as any)?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
-        const standardAllowedTypes = rawStandardAllowedTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]);
+        const standardAllowedTypes = [...new Set(rawStandardAllowedTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]))];
         const customTypesEmail = ((cycle.settings as any)?.custom_lesson_types as string[] | undefined) || [];
         const orderedTypesEmail = [...standardAllowedTypes, ...customTypesEmail];
         const emailEffectiveWeeks = selectedDurationWeeks || (() => {
