@@ -127,7 +127,7 @@ export interface IntakeRequest {
   phone: string | null;
   rating: number | null;
   rating_system: string;
-  lesson_type: 'private' | 'duo' | 'group' | 'kids';
+  lesson_type: 'private' | 'duo' | 'group' | 'group3' | 'group4' | 'kids';
   preferred_days: string[];
   preferred_time_windows: TimeWindow[];
   preferred_duration_minutes: number;

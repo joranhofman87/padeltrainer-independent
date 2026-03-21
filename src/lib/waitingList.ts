@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
 export type OwnerType = 'academy' | 'trainer' | 'location';
-export type LessonType = 'private' | 'duo' | 'group' | 'kids';
+export type LessonType = 'private' | 'duo' | 'group' | 'group3' | 'group4' | 'kids';
 export type WaitingListStatus = 'active' | 'contacted' | 'archived';
 
 export interface TimeWindow {
