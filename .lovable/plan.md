@@ -1,36 +1,56 @@
 
 
-# Translate Registration Form Validation Error Messages
+# Validation of the SEO Prompt — What's Already Done vs. What's Missing
 
-## Problem
-The zod schema in `CycleApplicationForm.tsx` uses default (English) messages for `full_name` and `email` validators. When validation fails, users see raw English like "String must contain at least 2 character(s)" and "Invalid email" regardless of their language. There's also a hardcoded English fallback on the catch error toast (line 388).
+## Summary: Most of this is already implemented. The prompt is largely outdated.
 
-## Changes
+Your project already has a sophisticated SEO setup. Here's the item-by-item breakdown:
 
-### 1. `src/components/cycles/CycleApplicationForm.tsx`
-Add translated custom messages to the zod validators that currently lack them:
+---
 
-```ts
-full_name: z.string().min(2, t('application.form.nameMin')),
-email: z.string().email(t('application.form.emailInvalid')),
-```
+## ✅ Already Implemented (No Action Needed)
 
-Also translate the catch error fallback on line 388:
-```ts
-toast.error(error.message || t('application.form.submitError'));
-```
+| Item | Status |
+|------|--------|
+| **Pre-rendering / Bot SSR** | Cloudflare Worker detects bot user-agents and proxies to `render-page` edge function. All Sanity content types (blog, rules, strokes, coaches, video tips, learn, topics) are server-rendered for bots. |
+| **Server-side meta tags** | The `render-page` function injects `<title>`, `<meta description>`, OG tags, hreflang tags, and JSON-LD structured data into the HTML for bots. |
+| **react-helmet-async** | Already installed and used via the `SEO` component on every page. Handles title, description, canonical, hreflang, OG, Twitter, and structured data client-side. |
+| **Hreflang tags** | Implemented both client-side (SEO component with translated slug support) and server-side (render-page). |
+| **Sitemaps for Sanity content** | The `sitemap` edge function already queries Sanity for rules, strokes, coaches, video tips, learning articles, and topics — with proper hreflang alternates grouped by `translationOf`. |
+| **Dynamic sitemaps via edge function** | Already using Option B (dynamic edge function), proxied through Cloudflare Worker. |
+| **JSON-LD structured data** | Already on blog posts, stroke pages, and likely other content pages via the SEO component. |
+| **Internal linking** | GROQ queries already fetch `relatedGuides`, `relatedRules`, `relatedStrokes`, `relatedVideoTips`, and `topics`. Related content sections are rendered on pages. |
+| **Canonical URLs** | Set on every page via SEO component. |
 
-### 2. Add i18n keys to all 5 locale `cycles.json` files
+---
 
-Inside `application.form`:
+## ⚠️ Two Small Gaps Found
 
-| Key | EN | NL | ES | DE | FR |
-|-----|----|----|----|----|-----|
-| `nameMin` | Name must be at least 2 characters | Naam moet minimaal 2 tekens bevatten | El nombre debe tener al menos 2 caracteres | Name muss mindestens 2 Zeichen haben | Le nom doit contenir au moins 2 caractères |
-| `emailInvalid` | Please enter a valid email address | Vul een geldig e-mailadres in | Introduce una dirección de correo válida | Bitte gib eine gültige E-Mail-Adresse ein | Veuillez entrer une adresse e-mail valide |
-| `submitError` | Failed to submit application | Aanmelding kon niet worden verzonden | Error al enviar la solicitud | Bewerbung konnte nicht eingereicht werden | Échec de l'envoi de la candidature |
+### 1. Rackets/Products missing from sitemap AND render-page
+The `sitemap` edge function does NOT include `product` (racket) documents from Sanity. The `render-page` function also has no route for `/gear/rackets/:slug`. This means Google cannot discover or properly index racket pages.
 
-### Files
-- `src/components/cycles/CycleApplicationForm.tsx` — 3 line changes
-- `src/i18n/locales/{en,nl,es,de,fr}/cycles.json` — add 3 keys each
+**Fix**: Add racket/product entries to the sitemap edge function and add a `/gear/rackets/:slug` route to the render-page edge function.
+
+### 2. Rackets/Products missing from render-page bot SSR
+Same gap — bots hitting `/en/gear/rackets/some-racket` get the fallback HTML, not proper meta tags.
+
+---
+
+## Recommended Action
+
+Only fix the two racket/product gaps. Everything else the prompt suggests is redundant with your existing infrastructure.
+
+### Changes needed:
+
+**1. `supabase/functions/sitemap/index.ts`**
+- Add a Sanity fetch for `product` documents (category "racket")
+- Generate sitemap entries with `gear/rackets` path prefix, grouped by `translationOf`
+
+**2. `supabase/functions/render-page/index.ts`**
+- Add route matching for `/gear/rackets` listing page and `/gear/rackets/:slug` detail pages
+- Use the existing `renderSanityArticle` function (or a similar pattern) to fetch product data from Sanity and inject proper meta tags, OG tags, and Product JSON-LD structured data
+
+### Files to modify:
+1. `supabase/functions/sitemap/index.ts` — Add product/racket Sanity fetch + entries
+2. `supabase/functions/render-page/index.ts` — Add gear/rackets routes for bot rendering
 
