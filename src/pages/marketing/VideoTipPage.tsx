@@ -36,7 +36,7 @@ interface VideoTipDetail {
 
 export default function VideoTipPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const lang = i18n.language || 'en';
 
   const { data: video, isLoading, error } = useQuery({

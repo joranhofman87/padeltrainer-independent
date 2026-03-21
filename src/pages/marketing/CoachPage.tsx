@@ -48,7 +48,7 @@ function TikTokIcon({ className }: { className?: string }) {
 
 export default function CoachPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const lang = i18n.language || 'en';
 
   const { data: coach, isLoading, error } = useQuery({
