@@ -116,6 +116,14 @@ Deno.serve(async (req) => {
       const slug = cleanPath.match(/^\/topics\/([^/]+)$/)![1];
       html = await renderTopicPage(slug, lang);
       cacheMaxAge = 3600;
+    // ─── Gear / Rackets routes ───
+    } else if (cleanPath === '/gear/rackets') {
+      html = renderStaticPage('Padel Rackets — Find Your Perfect Racket', 'Browse our curated selection of padel rackets. Compare specs, read reviews, and find the perfect racket for your playing style and level.', lang, '/gear/rackets');
+      cacheMaxAge = 3600;
+    } else if (/^\/gear\/rackets\/([^/]+)$/.test(cleanPath)) {
+      const slug = cleanPath.match(/^\/gear\/rackets\/([^/]+)$/)![1];
+      html = await renderProductPage(slug, lang);
+      cacheMaxAge = 3600;
     // ─── Registration routes ───
     } else if (/^\/academies\/([^/]+)\/register\/([^/]+)$/.test(cleanPath)) {
       const m = cleanPath.match(/^\/academies\/([^/]+)\/register\/([^/]+)$/)!;

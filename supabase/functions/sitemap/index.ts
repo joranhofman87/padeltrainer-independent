@@ -304,6 +304,7 @@ Deno.serve(async (req) => {
         sanityLearningArticles, 'learn', '0.7',
         (doc) => doc.seo?.indexable !== false
       );
+      xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6');
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
         xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
