@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
 
       // Sanity CMS content: Rules, Strokes, Coaches, Video Tips, Learning Articles
       // Fetch with language + translationOf to build proper hreflang groups
-      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics] = await Promise.all([
+      const [sanityRules, sanityStrokes, sanityCoaches, sanityVideoTips, sanityLearningArticles, sanityTopics, sanityProducts] = await Promise.all([
         sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
           `*[_type == "rulesArticle" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
         ),
@@ -248,6 +248,9 @@ Deno.serve(async (req) => {
         ),
         sanity.fetch<{ slug: string; isIndexable: boolean }[]>(
           `*[_type == "topic" && !(_id in path("drafts.**"))]{ "slug": slug.current, "isIndexable": coalesce(isIndexable, true) }`
+        ),
+        sanity.fetch<{ slug: string; language: string; translationOf: { _ref: string } | null }[]>(
+          `*[_type == "product" && !(_id in path("drafts.**"))]{ _id, "slug": slug.current, language, translationOf }`
         ),
       ]);
 
@@ -301,6 +304,7 @@ Deno.serve(async (req) => {
         sanityLearningArticles, 'learn', '0.7',
         (doc) => doc.seo?.indexable !== false
       );
+      xml += generateSanityEntries(sanityProducts, 'gear/rackets', '0.6');
       for (const topic of sanityTopics || []) {
         if (!topic.isIndexable) continue;
         xml += generateUrlEntry(`/topics/${topic.slug}`, today, 'weekly', '0.6');
