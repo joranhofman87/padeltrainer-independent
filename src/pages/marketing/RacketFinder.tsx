@@ -322,6 +322,9 @@ export default function RacketFinder() {
           />
         )}
       </div>
+
+      {/* SEO content sections — visible on intro, hidden during quiz/results */}
+      {phase === 'intro' && <RacketFinderContent />}
     </MarketingLayout>
   );
 }
