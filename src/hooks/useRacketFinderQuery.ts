@@ -4,7 +4,7 @@ import { sanityClient } from '@/lib/sanity';
 export interface QuizAnswers {
   level: 'beginner' | 'intermediate' | 'advanced';
   style: 'control' | 'allround' | 'power';
-  budget: number;
+  budget: string; // e.g. "0-100", "100-150", "150-200", "200-999"
   armFriendly: boolean;
   weight: 'light' | 'medium' | 'heavy' | 'any';
   shape: 'round' | 'teardrop' | 'diamond' | 'any';
@@ -47,6 +47,11 @@ function getStyles(style: string): string[] {
   return [style, 'allround'];
 }
 
+function parseBudgetRange(budget: string): { minPrice: number; maxPrice: number } {
+  const [min, max] = budget.split('-').map(Number);
+  return { minPrice: min || 0, maxPrice: max || 999 };
+}
+
 const PROJECTION = `{
   _id, name, brand, level, priceRange, priceMidpoint,
   shortDescription, specs, shape, playingStyle, weight,
@@ -56,6 +61,7 @@ const PROJECTION = `{
 async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketResult[]> {
   const levels = getLevels(answers.level);
   const styles = getStyles(answers.style);
+  const { minPrice, maxPrice } = parseBudgetRange(answers.budget);
 
   // Build filter parts
   const baseParts = [
@@ -65,15 +71,23 @@ async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketR
     '!(_id in path("drafts.**"))',
     'level in $levels',
     'playingStyle in $styles',
+    'priceMidpoint >= $minPrice',
     'priceMidpoint <= $maxPrice',
   ];
   if (answers.armFriendly) baseParts.push('armFriendly == true');
+
+  // Sort: prioritize exact level match, then price descending for premium, ascending otherwise
+  const isHighBudget = maxPrice >= 999;
+  const sortOrder = answers.level === 'advanced'
+    ? `order(level == "advanced" desc, priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`
+    : `order(priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`;
 
   const params: Record<string, any> = {
     lang,
     levels,
     styles,
-    maxPrice: answers.budget,
+    minPrice,
+    maxPrice,
   };
 
   // Try with all filters
@@ -90,7 +104,7 @@ async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketR
     params.shape = answers.shape;
   }
 
-  let query = `*[${filterParts.join(' && ')}] | order(priceMidpoint asc) [0...3] ${PROJECTION}`;
+  let query = `*[${filterParts.join(' && ')}] | ${sortOrder} [0...5] ${PROJECTION}`;
   let results = await sanityClient.fetch<RacketResult[]>(query, params);
 
   // Relax weight filter if < 2 results
@@ -101,7 +115,7 @@ async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketR
     }
     const relaxedParams = { ...params };
     delete relaxedParams.weight;
-    query = `*[${relaxed.join(' && ')}] | order(priceMidpoint asc) [0...3] ${PROJECTION}`;
+    query = `*[${relaxed.join(' && ')}] | ${sortOrder} [0...5] ${PROJECTION}`;
     results = await sanityClient.fetch<RacketResult[]>(query, relaxedParams);
   }
 
@@ -110,7 +124,7 @@ async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketR
     const relaxedParams = { ...params };
     delete relaxedParams.weight;
     delete relaxedParams.shape;
-    query = `*[${baseParts.join(' && ')}] | order(priceMidpoint asc) [0...3] ${PROJECTION}`;
+    query = `*[${baseParts.join(' && ')}] | ${sortOrder} [0...5] ${PROJECTION}`;
     results = await sanityClient.fetch<RacketResult[]>(query, relaxedParams);
   }
 

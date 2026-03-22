@@ -11,7 +11,9 @@ import { useState } from 'react';
 const BADGES = [
   { key: 'topPick', emoji: '🏆' },
   { key: 'alternative', emoji: '⚡' },
-  { key: 'budget', emoji: '💰' },
+  { key: 'greatValue', emoji: '💎' },
+  { key: 'alsoConsider', emoji: '👀' },
+  { key: 'wildcard', emoji: '🎯' },
 ] as const;
 
 interface QuizResultsProps {
