@@ -90,7 +90,7 @@ function parseAnswersFromParams(params: URLSearchParams): QuizAnswers | null {
   return {
     level: level as QuizAnswers['level'],
     style: style as QuizAnswers['style'],
-    budget: Number(budget),
+    budget: budget,
     armFriendly: params.get('arm') === 'true',
     weight: (params.get('weight') || 'any') as QuizAnswers['weight'],
     shape: (params.get('shape') || 'any') as QuizAnswers['shape'],
