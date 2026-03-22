@@ -78,9 +78,7 @@ async function fetchRackets(answers: QuizAnswers, lang: string): Promise<RacketR
 
   // Sort: prioritize exact level match, then price descending for premium, ascending otherwise
   const isHighBudget = maxPrice >= 999;
-  const sortOrder = answers.level === 'advanced'
-    ? `order(level == "advanced" desc, priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`
-    : `order(priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`;
+  const sortOrder = `order(priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`;
 
   const params: Record<string, any> = {
     lang,
