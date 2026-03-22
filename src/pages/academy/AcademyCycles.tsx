@@ -119,6 +119,7 @@ export default function AcademyCycles() {
           onDuplicate={(c) => navigate(`/app/academy/cycles/new?type=registration&duplicateFrom=${c.id}`)}
           onDeleted={fetchCycles}
           ownerType="academy"
+          ownerSlug={activeAcademy?.slug}
         />
       )}
     </div>
