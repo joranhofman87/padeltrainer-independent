@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import QuizQuestion from '@/components/racketfinder/QuizQuestion';
 import type { QuizOption } from '@/components/racketfinder/QuizQuestion';
 import QuizResults from '@/components/racketfinder/QuizResults';
+import RacketFinderContent from '@/components/racketfinder/RacketFinderContent';
 import { useRacketFinderQuery, type QuizAnswers } from '@/hooks/useRacketFinderQuery';
 import { trackEvent } from '@/lib/tracking';
 
@@ -45,10 +46,10 @@ function useSteps(t: (k: string, d?: string) => string): StepDef[] {
       key: 'budget',
       questionKey: 'quiz.q3',
       options: [
-        { emoji: '💰', label: t('quiz.a3.under100', 'Under €100'), value: '100' },
-        { emoji: '💰', label: '€100 – €150', value: '150' },
-        { emoji: '💰', label: '€150 – €200', value: '200' },
-        { emoji: '💰', label: '€200+', value: '999' },
+        { emoji: '💰', label: t('quiz.a3.under100', 'Under €100'), value: '0-100' },
+        { emoji: '💰', label: '€100 – €150', value: '100-150' },
+        { emoji: '💰', label: '€150 – €200', value: '150-200' },
+        { emoji: '💰', label: '€200+', value: '200-999' },
       ],
     },
     {
@@ -90,7 +91,7 @@ function parseAnswersFromParams(params: URLSearchParams): QuizAnswers | null {
   return {
     level: level as QuizAnswers['level'],
     style: style as QuizAnswers['style'],
-    budget: Number(budget),
+    budget: budget,
     armFriendly: params.get('arm') === 'true',
     weight: (params.get('weight') || 'any') as QuizAnswers['weight'],
     shape: (params.get('shape') || 'any') as QuizAnswers['shape'],
@@ -132,9 +133,7 @@ export default function RacketFinder() {
     const key = currentStep.key;
 
     const newAnswers = { ...answers };
-    if (key === 'budget') {
-      newAnswers[key] = Number(value);
-    } else if (key === 'armFriendly') {
+    if (key === 'armFriendly') {
       newAnswers[key] = value === 'true';
     } else {
       (newAnswers as any)[key] = value;
@@ -219,6 +218,30 @@ export default function RacketFinder() {
           text: 'Round-shaped rackets are best for beginners as they offer the largest sweet spot and maximum control, making it easier to develop proper technique.',
         },
       },
+      {
+        '@type': 'Question',
+        name: 'How much should I spend on a padel racket?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Beginners can find excellent rackets between €50–€100. Intermediate players typically spend €100–€200, while advanced and competitive players often invest €200+ for premium materials and performance.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is the difference between control and power rackets?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Control rackets (usually round-shaped) have a larger sweet spot and offer more precision. Power rackets (diamond-shaped) have a higher balance point for more aggressive shots but are less forgiving. Teardrop shapes offer a balance of both.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Should I get an arm-friendly padel racket?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'If you have tennis elbow or wrist issues, an arm-friendly racket with softer foam (like EVA Soft) can reduce vibrations and prevent injury. They are also recommended for players who play frequently.',
+        },
+      },
     ],
   };
 
@@ -299,6 +322,9 @@ export default function RacketFinder() {
           />
         )}
       </div>
+
+      {/* SEO content sections — visible on intro, hidden during quiz/results */}
+      {phase === 'intro' && <RacketFinderContent />}
     </MarketingLayout>
   );
 }
