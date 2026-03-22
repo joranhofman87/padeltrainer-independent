@@ -218,6 +218,30 @@ export default function RacketFinder() {
           text: 'Round-shaped rackets are best for beginners as they offer the largest sweet spot and maximum control, making it easier to develop proper technique.',
         },
       },
+      {
+        '@type': 'Question',
+        name: 'How much should I spend on a padel racket?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Beginners can find excellent rackets between €50–€100. Intermediate players typically spend €100–€200, while advanced and competitive players often invest €200+ for premium materials and performance.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is the difference between control and power rackets?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Control rackets (usually round-shaped) have a larger sweet spot and offer more precision. Power rackets (diamond-shaped) have a higher balance point for more aggressive shots but are less forgiving. Teardrop shapes offer a balance of both.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Should I get an arm-friendly padel racket?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'If you have tennis elbow or wrist issues, an arm-friendly racket with softer foam (like EVA Soft) can reduce vibrations and prevent injury. They are also recommended for players who play frequently.',
+        },
+      },
     ],
   };
 
