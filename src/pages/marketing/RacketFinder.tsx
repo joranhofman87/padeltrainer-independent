@@ -45,10 +45,10 @@ function useSteps(t: (k: string, d?: string) => string): StepDef[] {
       key: 'budget',
       questionKey: 'quiz.q3',
       options: [
-        { emoji: '💰', label: t('quiz.a3.under100', 'Under €100'), value: '100' },
-        { emoji: '💰', label: '€100 – €150', value: '150' },
-        { emoji: '💰', label: '€150 – €200', value: '200' },
-        { emoji: '💰', label: '€200+', value: '999' },
+        { emoji: '💰', label: t('quiz.a3.under100', 'Under €100'), value: '0-100' },
+        { emoji: '💰', label: '€100 – €150', value: '100-150' },
+        { emoji: '💰', label: '€150 – €200', value: '150-200' },
+        { emoji: '💰', label: '€200+', value: '200-999' },
       ],
     },
     {
