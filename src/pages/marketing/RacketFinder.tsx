@@ -132,9 +132,7 @@ export default function RacketFinder() {
     const key = currentStep.key;
 
     const newAnswers = { ...answers };
-    if (key === 'budget') {
-      newAnswers[key] = Number(value);
-    } else if (key === 'armFriendly') {
+    if (key === 'armFriendly') {
       newAnswers[key] = value === 'true';
     } else {
       (newAnswers as any)[key] = value;
