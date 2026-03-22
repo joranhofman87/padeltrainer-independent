@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import QuizQuestion from '@/components/racketfinder/QuizQuestion';
 import type { QuizOption } from '@/components/racketfinder/QuizQuestion';
 import QuizResults from '@/components/racketfinder/QuizResults';
+import RacketFinderContent from '@/components/racketfinder/RacketFinderContent';
 import { useRacketFinderQuery, type QuizAnswers } from '@/hooks/useRacketFinderQuery';
 import { trackEvent } from '@/lib/tracking';
 
