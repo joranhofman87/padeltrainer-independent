@@ -1,56 +1,27 @@
 
 
-# Validation of the SEO Prompt — What's Already Done vs. What's Missing
+# Fix Price Overview to React to "Aantal weken" Field Changes
 
-## Summary: Most of this is already implemented. The prompt is largely outdated.
+## Problem
+The Price Overview in the CycleForm shows a hardcoded number of weeks instead of reacting to changes in the "Aantal weken" (number of weeks) field at the top of the form. This happens because:
 
-Your project already has a sophisticated SEO setup. Here's the item-by-item breakdown:
+1. When `durationOptions` (explicit week choices like 5, 10, 15) are set from saved settings, those static values are used — changing the top-level weeks field has no effect on the overview.
+2. When `durationOptions` is empty, `watchedWeeks` is used as fallback — this case works correctly.
 
----
+The issue is that for registrations without explicit duration options, the saved cycle data may have populated `durationOptions` with a single value (e.g. `[14]`), making the overview static.
 
-## ✅ Already Implemented (No Action Needed)
+## Solution
 
-| Item | Status |
-|------|--------|
-| **Pre-rendering / Bot SSR** | Cloudflare Worker detects bot user-agents and proxies to `render-page` edge function. All Sanity content types (blog, rules, strokes, coaches, video tips, learn, topics) are server-rendered for bots. |
-| **Server-side meta tags** | The `render-page` function injects `<title>`, `<meta description>`, OG tags, hreflang tags, and JSON-LD structured data into the HTML for bots. |
-| **react-helmet-async** | Already installed and used via the `SEO` component on every page. Handles title, description, canonical, hreflang, OG, Twitter, and structured data client-side. |
-| **Hreflang tags** | Implemented both client-side (SEO component with translated slug support) and server-side (render-page). |
-| **Sitemaps for Sanity content** | The `sitemap` edge function already queries Sanity for rules, strokes, coaches, video tips, learning articles, and topics — with proper hreflang alternates grouped by `translationOf`. |
-| **Dynamic sitemaps via edge function** | Already using Option B (dynamic edge function), proxied through Cloudflare Worker. |
-| **JSON-LD structured data** | Already on blog posts, stroke pages, and likely other content pages via the SEO component. |
-| **Internal linking** | GROQ queries already fetch `relatedGuides`, `relatedRules`, `relatedStrokes`, `relatedVideoTips`, and `topics`. Related content sections are rendered on pages. |
-| **Canonical URLs** | Set on every page via SEO component. |
+**File: `src/components/cycles/CycleForm.tsx`** (line ~1164)
 
----
+Change the weeks source logic so that when no explicit `durationOptions` are configured by the user, the Price Overview always uses the live `watchedWeeks` value from the form field. The current fallback `(watchedWeeks ? [watchedWeeks] : [])` is correct but gets bypassed when `durationOptions` has entries.
 
-## ⚠️ Two Small Gaps Found
+The fix: when `durationOptions` is empty, use `watchedWeeks` (already works). When `durationOptions` has entries, still use those. The key additional change is to make sure saved cycle data does NOT auto-populate `durationOptions` from the top-level weeks field — duration options should only contain values explicitly added by the user through the "Duration Options" UI section.
 
-### 1. Rackets/Products missing from sitemap AND render-page
-The `sitemap` edge function does NOT include `product` (racket) documents from Sanity. The `render-page` function also has no route for `/gear/rackets/:slug`. This means Google cannot discover or properly index racket pages.
+Alternatively, the simpler and more useful fix: always replace the weeks multiplier in the Price Overview with `watchedWeeks` when there are no explicit duration options, ensuring the total updates in real-time as the user types.
 
-**Fix**: Add racket/product entries to the sitemap edge function and add a `/gear/rackets/:slug` route to the render-page edge function.
+This is a single-line change on line 1164 — the logic already works, we just need to verify why `durationOptions` is populated when the user hasn't explicitly set them, and ensure the fallback path is hit correctly.
 
-### 2. Rackets/Products missing from render-page bot SSR
-Same gap — bots hitting `/en/gear/rackets/some-racket` get the fallback HTML, not proper meta tags.
-
----
-
-## Recommended Action
-
-Only fix the two racket/product gaps. Everything else the prompt suggests is redundant with your existing infrastructure.
-
-### Changes needed:
-
-**1. `supabase/functions/sitemap/index.ts`**
-- Add a Sanity fetch for `product` documents (category "racket")
-- Generate sitemap entries with `gear/rackets` path prefix, grouped by `translationOf`
-
-**2. `supabase/functions/render-page/index.ts`**
-- Add route matching for `/gear/rackets` listing page and `/gear/rackets/:slug` detail pages
-- Use the existing `renderSanityArticle` function (or a similar pattern) to fetch product data from Sanity and inject proper meta tags, OG tags, and Product JSON-LD structured data
-
-### Files to modify:
-1. `supabase/functions/sitemap/index.ts` — Add product/racket Sanity fetch + entries
-2. `supabase/functions/render-page/index.ts` — Add gear/rackets routes for bot rendering
+## Files to Change
+- `src/components/cycles/CycleForm.tsx` — Ensure the Price Overview weeks source reacts to form field changes when no explicit duration options are configured
 
