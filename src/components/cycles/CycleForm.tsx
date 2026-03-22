@@ -1161,7 +1161,7 @@ export default function CycleForm({
                       ))}
 
                       {/* Per duration columns */}
-                      {(durationOptions.length > 0 ? durationOptions.sort((a, b) => a - b) : (watchedWeeks ? [watchedWeeks] : [])).flatMap(weeks =>
+                      {(durationOptions.length > 1 ? durationOptions.sort((a, b) => a - b) : (watchedWeeks ? [watchedWeeks] : [])).flatMap(weeks =>
                         [
                           { name: `${weeks} ${t('form.numberOfWeeksColumn', 'weeks')}`, getPrice: (row: PriceTableRow) => row.price, weeks },
                           ...priceColumns.map(col => ({
