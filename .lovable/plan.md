@@ -1,27 +1,28 @@
 
 
-# Fix Price Overview to React to "Aantal weken" Field Changes
+# Fix Academy Registration Share Link
 
 ## Problem
-The Price Overview in the CycleForm shows a hardcoded number of weeks instead of reacting to changes in the "Aantal weken" (number of weeks) field at the top of the form. This happens because:
+The "Registratielink Delen" button in the academy cycles table generates `padeltrainer.ai/nl/register/{id}` instead of `padeltrainer.ai/nl/academies/{slug}/register/{id}`. This is because `AcademyCycles.tsx` doesn't pass the `ownerSlug` prop to `CyclesTable`.
 
-1. When `durationOptions` (explicit week choices like 5, 10, 15) are set from saved settings, those static values are used — changing the top-level weeks field has no effect on the overview.
-2. When `durationOptions` is empty, `watchedWeeks` is used as fallback — this case works correctly.
+## Fix
 
-The issue is that for registrations without explicit duration options, the saved cycle data may have populated `durationOptions` with a single value (e.g. `[14]`), making the overview static.
+**File: `src/pages/academy/AcademyCycles.tsx`** — Add `ownerSlug={activeAcademy?.slug}` to the `CyclesTable` component (line 121):
 
-## Solution
+```tsx
+<CyclesTable
+  cycles={cycles}
+  locations={locations}
+  onEdit={(c) => navigate(`/app/academy/cycles/${c.id}/edit`)}
+  onDuplicate={(c) => navigate(`/app/academy/cycles/new?type=registration&duplicateFrom=${c.id}`)}
+  onDeleted={fetchCycles}
+  ownerType="academy"
+  ownerSlug={activeAcademy?.slug}
+/>
+```
 
-**File: `src/components/cycles/CycleForm.tsx`** (line ~1164)
+The existing `handleCopyLink` logic in `CyclesTable.tsx` already handles the academy path correctly (`academies/${ownerSlug}/register/${cycle.id}`) — it just wasn't receiving the slug.
 
-Change the weeks source logic so that when no explicit `durationOptions` are configured by the user, the Price Overview always uses the live `watchedWeeks` value from the form field. The current fallback `(watchedWeeks ? [watchedWeeks] : [])` is correct but gets bypassed when `durationOptions` has entries.
-
-The fix: when `durationOptions` is empty, use `watchedWeeks` (already works). When `durationOptions` has entries, still use those. The key additional change is to make sure saved cycle data does NOT auto-populate `durationOptions` from the top-level weeks field — duration options should only contain values explicitly added by the user through the "Duration Options" UI section.
-
-Alternatively, the simpler and more useful fix: always replace the weeks multiplier in the Price Overview with `watchedWeeks` when there are no explicit duration options, ensuring the total updates in real-time as the user types.
-
-This is a single-line change on line 1164 — the logic already works, we just need to verify why `durationOptions` is populated when the user hasn't explicitly set them, and ensure the fallback path is hit correctly.
-
-## Files to Change
-- `src/components/cycles/CycleForm.tsx` — Ensure the Price Overview weeks source reacts to form field changes when no explicit duration options are configured
+### Files
+- `src/pages/academy/AcademyCycles.tsx` — 1 line addition
 
