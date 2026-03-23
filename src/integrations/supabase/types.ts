@@ -2050,6 +2050,7 @@ export type Database = {
           player_business_name: string | null
           player_id: string | null
           player_name: string
+          public_token: string
           sent_at: string | null
           status: string
           subtotal: number
@@ -2079,6 +2080,7 @@ export type Database = {
           player_business_name?: string | null
           player_id?: string | null
           player_name: string
+          public_token?: string
           sent_at?: string | null
           status?: string
           subtotal?: number
@@ -2108,6 +2110,7 @@ export type Database = {
           player_business_name?: string | null
           player_id?: string | null
           player_name?: string
+          public_token?: string
           sent_at?: string | null
           status?: string
           subtotal?: number
