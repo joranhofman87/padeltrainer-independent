@@ -1,33 +1,31 @@
 
 
-# Fix: Racket Finder Returns Zero Results for Advanced Players
+# Show End Date Below Weeks Input in Cyclus Creation
 
-## Root Cause
+## What
+Add a calculated end date label below the "Repeat for X weeks" input in both the Trainer/Academy and Club BulkCreateSheet components. The end date is already calculated in the summary text at the bottom — this just surfaces it more prominently next to the weeks input.
 
-The GROQ sort expression `order(level == "advanced" desc, priceMidpoint desc)` is **invalid GROQ syntax**. Sanity does not support boolean comparison expressions inside `order()`. This causes the query to fail silently, returning zero results for all advanced player searches.
+## Changes
 
-This was introduced in the previous fix — the sort worked conceptually but used syntax Sanity doesn't support.
+### 1. `src/components/trainer/AddSlotDialog.tsx` (line ~961, after the weeks span)
 
-## Fix
+After the weeks `<span>`, add a small text showing the calculated end date:
 
-**File: `src/hooks/useRacketFinderQuery.ts`** (lines 79-83)
-
-Replace the invalid sort with valid GROQ. Since the `level in $levels` filter already constrains results, and for advanced players we want premium rackets first, we simply sort by `priceMidpoint desc` for high-budget brackets and `priceMidpoint asc` for lower ones. No need for `level ==` sorting — the filter handles level matching.
-
-Change from:
-```ts
-const sortOrder = answers.level === 'advanced'
-  ? `order(level == "advanced" desc, priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`
-  : `order(priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`;
+```tsx
+<p className="text-xs text-muted-foreground mt-1">
+  → {format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy")}
+</p>
 ```
 
-To:
-```ts
-const sortOrder = `order(priceMidpoint ${isHighBudget ? 'desc' : 'asc'})`;
-```
+This goes inside the recurrence `<div className="space-y-1">` block, right after the flex row with the input and "weeks" label (line 961).
 
-This is a one-line change that fixes the query for all cases.
+### 2. `src/components/club/ClubAddSlotDialog.tsx` (line ~600, same position)
 
-## Files to Change
-- `src/hooks/useRacketFinderQuery.ts` — Remove invalid GROQ sort expression (1 line)
+Same change — add the end date text after the weeks input.
+
+Both files already import `addWeeks` and `format` from date-fns, so no new imports needed.
+
+## Files
+- `src/components/trainer/AddSlotDialog.tsx` — 1 line addition
+- `src/components/club/ClubAddSlotDialog.tsx` — 1 line addition
 
