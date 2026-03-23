@@ -1018,18 +1018,18 @@ export function BulkCreateSheet({
                       {t("calendar.pricing", "Pricing")}
                     </Label>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id={`vat-toggle-${index}`}
-                          checked={pricesIncludeVat}
-                          onCheckedChange={setPricesIncludeVat}
-                        />
-                        <Label htmlFor={`vat-toggle-${index}`} className="text-xs cursor-pointer">
-                          {pricesIncludeVat
-                            ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
-                            : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
-                        </Label>
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {pricesIncludeVat
+                          ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
+                          : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
+                        {" · "}
+                        <Link
+                          to="/app/trainer/settings/bookings"
+                          className="text-primary underline hover:text-primary/80"
+                        >
+                          {t("calendar.changeInSettings", "Change in settings")}
+                        </Link>
+                      </p>
                     </div>
                     {slot.trainerId && getHourlyRate(slot.trainerId) && (
                       <p className="text-xs text-muted-foreground">

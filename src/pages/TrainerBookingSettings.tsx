@@ -235,6 +235,47 @@ export default function TrainerBookingSettings() {
             </div>
           </CardContent>
         </Card>
+        {/* VAT Settings Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Euro className="h-5 w-5 text-primary" />
+              {t('bookingSettings.vatTitle')}
+            </CardTitle>
+            <CardDescription>
+              {t('bookingSettings.vatDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex-1 pr-4">
+                <Label htmlFor="vat-toggle" className="font-medium">
+                  {t('bookingSettings.vatInclLabel')}
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('bookingSettings.vatInclDescription')}
+                </p>
+              </div>
+              <Switch
+                id="vat-toggle"
+                checked={pricesIncludeVat}
+                onCheckedChange={handleToggleVat}
+                disabled={savingVat}
+              />
+            </div>
+            <Alert>
+              <AlertDescription className="text-sm text-muted-foreground">
+                ⚠️ {t('bookingSettings.vatWarning')}
+              </AlertDescription>
+            </Alert>
+            {savingVat && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('common:saving')}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </>
   );

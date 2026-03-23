@@ -649,7 +649,13 @@
     "welcomeMessage": "Welkomstbericht",
     "welcomeMessageDescription": "Dit bericht wordt getoond aan spelers nadat ze een sessie boeken of zich op je wachtlijst zetten. Handig om WhatsApp-groeplinks of voorbereidingstips te delen.",
     "welcomeMessagePlaceholder": "bijv. Bedankt voor je boeking! Doe mee met onze WhatsApp community: https://chat.whatsapp.com/...",
-    "welcomeMessageSaved": "Welkomstbericht opgeslagen"
+    "welcomeMessageSaved": "Welkomstbericht opgeslagen",
+    "vatTitle": "BTW-instellingen",
+    "vatDescription": "Bepaal hoe prijzen worden ingevoerd voor je sessies",
+    "vatInclLabel": "Prijzen zijn inclusief BTW",
+    "vatInclDescription": "Indien ingeschakeld, zijn de prijzen die je invoert inclusief BTW. Indien uitgeschakeld, wordt BTW erbovenop berekend.",
+    "vatWarning": "Deze wijziging geldt alleen voor nieuwe slots. Bestaande slots behouden hun huidige BTW-instelling.",
+    "vatSaved": "BTW-instelling bijgewerkt"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. Kom binnenkort terug!",
   "clearFilters": "Filters wissen",
