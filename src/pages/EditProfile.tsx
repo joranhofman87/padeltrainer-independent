@@ -584,7 +584,7 @@ export default function EditProfile() {
             <CardContent className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="full_name">Full Name</Label>
+                  <Label htmlFor="full_name">{t('editProfile.fullName')}</Label>
                   <Input
                     id="full_name"
                     value={formData.full_name}
