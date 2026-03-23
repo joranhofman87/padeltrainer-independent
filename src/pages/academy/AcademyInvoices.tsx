@@ -42,6 +42,9 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("all");
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
+  const formatEuro = (amount: number) =>
+    amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["academy-invoices", activeAcademy?.id],
     queryFn: async () => {
@@ -168,7 +171,7 @@ export default function AcademyInvoices() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -207,7 +210,7 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
-            <p className="text-2xl font-bold">€{totalUnpaid.toFixed(2)}</p>
+            <p className="text-2xl font-bold">€{formatEuro(totalUnpaid)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -290,7 +293,7 @@ export default function AcademyInvoices() {
                           <TableCell>{inv.player_name}</TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell className="text-right font-medium">€{inv.total.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                           <TableCell>{getStatusBadge(inv)}</TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-1">
@@ -377,7 +380,7 @@ export default function AcademyInvoices() {
                         <span className="text-muted-foreground">
                           {format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                         </span>
-                        <span className="font-bold text-lg">€{inv.total.toFixed(2)}</span>
+                        <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         {inv.status !== "paid" && (
