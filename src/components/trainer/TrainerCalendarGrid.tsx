@@ -416,7 +416,7 @@ function MobileDayView({
 
         {/* Time Slots List */}
         <div className="space-y-2 px-2">
-          {HOURS.map((hour) => {
+          {FULL_HOURS.map((hour) => {
           const slotsAtHour = slotsByHour[hour] || [];
           const isPastHour = isBefore(
             new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour),
