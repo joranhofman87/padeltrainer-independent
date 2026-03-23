@@ -1,21 +1,31 @@
 
 
-# Add VAT Include/Exclude Toggle Near Price Inputs
+# Improve End Date Display Below "Repeat for X Weeks"
 
 ## Current State
-The CycleForm already has a VAT toggle (`pricesIncludeVat` switch) at lines 1107-1122, but it's placed **below** the price table and only affects a display label for players. It doesn't make it clear to the trainer whether they're entering prices incl. or excl. VAT while typing.
+The end date is already shown at line 977-979 of `AddSlotDialog.tsx`, but it uses a plain arrow format: `→ Mar 15, 2026`. This may not be prominent or clear enough.
 
-## Solution
-Move the VAT toggle to **above** the price table so the trainer sees the context before entering prices. Also add a visible label suffix on the price inputs themselves (e.g., "incl. VAT" or "excl. VAT") so it's always clear what they're entering.
+## Change
+Replace the current raw format with the translated `endsOn` key (e.g., "Ends on Mar 15, 2026" / "Eindigt op 15 mrt 2026") and make it slightly more visible with a different style.
 
-### Changes in `src/components/cycles/CycleForm.tsx`
+### File: `src/components/trainer/AddSlotDialog.tsx` (line 977-979)
 
-1. **Move the VAT toggle block** (lines 1107-1122) to just **before** the price table header row, so the trainer sets the VAT mode before entering prices.
+Change from:
+```tsx
+<p className="text-xs text-muted-foreground mt-1">
+  → {format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy")}
+</p>
+```
 
-2. **Add a suffix indicator** to each price input showing "(incl. VAT)" or "(excl. VAT)" based on the toggle state — as a small text label next to the € symbol or as placeholder text.
+To:
+```tsx
+<p className="text-xs text-muted-foreground mt-1 font-medium">
+  📅 {t("cycles:form.endsOn", { date: format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "PPP") })}
+</p>
+```
 
-3. **Update the price table column header** from just the label to include the VAT context, e.g., "Price (incl. VAT)" or "Price (excl. VAT)".
+This uses the existing `endsOn` translation key (already available in all languages) and the `PPP` date format for a more readable localized date.
 
-### Files
-- `src/components/cycles/CycleForm.tsx` — Move VAT toggle above price table, add VAT indicator to price column headers
+## Files
+- `src/components/trainer/AddSlotDialog.tsx` — 1 line update
 
