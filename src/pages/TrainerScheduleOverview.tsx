@@ -307,30 +307,141 @@ export default function TrainerScheduleOverview() {
   const handleSaveCycleEdit = async () => {
     if (!editCycleId || !cycleEditData.name.trim()) return;
     setSavingEdit(true);
-    const updates: Record<string, unknown> = {
-      cyclus_name: cycleEditData.name.trim(),
-      is_marked_full: cycleEditData.isPrivate,
-    };
-    if (cycleEditData.pricePerSession !== "") {
-      updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
-    }
-    if (cycleEditData.locationId) {
-      updates.location_id = cycleEditData.locationId;
-    }
-    if (cycleEditData.maxParticipants !== "") {
-      updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
-    }
-    const { error } = await supabase
-      .from("availability_slots")
-      .update(updates)
-      .eq("cyclus_id", editCycleId);
-    setSavingEdit(false);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+
+    try {
+      // 1. Build bulk updates for all existing slots
+      const updates: Record<string, unknown> = {
+        cyclus_name: cycleEditData.name.trim(),
+        is_marked_full: cycleEditData.isPrivate,
+        extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
+      };
+      if (cycleEditData.pricePerSession !== "") {
+        updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
+      }
+      if (cycleEditData.locationId) {
+        updates.location_id = cycleEditData.locationId;
+      }
+      if (cycleEditData.maxParticipants !== "") {
+        updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
+      }
+
+      // 2. Handle start date shift
+      if (
+        cycleEditData.startDate &&
+        cycleEditData.originalStartDate &&
+        cycleEditData.startDate.getTime() !== cycleEditData.originalStartDate.getTime()
+      ) {
+        const deltaMs = cycleEditData.startDate.getTime() - cycleEditData.originalStartDate.getTime();
+        // Fetch all slots for this cycle to shift them
+        const { data: cycleSlots } = await supabase
+          .from("availability_slots")
+          .select("id, start_time, end_time")
+          .eq("cyclus_id", editCycleId)
+          .order("start_time", { ascending: true });
+
+        if (cycleSlots) {
+          for (const cs of cycleSlots) {
+            const newStart = new Date(new Date(cs.start_time).getTime() + deltaMs).toISOString();
+            const newEnd = new Date(new Date(cs.end_time).getTime() + deltaMs).toISOString();
+            await supabase
+              .from("availability_slots")
+              .update({ ...updates, start_time: newStart, end_time: newEnd })
+              .eq("id", cs.id);
+          }
+        }
+      } else {
+        // No date shift — just bulk update
+        await supabase
+          .from("availability_slots")
+          .update(updates)
+          .eq("cyclus_id", editCycleId);
+      }
+
+      // 3. Handle repeat count change
+      const newCount = parseInt(cycleEditData.repeatCount, 10);
+      if (!isNaN(newCount) && newCount !== cycleEditData.originalRepeatCount) {
+        const { data: cycleSlots } = await supabase
+          .from("availability_slots")
+          .select("*")
+          .eq("cyclus_id", editCycleId)
+          .order("start_time", { ascending: true });
+
+        if (cycleSlots && cycleSlots.length > 0) {
+          if (newCount > cycleSlots.length) {
+            // Add new slots at the end
+            const lastSlot = cycleSlots[cycleSlots.length - 1];
+            const lastStart = new Date(lastSlot.start_time);
+            const lastEnd = new Date(lastSlot.end_time);
+            const slotsToAdd = newCount - cycleSlots.length;
+
+            const newSlots = [];
+            for (let i = 1; i <= slotsToAdd; i++) {
+              const newStart = new Date(lastStart.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+              const newEnd = new Date(lastEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+              newSlots.push({
+                trainer_id: lastSlot.trainer_id,
+                start_time: newStart.toISOString(),
+                end_time: newEnd.toISOString(),
+                cyclus_id: editCycleId,
+                cyclus_name: cycleEditData.name.trim(),
+                max_participants: lastSlot.max_participants,
+                is_public: lastSlot.is_public,
+                is_marked_full: cycleEditData.isPrivate,
+                location_id: cycleEditData.locationId || lastSlot.location_id,
+                price_per_session: cycleEditData.pricePerSession !== "" ? parseFloat(cycleEditData.pricePerSession) : lastSlot.price_per_session,
+                extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
+                academy_profile_id: lastSlot.academy_profile_id,
+                allow_single_booking: lastSlot.allow_single_booking,
+                court_type: lastSlot.court_type,
+                min_participants: lastSlot.min_participants,
+                min_rating: lastSlot.min_rating,
+                max_rating: lastSlot.max_rating,
+                rating_system: lastSlot.rating_system,
+                training_level: lastSlot.training_level,
+                total_price: lastSlot.total_price,
+                prices_include_vat: lastSlot.prices_include_vat,
+              });
+            }
+            await supabase.from("availability_slots").insert(newSlots);
+          } else if (newCount < cycleSlots.length) {
+            // Remove trailing slots without active bookings
+            const slotsToRemove = cycleSlots.length - newCount;
+            const trailingSlots = cycleSlots.slice(-slotsToRemove);
+            // Check for active bookings
+            const { data: bookingsCheck } = await supabase
+              .from("bookings")
+              .select("slot_id")
+              .in("slot_id", trailingSlots.map((s) => s.id))
+              .neq("status", "cancelled");
+
+            const bookedSlotIds = new Set((bookingsCheck || []).map((b) => b.slot_id));
+            const deletableSlots = trailingSlots.filter((s) => !bookedSlotIds.has(s.id));
+            const blockedCount = trailingSlots.length - deletableSlots.length;
+
+            if (blockedCount > 0) {
+              toast({
+                title: t("scheduleOverview.cannotRemoveBookedSlots", "Cannot remove {{count}} session(s) with active bookings", { count: blockedCount }),
+                variant: "destructive",
+              });
+            }
+
+            if (deletableSlots.length > 0) {
+              await supabase
+                .from("availability_slots")
+                .delete()
+                .in("id", deletableSlots.map((s) => s.id));
+            }
+          }
+        }
+      }
+
       toast({ title: t("scheduleOverview.cycleSaved", "Cycle updated") });
       setEditDialogOpen(false);
       invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
