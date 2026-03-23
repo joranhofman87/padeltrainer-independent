@@ -619,7 +619,7 @@ export default function EditProfile() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
+                  <Label htmlFor="location">{t('editProfile.location')}</Label>
                   <Input
                     id="location"
                     value={formData.location}
