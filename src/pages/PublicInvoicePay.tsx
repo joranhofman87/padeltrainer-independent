@@ -144,12 +144,13 @@ export default function PublicInvoicePay() {
   if (isSuccessRedirect && data && data.invoice.status !== "paid") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Payment Processing" description="Your payment is being processed." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">Payment Processing</h1>
             <p className="text-muted-foreground">
-              Your payment for {data.invoice.invoiceNumber} is being processed. You'll receive a confirmation shortly.
+              Your payment is being processed. You'll receive a confirmation shortly.
             </p>
             <div className="pt-4">
               <Link to="/app/signup/player">
