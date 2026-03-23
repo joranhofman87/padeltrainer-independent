@@ -1,40 +1,60 @@
 
 
-# Add Privacy Toggle + Fix Edit Navigation in Schedule Overview
+# Cycle Edit: Extra Costs, Start Date, and Number of Repeats
 
-## What
-1. Add per-slot privacy toggle (lock/unlock icon) on the overview page to mark/unmark individual slots as private (`is_marked_full`)
-2. Add a privacy toggle in the cycle edit dialog to bulk-toggle all slots in a cycle
-3. Fix the slot edit button URL (currently goes to `/trainer/calendar` instead of `/app/trainer/calendar`)
-4. Also fetch `is_marked_full` in the overview query and use it for the "Private" badge (currently uses `is_public` which is a creation-time field, while `is_marked_full` is the manual trainer toggle)
+## Summary
+Expand the cycle edit dialog with three new fields: extra costs editor, start date picker, and number of repeats (weeks). All changes apply in bulk to slots sharing the same `cyclus_id`.
+
+## Concerns & How We Handle Them
+
+**Start date change**: Shifts all slots by the same time delta (new start minus old start). Slots with existing bookings are moved too — the bookings stay attached. This is safe because bookings reference slot IDs, not times.
+
+**Number of repeats (increasing)**: Creates new slots at the end of the cycle, copying the same day/time pattern, price, location, etc.
+
+**Number of repeats (decreasing)**: Removes slots from the end. Slots with active bookings will be protected — we only delete empty trailing slots. If not enough empty slots exist, we show a warning.
+
+**Extra costs**: Stored as JSON on each slot. Bulk-updated across all slots in the cycle.
 
 ## Changes
 
 ### 1. `src/pages/TrainerScheduleOverview.tsx`
 
-**Query & type** — Add `is_marked_full` to the select query and `SlotWithBookings` type.
+**Expand `CycleEditData` type** to include:
+- `extraCosts: { description: string; price: number }[]`
+- `startDate: Date | undefined` (first slot's start date)
+- `repeatCount: string` (number of slots = weeks)
 
-**Fix edit navigation** (line 514) — Change `/trainer/calendar?date=...` to `/app/trainer/calendar?date=...`.
+**Expand `SlotWithBookings` type** to include `extra_costs`.
 
-**Per-slot privacy toggle** — Add a Lock/LockOpen icon button on each slot row. Clicking it toggles `is_marked_full` on that single slot via supabase update, then invalidates the query.
+**Update query** to fetch `extra_costs` from slots.
 
-**Private badge** — Show "Private" badge when `is_marked_full` is true (instead of `!is_public`).
+**Update `openEditDialog`**: Pre-fill new fields from first slot's `extra_costs`, derive start date from earliest slot, count total slots for repeat count.
 
-**Cycle edit dialog** — Add a Switch for "Mark as private" that bulk-updates `is_marked_full` on all slots with the cycle's `cyclus_id`. Pre-fill from first slot's `is_marked_full` value.
+**Update `handleSaveCycleEdit`**:
+- Always bulk-update `extra_costs` on all slots
+- If start date changed: calculate time delta, shift all slot `start_time` and `end_time` by that delta
+- If repeat count increased: insert new slots copying the weekly pattern from the last existing slot
+- If repeat count decreased: delete trailing slots that have no active bookings; warn if slots with bookings would be affected
 
-**Add handler** `handleToggleSlotPrivacy(slotId, currentValue)` — updates single slot's `is_marked_full`, invalidates query.
+**Extra costs UI**: Inline list of description + price rows with add/remove buttons (same pattern as CycleForm).
 
-**State** — Add `togglingPrivacy` state to track loading per slot. Add `isPrivate` field to `CycleEditData`.
+**Start date UI**: Date picker (Popover + Calendar).
+
+**Repeat count UI**: Number input showing current count, editable.
 
 ### 2. Translation keys (`en/trainer.json`, `nl/trainer.json`)
 
 Add under `scheduleOverview`:
-- `markAsPrivate`: "Mark as private" / "Markeer als privé"
-- `markAsPublic`: "Mark as public" / "Markeer als openbaar"
-- `cyclePrivate`: "Private (hidden from players)" / "Privé (verborgen voor spelers)"
+- `extraCosts` / `Extra costs` / `Extra kosten`
+- `addCost` / `Add cost` / `Kosten toevoegen`
+- `costDescription` / `Description` / `Omschrijving`
+- `costPrice` / `Price per session` / `Prijs per sessie`
+- `startDate` / `Start date` / `Startdatum`
+- `repeatCount` / `Number of weeks` / `Aantal weken`
+- `cannotRemoveBookedSlots` / `Cannot remove slots with active bookings` / `Kan sessies met actieve boekingen niet verwijderen`
 
-### Files
-- `src/pages/TrainerScheduleOverview.tsx`
-- `src/i18n/locales/en/trainer.json`
-- `src/i18n/locales/nl/trainer.json`
+## Files
+- `src/pages/TrainerScheduleOverview.tsx` — Expand edit dialog with extra costs, start date, repeat count
+- `src/i18n/locales/en/trainer.json` — Add translation keys
+- `src/i18n/locales/nl/trainer.json` — Add translation keys
 
