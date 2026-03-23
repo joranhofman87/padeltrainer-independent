@@ -126,6 +126,7 @@ export default function TrainerScheduleOverview() {
 
   // Payment toggle loading
   const [togglingPayment, setTogglingPayment] = useState<string | null>(null);
+  const [togglingPrivacy, setTogglingPrivacy] = useState<string | null>(null);
 
   const dateFnsLocale = localeMap[i18n.language] || enUS;
 
