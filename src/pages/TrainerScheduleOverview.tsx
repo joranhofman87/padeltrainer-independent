@@ -1003,6 +1003,17 @@ export default function TrainerScheduleOverview() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-vat-toggle" className="text-sm">
+                {t("scheduleOverview.pricesIncludeVat", "Prices include VAT")}
+              </Label>
+              <Switch
+                id="edit-vat-toggle"
+                checked={cycleEditData.pricesIncludeVat}
+                onCheckedChange={(checked) => setCycleEditData((prev) => ({ ...prev, pricesIncludeVat: checked }))}
+              />
+            </div>
+
             {/* Extra costs */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
