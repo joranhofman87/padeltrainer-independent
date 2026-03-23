@@ -237,7 +237,9 @@ export default function TrainerScheduleOverview() {
     return map;
   }, [slots, t]);
 
-  // Filter by tab
+  const hasActiveFilters = filterDay !== "all" || filterLocation !== "all" || filterTime !== "all";
+
+  // Filter by tab + day/location/time
   const filtered = useMemo(() => {
     const result = new Map<string, { name: string; slots: SlotWithBookings[] }>();
 
@@ -245,9 +247,27 @@ export default function TrainerScheduleOverview() {
       const filteredSlots = group.slots.filter((s) => {
         const end = parseISO(s.end_time);
         const start = parseISO(s.start_time);
-        if (tab === "past") return isPast(end);
-        if (tab === "future") return isFuture(start);
-        return !isPast(end) || isFuture(start);
+
+        // Tab filter
+        if (tab === "past" && !isPast(end)) return false;
+        if (tab === "future" && !isFuture(start)) return false;
+        if (tab === "current" && isPast(end) && !isFuture(start)) return false;
+
+        // Day filter
+        if (filterDay !== "all" && start.getDay().toString() !== filterDay) return false;
+
+        // Location filter
+        if (filterLocation !== "all" && s.location_id !== filterLocation) return false;
+
+        // Time filter
+        if (filterTime !== "all") {
+          const hour = start.getHours();
+          if (filterTime === "morning" && (hour < 6 || hour >= 12)) return false;
+          if (filterTime === "afternoon" && (hour < 12 || hour >= 17)) return false;
+          if (filterTime === "evening" && (hour < 17 || hour >= 23)) return false;
+        }
+
+        return true;
       });
 
       if (filteredSlots.length > 0) {
@@ -272,7 +292,7 @@ export default function TrainerScheduleOverview() {
     });
 
     return result;
-  }, [grouped, tab, search]);
+  }, [grouped, tab, search, filterDay, filterLocation, filterTime]);
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => {
