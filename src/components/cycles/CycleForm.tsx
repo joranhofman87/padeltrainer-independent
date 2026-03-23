@@ -1534,22 +1534,31 @@ export default function CycleForm({
 
               {/* Pricing breakdown when extra costs exist */}
               {(() => {
-                const ecTotal = extraCosts.reduce((sum, ec) => sum + (ec.price || 0), 0);
-                const weeks = form.watch('number_of_weeks') || 0;
-                const totalExtraCosts = Math.round(ecTotal * weeks * 100) / 100;
+               const weeks = form.watch('number_of_weeks') || 0;
+                const perSessionTotal = extraCosts.filter(ec => (ec.type || 'per_session') === 'per_session').reduce((sum, ec) => sum + (ec.price || 0), 0);
+                const oneTimeTotal = extraCosts.filter(ec => ec.type === 'one_time').reduce((sum, ec) => sum + (ec.price || 0), 0);
+                const totalExtraCosts = Math.round((perSessionTotal * weeks + oneTimeTotal) * 100) / 100;
                 const baseTotal = form.watch('total_price') || 0;
                 const grandTotal = Math.round((Number(baseTotal) + totalExtraCosts) * 100) / 100;
-                if (ecTotal <= 0) return null;
+                if (perSessionTotal <= 0 && oneTimeTotal <= 0) return null;
                 return (
                   <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('form.totalPrice')}</span>
                       <span>€{Number(baseTotal).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{ecTotal.toFixed(2)})</span>
-                      <span>€{totalExtraCosts.toFixed(2)}</span>
-                    </div>
+                    {perSessionTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{perSessionTotal.toFixed(2)})</span>
+                        <span>€{(Math.round(perSessionTotal * weeks * 100) / 100).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {oneTimeTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('form.extraCosts')} ({t('form.oneTime', 'One-time')})</span>
+                        <span>€{oneTimeTotal.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="border-t pt-1 flex justify-between font-semibold">
                       <span>Total</span>
                       <span>€{grandTotal.toFixed(2)}</span>
