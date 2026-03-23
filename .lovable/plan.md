@@ -1,34 +1,36 @@
 
 
-# When Are Invoices Created? + Fix for Academy Cycle Flow
+# Generate Missing Invoices for Existing Bookings
 
-## Current Situation
+## Problem
+Rene has 836 confirmed bookings across 31 cycles with no invoices — they were created before the invoice trigger was added. We need a way to backfill draft invoices for these existing bookings.
 
-Invoices are **only** created in these scenarios:
-1. **Player self-books** via BookLesson page (calls `auto-create-invoice` after booking)
-2. **Mollie webhook** — after online payment completes
-3. **Scheduled `auto-invoice-cycles`** — for cycles with `invoice_after_weeks` payment timing
+## Approach
+Add a **"Generate missing invoices"** button on the Academy Invoices page + a new edge function that scans all bookings for an academy's trainers and creates draft invoices for any that aren't yet covered by an existing invoice.
 
-When you create a cycle from the **academy calendar** (BulkCreateSheet) and pre-assign players, bookings are created but **no invoices are generated**. Additionally, those bookings use `guest_player_id` (not `player_id`), which `auto-create-invoice` doesn't support.
+## Step 1: New Edge Function `backfill-invoices`
+File: `supabase/functions/backfill-invoices/index.ts`
 
-## Proposed Fix
+- Input: `academyProfileId`
+- Finds all trainer IDs linked to the academy
+- Queries all confirmed bookings for those trainers where `payment_status = 'pending'` and `paid_externally` is not true
+- Excludes bookings already referenced in an existing invoice's `booking_ids` array
+- Groups remaining bookings by `(cyclus_id, guest_player_id/player_id)` — one invoice per player per cycle
+- Calls `auto-create-invoice` with `asDraft: true` for each group
+- Returns count of invoices created
 
-### 1. Trigger invoice creation after BulkCreateSheet bookings
+## Step 2: Add Button to `AcademyInvoices.tsx`
+- Add a "Generate missing invoices" button in the header area (next to the settings link)
+- Shows a loading spinner while running
+- On completion, shows toast with count and refetches the invoice list
+- Only visible when there are few/no invoices (or always visible as a utility action)
 
-In `src/components/trainer/AddSlotDialog.tsx`, after bookings are successfully inserted (line ~889), call `auto-create-invoice` for each player's bookings — but only when payment is NOT marked as externally paid.
-
-### 2. Update `auto-create-invoice` to handle `guest_player_id`
-
-The edge function currently only looks at `booking.player_id` to find the customer. It needs to also check `guest_player_id` and look up the guest player's name from the `guest_players` table when `player_id` is null.
-
-### 3. Set invoice status to `draft` for academy-created bookings
-
-When invoices are auto-created from BulkCreateSheet (not from a payment), set `status: 'draft'` instead of `'sent'`, so they appear in the academy's Draft tab and can be sent in bulk later.
-
-Add a `draft` flag parameter to `auto-create-invoice` that the BulkCreateSheet passes.
+## Step 3: Translations
+Add keys for the button label and success/error messages in EN and NL academy.json.
 
 ## Files
-- `src/components/trainer/AddSlotDialog.tsx` — Call `auto-create-invoice` after creating bookings
-- `supabase/functions/auto-create-invoice/index.ts` — Support `guest_player_id`, add `asDraft` parameter
-- `supabase/functions/auto-invoice-cycles/index.ts` — Also handle `guest_player_id` bookings in its query
+- `supabase/functions/backfill-invoices/index.ts` — New edge function
+- `src/pages/academy/AcademyInvoices.tsx` — Add generate button
+- `src/i18n/locales/en/academy.json` — Translations
+- `src/i18n/locales/nl/academy.json` — Translations
 
