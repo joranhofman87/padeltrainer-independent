@@ -1,29 +1,42 @@
 
 
-# Secure Public Invoice Pages: No-Index + PII Protection
+# Improve Public Invoice Page Design + Post-Payment CTA
 
-## Problem
-1. Payment links (`/nl/academies/slug/pay/token`) could be indexed by search engines, exposing them publicly.
-2. Once paid, the page still shows player name, line item details, and amounts — unnecessary PII exposure.
+## Problems
+1. **Logo not showing** — The edge function tries `createSignedUrl()` on a full public URL stored in `invoice_logo_url`, which fails. It should use the URL directly since the `avatars` bucket is public.
+2. **Missing business details** — The page doesn't show the academy's business name, address, KvK, BTW, or IBAN — all data configured in invoice settings.
+3. **Basic design** — Needs a proper branded layout with academy banner, professional invoice styling.
+4. **Post-payment CTA** — After paying, guests should see "Want an invoice? Create an account" which links to signup with context to auto-link their guest profile.
 
-## Plan
+## Changes
 
-### 1. Add `noindex` meta tag to `PublicInvoicePay.tsx`
-- Import the existing `SEO` component and render it with `noIndex={true}` at the top of every render path (loading, paid, error, and active invoice views).
-- This adds `<meta name="robots" content="noindex, nofollow">` preventing all search engine indexing.
+### 1. Edge function: Return business details + fix logo
+**File: `supabase/functions/get-public-invoice/index.ts`**
 
-### 2. Block payment URLs in `robots.txt`
-- Add `Disallow: /*/pay/` to block crawlers that don't respect meta tags.
+- Add `business_name, business_address, kvk_number, btw_number, iban, bic` to the academy_profiles select
+- **Fix logo**: The `invoice_logo_url` field stores a full public URL (set via `getPublicUrl()` in settings). Stop calling `createSignedUrl()` — just pass the URL through directly.
+- Return business details in the academy response object
 
-### 3. Strip PII from the "already paid" state
-- **Edge function** (`get-public-invoice`): When status is `paid`, only return `invoiceNumber` and `status` — no player name, amounts, or line items (already partially done, just verify).
-- **Frontend** (`PublicInvoicePay.tsx`): The paid state already shows a generic "Invoice X has been paid" message without details — confirm no PII leaks. Remove the invoice number display too, showing only "This invoice has been paid. Thank you!"
+### 2. Redesign public invoice page
+**File: `src/pages/PublicInvoicePay.tsx`**
 
-### 4. Strip PII from the "processing" redirect state
-- After Mollie redirects with `?status=success`, show only "Your payment is being processed" without the invoice number.
+- **Full-width banner header** with academy logo + banner color (like a real invoice header)
+- **From section**: Show academy business name, address, KvK, BTW number
+- **To section**: Player name
+- **Payment details footer**: Show IBAN and BIC for manual payment option
+- **Professional styling**: Clean card layout, proper spacing, muted backgrounds
+- European number formatting already in place
+
+### 3. Post-payment CTA with academy context
+**File: `src/pages/PublicInvoicePay.tsx`**
+
+- On the "paid" and "processing" screens, show branded CTA: "Want to view your invoices and receipts? Create a free account"
+- Link to `/app/signup/player` — the existing `link_guest_invoices_on_signup` DB trigger will automatically connect their invoices when they sign up with the same email
+
+### 4. Update PublicInvoiceData interface
+- Add `businessName`, `businessAddress`, `kvkNumber`, `btwNumber`, `iban`, `bic` to the academy type in the interface
 
 ## Files
-- `src/pages/PublicInvoicePay.tsx` — Add `<SEO noIndex />`, sanitize paid/processing messages
-- `public/robots.txt` — Add `Disallow: /*/pay/`
-- `supabase/functions/get-public-invoice/index.ts` — Verify paid state returns minimal data (already correct)
+- `supabase/functions/get-public-invoice/index.ts` — Fix logo URL, add business fields
+- `src/pages/PublicInvoicePay.tsx` — Redesign with branding, business details, CTA
 
