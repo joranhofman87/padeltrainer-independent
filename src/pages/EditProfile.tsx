@@ -558,8 +558,8 @@ export default function EditProfile() {
                   />
                 </div>
                 <div>
-                  <h3 className="font-semibold">{formData.full_name || 'Your Name'}</h3>
-                  <p className="text-sm text-muted-foreground capitalize">{role || 'User'}</p>
+                  <h3 className="font-semibold">{formData.full_name || t('editProfile.yourName')}</h3>
+                  <p className="text-sm text-muted-foreground capitalize">{role || t('editProfile.user')}</p>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
