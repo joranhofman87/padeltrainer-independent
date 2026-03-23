@@ -271,7 +271,8 @@
     "business": "Business",
     "academy": "Academy",
     "waitingList": "Waiting List",
-    "openSlots": "Open Slots"
+    "openSlots": "Open Slots",
+    "invoices": "Invoices"
   },
   "invoiceSettings": {
     "title": "Invoice Settings",
@@ -409,8 +410,5 @@
     "linkError": "Failed to generate payment link",
     "downloadPdf": "Download PDF",
     "noPdf": "No PDF available"
-  },
-  "nav": {
-    "invoices": "Invoices"
   }
 }

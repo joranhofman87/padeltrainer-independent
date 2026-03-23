@@ -282,7 +282,8 @@
     "business": "Zakelijk",
     "academy": "Academy",
     "waitingList": "Wachtlijst",
-    "openSlots": "Open Plekken"
+    "openSlots": "Open Plekken",
+    "invoices": "Facturen"
   },
   "invoiceSettings": {
     "title": "Factuur Instellingen",
@@ -420,9 +421,6 @@
     "linkError": "Betaallink genereren mislukt",
     "downloadPdf": "PDF downloaden",
     "noPdf": "Geen PDF beschikbaar"
-  },
-  "nav": {
-    "invoices": "Facturen"
   },
   "calendar": {
     "created": "Aangemaakt"
