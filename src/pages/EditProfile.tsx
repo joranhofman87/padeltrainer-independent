@@ -904,7 +904,7 @@ export default function EditProfile() {
                       return (
                         <div className="space-y-4">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Level range:</span>
+                            <span className="text-muted-foreground">{tTrainer('editProfile.levelRange')}</span>
                             <span className="font-medium">
                               {minVal.toFixed(1)} - {maxVal.toFixed(1)} ({preferredSystem.name})
                             </span>
