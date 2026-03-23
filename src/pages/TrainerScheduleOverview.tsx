@@ -105,6 +105,10 @@ type CycleEditData = {
   extraCosts: ExtraCost[];
   startDate: Date | undefined;
   originalStartDate: Date | undefined;
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  originalStartTime: string;
+  originalEndTime: string;
   repeatCount: string;
   originalRepeatCount: number;
   pricesIncludeVat: boolean;
