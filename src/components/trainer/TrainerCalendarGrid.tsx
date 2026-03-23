@@ -25,7 +25,10 @@ interface TrainerCalendarGridProps {
   onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
+// Half-hour grid: 8.0, 8.5, 9.0, 9.5, ..., 23.0 (31 entries)
+const HALF_HOURS = Array.from({ length: 31 }, (_, i) => 8 + i * 0.5);
+// Full hours only (for mobile "add slot" buttons, day view, etc.)
+const FULL_HOURS = Array.from({ length: 16 }, (_, i) => i + 8);
 
 export function TrainerCalendarGrid({
   slots,
@@ -78,40 +81,35 @@ export function TrainerCalendarGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
-  // Calculate slot duration in hours for visual spanning (including fractional hours)
-  const getSlotDurationHours = (slot: SlotWithBookings) => {
+  // Calculate how many half-hour rows a slot spans
+  const getSlotRowSpan = (slot: SlotWithBookings) => {
     const startTime = new Date(slot.start_time).getTime();
     const endTime = new Date(slot.end_time).getTime();
-    const hours = (endTime - startTime) / (60 * 60 * 1000);
-    return Math.max(1, hours); // Keep fractional value (1.5, 2.5, etc.)
+    const halfHours = (endTime - startTime) / (30 * 60 * 1000);
+    return Math.max(1, Math.round(halfHours));
   };
 
-  // Calculate the vertical offset for slots starting at :30
-  const getSlotStartOffset = (slot: SlotWithBookings) => {
-    const startMinutes = new Date(slot.start_time).getMinutes();
-    return startMinutes >= 30 ? 0.5 : 0; // 0.5 = 50% of cell height
+  // Get the half-hour index for a slot (e.g., 10:00 → index of 10.0, 10:30 → index of 10.5)
+  const getSlotHalfHourKey = (slot: SlotWithBookings) => {
+    const d = new Date(slot.start_time);
+    return d.getHours() + (d.getMinutes() >= 30 ? 0.5 : 0);
   };
 
-  // Track which cells are occupied by spanning slots to prevent clicks
+  // Track which half-hour cells are occupied by spanning slots
   const occupiedCells = useMemo(() => {
     const occupied = new Set<string>();
     
     slots.forEach((slot) => {
       const slotDate = new Date(slot.start_time);
       const dayKey = format(slotDate, "yyyy-MM-dd");
-      const startHour = slotDate.getHours();
-      const startOffset = getSlotStartOffset(slot);
-      const durationHours = getSlotDurationHours(slot);
+      const startKey = getSlotHalfHourKey(slot);
+      const span = getSlotRowSpan(slot);
       
-      // Calculate total hours spanned including offset
-      // E.g., 14:30-16:00 = 1.5h duration + 0.5 offset = occupies 14:00 (partial), 15:00 (full)
-      const totalSpan = Math.ceil(durationHours + startOffset);
-      
-      // Mark hours after the first as occupied (the first shows the slot card)
-      for (let h = 1; h < totalSpan; h++) {
-        const occupiedHour = startHour + h;
-        if (occupiedHour <= 23) {
-          occupied.add(`${dayKey}-${occupiedHour}`);
+      // Mark rows after the first as occupied
+      for (let i = 1; i < span; i++) {
+        const occupiedKey = startKey + i * 0.5;
+        if (occupiedKey <= 23) {
+          occupied.add(`${dayKey}-${occupiedKey}`);
         }
       }
     });
@@ -119,13 +117,39 @@ export function TrainerCalendarGrid({
     return occupied;
   }, [slots]);
 
+  // Map slots to half-hour keys for the grid
+  const slotsByDayAndHalfHour = useMemo(() => {
+    const map: Record<string, Record<number, SlotWithBookings[]>> = {};
+    
+    weekDays.forEach((day) => {
+      const dayKey = format(day, "yyyy-MM-dd");
+      map[dayKey] = {};
+      HALF_HOURS.forEach((hh) => {
+        map[dayKey][hh] = [];
+      });
+    });
+
+    slots.forEach((slot) => {
+      const slotDate = new Date(slot.start_time);
+      const dayKey = format(slotDate, "yyyy-MM-dd");
+      const halfHourKey = getSlotHalfHourKey(slot);
+      
+      if (map[dayKey] && map[dayKey][halfHourKey] !== undefined) {
+        map[dayKey][halfHourKey].push(slot);
+      }
+    });
+
+    return map;
+  }, [slots, weekDays]);
+
+  // Also keep full-hour map for mobile view
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, SlotWithBookings[]>> = {};
     
     weekDays.forEach((day) => {
       const dayKey = format(day, "yyyy-MM-dd");
       map[dayKey] = {};
-      HOURS.forEach((hour) => {
+      FULL_HOURS.forEach((hour) => {
         map[dayKey][hour] = [];
       });
     });
@@ -220,21 +244,27 @@ export function TrainerCalendarGrid({
             ))}
           </div>
 
-          {/* Time Grid */}
+          {/* Time Grid - Half-hour rows */}
           <div className="relative">
-            {HOURS.map((hour) => (
-              <div key={hour} className="grid grid-cols-8 border-b min-h-[80px]">
-                <div className="p-2 text-xs text-muted-foreground text-right pr-3 pt-1">
-                  {String(hour).padStart(2, "0")}:00
-                </div>
-                {weekDays.map((day) => {
-                  const dayKey = format(day, "yyyy-MM-dd");
-                  const slotsInCell = slotsByDayAndHour[dayKey]?.[hour] || [];
-                  const cellKey = `${dayKey}-${hour}`;
-                  const isCellOccupied = occupiedCells.has(cellKey);
+            {HALF_HOURS.map((hh) => {
+              const isFullHour = hh % 1 === 0;
+              const hourLabel = isFullHour ? `${String(hh).padStart(2, "0")}:00` : null;
+              
+              return (
+                <div key={hh} className={cn("grid grid-cols-8 min-h-[40px]", isFullHour && "border-b")}>
+                  <div className="p-1 text-xs text-muted-foreground text-right pr-3 pt-0.5">
+                    {hourLabel}
+                  </div>
+                  {weekDays.map((day) => {
+                    const dayKey = format(day, "yyyy-MM-dd");
+                    const slotsInCell = slotsByDayAndHalfHour[dayKey]?.[hh] || [];
+                    const cellKey = `${dayKey}-${hh}`;
+                    const isCellOccupied = occupiedCells.has(cellKey);
 
+                    const cellHour = Math.floor(hh);
+                    const cellMinutes = (hh % 1) * 60;
                     const isPastCell = isBefore(
-                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
+                      new Date(day.getFullYear(), day.getMonth(), day.getDate(), cellHour, cellMinutes),
                       new Date()
                     );
 
@@ -242,43 +272,52 @@ export function TrainerCalendarGrid({
                       <div
                         key={cellKey}
                         className={cn(
-                          "border-l p-1 space-y-1 min-h-[80px] group relative",
+                          "border-l p-0.5 min-h-[40px] group relative",
                           isToday(day) && "bg-primary/5",
+                          isFullHour && "border-b",
                           !isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && "cursor-pointer hover:bg-muted/50"
                         )}
                         onClick={() => {
                           if (!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick) {
-                            onCellClick(day, hour);
+                            onCellClick(day, cellHour);
                           }
                         }}
                       >
-                        {slotsInCell.map((slot) => (
-                          <CalendarSlotCard 
-                            key={slot.id} 
-                            slot={slot} 
-                            durationHours={getSlotDurationHours(slot)}
-                            startOffset={getSlotStartOffset(slot)}
-                            showTrainerInfo={showTrainerInfo}
-                            onSlotClick={onSlotClick}
-                            onBookForPlayer={onBookForPlayer}
-                            onDuplicateCyclus={onDuplicateCyclus}
-                            onDeleteSlot={onDeleteSlot}
-                            onEditBooking={onEditBooking}
-                            onToggleMarkedFull={onToggleMarkedFull}
-                          />
-                        ))}
-                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && (
+                        {slotsInCell.map((slot) => {
+                          const span = getSlotRowSpan(slot);
+                          return (
+                            <div
+                              key={slot.id}
+                              className="relative z-10"
+                              style={span > 1 ? { height: `${span * 40 - 4}px` } : undefined}
+                            >
+                              <CalendarSlotCard 
+                                slot={slot} 
+                                rowSpan={span}
+                                showTrainerInfo={showTrainerInfo}
+                                onSlotClick={onSlotClick}
+                                onBookForPlayer={onBookForPlayer}
+                                onDuplicateCyclus={onDuplicateCyclus}
+                                onDeleteSlot={onDeleteSlot}
+                                onEditBooking={onEditBooking}
+                                onToggleMarkedFull={onToggleMarkedFull}
+                              />
+                            </div>
+                          );
+                        })}
+                        {!isPastCell && slotsInCell.length === 0 && !isCellOccupied && onCellClick && isFullHour && (
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="bg-primary/10 rounded-md p-2">
-                              <Plus className="h-4 w-4 text-primary" />
+                            <div className="bg-primary/10 rounded-md p-1.5">
+                              <Plus className="h-3 w-3 text-primary" />
                             </div>
                           </div>
                         )}
                       </div>
                     );
-                })}
-              </div>
-            ))}
+                  })}
+                </div>
+              );
+            })}
 
             {/* Empty State */}
             {slots.length === 0 && (
@@ -377,7 +416,7 @@ function MobileDayView({
 
         {/* Time Slots List */}
         <div className="space-y-2 px-2">
-          {HOURS.map((hour) => {
+          {FULL_HOURS.map((hour) => {
           const slotsAtHour = slotsByHour[hour] || [];
           const isPastHour = isBefore(
             new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour),
