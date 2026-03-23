@@ -1668,47 +1668,85 @@ export default function CycleForm({
                 <Label className="text-sm font-medium">{t('form.extraCosts')}</Label>
                 <p className="text-xs text-muted-foreground">{t('form.extraCostsHelp')}</p>
                 {extraCosts.map((cost, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
-                    <Input
-                      placeholder={t('form.costDescription')}
-                      value={cost.description}
-                      onChange={(e) => {
-                        const updated = [...extraCosts];
-                        updated[index] = { ...updated[index], description: e.target.value };
-                        setExtraCosts(updated);
-                      }}
-                    />
-                    <div className="relative w-28">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                  <div key={index} className="space-y-1.5">
+                    <div className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
                       <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={cost.price || ''}
+                        placeholder={t('form.costDescription')}
+                        value={cost.description}
                         onChange={(e) => {
                           const updated = [...extraCosts];
-                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                          updated[index] = { ...updated[index], description: e.target.value };
                           setExtraCosts(updated);
                         }}
-                        className="pl-7"
                       />
+                      <div className="relative w-28">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                          value={cost.price || ''}
+                          onChange={(e) => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                            setExtraCosts(updated);
+                          }}
+                          className="pl-7"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
+                    <div className="flex gap-2 pl-1">
+                      <label className={cn(
+                        "flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors",
+                        (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                      )}>
+                        <input
+                          type="radio"
+                          name={`cost_type_${index}`}
+                          checked={(cost.type || 'per_session') === 'per_session'}
+                          onChange={() => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], type: 'per_session' };
+                            setExtraCosts(updated);
+                          }}
+                          className="sr-only"
+                        />
+                        {t('form.perSession', 'Per session')}
+                      </label>
+                      <label className={cn(
+                        "flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors",
+                        cost.type === 'one_time' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                      )}>
+                        <input
+                          type="radio"
+                          name={`cost_type_${index}`}
+                          checked={cost.type === 'one_time'}
+                          onChange={() => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], type: 'one_time' };
+                            setExtraCosts(updated);
+                          }}
+                          className="sr-only"
+                        />
+                        {t('form.oneTime', 'One-time')}
+                      </label>
+                    </div>
                   </div>
                 ))}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0 }])}
+                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0, type: 'per_session' }])}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addCost')}

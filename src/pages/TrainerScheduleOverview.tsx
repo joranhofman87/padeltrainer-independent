@@ -880,7 +880,7 @@ export default function TrainerScheduleOverview() {
                   onClick={() =>
                     setCycleEditData((prev) => ({
                       ...prev,
-                      extraCosts: [...prev.extraCosts, { description: "", price: 0 }],
+                      extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
                     }))
                   }
                 >
