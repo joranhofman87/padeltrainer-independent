@@ -32,6 +32,7 @@ interface Invoice {
   subtotal: number;
   vat_amount: number;
   vat_rate: number;
+  public_token: string;
 }
 
 export default function AcademyInvoices() {
