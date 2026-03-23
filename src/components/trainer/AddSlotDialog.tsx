@@ -169,7 +169,7 @@ export function AddSlotDialog({
         min_rating: slotMinRating,
         max_rating: slotMaxRating,
         prices_include_vat: pricesIncludeVat,
-      });
+      } as any);
 
       if (error) throw error;
 
