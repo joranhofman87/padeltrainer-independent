@@ -220,8 +220,27 @@ serve(async (req) => {
     const bookingIds: string[] = payment.metadata?.booking_ids || 
       (payment.metadata?.booking_id ? [payment.metadata.booking_id] : []);
     
-    if (bookingIds.length === 0) {
-      logStep("No booking IDs in payment metadata");
+    // Check if this is an invoice-only payment (no bookings)
+    const invoiceIdFromMetadata = payment.metadata?.invoice_id;
+
+    if (bookingIds.length === 0 && !invoiceIdFromMetadata) {
+      logStep("No booking IDs or invoice ID in payment metadata");
+      return new Response("OK", { status: 200 });
+    }
+
+    // Handle invoice-only payments (generated via create-invoice-payment)
+    if (invoiceIdFromMetadata && bookingIds.length === 0) {
+      if (payment.status === "paid") {
+        const { error: invUpdateError } = await supabase
+          .from("invoices")
+          .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
+          .eq("id", invoiceIdFromMetadata);
+        if (invUpdateError) {
+          logStep("Failed to update invoice", { error: invUpdateError.message });
+        } else {
+          logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
+        }
+      }
       return new Response("OK", { status: 200 });
     }
 

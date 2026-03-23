@@ -255,6 +255,7 @@ serve(async (req) => {
       .from("invoices")
       .insert({
         trainer_id: trainerId,
+        academy_profile_id: academyProfileId,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate.toISOString().split("T")[0],
         due_date: dueDate.toISOString().split("T")[0],
