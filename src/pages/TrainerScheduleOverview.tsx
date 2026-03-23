@@ -268,6 +268,7 @@ export default function TrainerScheduleOverview() {
       pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
+      isPrivate: firstSlot?.is_marked_full ?? false,
     });
     setEditDialogOpen(true);
   };
