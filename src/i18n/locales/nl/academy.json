@@ -389,6 +389,41 @@
     "enabled": "Wachtlijst is nu actief op je profiel",
     "disabled": "Wachtlijst is uitgeschakeld"
   },
+  "invoices": {
+    "title": "Facturen",
+    "description": "Beheer facturen voor je academy",
+    "editSettings": "Factuurinstellingen",
+    "totalUnpaid": "Onbetaald",
+    "draft": "Concept",
+    "sent": "Verzonden",
+    "paid": "Betaald",
+    "overdue": "Achterstallig",
+    "sentOverdue": "Verzonden / Achterstallig",
+    "all": "Alle",
+    "number": "Nummer",
+    "player": "Speler",
+    "date": "Datum",
+    "dueDate": "Vervaldatum",
+    "amount": "Bedrag",
+    "status": "Status",
+    "actions": "Acties",
+    "noInvoices": "Geen facturen gevonden",
+    "send": "Verstuur",
+    "sendAllDrafts": "Alle concepten versturen",
+    "markedAsSent": "Facturen gemarkeerd als verzonden",
+    "markedAsPaid": "Factuur gemarkeerd als betaald",
+    "markPaid": "Markeer als betaald",
+    "paymentLink": "Betaallink",
+    "generateLink": "Betaallink genereren",
+    "copyLink": "Link kopiëren",
+    "linkCopied": "Betaallink gekopieerd naar klembord",
+    "linkError": "Betaallink genereren mislukt",
+    "downloadPdf": "PDF downloaden",
+    "noPdf": "Geen PDF beschikbaar"
+  },
+  "nav": {
+    "invoices": "Facturen"
+  },
   "calendar": {
     "created": "Aangemaakt"
   }
