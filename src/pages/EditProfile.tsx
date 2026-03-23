@@ -330,8 +330,8 @@ export default function EditProfile() {
       await refreshAuth();
 
       toast({
-        title: 'Avatar updated',
-        description: 'Your profile picture has been updated.',
+        title: t('editProfile.avatarUpdated'),
+        description: t('editProfile.avatarUpdatedDescription'),
       });
     } catch (error: any) {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
