@@ -1,0 +1,1 @@
+ALTER TABLE public.academy_profiles ADD COLUMN invoice_banner_color text DEFAULT null;

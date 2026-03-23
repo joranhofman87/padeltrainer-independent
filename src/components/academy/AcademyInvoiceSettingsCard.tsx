@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
-import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye } from 'lucide-react';
+import { Building2, Save, Loader2, CheckCircle2, Mail, X, Plus, Upload, Trash2, Hash, Eye, Palette } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface AcademyInvoiceSettingsCardProps {
@@ -35,6 +35,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     invoice_next_number: 1,
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerColor, setBannerColor] = useState<string>('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
@@ -45,7 +46,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
       setLoading(true);
       const { data } = await supabase
         .from('academy_profiles')
-        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number')
+        .select('business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_logo_url, invoice_prefix, invoice_next_number, invoice_banner_color')
         .eq('id', academyId)
         .maybeSingle();
 
@@ -66,6 +67,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
           invoice_next_number: (data as any).invoice_next_number || 1,
         });
         setLogoUrl((data as any).invoice_logo_url || null);
+        setBannerColor((data as any).invoice_banner_color || '');
         setForwardEmails((data as any).invoice_forward_emails || []);
       }
       setLoading(false);
@@ -81,7 +83,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     setUploadingLogo(true);
     try {
       const ext = file.name.split('.').pop();
-      const path = `invoice-logos/academy-${academyId}.${ext}`;
+      const path = `academies/${academyId}/invoice-logo.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(path, file, { upsert: true });
@@ -96,7 +98,10 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
 
   const handleRemoveLogo = async () => {
     try {
-      await supabase.storage.from('avatars').remove([`invoice-logos/academy-${academyId}`]);
+      // Try to remove common extensions
+      const extensions = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
+      const paths = extensions.map(ext => `academies/${academyId}/invoice-logo.${ext}`);
+      await supabase.storage.from('avatars').remove(paths);
     } catch {}
     setLogoUrl(null);
   };
@@ -122,6 +127,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         invoice_logo_url: logoUrl || null,
         invoice_prefix: formData.invoice_prefix || 'INV',
         invoice_next_number: formData.invoice_next_number || 1,
+        invoice_banner_color: bannerColor || null,
       } as any)
       .eq('id', academyId);
 
@@ -186,6 +192,54 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
               {t('invoiceSettings.uploadLogo')}
             </Button>
           </div>
+        </div>
+
+        {/* Banner Color */}
+        <div className="space-y-3 pb-4 border-b">
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-muted-foreground" />
+            <Label>{t('invoiceSettings.bannerColor')}</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('invoiceSettings.bannerColorDescription')}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              { color: '', label: t('invoiceSettings.noColor') },
+              { color: '#1a2332', label: 'Navy' },
+              { color: '#000000', label: 'Black' },
+              { color: '#1e3a5f', label: 'Blue' },
+              { color: '#2d4a3e', label: 'Green' },
+            ].map((preset) => (
+              <button
+                key={preset.color}
+                type="button"
+                onClick={() => setBannerColor(preset.color)}
+                className={`h-8 rounded border-2 px-3 text-xs font-medium transition-all ${
+                  bannerColor === preset.color ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                } ${preset.color ? 'text-white' : 'bg-background text-foreground'}`}
+                style={preset.color ? { backgroundColor: preset.color } : undefined}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={bannerColor || '#1a2332'}
+                onChange={(e) => setBannerColor(e.target.value)}
+                className="h-8 w-8 rounded border cursor-pointer"
+              />
+              <span className="text-xs text-muted-foreground">{t('invoiceSettings.customColor')}</span>
+            </div>
+          </div>
+          {bannerColor && (
+            <div className="flex items-center gap-3 p-3 rounded-md" style={{ backgroundColor: bannerColor }}>
+              {logoUrl ? (
+                <img src={logoUrl} alt="Preview" className="h-8 max-w-[120px] object-contain" />
+              ) : (
+                <span className="text-white text-sm font-medium">{formData.business_name || 'Your Logo Here'}</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">

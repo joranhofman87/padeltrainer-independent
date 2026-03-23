@@ -302,7 +302,11 @@
     "nextNumber": "Next number",
     "previewNumber": "Preview",
     "forwardEmails": "Forward Invoices",
-    "forwardEmailsDescription": "Paid invoices will be automatically forwarded to these email addresses (e.g. accounting software)."
+    "forwardEmailsDescription": "Paid invoices will be automatically forwarded to these email addresses (e.g. accounting software).",
+    "bannerColor": "Invoice Banner Color",
+    "bannerColorDescription": "Background color for the invoice header. Useful when your logo is white or transparent.",
+    "noColor": "No banner",
+    "customColor": "Custom"
   },
   "common": {
     "cancel": "Cancel",

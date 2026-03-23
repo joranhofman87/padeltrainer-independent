@@ -313,7 +313,11 @@
     "nextNumber": "Volgend nummer",
     "previewNumber": "Voorbeeld",
     "forwardEmails": "Facturen doorsturen",
-    "forwardEmailsDescription": "Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware)."
+    "forwardEmailsDescription": "Betaalde facturen worden automatisch doorgestuurd naar deze e-mailadressen (bijv. boekhoudsoftware).",
+    "bannerColor": "Factuur bannerkeur",
+    "bannerColorDescription": "Achtergrondkleur voor de factuurkop. Handig als je logo wit of transparant is.",
+    "noColor": "Geen banner",
+    "customColor": "Aangepast"
   },
   "common": {
     "cancel": "Annuleren",
