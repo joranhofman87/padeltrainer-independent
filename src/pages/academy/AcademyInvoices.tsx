@@ -261,8 +261,18 @@ export default function AcademyInvoices() {
             <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
           <TabsTrigger value="draft">{t("invoices.draft", "Draft")} ({draftInvoices.length})</TabsTrigger>
           <TabsTrigger value="sent">{t("invoices.sentOverdue", "Sent / Overdue")} ({sentInvoices.length})</TabsTrigger>
-          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
-        </TabsList>
+            <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
+          </TabsList>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t("invoices.searchPlaceholder", "Search player name...")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-64"
+            />
+          </div>
+        </div>
 
         <TabsContent value={activeTab} className="mt-4">
           {isLoading ? (
