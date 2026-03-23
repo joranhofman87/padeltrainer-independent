@@ -282,7 +282,8 @@
     "business": "Zakelijk",
     "academy": "Academy",
     "waitingList": "Wachtlijst",
-    "openSlots": "Open Plekken"
+    "openSlots": "Open Plekken",
+    "invoices": "Facturen"
   },
   "invoiceSettings": {
     "title": "Factuur Instellingen",
