@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,8 @@ import {
   Loader2,
   X,
   AlertTriangle,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -62,6 +65,7 @@ type SlotWithBookings = {
   cyclus_name: string | null;
   max_participants: number | null;
   is_public: boolean;
+  is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
   locations?: { name: string; city: string } | null;
@@ -83,6 +87,7 @@ type CycleEditData = {
   pricePerSession: string;
   locationId: string;
   maxParticipants: string;
+  isPrivate: boolean;
 };
 
 type TrainerLocationOption = {
@@ -111,6 +116,7 @@ export default function TrainerScheduleOverview() {
     pricePerSession: "",
     locationId: "",
     maxParticipants: "",
+    isPrivate: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -120,6 +126,7 @@ export default function TrainerScheduleOverview() {
 
   // Payment toggle loading
   const [togglingPayment, setTogglingPayment] = useState<string | null>(null);
+  const [togglingPrivacy, setTogglingPrivacy] = useState<string | null>(null);
 
   const dateFnsLocale = localeMap[i18n.language] || enUS;
 
@@ -133,7 +140,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id, price_per_session,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -261,6 +268,7 @@ export default function TrainerScheduleOverview() {
       pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
+      isPrivate: firstSlot?.is_marked_full ?? false,
     });
     setEditDialogOpen(true);
   };
@@ -270,6 +278,7 @@ export default function TrainerScheduleOverview() {
     setSavingEdit(true);
     const updates: Record<string, unknown> = {
       cyclus_name: cycleEditData.name.trim(),
+      is_marked_full: cycleEditData.isPrivate,
     };
     if (cycleEditData.pricePerSession !== "") {
       updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
@@ -327,6 +336,26 @@ export default function TrainerScheduleOverview() {
     } else {
       toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
       setRemoveBookingId(null);
+      invalidate();
+    }
+  };
+
+  // Toggle slot privacy
+  const handleToggleSlotPrivacy = async (slotId: string, currentValue: boolean) => {
+    setTogglingPrivacy(slotId);
+    const { error } = await supabase
+      .from("availability_slots")
+      .update({ is_marked_full: !currentValue })
+      .eq("id", slotId);
+    setTogglingPrivacy(null);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({
+        title: !currentValue
+          ? t("scheduleOverview.markAsPrivate", "Mark as private")
+          : t("scheduleOverview.markAsPublic", "Mark as public"),
+      });
       invalidate();
     }
   };
@@ -496,7 +525,7 @@ export default function TrainerScheduleOverview() {
                                 {unpaid} {t("scheduleOverview.unpaid", "unpaid")}
                               </Badge>
                             )}
-                            {!slot.is_public && (
+                            {slot.is_marked_full && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                 {t("scheduleOverview.private", "Private")}
                               </Badge>
@@ -509,9 +538,29 @@ export default function TrainerScheduleOverview() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              onClick={() => handleToggleSlotPrivacy(slot.id, slot.is_marked_full)}
+                              disabled={togglingPrivacy === slot.id}
+                              title={
+                                slot.is_marked_full
+                                  ? t("scheduleOverview.markAsPublic", "Mark as public")
+                                  : t("scheduleOverview.markAsPrivate", "Mark as private")
+                              }
+                            >
+                              {togglingPrivacy === slot.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : slot.is_marked_full ? (
+                                <Lock className="h-3.5 w-3.5" />
+                              ) : (
+                                <LockOpen className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
                               onClick={() =>
                                 navigate(
-                                  `/trainer/calendar?date=${format(startDate, "yyyy-MM-dd")}`
+                                  `/app/trainer/calendar?date=${format(startDate, "yyyy-MM-dd")}`
                                 )
                               }
                               title={t("scheduleOverview.edit", "Edit")}
@@ -659,6 +708,18 @@ export default function TrainerScheduleOverview() {
                 min="1"
                 value={cycleEditData.maxParticipants}
                 onChange={(e) => setCycleEditData((prev) => ({ ...prev, maxParticipants: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="cycle-private-toggle">
+                {t("scheduleOverview.cyclePrivate", "Private (hidden from players)")}
+              </Label>
+              <Switch
+                id="cycle-private-toggle"
+                checked={cycleEditData.isPrivate}
+                onCheckedChange={(checked) =>
+                  setCycleEditData((prev) => ({ ...prev, isPrivate: checked }))
+                }
               />
             </div>
             <Alert>
