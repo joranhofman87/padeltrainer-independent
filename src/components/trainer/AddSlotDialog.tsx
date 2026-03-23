@@ -126,6 +126,7 @@ export function AddSlotDialog({
   const [slotMaxRating, setSlotMaxRating] = useState<number | null>(null);
   const [trainerAcademy, setTrainerAcademy] = useState<Partial<AcademyProfile> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   // Sync date/time when dialog opens with new defaults (e.g. clicking a calendar cell)
   useEffect(() => {
