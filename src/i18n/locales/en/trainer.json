@@ -70,7 +70,9 @@
     "startDate": "Start date",
     "repeatCount": "Number of weeks",
     "cannotRemoveBookedSlots": "Cannot remove {{count}} session(s) with active bookings",
-    "removeCost": "Remove"
+    "removeCost": "Remove",
+    "perSession": "Per session",
+    "oneTime": "One-time"
   },
   "profile": {
     "shareProfile": "Share Profile",
