@@ -42,6 +42,9 @@ export default function AcademyInvoices() {
   const [activeTab, setActiveTab] = useState("all");
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
+  const formatEuro = (amount: number) =>
+    amount.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["academy-invoices", activeAcademy?.id],
     queryFn: async () => {
