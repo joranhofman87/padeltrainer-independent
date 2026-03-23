@@ -284,6 +284,9 @@ export default function TrainerScheduleOverview() {
   // Edit cycle
   const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
     const firstSlot = group.slots[0];
+    const sortedSlots = [...group.slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    const earliestStart = sortedSlots[0] ? parseISO(sortedSlots[0].start_time) : undefined;
+    const extraCosts: ExtraCost[] = Array.isArray(firstSlot?.extra_costs) ? (firstSlot.extra_costs as ExtraCost[]) : [];
     setEditCycleId(cycleId);
     setEditCycleSlotCount(group.slots.length);
     setCycleEditData({
@@ -292,6 +295,11 @@ export default function TrainerScheduleOverview() {
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
       isPrivate: firstSlot?.is_marked_full ?? false,
+      extraCosts: extraCosts.length > 0 ? extraCosts : [],
+      startDate: earliestStart,
+      originalStartDate: earliestStart,
+      repeatCount: String(group.slots.length),
+      originalRepeatCount: group.slots.length,
     });
     setEditDialogOpen(true);
   };
