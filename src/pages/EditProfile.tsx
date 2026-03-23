@@ -867,7 +867,7 @@ export default function EditProfile() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                      <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">{tTrainer('editProfile.ratingSystem')}</Label>
                       <Select
                         value={trainerData.preferred_rating_system}
                         onValueChange={(value) => {
