@@ -280,8 +280,8 @@ export default function EditProfile() {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select an image file',
+        title: t('editProfile.invalidFileType'),
+        description: t('editProfile.invalidFileTypeDescription'),
         variant: 'destructive',
       });
       return;
@@ -290,8 +290,8 @@ export default function EditProfile() {
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
-        title: 'File too large',
-        description: 'Please select an image smaller than 5MB',
+        title: t('editProfile.fileTooLarge'),
+        description: t('editProfile.fileTooLargeDescription'),
         variant: 'destructive',
       });
       return;
@@ -330,14 +330,14 @@ export default function EditProfile() {
       await refreshAuth();
 
       toast({
-        title: 'Avatar updated',
-        description: 'Your profile picture has been updated.',
+        title: t('editProfile.avatarUpdated'),
+        description: t('editProfile.avatarUpdatedDescription'),
       });
     } catch (error: any) {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
       toast({
-        title: 'Upload failed',
-        description: error.message || 'Failed to upload avatar',
+        title: t('editProfile.uploadFailed'),
+        description: error.message || t('editProfile.uploadFailed'),
         variant: 'destructive',
       });
     } finally {
@@ -440,15 +440,15 @@ export default function EditProfile() {
       await refreshAuth();
       
       toast({
-        title: 'Profile updated',
-        description: 'Your changes have been saved.',
+        title: t('editProfile.profileUpdated'),
+        description: t('editProfile.profileUpdatedDescription'),
       });
       
       navigate(role === 'trainer' ? '/trainer' : '/player');
     } catch (error: any) {
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to update profile',
+        title: t('editProfile.error'),
+        description: error.message || t('editProfile.uploadFailed'),
         variant: 'destructive',
       });
     }
@@ -487,11 +487,11 @@ export default function EditProfile() {
             <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="font-bold text-xl">Edit Profile</span>
+            <span className="font-bold text-xl">{t('editProfile.title')}</span>
           </div>
           <Button onClick={handleSubmit} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('editProfile.saving') : t('editProfile.save')}
           </Button>
         </div>
       </header>
@@ -558,15 +558,15 @@ export default function EditProfile() {
                   />
                 </div>
                 <div>
-                  <h3 className="font-semibold">{formData.full_name || 'Your Name'}</h3>
-                  <p className="text-sm text-muted-foreground capitalize">{role || 'User'}</p>
+                  <h3 className="font-semibold">{formData.full_name || t('editProfile.yourName')}</h3>
+                  <p className="text-sm text-muted-foreground capitalize">{role || t('editProfile.user')}</p>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="text-xs text-primary hover:underline mt-1"
                     disabled={uploadingAvatar}
                   >
-                    {uploadingAvatar ? 'Uploading...' : 'Change photo'}
+                    {uploadingAvatar ? t('editProfile.uploading') : t('editProfile.changePhoto')}
                   </button>
                 </div>
               </div>
@@ -578,13 +578,13 @@ export default function EditProfile() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
-                Basic Information
+                {t('editProfile.basicInformation')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="full_name">Full Name</Label>
+                  <Label htmlFor="full_name">{t('editProfile.fullName')}</Label>
                   <Input
                     id="full_name"
                     value={formData.full_name}
@@ -610,7 +610,7 @@ export default function EditProfile() {
               
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t('editProfile.phone')}</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -619,7 +619,7 @@ export default function EditProfile() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
+                  <Label htmlFor="location">{t('editProfile.location')}</Label>
                   <Input
                     id="location"
                     value={formData.location}
@@ -630,12 +630,12 @@ export default function EditProfile() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
+                <Label htmlFor="bio">{t('editProfile.bio')}</Label>
                 <Textarea
                   id="bio"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  placeholder="Tell us about yourself..."
+                  placeholder={t('editProfile.bioPlaceholder')}
                   rows={4}
                 />
               </div>
@@ -646,8 +646,8 @@ export default function EditProfile() {
           {role === 'player' && (
             <Card>
               <CardHeader>
-                <CardTitle>Player Details</CardTitle>
-                <CardDescription>Your padel skill information</CardDescription>
+                <CardTitle>{t('editProfile.playerDetails')}</CardTitle>
+                <CardDescription>{t('editProfile.playerDetailsDescription')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -703,13 +703,13 @@ export default function EditProfile() {
                       placeholder={currentRatingSystem.member_id_placeholder || ''}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Your official {currentRatingSystem.name} registration number
+                      {t('editProfile.registrationNumber', { system: currentRatingSystem.name })}
                     </p>
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="skill_rating">Padel Rating</Label>
+                  <Label htmlFor="skill_rating">{t('editProfile.padelRating')}</Label>
                   <Input
                     id="skill_rating"
                     type="number"
@@ -724,7 +724,7 @@ export default function EditProfile() {
                   {currentRatingSystem && (
                     <p className="text-xs text-muted-foreground">
                       {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
-                      {currentRatingSystem.lower_is_better && ' (lower is better)'}
+                      {currentRatingSystem.lower_is_better && ` ${t('editProfile.lowerIsBetter')}`}
                     </p>
                   )}
                 </div>
@@ -867,7 +867,7 @@ export default function EditProfile() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                      <Label htmlFor="preferred_rating_system" className="text-xs text-muted-foreground">{tTrainer('editProfile.ratingSystem')}</Label>
                       <Select
                         value={trainerData.preferred_rating_system}
                         onValueChange={(value) => {
@@ -904,7 +904,7 @@ export default function EditProfile() {
                       return (
                         <div className="space-y-4">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Level range:</span>
+                            <span className="text-muted-foreground">{tTrainer('editProfile.levelRange')}</span>
                             <span className="font-medium">
                               {minVal.toFixed(1)} - {maxVal.toFixed(1)} ({preferredSystem.name})
                             </span>
@@ -938,13 +938,13 @@ export default function EditProfile() {
               {/* Trainer Details Card */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Trainer Details</CardTitle>
-                  <CardDescription>Your professional information</CardDescription>
+                  <CardTitle>{tTrainer('editProfile.trainerDetails')}</CardTitle>
+                  <CardDescription>{tTrainer('editProfile.trainerDetailsDescription')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="hourly_rate">Hourly Rate (€)</Label>
+                      <Label htmlFor="hourly_rate">{tTrainer('editProfile.hourlyRate')}</Label>
                       <Input
                         id="hourly_rate"
                         type="number"
@@ -959,7 +959,7 @@ export default function EditProfile() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="coaching_since_year">Coaching Since (year)</Label>
+                      <Label htmlFor="coaching_since_year">{tTrainer('editProfile.coachingSince')}</Label>
                       <Input
                         id="coaching_since_year"
                         type="number"
@@ -976,10 +976,10 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-4">
-                    <Label>Your Padel Rating</Label>
+                    <Label>{tTrainer('editProfile.yourPadelRating')}</Label>
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="trainer_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
+                        <Label htmlFor="trainer_rating_system" className="text-xs text-muted-foreground">{tTrainer('editProfile.ratingSystem')}</Label>
                         <Select
                           value={formData.rating_system}
                           onValueChange={(value) => {
@@ -1004,7 +1004,7 @@ export default function EditProfile() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">Rating</Label>
+                        <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">{tTrainer('editProfile.rating')}</Label>
                         {(() => {
                           return (
                             <>
@@ -1025,7 +1025,7 @@ export default function EditProfile() {
                               {currentRatingSystem && (
                                 <p className="text-xs text-muted-foreground">
                                   {currentRatingSystem.min_rating} - {currentRatingSystem.max_rating}
-                                  {currentRatingSystem.lower_is_better && ' (lower is better)'}
+                                  {currentRatingSystem.lower_is_better && ` ${t('editProfile.lowerIsBetter')}`}
                                 </p>
                               )}
                             </>
@@ -1036,7 +1036,7 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Certifications</Label>
+                    <Label>{tTrainer('editProfile.certifications')}</Label>
                     <CertificationsPicker
                       selectedCertifications={trainerData.certifications}
                       onChange={(certs) => setTrainerData({ ...trainerData, certifications: certs })}
@@ -1045,7 +1045,7 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Specializations</Label>
+                    <Label>{tTrainer('editProfile.specializations')}</Label>
                     <SpecializationsPicker
                       selectedSpecializations={trainerData.specializations}
                       onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
@@ -1056,10 +1056,10 @@ export default function EditProfile() {
                   <div className="space-y-2 pt-4 border-t">
                     <Label className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
-                      Teaching Locations
+                      {tTrainer('editProfile.teachingLocations')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
+                      {tTrainer('editProfile.teachingLocationsDescription')}
                     </p>
                     <TrainerLocationPicker
                       selectedLocations={trainerLocations}
@@ -1073,7 +1073,7 @@ export default function EditProfile() {
           )}
 
           <Button type="submit" className="w-full" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? t('editProfile.saving') : t('editProfile.saveChanges')}
           </Button>
         </form>
       </main>
