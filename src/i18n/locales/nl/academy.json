@@ -397,6 +397,7 @@
   "invoices": {
     "title": "Facturen",
     "description": "Beheer facturen voor je academy",
+    "searchPlaceholder": "Zoek op spelersnaam...",
     "editSettings": "Factuurinstellingen",
     "totalUnpaid": "Onbetaald",
     "draft": "Concept",
