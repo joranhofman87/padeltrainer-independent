@@ -703,7 +703,7 @@ export default function EditProfile() {
                       placeholder={currentRatingSystem.member_id_placeholder || ''}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Your official {currentRatingSystem.name} registration number
+                      {t('editProfile.registrationNumber', { system: currentRatingSystem.name })}
                     </p>
                   </div>
                 )}
