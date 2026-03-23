@@ -1127,6 +1127,78 @@ export default function TrainerScheduleOverview() {
                 onChange={(e) => setCycleEditData((prev) => ({ ...prev, maxParticipants: e.target.value }))}
               />
             </div>
+
+            {/* Players section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t("scheduleOverview.players", "Players")}</Label>
+              </div>
+              {editCyclePlayers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("scheduleOverview.noPlayersInCycle", "No players in this cycle")}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {editCyclePlayers.map((player) => (
+                    <div key={player.id} className="flex items-center justify-between text-sm py-1 group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{player.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {t("scheduleOverview.sessionsLabel", "{{count}} sessions", { count: player.bookingCount })}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={() => setConfirmRemoveCyclePlayer(player)}
+                        disabled={removingPlayerFromCycle === player.id}
+                        title={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+                      >
+                        {removingPlayerFromCycle === player.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Add player dropdown */}
+              {(() => {
+                const enrolledIds = new Set(editCyclePlayers.map(p => p.id));
+                const available = availableGuestPlayers.filter(g => !enrolledIds.has(g.id));
+                if (available.length === 0) return null;
+                return (
+                  <Select
+                    value=""
+                    onValueChange={(val) => handleAddPlayerToCycle(val)}
+                    disabled={addingPlayerToCycle}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      {addingPlayerToCycle ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>{t("scheduleOverview.addPlayerToCycle", "Add player")}</span>
+                        </div>
+                      ) : (
+                        <SelectValue placeholder={t("scheduleOverview.addPlayerToCycle", "Add player")} />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {available.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              })()}
+            </div>
+
             <div className="flex items-center justify-between">
               <Label htmlFor="cycle-private-toggle">
                 {t("scheduleOverview.cyclePrivate", "Private (hidden from players)")}
