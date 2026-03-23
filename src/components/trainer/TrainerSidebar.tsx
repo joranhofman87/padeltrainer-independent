@@ -325,6 +325,17 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/schedule-overview"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.scheduleOverview", "Overview")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>

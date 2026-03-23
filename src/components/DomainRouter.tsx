@@ -221,6 +221,7 @@ export function DomainRouter() {
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
           <Route path="open-slots" element={<OpenSlots />} />
+          <Route path="schedule-overview" element={<TrainerScheduleOverview />} />
           
           <Route path="profile" element={<EditProfile />} />
           <Route path="subscription" element={<TrainerSubscription />} />
