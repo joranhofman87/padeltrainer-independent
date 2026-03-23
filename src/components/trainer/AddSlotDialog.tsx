@@ -1009,6 +1009,20 @@ export function BulkCreateSheet({
                       <Euro className="h-3 w-3" />
                       {t("calendar.pricing", "Pricing")}
                     </Label>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id={`vat-toggle-${index}`}
+                          checked={pricesIncludeVat}
+                          onCheckedChange={setPricesIncludeVat}
+                        />
+                        <Label htmlFor={`vat-toggle-${index}`} className="text-xs cursor-pointer">
+                          {pricesIncludeVat
+                            ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
+                            : t("cycles:form.pricesExcludeVat", "Prices exclude VAT")}
+                        </Label>
+                      </div>
+                    </div>
                     {slot.trainerId && getHourlyRate(slot.trainerId) && (
                       <p className="text-xs text-muted-foreground">
                         {t("calendar.hourlyRate", "Hourly rate")}: {formatPrice(getHourlyRate(slot.trainerId)!)}
@@ -1016,7 +1030,9 @@ export function BulkCreateSheet({
                     )}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">{t("calendar.pricePerSession", "Price per session")}</Label>
+                        <Label className="text-xs">
+                          {t("calendar.pricePerSession", "Price per session")} {pricesIncludeVat ? t("cycles:form.inclVatShort", "(incl.)") : t("cycles:form.exclVatShort", "(excl.)")}
+                        </Label>
                         <Input
                           type="number"
                           step="0.01"
