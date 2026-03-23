@@ -34,6 +34,7 @@ interface PublicInvoiceData {
     lineItems: LineItem[];
     status: string;
     hasMolliePayment: boolean;
+    hasMollieAccount: boolean;
   };
   academy: {
     name: string;
@@ -170,8 +171,13 @@ export default function PublicInvoicePay() {
       } else {
         throw new Error("No payment URL");
       }
-    } catch {
-      toast.error("Failed to create payment. Please try again.");
+    } catch (err: any) {
+      const errorData = err?.message ? JSON.parse(err.message).error : null;
+      if (errorData === "no_mollie_account") {
+        toast.error("Online payment is not available. Please use bank transfer.");
+      } else {
+        toast.error("Failed to create payment. Please try again.");
+      }
       setPayLoading(false);
     }
   };
@@ -333,23 +339,42 @@ export default function PublicInvoicePay() {
             </div>
           </div>
 
-          {/* Pay button */}
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={handlePay}
-            disabled={payLoading}
-          >
-            {payLoading ? (
-              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-            ) : (
-              <CreditCard className="h-5 w-5 mr-2" />
-            )}
-            {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
-          </Button>
+          {/* Pay button — only when academy has Mollie connected */}
+          {invoice.hasMollieAccount ? (
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handlePay}
+              disabled={payLoading}
+            >
+              {payLoading ? (
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+              ) : (
+                <CreditCard className="h-5 w-5 mr-2" />
+              )}
+              {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
+            </Button>
+          ) : null}
 
-          {/* Bank details for manual payment */}
-          <PaymentBankDetails academy={academy} />
+          {/* Bank details — prominent when no online payment available */}
+          {academy?.iban && (
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-1">
+              {!invoice.hasMollieAccount && (
+                <p className="font-medium text-foreground mb-2">
+                  Please transfer the amount to the bank account below
+                </p>
+              )}
+              <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                {invoice.hasMollieAccount ? "Or pay via bank transfer" : "Bank details"}
+              </p>
+              <p><span className="text-muted-foreground">IBAN:</span> {academy.iban}</p>
+              {academy.bic && <p><span className="text-muted-foreground">BIC:</span> {academy.bic}</p>}
+              {(academy.businessName || academy.name) && (
+                <p><span className="text-muted-foreground">Name:</span> {academy.businessName || academy.name}</p>
+              )}
+              <p><span className="text-muted-foreground">Reference:</span> {invoice.invoiceNumber}</p>
+            </div>
+          )}
 
           {/* Contact */}
           {academy?.contactEmail && (

@@ -133,8 +133,16 @@ serve(async (req) => {
       }
     }
 
+    if (!accessToken) {
+      logStep("No connected Mollie account found", { invoiceId });
+      return new Response(JSON.stringify({ error: "no_mollie_account", message: "Payment account not connected." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const isTestMode = mollieApiKey.startsWith("test_");
-    const authToken = accessToken || mollieApiKey;
+    const authToken = accessToken;
 
     // Build redirect URL
     const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.ai`;
