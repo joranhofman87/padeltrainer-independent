@@ -266,6 +266,12 @@ export function BookForPlayerDialog({
 
         if (bookingError) throw bookingError;
 
+        // Mark guest players as has_trained
+        const guestIds = selectedPlayers.map(p => p.id);
+        if (guestIds.length > 0) {
+          await supabase.from("guest_players").update({ has_trained: true }).in("id", guestIds);
+        }
+
         // Send email notifications
         const firstSlot = slotsToBook[0];
         const lastSlot = slotsToBook[slotsToBook.length - 1];
