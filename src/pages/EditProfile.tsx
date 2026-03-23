@@ -578,7 +578,7 @@ export default function EditProfile() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
-                Basic Information
+                {t('editProfile.basicInformation')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
