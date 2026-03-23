@@ -1020,7 +1020,7 @@ export function BulkCreateSheet({
                         <Label htmlFor={`vat-toggle-${index}`} className="text-xs cursor-pointer">
                           {pricesIncludeVat
                             ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
-                            : t("cycles:form.pricesExcludeVat", "Prices exclude VAT")}
+                            : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
                         </Label>
                       </div>
                     </div>
