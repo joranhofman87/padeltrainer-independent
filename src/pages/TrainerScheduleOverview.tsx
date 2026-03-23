@@ -63,6 +63,7 @@ type SlotWithBookings = {
   max_participants: number | null;
   is_public: boolean;
   location_id: string | null;
+  price_per_session: number | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
@@ -76,6 +77,19 @@ type SlotWithBookings = {
 };
 
 type TabValue = "current" | "future" | "past";
+
+type CycleEditData = {
+  name: string;
+  pricePerSession: string;
+  locationId: string;
+  maxParticipants: string;
+};
+
+type TrainerLocationOption = {
+  id: string;
+  name: string;
+  city: string;
+};
 
 export default function TrainerScheduleOverview() {
   const { t, i18n } = useTranslation("trainer");
