@@ -1,33 +1,41 @@
 
 
-# Add Player Name Search to Invoices Page
+# Fix Public Invoice Page Crash + Academy-Scoped URLs
 
-## Change
+## Problem
+1. **Crash**: `Cannot read properties of undefined (reading 'toFixed')` — line item `total`, `subtotal`, `vatAmount` etc. can be null/undefined, causing the page to crash.
+2. **URL structure**: Current `/pay/:token` doesn't fit the site's SEO/branding pattern. User wants `/:lang/academies/:slug/pay/:token` for consistency.
 
-### File: `src/pages/academy/AcademyInvoices.tsx`
+## Plan
 
-1. **Add search state**: `const [searchQuery, setSearchQuery] = useState("")`
+### Step 1: Fix the crash — null-safe number formatting
+In `PublicInvoicePay.tsx`, add a `formatEuro` helper (same European style as invoices page) with null safety:
+```typescript
+const formatEuro = (amount: number | null | undefined) =>
+  (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+```
+Replace all `.toFixed(2)` calls with `formatEuro()` — covers line items, subtotal, vatAmount, total, and the pay button.
 
-2. **Add search input** between the tabs and the stats section (or next to the tabs), using the existing `Input` component with a `Search` icon:
-   ```
-   <div className="relative">
-     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-     <Input placeholder="Search player name..." className="pl-9 w-64" />
-   </div>
-   ```
+### Step 2: Add academy-scoped route
+In `DomainRouter.tsx`, add a new route under the language routes:
+```
+/:lang/academies/:slug/pay/:token → PublicInvoicePay
+```
+Keep the existing `/pay/:token` route as a fallback/legacy redirect.
 
-3. **Filter invoices by search**: Update the `filteredInvoices` computation to also filter by `player_name` matching the search query (case-insensitive):
-   ```typescript
-   const searchFiltered = tabFiltered.filter(i =>
-     !searchQuery || i.player_name.toLowerCase().includes(searchQuery.toLowerCase())
-   );
-   ```
+### Step 3: Update edge function to return academy slug
+In `get-public-invoice/index.ts`, also select `slug` from `academy_profiles` and return it in the response so the frontend can build canonical URLs.
 
-4. **Add translations** for the search placeholder in EN, NL, and DE academy.json files.
+### Step 4: Update share link generation
+In `AcademyInvoices.tsx`, update the "Copy payment link" to generate the new academy-scoped URL format: `/{lang}/academies/{slug}/pay/{token}`.
 
-### Files
-- `src/pages/academy/AcademyInvoices.tsx` — Add search state, input, and filter logic
-- `src/i18n/locales/en/academy.json` — Search placeholder
-- `src/i18n/locales/nl/academy.json` — Search placeholder
-- `src/i18n/locales/de/academy.json` — Search placeholder
+### Step 5: Update Mollie redirect URL
+In `create-invoice-payment/index.ts`, update the redirect URL to use the academy-scoped format when academy data is available.
+
+## Files
+- `src/pages/PublicInvoicePay.tsx` — Fix null-safe formatting, accept slug param
+- `src/components/DomainRouter.tsx` — Add `/:lang/academies/:slug/pay/:token` route
+- `supabase/functions/get-public-invoice/index.ts` — Return academy slug
+- `supabase/functions/create-invoice-payment/index.ts` — Update redirect URL with academy slug
+- `src/pages/academy/AcademyInvoices.tsx` — Update share link format
 
