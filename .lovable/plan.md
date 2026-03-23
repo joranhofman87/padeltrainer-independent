@@ -1,20 +1,34 @@
 
 
-# Fix Missing Sidebar Translations in Academy
+# When Are Invoices Created? + Fix for Academy Cycle Flow
 
-## Problem
-Both `en/academy.json` and `nl/academy.json` have a **duplicate `"nav"` key** — one at line ~256 with all sidebar translations, and another at the end (line ~413) with only `"invoices"`. JSON silently overwrites the first with the second, so only `nav.invoices` resolves; everything else shows raw keys like `nav.dashboard`, `nav.profile`, etc.
+## Current Situation
 
-## Fix
-Merge the `"invoices"` entry into the existing `"nav"` block and remove the duplicate block at the end.
+Invoices are **only** created in these scenarios:
+1. **Player self-books** via BookLesson page (calls `auto-create-invoice` after booking)
+2. **Mollie webhook** — after online payment completes
+3. **Scheduled `auto-invoice-cycles`** — for cycles with `invoice_after_weeks` payment timing
 
-### `src/i18n/locales/en/academy.json`
-- Add `"invoices": "Invoices"` to the existing `nav` object (line ~274)
-- Delete the duplicate `"nav"` block at lines 413-415
+When you create a cycle from the **academy calendar** (BulkCreateSheet) and pre-assign players, bookings are created but **no invoices are generated**. Additionally, those bookings use `guest_player_id` (not `player_id`), which `auto-create-invoice` doesn't support.
 
-### `src/i18n/locales/nl/academy.json`
-- Add `"invoices": "Facturen"` to the existing `nav` object
-- Delete the duplicate `"nav"` block at the end
+## Proposed Fix
 
-No other file changes needed.
+### 1. Trigger invoice creation after BulkCreateSheet bookings
+
+In `src/components/trainer/AddSlotDialog.tsx`, after bookings are successfully inserted (line ~889), call `auto-create-invoice` for each player's bookings — but only when payment is NOT marked as externally paid.
+
+### 2. Update `auto-create-invoice` to handle `guest_player_id`
+
+The edge function currently only looks at `booking.player_id` to find the customer. It needs to also check `guest_player_id` and look up the guest player's name from the `guest_players` table when `player_id` is null.
+
+### 3. Set invoice status to `draft` for academy-created bookings
+
+When invoices are auto-created from BulkCreateSheet (not from a payment), set `status: 'draft'` instead of `'sent'`, so they appear in the academy's Draft tab and can be sent in bulk later.
+
+Add a `draft` flag parameter to `auto-create-invoice` that the BulkCreateSheet passes.
+
+## Files
+- `src/components/trainer/AddSlotDialog.tsx` — Call `auto-create-invoice` after creating bookings
+- `supabase/functions/auto-create-invoice/index.ts` — Support `guest_player_id`, add `asDraft` parameter
+- `supabase/functions/auto-invoice-cycles/index.ts` — Also handle `guest_player_id` bookings in its query
 
