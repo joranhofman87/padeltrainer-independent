@@ -593,17 +593,37 @@ export default function TrainerProfile() {
               </Card>
             )}
 
+            {/* Book a Lesson CTA */}
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-3 text-primary opacity-70" />
+                <h3 className="font-semibold mb-2">{t('common:bookALesson', 'Book a Lesson')}</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {t('common:checkAvailableSlots', 'Check available training slots and book your session')}
+                </p>
+                <Button 
+                  className="w-full" 
+                  onClick={() => navigate(localizePath(`/book/${trainerSlug}`))}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {t('common:bookALesson', 'Book a Lesson')}
+                </Button>
+              </CardContent>
+            </Card>
 
-            {/* About */}
-            {profile.bio && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('common:about', 'About')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground whitespace-pre-line">{profile.bio}</p>
-                </CardContent>
-              </Card>
+            {/* Open Slots */}
+            {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}
+
+            {/* Open Registrations */}
+            {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
+
+            {/* Waiting List - only when enabled */}
+            {trainer && (trainer as any).waiting_list_enabled && (
+              <WaitingListCard
+                ownerType="trainer"
+                ownerId={trainer.id}
+                ownerName={profile.full_name || 'Trainer'}
+              />
             )}
 
             {/* Academy Affiliation */}
