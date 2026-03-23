@@ -1,36 +1,21 @@
 
 
-# Add Search to Player Dropdown in Cycle Creation
+# Add VAT Include/Exclude Toggle Near Price Inputs
 
-## Problem
-When creating a cyclus in `AddSlotDialog.tsx`, the player selection uses a plain `<Select>` dropdown with no search/filter capability. With many players, finding the right one is slow.
+## Current State
+The CycleForm already has a VAT toggle (`pricesIncludeVat` switch) at lines 1107-1122, but it's placed **below** the price table and only affects a display label for players. It doesn't make it clear to the trainer whether they're entering prices incl. or excl. VAT while typing.
 
 ## Solution
-Replace the `<Select>` component with a searchable `Popover` + `Command` (combobox pattern) for each of the 4 player slots. This is the same pattern used across shadcn/ui projects for searchable selects.
+Move the VAT toggle to **above** the price table so the trainer sees the context before entering prices. Also add a visible label suffix on the price inputs themselves (e.g., "incl. VAT" or "excl. VAT") so it's always clear what they're entering.
 
-## Changes
+### Changes in `src/components/cycles/CycleForm.tsx`
 
-### File: `src/components/trainer/AddSlotDialog.tsx`
+1. **Move the VAT toggle block** (lines 1107-1122) to just **before** the price table header row, so the trainer sets the VAT mode before entering prices.
 
-**Lines ~1290-1322** — Replace the `<Select>` per player slot with a `Popover` + `Command` combobox:
+2. **Add a suffix indicator** to each price input showing "(incl. VAT)" or "(excl. VAT)" based on the toggle state — as a small text label next to the € symbol or as placeholder text.
 
-- Import `Popover`, `PopoverTrigger`, `PopoverContent` from `@/components/ui/popover`
-- Import `Command`, `CommandInput`, `CommandList`, `CommandEmpty`, `CommandGroup`, `CommandItem` from `@/components/ui/command`
-- Import `Check`, `ChevronsUpDown` from `lucide-react`
-
-Each player slot becomes:
-```
-Popover > PopoverTrigger (styled like SelectTrigger)
-        > PopoverContent > Command > CommandInput (search box)
-                                   > CommandList > CommandEmpty ("No player found")
-                                                 > CommandGroup > CommandItem per player
-```
-
-- The "none" option (clear) is kept as the first `CommandItem`
-- Already-selected players in other slots are visually dimmed (same `disabled` logic)
-- Selecting a player closes the popover and updates `selectedPlayers` array
-- Display shows `player.full_name` or placeholder text
+3. **Update the price table column header** from just the label to include the VAT context, e.g., "Price (incl. VAT)" or "Price (excl. VAT)".
 
 ### Files
-- `src/components/trainer/AddSlotDialog.tsx` — Replace Select with searchable combobox (~30 line change in one location)
+- `src/components/cycles/CycleForm.tsx` — Move VAT toggle above price table, add VAT indicator to price column headers
 
