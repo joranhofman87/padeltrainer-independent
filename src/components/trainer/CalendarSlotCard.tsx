@@ -83,8 +83,7 @@ interface CalendarSlotCardProps {
   slot: SlotWithBookings;
   compact?: boolean;
   cyclusSessions?: number;
-  durationHours?: number;
-  startOffset?: number;
+  rowSpan?: number;
   showTrainerInfo?: boolean;
   onSlotClick?: (slot: SlotWithBookings) => void;
   onBookForPlayer?: (slot: SlotWithBookings) => void;

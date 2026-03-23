@@ -25,7 +25,10 @@ interface TrainerCalendarGridProps {
   onSlotClick?: (slot: SlotWithBookings) => void;
 }
 
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08:00 to 23:00
+// Half-hour grid: 8.0, 8.5, 9.0, 9.5, ..., 23.0 (31 entries)
+const HALF_HOURS = Array.from({ length: 31 }, (_, i) => 8 + i * 0.5);
+// Full hours only (for mobile "add slot" buttons, day view, etc.)
+const FULL_HOURS = Array.from({ length: 16 }, (_, i) => i + 8);
 
 export function TrainerCalendarGrid({
   slots,
