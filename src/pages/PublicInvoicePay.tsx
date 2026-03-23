@@ -169,6 +169,7 @@ export default function PublicInvoicePay() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Invoice Not Found" description="Invoice not found." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
