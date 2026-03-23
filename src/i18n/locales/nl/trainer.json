@@ -70,7 +70,9 @@
     "startDate": "Startdatum",
     "repeatCount": "Aantal weken",
     "cannotRemoveBookedSlots": "Kan {{count}} sessie(s) met actieve boekingen niet verwijderen",
-    "removeCost": "Verwijderen"
+    "removeCost": "Verwijderen",
+    "perSession": "Per sessie",
+    "oneTime": "Eenmalig"
   },
   "profile": {
     "shareProfile": "Profiel Delen",

@@ -170,9 +170,10 @@ serve(async (req) => {
       if (extraCosts && Array.isArray(extraCosts)) {
         for (const ec of extraCosts) {
           if (ec.description && ec.price > 0) {
+            const isOneTime = ec.type === 'one_time';
             lineItems.push({
               description: ec.description,
-              quantity: 1,
+              quantity: isOneTime ? 1 : bookings.length,
               unit_price: ec.price,
             });
           }

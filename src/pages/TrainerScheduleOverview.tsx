@@ -67,7 +67,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
 
-type ExtraCost = { description: string; price: number };
+type ExtraCost = { description: string; price: number; type?: 'per_session' | 'one_time' };
 
 type SlotWithBookings = {
   id: string;
@@ -880,7 +880,7 @@ export default function TrainerScheduleOverview() {
                   onClick={() =>
                     setCycleEditData((prev) => ({
                       ...prev,
-                      extraCosts: [...prev.extraCosts, { description: "", price: 0 }],
+                      extraCosts: [...prev.extraCosts, { description: "", price: 0, type: 'per_session' as const }],
                     }))
                   }
                 >
@@ -889,45 +889,83 @@ export default function TrainerScheduleOverview() {
                 </Button>
               </div>
               {cycleEditData.extraCosts.map((cost, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    placeholder={t("scheduleOverview.costDescription", "Description")}
-                    value={cost.description}
-                    onChange={(e) => {
-                      const updated = [...cycleEditData.extraCosts];
-                      updated[idx] = { ...updated[idx], description: e.target.value };
-                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
-                    }}
-                    className="flex-1"
-                  />
-                  <div className="relative w-24">
-                    <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
+                <div key={idx} className="space-y-1.5">
+                  <div className="flex items-center gap-2">
                     <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="pl-6"
-                      value={cost.price}
+                      placeholder={t("scheduleOverview.costDescription", "Description")}
+                      value={cost.description}
                       onChange={(e) => {
                         const updated = [...cycleEditData.extraCosts];
-                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        updated[idx] = { ...updated[idx], description: e.target.value };
                         setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
                       }}
+                      className="flex-1"
                     />
+                    <div className="relative w-24">
+                      <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="pl-6"
+                        value={cost.price}
+                        onChange={(e) => {
+                          const updated = [...cycleEditData.extraCosts];
+                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        const updated = cycleEditData.extraCosts.filter((_, i) => i !== idx);
+                        setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                      }}
+                      title={t("scheduleOverview.removeCost", "Remove")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      const updated = cycleEditData.extraCosts.filter((_, i) => i !== idx);
-                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
-                    }}
-                    title={t("scheduleOverview.removeCost", "Remove")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex gap-2 pl-1">
+                    <label className={cn(
+                      "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
+                      (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                    )}>
+                      <input
+                        type="radio"
+                        name={`overview_cost_type_${idx}`}
+                        checked={(cost.type || 'per_session') === 'per_session'}
+                        onChange={() => {
+                          const updated = [...cycleEditData.extraCosts];
+                          updated[idx] = { ...updated[idx], type: 'per_session' };
+                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                        }}
+                        className="sr-only"
+                      />
+                      {t("scheduleOverview.perSession", "Per session")}
+                    </label>
+                    <label className={cn(
+                      "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
+                      cost.type === 'one_time' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                    )}>
+                      <input
+                        type="radio"
+                        name={`overview_cost_type_${idx}`}
+                        checked={cost.type === 'one_time'}
+                        onChange={() => {
+                          const updated = [...cycleEditData.extraCosts];
+                          updated[idx] = { ...updated[idx], type: 'one_time' };
+                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                        }}
+                        className="sr-only"
+                      />
+                      {t("scheduleOverview.oneTime", "One-time")}
+                    </label>
+                  </div>
                 </div>
               ))}
             </div>

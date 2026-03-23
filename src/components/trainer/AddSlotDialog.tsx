@@ -449,8 +449,9 @@ export function BulkCreateSheet({
     const rate = getHourlyRate(tId);
     if (!rate) return { pricePerSession: null, totalPrice: null };
     const pricePerSession = calculateSlotPrice(rate, durationMinutes);
-    const extraCostsPerSession = extraCosts.reduce((sum, c) => sum + (c.price || 0), 0);
-    const totalPrice = (pricePerSession + extraCostsPerSession) * recurrenceWeeks;
+    const perSessionExtra = extraCosts.filter(c => (c.type || 'per_session') === 'per_session').reduce((sum, c) => sum + (c.price || 0), 0);
+    const oneTimeExtra = extraCosts.filter(c => c.type === 'one_time').reduce((sum, c) => sum + (c.price || 0), 0);
+    const totalPrice = (pricePerSession + perSessionExtra) * recurrenceWeeks + oneTimeExtra;
     return { pricePerSession: Math.round(pricePerSession * 100) / 100, totalPrice: Math.round(totalPrice * 100) / 100 };
   };
 
@@ -1137,6 +1138,42 @@ export function BulkCreateSheet({
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
+                            <div className="flex gap-2">
+                              <label className={cn(
+                                "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
+                                (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                              )}>
+                                <input
+                                  type="radio"
+                                  name={`slot_cost_type_${index}_${costIndex}`}
+                                  checked={(cost.type || 'per_session') === 'per_session'}
+                                  onChange={() => {
+                                    const newCosts = [...slot.extraCosts];
+                                    newCosts[costIndex] = { ...newCosts[costIndex], type: 'per_session' };
+                                    updateBulkSlot(index, { extraCosts: newCosts });
+                                  }}
+                                  className="sr-only"
+                                />
+                                {t("calendar.perSession", "Per session")}
+                              </label>
+                              <label className={cn(
+                                "flex items-center gap-1 text-xs cursor-pointer px-2 py-0.5 rounded-md border transition-colors",
+                                cost.type === 'one_time' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                              )}>
+                                <input
+                                  type="radio"
+                                  name={`slot_cost_type_${index}_${costIndex}`}
+                                  checked={cost.type === 'one_time'}
+                                  onChange={() => {
+                                    const newCosts = [...slot.extraCosts];
+                                    newCosts[costIndex] = { ...newCosts[costIndex], type: 'one_time' };
+                                    updateBulkSlot(index, { extraCosts: newCosts });
+                                  }}
+                                  className="sr-only"
+                                />
+                                {t("calendar.oneTime", "One-time")}
+                              </label>
+                            </div>
                           </div>
                         ))}
                         <Button
@@ -1144,7 +1181,7 @@ export function BulkCreateSheet({
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0 }] });
+                            updateBulkSlot(index, { extraCosts: [...slot.extraCosts, { description: '', price: 0, type: 'per_session' }] });
                           }}
                           className="gap-1"
                         >
@@ -1153,7 +1190,10 @@ export function BulkCreateSheet({
                         </Button>
                         {slot.extraCosts.length > 0 && slot.extraCosts.some(c => c.price > 0) && (
                           <p className="text-xs text-muted-foreground">
-                            {t("calendar.extraCostsPerSession", "Extra costs per session")}: {formatPrice(slot.extraCosts.reduce((sum, c) => sum + (c.price || 0), 0))}
+                            {t("calendar.extraCostsPerSession", "Extra costs per session")}: {formatPrice(slot.extraCosts.filter(c => (c.type || 'per_session') === 'per_session').reduce((sum, c) => sum + (c.price || 0), 0))}
+                            {slot.extraCosts.some(c => c.type === 'one_time' && c.price > 0) && (
+                              <> + {formatPrice(slot.extraCosts.filter(c => c.type === 'one_time').reduce((sum, c) => sum + (c.price || 0), 0))} {t("calendar.oneTime", "one-time")}</>
+                            )}
                           </p>
                         )}
                       </div>

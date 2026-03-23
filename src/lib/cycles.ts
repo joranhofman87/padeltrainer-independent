@@ -56,6 +56,7 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
 export interface ExtraCost {
   description: string;
   price: number;
+  type?: 'per_session' | 'one_time';
 }
 
 export interface CyclusOption {

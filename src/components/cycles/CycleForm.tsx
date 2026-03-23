@@ -1534,22 +1534,31 @@ export default function CycleForm({
 
               {/* Pricing breakdown when extra costs exist */}
               {(() => {
-                const ecTotal = extraCosts.reduce((sum, ec) => sum + (ec.price || 0), 0);
-                const weeks = form.watch('number_of_weeks') || 0;
-                const totalExtraCosts = Math.round(ecTotal * weeks * 100) / 100;
+               const weeks = form.watch('number_of_weeks') || 0;
+                const perSessionTotal = extraCosts.filter(ec => (ec.type || 'per_session') === 'per_session').reduce((sum, ec) => sum + (ec.price || 0), 0);
+                const oneTimeTotal = extraCosts.filter(ec => ec.type === 'one_time').reduce((sum, ec) => sum + (ec.price || 0), 0);
+                const totalExtraCosts = Math.round((perSessionTotal * weeks + oneTimeTotal) * 100) / 100;
                 const baseTotal = form.watch('total_price') || 0;
                 const grandTotal = Math.round((Number(baseTotal) + totalExtraCosts) * 100) / 100;
-                if (ecTotal <= 0) return null;
+                if (perSessionTotal <= 0 && oneTimeTotal <= 0) return null;
                 return (
                   <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('form.totalPrice')}</span>
                       <span>€{Number(baseTotal).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{ecTotal.toFixed(2)})</span>
-                      <span>€{totalExtraCosts.toFixed(2)}</span>
-                    </div>
+                    {perSessionTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('form.extraCosts')} ({weeks}x €{perSessionTotal.toFixed(2)})</span>
+                        <span>€{(Math.round(perSessionTotal * weeks * 100) / 100).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {oneTimeTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t('form.extraCosts')} ({t('form.oneTime', 'One-time')})</span>
+                        <span>€{oneTimeTotal.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="border-t pt-1 flex justify-between font-semibold">
                       <span>Total</span>
                       <span>€{grandTotal.toFixed(2)}</span>
@@ -1659,47 +1668,85 @@ export default function CycleForm({
                 <Label className="text-sm font-medium">{t('form.extraCosts')}</Label>
                 <p className="text-xs text-muted-foreground">{t('form.extraCostsHelp')}</p>
                 {extraCosts.map((cost, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
-                    <Input
-                      placeholder={t('form.costDescription')}
-                      value={cost.description}
-                      onChange={(e) => {
-                        const updated = [...extraCosts];
-                        updated[index] = { ...updated[index], description: e.target.value };
-                        setExtraCosts(updated);
-                      }}
-                    />
-                    <div className="relative w-28">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                  <div key={index} className="space-y-1.5">
+                    <div className="grid grid-cols-[1fr_8rem_auto] items-center gap-3">
                       <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={cost.price || ''}
+                        placeholder={t('form.costDescription')}
+                        value={cost.description}
                         onChange={(e) => {
                           const updated = [...extraCosts];
-                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                          updated[index] = { ...updated[index], description: e.target.value };
                           setExtraCosts(updated);
                         }}
-                        className="pl-7"
                       />
+                      <div className="relative w-28">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                          value={cost.price || ''}
+                          onChange={(e) => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                            setExtraCosts(updated);
+                          }}
+                          className="pl-7"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setExtraCosts(extraCosts.filter((_, i) => i !== index))}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
+                    <div className="flex gap-2 pl-1">
+                      <label className={cn(
+                        "flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors",
+                        (cost.type || 'per_session') === 'per_session' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                      )}>
+                        <input
+                          type="radio"
+                          name={`cost_type_${index}`}
+                          checked={(cost.type || 'per_session') === 'per_session'}
+                          onChange={() => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], type: 'per_session' };
+                            setExtraCosts(updated);
+                          }}
+                          className="sr-only"
+                        />
+                        {t('form.perSession', 'Per session')}
+                      </label>
+                      <label className={cn(
+                        "flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors",
+                        cost.type === 'one_time' ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground"
+                      )}>
+                        <input
+                          type="radio"
+                          name={`cost_type_${index}`}
+                          checked={cost.type === 'one_time'}
+                          onChange={() => {
+                            const updated = [...extraCosts];
+                            updated[index] = { ...updated[index], type: 'one_time' };
+                            setExtraCosts(updated);
+                          }}
+                          className="sr-only"
+                        />
+                        {t('form.oneTime', 'One-time')}
+                      </label>
+                    </div>
                   </div>
                 ))}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0 }])}
+                  onClick={() => setExtraCosts([...extraCosts, { description: '', price: 0, type: 'per_session' }])}
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   {t('form.addCost')}
