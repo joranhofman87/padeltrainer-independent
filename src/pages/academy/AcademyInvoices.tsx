@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -22,6 +23,7 @@ interface Invoice {
   due_date: string;
   player_name: string;
   player_id: string | null;
+  guest_player_id: string | null;
   total: number;
   status: string;
   sent_at: string | null;
@@ -42,6 +44,8 @@ export default function AcademyInvoices() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sendingAll, setSendingAll] = useState(false);
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -101,20 +105,115 @@ export default function AcademyInvoices() {
 
   const totalUnpaid = sentInvoices.reduce((sum, i) => sum + i.total, 0) + draftInvoices.reduce((sum, i) => sum + i.total, 0);
 
-  // Mark as sent mutation
-  const markSentMutation = useMutation({
-    mutationFn: async (invoiceIds: string[]) => {
+  // Send single invoice (with email)
+  const sendInvoiceMutation = useMutation({
+    mutationFn: async (invoice: Invoice) => {
+      // Try sending email
+      const { data } = await supabase.functions.invoke("send-invoice-email", {
+        body: { invoiceId: invoice.id },
+      });
+
+      if (data?.error === "no_email") {
+        // Return special marker so onSuccess can handle the dialog
+        return { noEmail: true, invoice };
+      }
+
+      // Mark as sent
       const { error } = await supabase
         .from("invoices")
         .update({ sent_at: new Date().toISOString(), status: "sent" })
-        .in("id", invoiceIds);
+        .eq("id", invoice.id);
       if (error) throw error;
+
+      return { noEmail: false, email: data?.email };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.noEmail && result.invoice) {
+        setEmailDialog({
+          open: true,
+          invoiceId: result.invoice.id,
+          playerName: result.invoice.player_name,
+          guestPlayerId: result.invoice.guest_player_id,
+        });
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
-      toast.success(t("invoices.markedAsSent", "Invoices marked as sent"));
+      const emailMsg = result.email ? ` naar ${result.email}` : "";
+      toast.success(t("invoices.sentSuccess", `Invoice sent${emailMsg}`));
+    },
+    onError: () => {
+      toast.error(t("invoices.sendError", "Failed to send invoice"));
     },
   });
+
+  // Bulk send all drafts
+  const handleSendAllDrafts = async () => {
+    setSendingAll(true);
+    let sent = 0;
+    let noEmail = 0;
+    let failed = 0;
+
+    for (const inv of draftInvoices) {
+      try {
+        const { data } = await supabase.functions.invoke("send-invoice-email", {
+          body: { invoiceId: inv.id },
+        });
+
+        if (data?.error === "no_email") {
+          noEmail++;
+        } else if (data?.success) {
+          sent++;
+        } else {
+          failed++;
+        }
+
+        // Mark as sent regardless
+        await supabase
+          .from("invoices")
+          .update({ sent_at: new Date().toISOString(), status: "sent" })
+          .eq("id", inv.id);
+      } catch {
+        failed++;
+        // Still mark as sent
+        await supabase
+          .from("invoices")
+          .update({ sent_at: new Date().toISOString(), status: "sent" })
+          .eq("id", inv.id);
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    
+    const parts = [];
+    if (sent > 0) parts.push(`${sent} verzonden`);
+    if (noEmail > 0) parts.push(`${noEmail} zonder e-mail`);
+    if (failed > 0) parts.push(`${failed} mislukt`);
+    toast.success(`${draftInvoices.length} facturen verwerkt: ${parts.join(", ")}`);
+    
+    setSendingAll(false);
+  };
+
+  const handleEmailSubmitAndSend = async (email: string) => {
+    const { invoiceId, guestPlayerId } = emailDialog;
+
+    if (guestPlayerId) {
+      await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
+    }
+
+    // Retry sending email
+    await supabase.functions.invoke("send-invoice-email", {
+      body: { invoiceId },
+    });
+
+    // Mark as sent
+    await supabase.from("invoices").update({ 
+      sent_at: new Date().toISOString(), 
+      status: "sent" 
+    }).eq("id", invoiceId);
+
+    queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+    toast.success(`Factuur verzonden naar ${email}`);
+  };
 
   // Mark as paid mutation
   const markPaidMutation = useMutation({
@@ -147,7 +246,7 @@ export default function AcademyInvoices() {
         toast.success(t("invoices.linkCopied", "Payment link copied to clipboard"));
       }
     },
-    onError: (err) => {
+    onError: () => {
       toast.error(t("invoices.linkError", "Failed to generate payment link"));
     },
   });
@@ -245,11 +344,17 @@ export default function AcademyInvoices() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => markSentMutation.mutate(draftInvoices.map((i) => i.id))}
-            disabled={markSentMutation.isPending}
+            onClick={handleSendAllDrafts}
+            disabled={sendingAll}
           >
-            <Send className="h-4 w-4 mr-2" />
-            {t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
+            {sendingAll ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            {sendingAll 
+              ? t("invoices.sendingAll", "Sending...")
+              : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
           </Button>
         </div>
       )}
@@ -343,8 +448,8 @@ export default function AcademyInvoices() {
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => markSentMutation.mutate([inv.id])}
-                                      disabled={markSentMutation.isPending}
+                                      onClick={() => sendInvoiceMutation.mutate(inv)}
+                                      disabled={sendInvoiceMutation.isPending}
                                     >
                                       <Send className="h-4 w-4" />
                                     </Button>
@@ -413,7 +518,7 @@ export default function AcademyInvoices() {
                               <LinkIcon className="h-4 w-4 mr-1" />{t("invoices.paymentLink", "Payment link")}
                             </Button>
                             {!inv.sent_at && (
-                              <Button size="sm" variant="outline" onClick={() => markSentMutation.mutate([inv.id])}>
+                              <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(inv)}>
                                 <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
                               </Button>
                             )}
@@ -438,6 +543,13 @@ export default function AcademyInvoices() {
           )}
         </TabsContent>
       </Tabs>
+
+      <InvoiceEmailDialog
+        open={emailDialog.open}
+        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}
+        playerName={emailDialog.playerName}
+        onSubmit={handleEmailSubmitAndSend}
+      />
     </div>
   );
 }
