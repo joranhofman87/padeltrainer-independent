@@ -340,6 +340,26 @@ export default function TrainerScheduleOverview() {
     }
   };
 
+  // Toggle slot privacy
+  const handleToggleSlotPrivacy = async (slotId: string, currentValue: boolean) => {
+    setTogglingPrivacy(slotId);
+    const { error } = await supabase
+      .from("availability_slots")
+      .update({ is_marked_full: !currentValue })
+      .eq("id", slotId);
+    setTogglingPrivacy(null);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({
+        title: !currentValue
+          ? t("scheduleOverview.markAsPrivate", "Mark as private")
+          : t("scheduleOverview.markAsPublic", "Mark as public"),
+      });
+      invalidate();
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
