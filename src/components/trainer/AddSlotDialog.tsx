@@ -518,6 +518,10 @@ export function BulkCreateSheet({
 
   // Sync first slot when opened via cell click with default date/time
   useEffect(() => {
+    if (open && prefillFromCyclusId) {
+      // Prefill mode — handled by separate effect below
+      return;
+    }
     if (open && defaultDate) {
       const newStartDate = getInitialStartDate();
       const newStartTime = getInitialStartTime();
@@ -527,6 +531,93 @@ export function BulkCreateSheet({
       setBulkSlots([]);
     }
   }, [open, defaultDate, defaultTime]);
+
+  // Prefill from existing cyclus (duplicate mode)
+  useEffect(() => {
+    if (!open || !prefillFromCyclusId) return;
+
+    const prefillFromCyclus = async () => {
+      try {
+        // Fetch all slots from the source cyclus
+        const { data: sourceSlots, error } = await supabase
+          .from("availability_slots")
+          .select(`
+            *,
+            bookings(id, guest_player_id, player_id)
+          `)
+          .eq("cyclus_id", prefillFromCyclusId)
+          .order("start_time", { ascending: true });
+
+        if (error || !sourceSlots?.length) {
+          logger.error("Error fetching cyclus for prefill", error instanceof Error ? error : new Error(String(error || "No slots")), { component: 'BulkCreateSheet' });
+          // Fall back to default
+          const newStartDate = getInitialStartDate();
+          const newStartTime = getInitialStartTime();
+          setBulkSlots([createDefaultSlotConfig(newStartDate, newStartTime, defaultDuration, defaultWeeks, trainerId)]);
+          return;
+        }
+
+        const firstSlot = sourceSlots[0];
+        const firstSlotDate = new Date(firstSlot.start_time);
+        const lastSlotDate = new Date(sourceSlots[sourceSlots.length - 1].start_time);
+
+        // Calculate duration from first slot
+        const durationMs = new Date(firstSlot.end_time).getTime() - firstSlotDate.getTime();
+        const durationMinutes = Math.round(durationMs / 60000);
+
+        // New start date: one week after last slot
+        const newStartDate = addWeeks(lastSlotDate, 1);
+        const startTime = format(firstSlotDate, "HH:mm");
+
+        // Collect unique guest player IDs from bookings
+        const playerIds = new Set<string>();
+        sourceSlots.forEach(slot => {
+          slot.bookings?.forEach((b: any) => {
+            if (b.guest_player_id) playerIds.add(b.guest_player_id);
+          });
+        });
+
+        // Parse extra costs
+        const extraCosts: ExtraCost[] = firstSlot.extra_costs 
+          ? (Array.isArray(firstSlot.extra_costs) ? firstSlot.extra_costs as ExtraCost[] : [])
+          : [];
+
+        const prefilled: BulkSlotConfig = {
+          startDate: startOfDay(newStartDate),
+          startTime,
+          durationMinutes,
+          recurrenceWeeks: sourceSlots.length,
+          cyclusName: generateCyclusName(newStartDate, startTime),
+          addPlayers: playerIds.size > 0,
+          selectedPlayers: Array.from(playerIds),
+          courtType: firstSlot.court_type as 'indoor' | 'outdoor' | null,
+          locationId: firstSlot.location_id,
+          isMarkedFull: false,
+          academyProfileId: firstSlot.academy_profile_id,
+          trainerId: firstSlot.trainer_id || trainerId,
+          ratingSystem: firstSlot.rating_system,
+          minRating: firstSlot.min_rating,
+          maxRating: firstSlot.max_rating,
+          pricePerSession: firstSlot.price_per_session,
+          totalPrice: firstSlot.total_price,
+          allowSingleBooking: firstSlot.allow_single_booking ?? false,
+          minParticipants: firstSlot.min_participants,
+          maxParticipants: firstSlot.max_participants,
+          priceManuallyEdited: true, // Keep the original pricing
+          markAsPaid: false,
+          extraCosts,
+          hasExtraCosts: extraCosts.length > 0,
+        };
+
+        setBulkSlots([prefilled]);
+      } catch (err) {
+        logger.error("Error prefilling from cyclus", err instanceof Error ? err : new Error(String(err)), { component: 'BulkCreateSheet' });
+      }
+    };
+
+    prefillFromCyclus();
+  }, [open, prefillFromCyclusId]);
+
 
   const addBulkSlotConfig = () => {
     if (bulkSlots.length > 0) {
