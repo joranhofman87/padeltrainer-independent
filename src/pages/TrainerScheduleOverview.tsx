@@ -149,7 +149,25 @@ export default function TrainerScheduleOverview() {
     enabled: !!user,
   });
 
-  // Group by cyclus
+  // Fetch trainer locations for edit dialog
+  const { data: trainerLocations } = useQuery({
+    queryKey: ["trainer-locations-for-overview", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const tp = await getTrainerProfile(user.id);
+      if (!tp) return [];
+      const { data, error } = await supabase
+        .from("trainer_locations")
+        .select("location_id, locations:location_id (id, name, city)")
+        .eq("trainer_id", tp.id);
+      if (error) return [];
+      return (data || [])
+        .map((tl: any) => tl.locations)
+        .filter(Boolean) as TrainerLocationOption[];
+    },
+    enabled: !!user,
+  });
+
   const grouped = useMemo(() => {
     if (!slots) return new Map<string, { name: string; slots: SlotWithBookings[] }>();
     const map = new Map<string, { name: string; slots: SlotWithBookings[] }>();
