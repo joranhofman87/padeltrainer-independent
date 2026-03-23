@@ -1045,7 +1045,7 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Specializations</Label>
+                    <Label>{tTrainer('editProfile.specializations')}</Label>
                     <SpecializationsPicker
                       selectedSpecializations={trainerData.specializations}
                       onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
