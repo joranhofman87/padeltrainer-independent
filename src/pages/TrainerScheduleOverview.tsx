@@ -116,6 +116,7 @@ export default function TrainerScheduleOverview() {
     pricePerSession: "",
     locationId: "",
     maxParticipants: "",
+    isPrivate: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
