@@ -579,7 +579,7 @@ export function BulkCreateSheet({
 
         // Parse extra costs
         const extraCosts: ExtraCost[] = firstSlot.extra_costs 
-          ? (Array.isArray(firstSlot.extra_costs) ? firstSlot.extra_costs as ExtraCost[] : [])
+          ? (Array.isArray(firstSlot.extra_costs) ? firstSlot.extra_costs as unknown as ExtraCost[] : [])
           : [];
 
         const prefilled: BulkSlotConfig = {
