@@ -278,6 +278,7 @@ export default function TrainerScheduleOverview() {
     setSavingEdit(true);
     const updates: Record<string, unknown> = {
       cyclus_name: cycleEditData.name.trim(),
+      is_marked_full: cycleEditData.isPrivate,
     };
     if (cycleEditData.pricePerSession !== "") {
       updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
