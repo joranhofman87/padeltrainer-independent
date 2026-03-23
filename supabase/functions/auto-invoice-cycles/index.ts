@@ -68,7 +68,7 @@ serve(async (req) => {
 
       const { data: bookings } = await supabase
         .from("bookings")
-        .select("id, player_id, slot_id, payment_status")
+        .select("id, player_id, guest_player_id, slot_id, payment_status")
         .in("slot_id", slotIds)
         .eq("status", "confirmed")
         .eq("payment_status", "pending")
@@ -79,13 +79,14 @@ serve(async (req) => {
         continue;
       }
 
-      // Group bookings by player
+      // Group bookings by player (player_id or guest_player_id)
       const playerBookings = new Map<string, string[]>();
       for (const b of bookings) {
-        if (!b.player_id) continue;
-        const existing = playerBookings.get(b.player_id) || [];
+        const key = b.player_id || b.guest_player_id;
+        if (!key) continue;
+        const existing = playerBookings.get(key) || [];
         existing.push(b.id);
-        playerBookings.set(b.player_id, existing);
+        playerBookings.set(key, existing);
       }
 
       // Create invoices per player
