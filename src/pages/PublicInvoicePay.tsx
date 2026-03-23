@@ -291,7 +291,7 @@ export default function PublicInvoicePay() {
             ) : (
               <CreditCard className="h-5 w-5 mr-2" />
             )}
-            {payLoading ? "Redirecting..." : `Pay €${invoice.total.toFixed(2)}`}
+            {payLoading ? "Redirecting..." : `Pay €${formatEuro(invoice.total)}`}
           </Button>
 
           {academy?.contactEmail && (

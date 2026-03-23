@@ -87,6 +87,7 @@ serve(async (req) => {
       },
       academy: academy ? {
         name: academy.name,
+        slug: academy.slug,
         logoUrl,
         bannerColor: academy.invoice_banner_color,
         contactEmail: academy.contact_email,

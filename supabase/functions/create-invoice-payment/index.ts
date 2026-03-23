@@ -137,11 +137,25 @@ serve(async (req) => {
     const authToken = accessToken || mollieApiKey;
 
     // Build redirect URL
-    const baseUrl = supabaseUrl.replace(".supabase.co", "").replace("https://", "");
-    const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.lovable.app`;
-    const redirectUrl = invoice.public_token
-      ? `${appUrl}/pay/${invoice.public_token}?status=success`
-      : `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
+    const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.ai`;
+    let redirectUrl: string;
+
+    if (invoice.public_token && invoice.academy_profile_id) {
+      // Fetch academy slug for branded URL
+      const { data: academyData } = await supabase
+        .from("academy_profiles")
+        .select("slug")
+        .eq("id", invoice.academy_profile_id)
+        .single();
+      const slug = academyData?.slug;
+      redirectUrl = slug
+        ? `${appUrl}/nl/academies/${slug}/pay/${invoice.public_token}?status=success`
+        : `${appUrl}/pay/${invoice.public_token}?status=success`;
+    } else if (invoice.public_token) {
+      redirectUrl = `${appUrl}/pay/${invoice.public_token}?status=success`;
+    } else {
+      redirectUrl = `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
+    }
     const webhookUrl = `${supabaseUrl}/functions/v1/mollie-webhook`;
 
     // Create Mollie payment
