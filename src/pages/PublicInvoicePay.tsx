@@ -171,8 +171,13 @@ export default function PublicInvoicePay() {
       } else {
         throw new Error("No payment URL");
       }
-    } catch {
-      toast.error("Failed to create payment. Please try again.");
+    } catch (err: any) {
+      const errorData = err?.message ? JSON.parse(err.message).error : null;
+      if (errorData === "no_mollie_account") {
+        toast.error("Online payment is not available. Please use bank transfer.");
+      } else {
+        toast.error("Failed to create payment. Please try again.");
+      }
       setPayLoading(false);
     }
   };
