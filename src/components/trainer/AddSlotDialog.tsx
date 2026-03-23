@@ -449,8 +449,9 @@ export function BulkCreateSheet({
     const rate = getHourlyRate(tId);
     if (!rate) return { pricePerSession: null, totalPrice: null };
     const pricePerSession = calculateSlotPrice(rate, durationMinutes);
-    const extraCostsPerSession = extraCosts.reduce((sum, c) => sum + (c.price || 0), 0);
-    const totalPrice = (pricePerSession + extraCostsPerSession) * recurrenceWeeks;
+    const perSessionExtra = extraCosts.filter(c => (c.type || 'per_session') === 'per_session').reduce((sum, c) => sum + (c.price || 0), 0);
+    const oneTimeExtra = extraCosts.filter(c => c.type === 'one_time').reduce((sum, c) => sum + (c.price || 0), 0);
+    const totalPrice = (pricePerSession + perSessionExtra) * recurrenceWeeks + oneTimeExtra;
     return { pricePerSession: Math.round(pricePerSession * 100) / 100, totalPrice: Math.round(totalPrice * 100) / 100 };
   };
 
