@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2, Check, ChevronsUpDown } from "lucide-react";
@@ -1017,18 +1018,18 @@ export function BulkCreateSheet({
                       {t("calendar.pricing", "Pricing")}
                     </Label>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id={`vat-toggle-${index}`}
-                          checked={pricesIncludeVat}
-                          onCheckedChange={setPricesIncludeVat}
-                        />
-                        <Label htmlFor={`vat-toggle-${index}`} className="text-xs cursor-pointer">
-                          {pricesIncludeVat
-                            ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
-                            : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
-                        </Label>
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {pricesIncludeVat
+                          ? t("cycles:form.pricesIncludeVat", "Prices include VAT")
+                          : t("cycles:detail.pricesExcludeVat", "Prices exclude VAT")}
+                        {" · "}
+                        <Link
+                          to="/app/trainer/settings/bookings"
+                          className="text-primary underline hover:text-primary/80"
+                        >
+                          {t("calendar.changeInSettings", "Change in settings")}
+                        </Link>
+                      </p>
                     </div>
                     {slot.trainerId && getHourlyRate(slot.trainerId) && (
                       <p className="text-xs text-muted-foreground">

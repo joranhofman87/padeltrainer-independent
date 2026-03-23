@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -20,8 +21,10 @@ export default function TrainerBookingSettings() {
   const [requireApproval, setRequireApproval] = useState(false);
   const [useManualInvoicing, setUseManualInvoicing] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingWelcome, setSavingWelcome] = useState(false);
+  const [savingVat, setSavingVat] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function TrainerBookingSettings() {
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('require_booking_approval, use_manual_invoicing, welcome_message')
+      .select('require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
       .eq('user_id', user!.id)
       .single();
 
@@ -41,6 +44,7 @@ export default function TrainerBookingSettings() {
       setRequireApproval(data.require_booking_approval || false);
       setUseManualInvoicing(data.use_manual_invoicing || false);
       setWelcomeMessage(data.welcome_message || '');
+      setPricesIncludeVat(data.prices_include_vat !== false);
     }
     setLoadingSettings(false);
   };
@@ -83,6 +87,22 @@ export default function TrainerBookingSettings() {
       toast({ title: t('welcomeMessage.saved') });
     }
     setSavingWelcome(false);
+  };
+
+  const handleToggleVat = async (value: boolean) => {
+    setSavingVat(true);
+    const { error } = await supabase
+      .from('trainer_profiles')
+      .update({ prices_include_vat: value } as any)
+      .eq('user_id', user!.id);
+
+    if (error) {
+      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+    } else {
+      setPricesIncludeVat(value);
+      toast({ title: t('common:success'), description: t('bookingSettings.vatSaved') });
+    }
+    setSavingVat(false);
   };
 
   if (loading || loadingSettings) {
@@ -213,6 +233,47 @@ export default function TrainerBookingSettings() {
                 {t('common:save', 'Save')}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+        {/* VAT Settings Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Euro className="h-5 w-5 text-primary" />
+              {t('bookingSettings.vatTitle')}
+            </CardTitle>
+            <CardDescription>
+              {t('bookingSettings.vatDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex-1 pr-4">
+                <Label htmlFor="vat-toggle" className="font-medium">
+                  {t('bookingSettings.vatInclLabel')}
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('bookingSettings.vatInclDescription')}
+                </p>
+              </div>
+              <Switch
+                id="vat-toggle"
+                checked={pricesIncludeVat}
+                onCheckedChange={handleToggleVat}
+                disabled={savingVat}
+              />
+            </div>
+            <Alert>
+              <AlertDescription className="text-sm text-muted-foreground">
+                ⚠️ {t('bookingSettings.vatWarning')}
+              </AlertDescription>
+            </Alert>
+            {savingVat && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('common:saving')}
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>

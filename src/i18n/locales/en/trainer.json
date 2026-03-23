@@ -590,7 +590,8 @@
     "cyclusDeletedDescription": "Deleted {{count}} slots and cancelled associated bookings",
     "notifyPlayers": "Notify affected players by email",
     "workingAs": "Working as",
-    "independent": "Independent"
+    "independent": "Independent",
+    "changeInSettings": "Change in settings"
   },
   "openSlots": {
     "title": "Open Training Slots",
@@ -643,7 +644,13 @@
     "welcomeMessage": "Welcome Message",
     "welcomeMessageDescription": "This message is shown to players after they book a session or join your waiting list. Great for sharing WhatsApp group links or preparation tips.",
     "welcomeMessagePlaceholder": "e.g. Thanks for booking! Join our WhatsApp community: https://chat.whatsapp.com/...",
-    "welcomeMessageSaved": "Welcome message saved"
+    "welcomeMessageSaved": "Welcome message saved",
+    "vatTitle": "VAT Settings",
+    "vatDescription": "Configure how prices are entered for your sessions",
+    "vatInclLabel": "Prices include VAT",
+    "vatInclDescription": "When enabled, prices you enter already include VAT. When disabled, VAT will be added on top.",
+    "vatWarning": "Changing this setting only affects new slots. Existing slots will keep their current VAT setting.",
+    "vatSaved": "VAT setting updated"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",
