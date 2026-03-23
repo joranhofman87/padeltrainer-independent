@@ -34,7 +34,7 @@ import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlo
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 
