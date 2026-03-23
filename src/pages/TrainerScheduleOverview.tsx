@@ -291,7 +291,7 @@ export default function TrainerScheduleOverview() {
     queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
 
   // Edit cycle
-  const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
+  const openEditDialog = async (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
     const firstSlot = group.slots[0];
     const sortedSlots = [...group.slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
     const earliestStart = sortedSlots[0] ? parseISO(sortedSlots[0].start_time) : undefined;
@@ -310,6 +310,42 @@ export default function TrainerScheduleOverview() {
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
     });
+
+    // Collect unique players from all bookings across cycle slots
+    const playerMap = new Map<string, CyclePlayer>();
+    for (const slot of group.slots) {
+      for (const b of slot.bookings) {
+        if (b.status === 'cancelled') continue;
+        const id = b.guest_player_id || b.player_id || '';
+        if (!id) continue;
+        const existing = playerMap.get(id);
+        if (existing) {
+          existing.bookingCount++;
+        } else {
+          playerMap.set(id, {
+            id,
+            name: b.profiles?.full_name || b.guest_players?.full_name || t("scheduleOverview.unknownPlayer", "Unknown"),
+            type: b.guest_player_id ? 'guest' : 'player',
+            bookingCount: 1,
+          });
+        }
+      }
+    }
+    setEditCyclePlayers(Array.from(playerMap.values()));
+
+    // Fetch trainer's guest players
+    if (user) {
+      const tp = await getTrainerProfile(user.id);
+      if (tp) {
+        const { data: guests } = await supabase
+          .from("guest_players")
+          .select("id, full_name")
+          .eq("trainer_id", tp.id)
+          .order("full_name");
+        setAvailableGuestPlayers(guests || []);
+      }
+    }
+
     setEditDialogOpen(true);
   };
 
