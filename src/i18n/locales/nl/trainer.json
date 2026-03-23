@@ -62,7 +62,15 @@
     "cancel": "Annuleren",
     "markAsPrivate": "Gemarkeerd als privé",
     "markAsPublic": "Gemarkeerd als openbaar",
-    "cyclePrivate": "Privé (verborgen voor spelers)"
+    "cyclePrivate": "Privé (verborgen voor spelers)",
+    "extraCosts": "Extra kosten",
+    "addCost": "Kosten toevoegen",
+    "costDescription": "Omschrijving",
+    "costPrice": "Prijs",
+    "startDate": "Startdatum",
+    "repeatCount": "Aantal weken",
+    "cannotRemoveBookedSlots": "Kan {{count}} sessie(s) met actieve boekingen niet verwijderen",
+    "removeCost": "Verwijderen"
   },
   "profile": {
     "shareProfile": "Profiel Delen",

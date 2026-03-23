@@ -40,10 +40,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
   Search,
   ChevronDown,
   ChevronRight,
   Calendar,
+  CalendarIcon,
   Users,
   Pencil,
   MapPin,
@@ -52,10 +59,15 @@ import {
   AlertTriangle,
   Lock,
   LockOpen,
+  Plus,
+  Trash2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
 const localeMap: Record<string, Locale> = { nl, en: enUS, de, fr, es };
+
+type ExtraCost = { description: string; price: number };
 
 type SlotWithBookings = {
   id: string;
@@ -68,6 +80,7 @@ type SlotWithBookings = {
   is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
+  extra_costs: ExtraCost[] | null;
   locations?: { name: string; city: string } | null;
   bookings: {
     id: string;
@@ -88,6 +101,11 @@ type CycleEditData = {
   locationId: string;
   maxParticipants: string;
   isPrivate: boolean;
+  extraCosts: ExtraCost[];
+  startDate: Date | undefined;
+  originalStartDate: Date | undefined;
+  repeatCount: string;
+  originalRepeatCount: number;
 };
 
 type TrainerLocationOption = {
@@ -117,6 +135,11 @@ export default function TrainerScheduleOverview() {
     locationId: "",
     maxParticipants: "",
     isPrivate: false,
+    extraCosts: [],
+    startDate: undefined,
+    originalStartDate: undefined,
+    repeatCount: "0",
+    originalRepeatCount: 0,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -140,7 +163,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, is_marked_full, location_id, price_per_session, extra_costs,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
@@ -261,6 +284,9 @@ export default function TrainerScheduleOverview() {
   // Edit cycle
   const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
     const firstSlot = group.slots[0];
+    const sortedSlots = [...group.slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    const earliestStart = sortedSlots[0] ? parseISO(sortedSlots[0].start_time) : undefined;
+    const extraCosts: ExtraCost[] = Array.isArray(firstSlot?.extra_costs) ? (firstSlot.extra_costs as ExtraCost[]) : [];
     setEditCycleId(cycleId);
     setEditCycleSlotCount(group.slots.length);
     setCycleEditData({
@@ -269,6 +295,11 @@ export default function TrainerScheduleOverview() {
       locationId: firstSlot?.location_id || "",
       maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
       isPrivate: firstSlot?.is_marked_full ?? false,
+      extraCosts: extraCosts.length > 0 ? extraCosts : [],
+      startDate: earliestStart,
+      originalStartDate: earliestStart,
+      repeatCount: String(group.slots.length),
+      originalRepeatCount: group.slots.length,
     });
     setEditDialogOpen(true);
   };
@@ -276,30 +307,141 @@ export default function TrainerScheduleOverview() {
   const handleSaveCycleEdit = async () => {
     if (!editCycleId || !cycleEditData.name.trim()) return;
     setSavingEdit(true);
-    const updates: Record<string, unknown> = {
-      cyclus_name: cycleEditData.name.trim(),
-      is_marked_full: cycleEditData.isPrivate,
-    };
-    if (cycleEditData.pricePerSession !== "") {
-      updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
-    }
-    if (cycleEditData.locationId) {
-      updates.location_id = cycleEditData.locationId;
-    }
-    if (cycleEditData.maxParticipants !== "") {
-      updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
-    }
-    const { error } = await supabase
-      .from("availability_slots")
-      .update(updates)
-      .eq("cyclus_id", editCycleId);
-    setSavingEdit(false);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+
+    try {
+      // 1. Build bulk updates for all existing slots
+      const updates: Record<string, unknown> = {
+        cyclus_name: cycleEditData.name.trim(),
+        is_marked_full: cycleEditData.isPrivate,
+        extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : null,
+      };
+      if (cycleEditData.pricePerSession !== "") {
+        updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
+      }
+      if (cycleEditData.locationId) {
+        updates.location_id = cycleEditData.locationId;
+      }
+      if (cycleEditData.maxParticipants !== "") {
+        updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
+      }
+
+      // 2. Handle start date shift
+      if (
+        cycleEditData.startDate &&
+        cycleEditData.originalStartDate &&
+        cycleEditData.startDate.getTime() !== cycleEditData.originalStartDate.getTime()
+      ) {
+        const deltaMs = cycleEditData.startDate.getTime() - cycleEditData.originalStartDate.getTime();
+        // Fetch all slots for this cycle to shift them
+        const { data: cycleSlots } = await supabase
+          .from("availability_slots")
+          .select("id, start_time, end_time")
+          .eq("cyclus_id", editCycleId)
+          .order("start_time", { ascending: true });
+
+        if (cycleSlots) {
+          for (const cs of cycleSlots) {
+            const newStart = new Date(new Date(cs.start_time).getTime() + deltaMs).toISOString();
+            const newEnd = new Date(new Date(cs.end_time).getTime() + deltaMs).toISOString();
+            await supabase
+              .from("availability_slots")
+              .update({ ...updates, start_time: newStart, end_time: newEnd })
+              .eq("id", cs.id);
+          }
+        }
+      } else {
+        // No date shift — just bulk update
+        await supabase
+          .from("availability_slots")
+          .update(updates)
+          .eq("cyclus_id", editCycleId);
+      }
+
+      // 3. Handle repeat count change
+      const newCount = parseInt(cycleEditData.repeatCount, 10);
+      if (!isNaN(newCount) && newCount !== cycleEditData.originalRepeatCount) {
+        const { data: cycleSlots } = await supabase
+          .from("availability_slots")
+          .select("*")
+          .eq("cyclus_id", editCycleId)
+          .order("start_time", { ascending: true });
+
+        if (cycleSlots && cycleSlots.length > 0) {
+          if (newCount > cycleSlots.length) {
+            // Add new slots at the end
+            const lastSlot = cycleSlots[cycleSlots.length - 1];
+            const lastStart = new Date(lastSlot.start_time);
+            const lastEnd = new Date(lastSlot.end_time);
+            const slotsToAdd = newCount - cycleSlots.length;
+
+            const newSlots = [];
+            for (let i = 1; i <= slotsToAdd; i++) {
+              const newStart = new Date(lastStart.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+              const newEnd = new Date(lastEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+              newSlots.push({
+                trainer_id: lastSlot.trainer_id,
+                start_time: newStart.toISOString(),
+                end_time: newEnd.toISOString(),
+                cyclus_id: editCycleId,
+                cyclus_name: cycleEditData.name.trim(),
+                max_participants: lastSlot.max_participants,
+                is_public: lastSlot.is_public,
+                is_marked_full: cycleEditData.isPrivate,
+                location_id: cycleEditData.locationId || lastSlot.location_id,
+                price_per_session: cycleEditData.pricePerSession !== "" ? parseFloat(cycleEditData.pricePerSession) : lastSlot.price_per_session,
+                extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
+                academy_profile_id: lastSlot.academy_profile_id,
+                allow_single_booking: lastSlot.allow_single_booking,
+                court_type: lastSlot.court_type,
+                min_participants: lastSlot.min_participants,
+                min_rating: lastSlot.min_rating,
+                max_rating: lastSlot.max_rating,
+                rating_system: lastSlot.rating_system,
+                training_level: lastSlot.training_level,
+                total_price: lastSlot.total_price,
+                prices_include_vat: lastSlot.prices_include_vat,
+              });
+            }
+            await supabase.from("availability_slots").insert(newSlots);
+          } else if (newCount < cycleSlots.length) {
+            // Remove trailing slots without active bookings
+            const slotsToRemove = cycleSlots.length - newCount;
+            const trailingSlots = cycleSlots.slice(-slotsToRemove);
+            // Check for active bookings
+            const { data: bookingsCheck } = await supabase
+              .from("bookings")
+              .select("slot_id")
+              .in("slot_id", trailingSlots.map((s) => s.id))
+              .neq("status", "cancelled");
+
+            const bookedSlotIds = new Set((bookingsCheck || []).map((b) => b.slot_id));
+            const deletableSlots = trailingSlots.filter((s) => !bookedSlotIds.has(s.id));
+            const blockedCount = trailingSlots.length - deletableSlots.length;
+
+            if (blockedCount > 0) {
+              toast({
+                title: t("scheduleOverview.cannotRemoveBookedSlots", "Cannot remove {{count}} session(s) with active bookings", { count: blockedCount }),
+                variant: "destructive",
+              });
+            }
+
+            if (deletableSlots.length > 0) {
+              await supabase
+                .from("availability_slots")
+                .delete()
+                .in("id", deletableSlots.map((s) => s.id));
+            }
+          }
+        }
+      }
+
       toast({ title: t("scheduleOverview.cycleSaved", "Cycle updated") });
       setEditDialogOpen(false);
       invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -654,7 +796,7 @@ export default function TrainerScheduleOverview() {
 
       {/* Edit Cycle Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t("scheduleOverview.editCycleTitle", "Edit Cycle")}
@@ -669,6 +811,48 @@ export default function TrainerScheduleOverview() {
                 autoFocus
               />
             </div>
+
+            {/* Start date */}
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.startDate", "Start date")}</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !cycleEditData.startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {cycleEditData.startDate
+                      ? format(cycleEditData.startDate, "PPP", { locale: dateFnsLocale })
+                      : t("scheduleOverview.startDate", "Start date")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={cycleEditData.startDate}
+                    onSelect={(date) => setCycleEditData((prev) => ({ ...prev, startDate: date || undefined }))}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Number of weeks */}
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.repeatCount", "Number of weeks")}</Label>
+              <Input
+                type="number"
+                min="1"
+                value={cycleEditData.repeatCount}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, repeatCount: e.target.value }))}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label>{t("scheduleOverview.pricePerSession", "Price per session")}</Label>
               <div className="relative">
@@ -683,6 +867,71 @@ export default function TrainerScheduleOverview() {
                 />
               </div>
             </div>
+
+            {/* Extra costs */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    setCycleEditData((prev) => ({
+                      ...prev,
+                      extraCosts: [...prev.extraCosts, { description: "", price: 0 }],
+                    }))
+                  }
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {t("scheduleOverview.addCost", "Add cost")}
+                </Button>
+              </div>
+              {cycleEditData.extraCosts.map((cost, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    placeholder={t("scheduleOverview.costDescription", "Description")}
+                    value={cost.description}
+                    onChange={(e) => {
+                      const updated = [...cycleEditData.extraCosts];
+                      updated[idx] = { ...updated[idx], description: e.target.value };
+                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                    }}
+                    className="flex-1"
+                  />
+                  <div className="relative w-24">
+                    <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="pl-6"
+                      value={cost.price}
+                      onChange={(e) => {
+                        const updated = [...cycleEditData.extraCosts];
+                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      const updated = cycleEditData.extraCosts.filter((_, i) => i !== idx);
+                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                    }}
+                    title={t("scheduleOverview.removeCost", "Remove")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
             <div className="space-y-2">
               <Label>{t("scheduleOverview.location", "Location")}</Label>
               <Select
