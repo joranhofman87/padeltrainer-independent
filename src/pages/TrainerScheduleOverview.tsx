@@ -102,11 +102,17 @@ export default function TrainerScheduleOverview() {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
 
-  // Rename cycle dialog
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [renameCycleId, setRenameCycleId] = useState<string | null>(null);
-  const [renameCycleName, setRenameCycleName] = useState("");
-  const [savingRename, setSavingRename] = useState(false);
+  // Edit cycle dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editCycleId, setEditCycleId] = useState<string | null>(null);
+  const [editCycleSlotCount, setEditCycleSlotCount] = useState(0);
+  const [cycleEditData, setCycleEditData] = useState<CycleEditData>({
+    name: "",
+    pricePerSession: "",
+    locationId: "",
+    maxParticipants: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Remove player confirm
   const [removeBookingId, setRemoveBookingId] = useState<string | null>(null);
