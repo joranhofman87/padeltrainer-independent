@@ -349,7 +349,7 @@ export default function TrainerCalendar() {
 
   const handleDuplicateCyclus = (cyclusId: string) => {
     setPreselectedCyclusId(cyclusId);
-    setDuplicateCyclusOpen(true);
+    setBulkCreateOpen(true);
   };
 
   const handleDeleteSlot = (slot: SlotWithBookings) => {
