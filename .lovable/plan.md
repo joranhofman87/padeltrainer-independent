@@ -1,36 +1,39 @@
 
 
-# Generate Missing Invoices for Existing Bookings
+# Fix Invoice Logo Upload + Add Banner Color
 
 ## Problem
-Rene has 836 confirmed bookings across 31 cycles with no invoices — they were created before the invoice trigger was added. We need a way to backfill draft invoices for these existing bookings.
+The logo upload fails because the storage path uses `invoice-logos/academy-{id}` but RLS policies only allow uploads to `academies/{academyId}/...` folder. Additionally, the user wants a configurable banner/header color for invoices (for white logos on dark backgrounds, like the RL Padel Performance example).
 
-## Approach
-Add a **"Generate missing invoices"** button on the Academy Invoices page + a new edge function that scans all bookings for an academy's trainers and creates draft invoices for any that aren't yet covered by an existing invoice.
+## Plan
 
-## Step 1: New Edge Function `backfill-invoices`
-File: `supabase/functions/backfill-invoices/index.ts`
+### Step 1: Database Migration
+- Add `invoice_banner_color` column (text, nullable, default null) to `academy_profiles`
 
-- Input: `academyProfileId`
-- Finds all trainer IDs linked to the academy
-- Queries all confirmed bookings for those trainers where `payment_status = 'pending'` and `paid_externally` is not true
-- Excludes bookings already referenced in an existing invoice's `booking_ids` array
-- Groups remaining bookings by `(cyclus_id, guest_player_id/player_id)` — one invoice per player per cycle
-- Calls `auto-create-invoice` with `asDraft: true` for each group
-- Returns count of invoices created
+### Step 2: Fix Logo Upload Path
+In `AcademyInvoiceSettingsCard.tsx`, change the upload path from:
+- `invoice-logos/academy-${academyId}.${ext}` 
+to:
+- `academies/${academyId}/invoice-logo.${ext}`
 
-## Step 2: Add Button to `AcademyInvoices.tsx`
-- Add a "Generate missing invoices" button in the header area (next to the settings link)
-- Shows a loading spinner while running
-- On completion, shows toast with count and refetches the invoice list
-- Only visible when there are few/no invoices (or always visible as a utility action)
+This matches the existing RLS policy that allows academy managers to upload to `avatars/academies/{academyId}/...`.
 
-## Step 3: Translations
-Add keys for the button label and success/error messages in EN and NL academy.json.
+Also fix `handleRemoveLogo` to use the correct path.
+
+### Step 3: Add Banner Color Picker
+In `AcademyInvoiceSettingsCard.tsx`:
+- Add a color input next to the logo upload section
+- Default suggestion: dark navy (#1a2332) based on the example
+- Include a few preset color swatches (dark navy, black, white, brand blue) + custom color picker
+- Save `invoice_banner_color` alongside other settings
+- Load it from the database on init
+
+### Step 4: Translations
+Add keys for banner color label/description in EN and NL academy.json.
 
 ## Files
-- `supabase/functions/backfill-invoices/index.ts` — New edge function
-- `src/pages/academy/AcademyInvoices.tsx` — Add generate button
+- **Migration**: Add `invoice_banner_color` to `academy_profiles`
+- `src/components/academy/AcademyInvoiceSettingsCard.tsx` — Fix upload path, add color picker
 - `src/i18n/locales/en/academy.json` — Translations
 - `src/i18n/locales/nl/academy.json` — Translations
 
