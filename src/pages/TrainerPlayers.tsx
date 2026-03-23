@@ -153,23 +153,60 @@ export default function TrainerPlayers() {
         if (guestError) throw guestError;
         setGuestPlayers(guestData as GuestPlayer[]);
 
-        // Fetch registered players who booked with this trainer
-        // Use two-step query to avoid deep type instantiation
-        let regPlayers: UnifiedPlayer[] = [];
+        // Fetch slot IDs for this trainer
         const { data: slotIds } = await supabase
           .from("availability_slots")
           .select("id")
           .eq("trainer_id", trainerId);
 
-        if (slotIds && slotIds.length > 0) {
+        const allSlotIds = (slotIds || []).map(s => s.id);
+
+        // Fetch future bookings for guest players to determine active status
+        const now = new Date().toISOString();
+        if (allSlotIds.length > 0) {
+          const { data: futureBookings } = await supabase
+            .from("bookings")
+            .select("guest_player_id, availability_slots!inner(start_time)")
+            .in("slot_id", allSlotIds)
+            .not("guest_player_id", "is", null)
+            .neq("status", "cancelled")
+            .gte("availability_slots.start_time", now);
+
+          const activeIds = new Set<string>();
+          (futureBookings || []).forEach(b => {
+            if (b.guest_player_id) activeIds.add(b.guest_player_id);
+          });
+          setActiveGuestIds(activeIds);
+        }
+
+        // Check waiting list entries for guest players
+        const guestEmails = (guestData as GuestPlayer[]).filter(g => g.email).map(g => g.email!);
+        if (guestEmails.length > 0) {
+          const { data: waitingEntries } = await supabase
+            .from("waiting_list_entries")
+            .select("email")
+            .eq("trainer_id", trainerId)
+            .eq("status", "active")
+            .in("email", guestEmails);
+
+          const waitingEmails = new Set((waitingEntries || []).map(w => (w as any).email));
+          const wlIds = new Set<string>();
+          (guestData as GuestPlayer[]).forEach(g => {
+            if (g.email && waitingEmails.has(g.email)) wlIds.add(g.id);
+          });
+          setWaitingListGuestIds(wlIds);
+        }
+
+        // Fetch registered players who booked with this trainer
+        let regPlayers: UnifiedPlayer[] = [];
+        if (allSlotIds.length > 0) {
           const { data: bookings } = await supabase
             .from("bookings")
             .select("player_id, created_at")
-            .in("slot_id", slotIds.map(s => s.id))
+            .in("slot_id", allSlotIds)
             .not("player_id", "is", null);
 
           if (bookings && bookings.length > 0) {
-            // Deduplicate player_ids
             const playerMap = new Map<string, string>();
             bookings.forEach(b => {
               if (b.player_id && !playerMap.has(b.player_id)) {
@@ -184,7 +221,6 @@ export default function TrainerPlayers() {
               .in("id", playerIds);
 
             if (profiles) {
-              // Exclude players that are already in guest_players (by linked_profile_id)
               const linkedIds = new Set(
                 (guestData as GuestPlayer[])
                   .filter(g => (g as any).linked_profile_id)
@@ -204,6 +240,7 @@ export default function TrainerPlayers() {
                   notes: null,
                   created_at: playerMap.get(p.id) || new Date().toISOString(),
                   type: "registered" as const,
+                  computedStatus: "registered" as PlayerStatus,
                 }));
             }
           }
