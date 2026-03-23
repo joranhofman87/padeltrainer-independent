@@ -1,58 +1,40 @@
 
 
-# Expand Cycle Edit Dialog with Bulk Fields
+# Add Privacy Toggle + Fix Edit Navigation in Schedule Overview
 
 ## What
-Expand the pencil-icon dialog on cycle groups in the Schedule Overview to allow editing **name**, **price per session**, **location**, and **max group size** in bulk across all slots in that cycle. VAT is already global (trainer profile level), so it's not included here.
-
-## Layout
-
-```text
-┌─────────────────────────────────┐
-│  Edit Cycle                     │
-│                                 │
-│  Name:  [Monday Beginners    ]  │
-│  Price per session:  [€ 35   ]  │
-│  Location:  [Select location ▼] │
-│  Max players:  [4            ]  │
-│                                 │
-│  ⚠️ Changes apply to all X     │
-│     sessions in this cycle.     │
-│                                 │
-│         [Cancel]  [Save]        │
-└─────────────────────────────────┘
-```
+1. Add per-slot privacy toggle (lock/unlock icon) on the overview page to mark/unmark individual slots as private (`is_marked_full`)
+2. Add a privacy toggle in the cycle edit dialog to bulk-toggle all slots in a cycle
+3. Fix the slot edit button URL (currently goes to `/trainer/calendar` instead of `/app/trainer/calendar`)
+4. Also fetch `is_marked_full` in the overview query and use it for the "Private" badge (currently uses `is_public` which is a creation-time field, while `is_marked_full` is the manual trainer toggle)
 
 ## Changes
 
 ### 1. `src/pages/TrainerScheduleOverview.tsx`
 
-**Expand query** to also fetch `price_per_session`, `location_id` on slots (already have `max_participants`, `location_id`). Add `price_per_session` to the `SlotWithBookings` type.
+**Query & type** — Add `is_marked_full` to the select query and `SlotWithBookings` type.
 
-**Expand rename dialog → "Edit Cycle" dialog** with additional fields:
-- `cyclus_name` (existing)
-- `price_per_session` (number input, €)
-- `location_id` (Select dropdown, fetched from trainer's locations)
-- `max_participants` (number input)
+**Fix edit navigation** (line 514) — Change `/trainer/calendar?date=...` to `/app/trainer/calendar?date=...`.
 
-Pre-fill from first slot in the cycle. On save, bulk-update all slots with matching `cyclus_id`. Show warning: "Changes apply to all X sessions in this cycle."
+**Per-slot privacy toggle** — Add a Lock/LockOpen icon button on each slot row. Clicking it toggles `is_marked_full` on that single slot via supabase update, then invalidates the query.
 
-**Add location query**: fetch trainer's locations for the dropdown (reuse pattern from AddSlotDialog).
+**Private badge** — Show "Private" badge when `is_marked_full` is true (instead of `!is_public`).
 
-**State changes**: Replace single `renameCycleName` state with a `cycleEditData` object holding all four fields.
+**Cycle edit dialog** — Add a Switch for "Mark as private" that bulk-updates `is_marked_full` on all slots with the cycle's `cyclus_id`. Pre-fill from first slot's `is_marked_full` value.
+
+**Add handler** `handleToggleSlotPrivacy(slotId, currentValue)` — updates single slot's `is_marked_full`, invalidates query.
+
+**State** — Add `togglingPrivacy` state to track loading per slot. Add `isPrivate` field to `CycleEditData`.
 
 ### 2. Translation keys (`en/trainer.json`, `nl/trainer.json`)
 
 Add under `scheduleOverview`:
-- `editCycleTitle`: "Edit Cycle" / "Cyclus bewerken"
-- `bulkWarning`: "Changes apply to all {{count}} sessions in this cycle." / "Wijzigingen gelden voor alle {{count}} sessies in deze cyclus."
-- `pricePerSession`: "Price per session" / "Prijs per sessie"
-- `maxPlayers`: "Max players" / "Max spelers"
-- `location`: "Location" / "Locatie"
-- `selectLocation`: "Select location" / "Selecteer locatie"
+- `markAsPrivate`: "Mark as private" / "Markeer als privé"
+- `markAsPublic`: "Mark as public" / "Markeer als openbaar"
+- `cyclePrivate`: "Private (hidden from players)" / "Privé (verborgen voor spelers)"
 
-## Files
-- `src/pages/TrainerScheduleOverview.tsx` — Expand edit dialog with bulk fields
-- `src/i18n/locales/en/trainer.json` — Add translation keys
-- `src/i18n/locales/nl/trainer.json` — Add translation keys
+### Files
+- `src/pages/TrainerScheduleOverview.tsx`
+- `src/i18n/locales/en/trainer.json`
+- `src/i18n/locales/nl/trainer.json`
 
