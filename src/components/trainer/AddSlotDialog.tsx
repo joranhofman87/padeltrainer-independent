@@ -876,6 +876,10 @@ export function BulkCreateSheet({
                 logger.error("Error creating bookings", bookingError instanceof Error ? bookingError : new Error(String(bookingError)), { component: 'AddSlotDialog' });
               } else {
                 totalBookingsCreated += bookingsToInsert.length;
+                // Mark guest players as has_trained
+                if (config.selectedPlayers.length > 0) {
+                  await supabase.from("guest_players").update({ has_trained: true }).in("id", config.selectedPlayers.filter(Boolean));
+                }
               }
             }
           }

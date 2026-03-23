@@ -51,6 +51,9 @@ import { AddPlayerDialog, GuestPlayer } from "@/components/trainer/AddPlayerDial
 import { EditPlayerDialog } from "@/components/trainer/EditPlayerDialog";
 import { ImportPlayersDialog } from "@/components/trainer/ImportPlayersDialog";
 
+// Computed player status
+type PlayerStatus = "waiting_list" | "active" | "available" | "prospect" | "registered";
+
 // Unified player type for the list
 type UnifiedPlayer = {
   id: string;
@@ -63,6 +66,7 @@ type UnifiedPlayer = {
   notes: string | null;
   created_at: string;
   type: "guest" | "registered";
+  computedStatus: PlayerStatus;
   // Only for guest players
   originalGuest?: GuestPlayer;
 };
@@ -80,11 +84,14 @@ export default function TrainerPlayers() {
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PlayerStatus | "all">("all");
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<GuestPlayer | null>(null);
   const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeGuestIds, setActiveGuestIds] = useState<Set<string>>(new Set());
+  const [waitingListGuestIds, setWaitingListGuestIds] = useState<Set<string>>(new Set());
 
   // Auth is now handled by TrainerLayout
 
@@ -106,6 +113,14 @@ export default function TrainerPlayers() {
     if (user) fetchTrainerId();
   }, [user]);
 
+  // Compute status for a guest player
+  const computeGuestStatus = (g: GuestPlayer): PlayerStatus => {
+    if (waitingListGuestIds.has(g.id)) return "waiting_list";
+    if (activeGuestIds.has(g.id)) return "active";
+    if ((g as any).has_trained) return "available";
+    return "prospect";
+  };
+
   // Convert guest player to unified format
   const guestToUnified = (g: GuestPlayer): UnifiedPlayer => ({
     id: g.id,
@@ -118,6 +133,7 @@ export default function TrainerPlayers() {
     notes: g.notes || null,
     created_at: g.created_at,
     type: "guest",
+    computedStatus: computeGuestStatus(g),
     originalGuest: g,
   });
 
@@ -137,23 +153,71 @@ export default function TrainerPlayers() {
         if (guestError) throw guestError;
         setGuestPlayers(guestData as GuestPlayer[]);
 
-        // Fetch registered players who booked with this trainer
-        // Use two-step query to avoid deep type instantiation
-        let regPlayers: UnifiedPlayer[] = [];
+        // Fetch slot IDs for this trainer
         const { data: slotIds } = await supabase
           .from("availability_slots")
           .select("id")
           .eq("trainer_id", trainerId);
 
-        if (slotIds && slotIds.length > 0) {
+        const allSlotIds = (slotIds || []).map(s => s.id);
+
+        // Fetch future bookings for guest players to determine active status
+        const now = new Date().toISOString();
+        if (allSlotIds.length > 0) {
+          // Use two-step query to avoid deep type instantiation
+          const { data: futureSlotIds } = await supabase
+            .from("availability_slots")
+            .select("id")
+            .eq("trainer_id", trainerId)
+            .gte("start_time", now);
+
+          const futureIds = (futureSlotIds || []).map(s => s.id);
+          if (futureIds.length > 0) {
+            const { data: futureBookings } = await supabase
+              .from("bookings")
+              .select("guest_player_id")
+              .in("slot_id", futureIds)
+              .not("guest_player_id", "is", null)
+              .neq("status", "cancelled");
+
+            const activeIds = new Set<string>();
+            (futureBookings || []).forEach(b => {
+              if (b.guest_player_id) activeIds.add(b.guest_player_id);
+            });
+            setActiveGuestIds(activeIds);
+          }
+        }
+
+        // Check waiting list entries linked to guest players via linked_profile_id
+        const linkedGuests = (guestData as GuestPlayer[]).filter(g => (g as any).linked_profile_id);
+        if (linkedGuests.length > 0) {
+          const linkedProfileIds = linkedGuests.map(g => (g as any).linked_profile_id as string);
+          const { data: waitingEntries } = await supabase
+            .from("waiting_list_entries")
+            .select("player_id")
+            .eq("owner_id", trainerId)
+            .eq("owner_type", "trainer")
+            .eq("status", "active")
+            .in("player_id", linkedProfileIds);
+
+          const waitingProfileIds = new Set((waitingEntries || []).map(w => w.player_id));
+          const wlIds = new Set<string>();
+          linkedGuests.forEach(g => {
+            if (waitingProfileIds.has((g as any).linked_profile_id)) wlIds.add(g.id);
+          });
+          setWaitingListGuestIds(wlIds);
+        }
+
+        // Fetch registered players who booked with this trainer
+        let regPlayers: UnifiedPlayer[] = [];
+        if (allSlotIds.length > 0) {
           const { data: bookings } = await supabase
             .from("bookings")
             .select("player_id, created_at")
-            .in("slot_id", slotIds.map(s => s.id))
+            .in("slot_id", allSlotIds)
             .not("player_id", "is", null);
 
           if (bookings && bookings.length > 0) {
-            // Deduplicate player_ids
             const playerMap = new Map<string, string>();
             bookings.forEach(b => {
               if (b.player_id && !playerMap.has(b.player_id)) {
@@ -168,7 +232,6 @@ export default function TrainerPlayers() {
               .in("id", playerIds);
 
             if (profiles) {
-              // Exclude players that are already in guest_players (by linked_profile_id)
               const linkedIds = new Set(
                 (guestData as GuestPlayer[])
                   .filter(g => (g as any).linked_profile_id)
@@ -188,6 +251,7 @@ export default function TrainerPlayers() {
                   notes: null,
                   created_at: playerMap.get(p.id) || new Date().toISOString(),
                   type: "registered" as const,
+                  computedStatus: "registered" as PlayerStatus,
                 }));
             }
           }
@@ -216,24 +280,25 @@ export default function TrainerPlayers() {
       ...registeredPlayers,
     ].sort((a, b) => a.full_name.localeCompare(b.full_name));
     setAllPlayers(unified);
-  }, [guestPlayers, registeredPlayers]);
+  }, [guestPlayers, registeredPlayers, activeGuestIds, waitingListGuestIds]);
 
-  // Filter
+  // Filter by search + status
   useEffect(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) {
-      setFilteredPlayers(allPlayers);
-    } else {
-      setFilteredPlayers(
-        allPlayers.filter(
-          (player) =>
-            player.full_name.toLowerCase().includes(query) ||
-            player.email.toLowerCase().includes(query) ||
-            player.phone.includes(query)
-        )
+    let result = allPlayers;
+    if (query) {
+      result = result.filter(
+        (player) =>
+          player.full_name.toLowerCase().includes(query) ||
+          player.email.toLowerCase().includes(query) ||
+          player.phone.includes(query)
       );
     }
-  }, [searchQuery, allPlayers]);
+    if (statusFilter !== "all") {
+      result = result.filter(p => p.computedStatus === statusFilter);
+    }
+    setFilteredPlayers(result);
+  }, [searchQuery, allPlayers, statusFilter]);
 
   const handlePlayerCreated = (player: GuestPlayer) => {
     setGuestPlayers(prev => [...prev, player].sort((a, b) =>
@@ -325,15 +390,34 @@ export default function TrainerPlayers() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("players.searchPlayers")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        {/* Search + Filter */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={t("players.searchPlayers")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {(["all", "active", "available", "prospect", "waiting_list", "registered"] as const).map(status => {
+              const count = status === "all" ? allPlayers.length : allPlayers.filter(p => p.computedStatus === status).length;
+              if (status !== "all" && count === 0) return null;
+              return (
+                <Button
+                  key={status}
+                  variant={statusFilter === status ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter(status)}
+                  className="text-xs"
+                >
+                  {t(`players.statuses.${status}`)} ({count})
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Players Table */}
@@ -415,19 +499,21 @@ export default function TrainerPlayers() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {player.type === "registered" ? (
-                          <Badge variant="default">
-                            {t("players.registered", "Registered")}
-                          </Badge>
-                        ) : player.has_trained === false ? (
-                          <Badge variant="outline">
-                            {t("players.prospect")}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {t("players.active")}
-                          </Badge>
-                        )}
+                        {(() => {
+                          const statusConfig: Record<PlayerStatus, { variant: "default" | "secondary" | "outline" | "destructive"; className?: string }> = {
+                            active: { variant: "default" },
+                            registered: { variant: "default" },
+                            available: { variant: "outline", className: "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400" },
+                            waiting_list: { variant: "outline", className: "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400" },
+                            prospect: { variant: "outline" },
+                          };
+                          const cfg = statusConfig[player.computedStatus];
+                          return (
+                            <Badge variant={cfg.variant} className={cfg.className}>
+                              {t(`players.statuses.${player.computedStatus}`)}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {format(new Date(player.created_at), "MMM d, yyyy")}

@@ -381,6 +381,14 @@
     "status": "Status",
     "prospect": "Prospect",
     "active": "Actief",
+    "statuses": {
+      "all": "Alle",
+      "active": "Actief",
+      "available": "Beschikbaar",
+      "prospect": "Prospect",
+      "waiting_list": "Wachtlijst",
+      "registered": "Geregistreerd"
+    },
     "edit": "Bewerken",
     "delete": "Verwijderen",
     "bookLesson": "Sessie Boeken",

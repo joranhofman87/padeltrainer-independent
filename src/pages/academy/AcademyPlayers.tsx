@@ -479,11 +479,11 @@ export default function AcademyPlayers() {
                     </TableCell>
                     <TableCell>
                       {player.type === 'registered' ? (
-                        <Badge variant="default">{tTrainer('players.registered', 'Registered')}</Badge>
+                        <Badge variant="default">{tTrainer('players.statuses.registered')}</Badge>
                       ) : player.has_trained ? (
-                        <Badge variant="secondary">{tTrainer('players.active')}</Badge>
+                        <Badge variant="secondary">{tTrainer('players.statuses.active')}</Badge>
                       ) : (
-                        <Badge variant="outline">{tTrainer('players.prospect')}</Badge>
+                        <Badge variant="outline">{tTrainer('players.statuses.prospect')}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
