@@ -233,26 +233,45 @@ export default function TrainerScheduleOverview() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
 
-  // Rename cycle
-  const openRenameDialog = (cycleId: string, currentName: string) => {
-    setRenameCycleId(cycleId);
-    setRenameCycleName(currentName);
-    setRenameDialogOpen(true);
+  // Edit cycle
+  const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
+    const firstSlot = group.slots[0];
+    setEditCycleId(cycleId);
+    setEditCycleSlotCount(group.slots.length);
+    setCycleEditData({
+      name: group.name,
+      pricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
+      locationId: firstSlot?.location_id || "",
+      maxParticipants: firstSlot?.max_participants != null ? String(firstSlot.max_participants) : "",
+    });
+    setEditDialogOpen(true);
   };
 
-  const handleRenameCycle = async () => {
-    if (!renameCycleId || !renameCycleName.trim()) return;
-    setSavingRename(true);
+  const handleSaveCycleEdit = async () => {
+    if (!editCycleId || !cycleEditData.name.trim()) return;
+    setSavingEdit(true);
+    const updates: Record<string, unknown> = {
+      cyclus_name: cycleEditData.name.trim(),
+    };
+    if (cycleEditData.pricePerSession !== "") {
+      updates.price_per_session = parseFloat(cycleEditData.pricePerSession);
+    }
+    if (cycleEditData.locationId) {
+      updates.location_id = cycleEditData.locationId;
+    }
+    if (cycleEditData.maxParticipants !== "") {
+      updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
+    }
     const { error } = await supabase
       .from("availability_slots")
-      .update({ cyclus_name: renameCycleName.trim() })
-      .eq("cyclus_id", renameCycleId);
-    setSavingRename(false);
+      .update(updates)
+      .eq("cyclus_id", editCycleId);
+    setSavingEdit(false);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: t("scheduleOverview.cycleSaved", "Cycle name updated") });
-      setRenameDialogOpen(false);
+      toast({ title: t("scheduleOverview.cycleSaved", "Cycle updated") });
+      setEditDialogOpen(false);
       invalidate();
     }
   };
