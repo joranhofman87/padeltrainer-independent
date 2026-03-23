@@ -56,6 +56,29 @@ export default function AcademyInvoices() {
     enabled: !!activeAcademy?.id,
   });
 
+  // Backfill mutation
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeAcademy?.id) throw new Error("No academy");
+      const { data, error } = await supabase.functions.invoke("backfill-invoices", {
+        body: { academyProfileId: activeAcademy.id },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["academy-invoices"] });
+      if (data?.created > 0) {
+        toast.success(t("invoices.backfillSuccess", "{{count}} draft invoices created", { count: data.created }));
+      } else {
+        toast.info(t("invoices.backfillNone", "All bookings are already invoiced"));
+      }
+    },
+    onError: () => {
+      toast.error(t("invoices.backfillError", "Failed to generate invoices"));
+    },
+  });
+
   const draftInvoices = invoices.filter((i) => !i.sent_at && i.status !== "paid");
   const sentInvoices = invoices.filter((i) => i.sent_at && i.status !== "paid");
   const paidInvoices = invoices.filter((i) => i.status === "paid");
@@ -153,12 +176,29 @@ export default function AcademyInvoices() {
             {t("invoices.description", "Manage invoices for your academy")}
           </p>
         </div>
-        <Link to="/app/academy/settings">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            {t("invoices.editSettings", "Invoice Settings")}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => backfillMutation.mutate()}
+            disabled={backfillMutation.isPending}
+          >
+            {backfillMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4 mr-2" />
+            )}
+            {backfillMutation.isPending
+              ? t("invoices.generating", "Generating...")
+              : t("invoices.generateMissing", "Generate missing invoices")}
           </Button>
-        </Link>
+          <Link to="/app/academy/settings">
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              {t("invoices.editSettings", "Invoice Settings")}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}

@@ -409,6 +409,11 @@
     "linkCopied": "Payment link copied to clipboard",
     "linkError": "Failed to generate payment link",
     "downloadPdf": "Download PDF",
-    "noPdf": "No PDF available"
+    "noPdf": "No PDF available",
+    "generateMissing": "Generate missing invoices",
+    "generating": "Generating...",
+    "backfillSuccess": "{{count}} draft invoices created",
+    "backfillNone": "All bookings are already invoiced",
+    "backfillError": "Failed to generate invoices"
   }
 }
