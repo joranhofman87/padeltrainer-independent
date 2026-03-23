@@ -1252,6 +1252,29 @@ export default function TrainerScheduleOverview() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remove Player from Cycle Confirm */}
+      <AlertDialog open={!!confirmRemoveCyclePlayer} onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!removingPlayerFromCycle}>
+              {t("scheduleOverview.cancel", "Cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemovePlayerFromCycle} disabled={!!removingPlayerFromCycle}>
+              {removingPlayerFromCycle && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
