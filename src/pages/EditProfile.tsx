@@ -959,7 +959,7 @@ export default function EditProfile() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="coaching_since_year">Coaching Since (year)</Label>
+                      <Label htmlFor="coaching_since_year">{tTrainer('editProfile.coachingSince')}</Label>
                       <Input
                         id="coaching_since_year"
                         type="number"
