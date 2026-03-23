@@ -630,7 +630,7 @@ export default function EditProfile() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
+                <Label htmlFor="bio">{t('editProfile.bio')}</Label>
                 <Textarea
                   id="bio"
                   value={formData.bio}
