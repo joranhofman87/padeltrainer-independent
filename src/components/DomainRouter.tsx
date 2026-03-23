@@ -105,6 +105,7 @@ const TrainerIntakeRequests = lazy(() => import('@/pages/TrainerIntakeRequests')
 const ProposalOverviewPage = lazy(() => import('@/pages/ProposalOverviewPage'));
 const TrainerWaitingList = lazy(() => import('@/pages/TrainerWaitingList'));
 const OpenSlots = lazy(() => import('@/pages/OpenSlots'));
+const TrainerScheduleOverview = lazy(() => import('@/pages/TrainerScheduleOverview'));
 const BookingSuccess = lazy(() => import('@/pages/BookingSuccess'));
 const CycleFormPage = lazy(() => import('@/pages/CycleFormPage'));
 
@@ -220,6 +221,7 @@ export function DomainRouter() {
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
           <Route path="waiting-list" element={<TrainerWaitingList />} />
           <Route path="open-slots" element={<OpenSlots />} />
+          <Route path="schedule-overview" element={<TrainerScheduleOverview />} />
           
           <Route path="profile" element={<EditProfile />} />
           <Route path="subscription" element={<TrainerSubscription />} />

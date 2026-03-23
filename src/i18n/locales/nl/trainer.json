@@ -22,7 +22,25 @@
     "lessons": "Sessies",
     "getStarted": "Aan de slag",
     "waitingList": "Wachtlijst",
-    "registrations": "Inschrijvingen"
+    "registrations": "Inschrijvingen",
+    "scheduleOverview": "Overzicht"
+  },
+  "scheduleOverview": {
+    "title": "Rooster Overzicht",
+    "description": "Al je sessies gegroepeerd per cyclus met betalingsstatus.",
+    "current": "Huidig",
+    "future": "Toekomst",
+    "past": "Verleden",
+    "search": "Zoek cyclus of speler...",
+    "cycle": "Cyclus",
+    "individualSessions": "Individuele Sessies",
+    "sessions": "sessies",
+    "paid": "betaald",
+    "unpaid": "onbetaald",
+    "private": "Privé",
+    "edit": "Bewerken",
+    "noResults": "Geen sessies gevonden.",
+    "unknownPlayer": "Onbekend"
   },
   "profile": {
     "shareProfile": "Profiel Delen",

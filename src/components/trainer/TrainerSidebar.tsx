@@ -82,7 +82,8 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/trainer/calendar") ||
-    location.pathname.startsWith("/trainer/open-slots")
+    location.pathname.startsWith("/trainer/open-slots") ||
+    location.pathname.startsWith("/trainer/schedule-overview")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.startsWith("/trainer/cycles") ||
@@ -287,7 +288,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots")
+                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots") || isActive("/trainer/schedule-overview")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
@@ -321,6 +322,17 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                             activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
                           >
                             {t("nav.openSlots")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/trainer/schedule-overview"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            {t("nav.scheduleOverview", "Overview")}
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
