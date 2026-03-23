@@ -69,6 +69,7 @@
     "costDescription": "Omschrijving",
     "costPrice": "Prijs",
     "startDate": "Startdatum",
+    "time": "Tijd",
     "repeatCount": "Aantal weken",
     "cannotRemoveBookedSlots": "Kan {{count}} sessie(s) met actieve boekingen niet verwijderen",
     "removeCost": "Verwijderen",

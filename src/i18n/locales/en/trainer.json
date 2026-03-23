@@ -69,6 +69,7 @@
     "costDescription": "Description",
     "costPrice": "Price",
     "startDate": "Start date",
+    "time": "Time",
     "repeatCount": "Number of weeks",
     "cannotRemoveBookedSlots": "Cannot remove {{count}} session(s) with active bookings",
     "removeCost": "Remove",
