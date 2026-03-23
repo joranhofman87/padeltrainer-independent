@@ -135,25 +135,14 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, rowSpa
     private: t("calendar.markedFull"),
   }[status];
 
-  // Calculate height for multi-hour slots (80px per hour minus some padding)
-  // And top offset for :30 start times
-  const cellHeight = 80;
-  const needsPositioning = durationHours !== 1 || startOffset > 0;
-  const spanHeight = needsPositioning ? `${durationHours * cellHeight - 8}px` : undefined;
-  const topOffset = startOffset > 0 ? `${startOffset * cellHeight}px` : undefined;
-
   const cardContent = (
     <div
       className={cn(
         "rounded-md border p-2 cursor-pointer transition-colors text-xs",
         statusColors[status],
         compact && "p-1",
-        needsPositioning && "absolute left-1 right-1 z-10"
+        rowSpan && rowSpan > 1 && "h-full"
       )}
-      style={{ 
-        height: spanHeight,
-        top: topOffset 
-      }}
     >
       <div className={cn("font-medium flex items-center gap-1", statusTextColors[status])}>
         {startTime} - {endTime}
