@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { InvoiceEmailDialog } from './InvoiceEmailDialog';
 import { 
   FileText, 
   Download, 
@@ -29,6 +30,7 @@ interface Invoice {
   invoice_date: string;
   due_date: string;
   player_name: string;
+  guest_player_id: string | null;
   subtotal: number;
   vat_rate: number;
   vat_amount: number;
@@ -62,6 +64,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
 
   useEffect(() => {
     fetchInvoices();
@@ -83,7 +86,6 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
         variant: 'destructive',
       });
     } else {
-      // Check for overdue invoices
       const now = new Date();
       const processedInvoices = (data || []).map(inv => {
         if (inv.status === 'sent' && isAfter(now, parseISO(inv.due_date))) {
@@ -114,7 +116,6 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       });
     } else {
       toast({ title: 'Factuur gemarkeerd als betaald' });
-      // Auto-forward if emails configured
       if (forwardEmails.length > 0) {
         supabase.functions.invoke('forward-invoice', { body: { invoiceId } }).catch(err => logger.error('Forward invoice failed', err instanceof Error ? err : new Error(String(err)), { component: 'InvoiceList' }));
       }
@@ -123,38 +124,89 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
     setActionLoading(null);
   };
 
-  const handleSendInvoice = async (invoiceId: string) => {
-    setActionLoading(invoiceId);
-    
-    // First generate PDF if not exists
-    const { error: genError } = await supabase.functions.invoke('generate-invoice', {
-      body: { invoiceId },
-    });
+  const handleSendInvoice = async (invoice: Invoice) => {
+    setActionLoading(invoice.id);
 
-    if (genError) {
-      logger.error('PDF generation error', genError instanceof Error ? genError : new Error(String(genError)), { component: 'InvoiceList' });
-    }
+    try {
+      // Call edge function to send email
+      const { data, error: fnError } = await supabase.functions.invoke('send-invoice-email', {
+        body: { invoiceId: invoice.id },
+      });
 
-    // Update status to sent
-    const { error } = await supabase
-      .from('invoices')
-      .update({ 
-        status: 'sent', 
-        sent_at: new Date().toISOString() 
-      })
-      .eq('id', invoiceId);
+      if (fnError) {
+        logger.error('Send invoice email error', fnError instanceof Error ? fnError : new Error(String(fnError)), { component: 'InvoiceList' });
+      }
 
-    if (error) {
+      if (data?.error === 'no_email') {
+        // Show email dialog
+        setEmailDialog({ open: true, invoiceId: invoice.id, playerName: invoice.player_name, guestPlayerId: invoice.guest_player_id });
+        setActionLoading(null);
+        return;
+      }
+
+      // Generate PDF if needed
+      const { error: genError } = await supabase.functions.invoke('generate-invoice', {
+        body: { invoiceId: invoice.id },
+      });
+      if (genError) {
+        logger.error('PDF generation error', genError instanceof Error ? genError : new Error(String(genError)), { component: 'InvoiceList' });
+      }
+
+      // Update status to sent
+      const { error } = await supabase
+        .from('invoices')
+        .update({ 
+          status: 'sent', 
+          sent_at: new Date().toISOString() 
+        })
+        .eq('id', invoice.id);
+
+      if (error) {
+        toast({
+          title: 'Fout',
+          description: 'Kon factuur niet verzenden',
+          variant: 'destructive',
+        });
+      } else {
+        const emailMsg = data?.email ? ` naar ${data.email}` : '';
+        toast({ title: 'Factuur verzonden', description: `De factuur is verzonden${emailMsg}` });
+        fetchInvoices();
+      }
+    } catch (err) {
       toast({
         title: 'Fout',
         description: 'Kon factuur niet verzenden',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Factuur verzonden', description: 'De factuur is gemarkeerd als verzonden' });
-      fetchInvoices();
     }
     setActionLoading(null);
+  };
+
+  const handleEmailSubmitAndSend = async (email: string) => {
+    const { invoiceId, guestPlayerId } = emailDialog;
+
+    // Save email to guest player
+    if (guestPlayerId) {
+      await supabase.from('guest_players').update({ email }).eq('id', guestPlayerId);
+    }
+
+    // Retry sending
+    const { data } = await supabase.functions.invoke('send-invoice-email', {
+      body: { invoiceId },
+    });
+
+    // Mark as sent
+    await supabase.from('invoices').update({ 
+      status: 'sent', 
+      sent_at: new Date().toISOString() 
+    }).eq('id', invoiceId);
+
+    // Generate PDF
+    supabase.functions.invoke('generate-invoice', { body: { invoiceId } }).catch(() => {});
+
+    const emailMsg = data?.email ? ` naar ${data.email}` : ` naar ${email}`;
+    toast({ title: 'Factuur verzonden', description: `De factuur is verzonden${emailMsg}` });
+    fetchInvoices();
   };
 
   const handleDownload = async (invoice: Invoice) => {
@@ -173,7 +225,6 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
       return;
     }
 
-    // Open HTML in new window and trigger print dialog for PDF saving
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(data.html);
@@ -314,9 +365,9 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleSendInvoice(invoice.id)}
+                          onClick={() => handleSendInvoice(invoice)}
                           disabled={actionLoading === invoice.id}
-                          title="Markeer als verzonden"
+                          title="Verstuur factuur"
                         >
                           {actionLoading === invoice.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -388,6 +439,13 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [] }: I
           </Card>
         ))
       )}
+
+      <InvoiceEmailDialog
+        open={emailDialog.open}
+        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}
+        playerName={emailDialog.playerName}
+        onSubmit={handleEmailSubmitAndSend}
+      />
     </div>
   );
 }
