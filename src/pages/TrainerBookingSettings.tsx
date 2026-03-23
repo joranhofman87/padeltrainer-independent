@@ -44,6 +44,7 @@ export default function TrainerBookingSettings() {
       setRequireApproval(data.require_booking_approval || false);
       setUseManualInvoicing(data.use_manual_invoicing || false);
       setWelcomeMessage(data.welcome_message || '');
+      setPricesIncludeVat(data.prices_include_vat !== false);
     }
     setLoadingSettings(false);
   };
