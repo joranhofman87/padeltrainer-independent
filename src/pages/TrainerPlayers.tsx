@@ -113,6 +113,14 @@ export default function TrainerPlayers() {
     if (user) fetchTrainerId();
   }, [user]);
 
+  // Compute status for a guest player
+  const computeGuestStatus = (g: GuestPlayer): PlayerStatus => {
+    if (waitingListGuestIds.has(g.id)) return "waiting_list";
+    if (activeGuestIds.has(g.id)) return "active";
+    if ((g as any).has_trained) return "available";
+    return "prospect";
+  };
+
   // Convert guest player to unified format
   const guestToUnified = (g: GuestPlayer): UnifiedPlayer => ({
     id: g.id,
@@ -125,6 +133,7 @@ export default function TrainerPlayers() {
     notes: g.notes || null,
     created_at: g.created_at,
     type: "guest",
+    computedStatus: computeGuestStatus(g),
     originalGuest: g,
   });
 
