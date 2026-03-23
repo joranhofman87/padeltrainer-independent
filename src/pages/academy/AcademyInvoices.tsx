@@ -290,7 +290,7 @@ export default function AcademyInvoices() {
                           <TableCell>{inv.player_name}</TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell className="text-right font-medium">€{inv.total.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">€{formatEuro(inv.total)}</TableCell>
                           <TableCell>{getStatusBadge(inv)}</TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-1">
