@@ -605,7 +605,12 @@ export default function TrainerCalendar() {
       {/* Bulk Create Sheet */}
       <BulkCreateSheet
         open={bulkCreateOpen}
-        onOpenChange={setBulkCreateOpen}
+        onOpenChange={(open) => {
+          setBulkCreateOpen(open);
+          if (!open) {
+            setPreselectedCyclusId(undefined);
+          }
+        }}
         trainerId={trainerId}
         
         defaultDate={defaultSlotDate}
@@ -613,6 +618,7 @@ export default function TrainerCalendar() {
         defaultDuration={settings.slot_duration_minutes}
         defaultWeeks={settings.schedule_weeks_ahead}
         onSlotsCreated={handleSlotsCreated}
+        prefillFromCyclusId={preselectedCyclusId}
       />
 
       {/* Book for Player Dialog */}
