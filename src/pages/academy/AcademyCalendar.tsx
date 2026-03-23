@@ -16,7 +16,7 @@ import {
   isBefore,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays, LayoutGrid, ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,7 +33,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
-import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
 
@@ -99,7 +99,7 @@ export default function AcademyCalendar() {
   const [slotTypeChoiceOpen, setSlotTypeChoiceOpen] = useState(false);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  
   const [defaultSlotDate, setDefaultSlotDate] = useState<Date>();
   const [defaultSlotTime, setDefaultSlotTime] = useState<string>();
   const [selectedSlotTrainerId, setSelectedSlotTrainerId] = useState<string | null>(null);
@@ -369,15 +369,7 @@ export default function AcademyCalendar() {
               <Plus className="h-4 w-4" />
               {t("calendar.new", "New")}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDuplicateCyclusOpen(true)}
-              className="gap-2"
-            >
-              <Copy className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.duplicateCyclus", "Cyclus Dupliceren")}</span>
-            </Button>
+            
           </div>
         </div>
       </div>
@@ -538,12 +530,7 @@ export default function AcademyCalendar() {
             availableTrainers={trainers.map(t => ({ id: t.id, name: t.name }))}
           />
 
-          <DuplicateCyclusDialog
-            open={duplicateCyclusOpen}
-            onOpenChange={setDuplicateCyclusOpen}
-            trainerId={selectedSlotTrainerId || (trainers.length > 0 ? trainers[0].id : "")}
-            onCyclusCreated={() => fetchSlots()}
-          />
+
         </>
       )}
     </>

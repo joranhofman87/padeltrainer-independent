@@ -24,7 +24,6 @@ import {
   ArrowLeft,
   Plus,
   Repeat,
-  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +33,7 @@ import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlo
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 import { EditBookingDialog } from "@/components/trainer/EditBookingDialog";
 
@@ -70,7 +69,7 @@ export default function TrainerCalendar() {
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
-  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
@@ -349,7 +348,7 @@ export default function TrainerCalendar() {
 
   const handleDuplicateCyclus = (cyclusId: string) => {
     setPreselectedCyclusId(cyclusId);
-    setDuplicateCyclusOpen(true);
+    setBulkCreateOpen(true);
   };
 
   const handleDeleteSlot = (slot: SlotWithBookings) => {
@@ -457,18 +456,7 @@ export default function TrainerCalendar() {
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPreselectedCyclusId(undefined);
-                setDuplicateCyclusOpen(true);
-              }}
-              className="gap-2"
-            >
-              <Copy className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.duplicateCyclus")}</span>
-            </Button>
+            
             <Button
               size="sm"
               onClick={() => setBulkCreateOpen(true)}
@@ -605,7 +593,12 @@ export default function TrainerCalendar() {
       {/* Bulk Create Sheet */}
       <BulkCreateSheet
         open={bulkCreateOpen}
-        onOpenChange={setBulkCreateOpen}
+        onOpenChange={(open) => {
+          setBulkCreateOpen(open);
+          if (!open) {
+            setPreselectedCyclusId(undefined);
+          }
+        }}
         trainerId={trainerId}
         
         defaultDate={defaultSlotDate}
@@ -613,6 +606,7 @@ export default function TrainerCalendar() {
         defaultDuration={settings.slot_duration_minutes}
         defaultWeeks={settings.schedule_weeks_ahead}
         onSlotsCreated={handleSlotsCreated}
+        prefillFromCyclusId={preselectedCyclusId}
       />
 
       {/* Book for Player Dialog */}
@@ -641,19 +635,8 @@ export default function TrainerCalendar() {
         />
       )}
 
-      {/* Duplicate Cyclus Dialog */}
-      <DuplicateCyclusDialog
-        open={duplicateCyclusOpen}
-        onOpenChange={(open) => {
-          setDuplicateCyclusOpen(open);
-          if (!open) {
-            setPreselectedCyclusId(undefined);
-          }
-        }}
-        trainerId={trainerId || ""}
-        preselectedCyclusId={preselectedCyclusId}
-        onCyclusCreated={handleSlotsCreated}
-      />
+
+
 
       {/* Delete Slot Dialog */}
       <DeleteSlotDialog
