@@ -81,40 +81,35 @@ export function TrainerCalendarGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
-  // Calculate slot duration in hours for visual spanning (including fractional hours)
-  const getSlotDurationHours = (slot: SlotWithBookings) => {
+  // Calculate how many half-hour rows a slot spans
+  const getSlotRowSpan = (slot: SlotWithBookings) => {
     const startTime = new Date(slot.start_time).getTime();
     const endTime = new Date(slot.end_time).getTime();
-    const hours = (endTime - startTime) / (60 * 60 * 1000);
-    return Math.max(1, hours); // Keep fractional value (1.5, 2.5, etc.)
+    const halfHours = (endTime - startTime) / (30 * 60 * 1000);
+    return Math.max(1, Math.round(halfHours));
   };
 
-  // Calculate the vertical offset for slots starting at :30
-  const getSlotStartOffset = (slot: SlotWithBookings) => {
-    const startMinutes = new Date(slot.start_time).getMinutes();
-    return startMinutes >= 30 ? 0.5 : 0; // 0.5 = 50% of cell height
+  // Get the half-hour index for a slot (e.g., 10:00 → index of 10.0, 10:30 → index of 10.5)
+  const getSlotHalfHourKey = (slot: SlotWithBookings) => {
+    const d = new Date(slot.start_time);
+    return d.getHours() + (d.getMinutes() >= 30 ? 0.5 : 0);
   };
 
-  // Track which cells are occupied by spanning slots to prevent clicks
+  // Track which half-hour cells are occupied by spanning slots
   const occupiedCells = useMemo(() => {
     const occupied = new Set<string>();
     
     slots.forEach((slot) => {
       const slotDate = new Date(slot.start_time);
       const dayKey = format(slotDate, "yyyy-MM-dd");
-      const startHour = slotDate.getHours();
-      const startOffset = getSlotStartOffset(slot);
-      const durationHours = getSlotDurationHours(slot);
+      const startKey = getSlotHalfHourKey(slot);
+      const span = getSlotRowSpan(slot);
       
-      // Calculate total hours spanned including offset
-      // E.g., 14:30-16:00 = 1.5h duration + 0.5 offset = occupies 14:00 (partial), 15:00 (full)
-      const totalSpan = Math.ceil(durationHours + startOffset);
-      
-      // Mark hours after the first as occupied (the first shows the slot card)
-      for (let h = 1; h < totalSpan; h++) {
-        const occupiedHour = startHour + h;
-        if (occupiedHour <= 23) {
-          occupied.add(`${dayKey}-${occupiedHour}`);
+      // Mark rows after the first as occupied
+      for (let i = 1; i < span; i++) {
+        const occupiedKey = startKey + i * 0.5;
+        if (occupiedKey <= 23) {
+          occupied.add(`${dayKey}-${occupiedKey}`);
         }
       }
     });
