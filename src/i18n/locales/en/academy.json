@@ -271,7 +271,8 @@
     "business": "Business",
     "academy": "Academy",
     "waitingList": "Waiting List",
-    "openSlots": "Open Slots"
+    "openSlots": "Open Slots",
+    "invoices": "Invoices"
   },
   "invoiceSettings": {
     "title": "Invoice Settings",
