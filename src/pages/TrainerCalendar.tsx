@@ -457,18 +457,7 @@ export default function TrainerCalendar() {
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.addSlot")}</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPreselectedCyclusId(undefined);
-                setDuplicateCyclusOpen(true);
-              }}
-              className="gap-2"
-            >
-              <Copy className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.duplicateCyclus")}</span>
-            </Button>
+            
             <Button
               size="sm"
               onClick={() => setBulkCreateOpen(true)}
