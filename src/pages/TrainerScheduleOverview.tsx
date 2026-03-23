@@ -796,7 +796,7 @@ export default function TrainerScheduleOverview() {
 
       {/* Edit Cycle Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t("scheduleOverview.editCycleTitle", "Edit Cycle")}
@@ -811,6 +811,48 @@ export default function TrainerScheduleOverview() {
                 autoFocus
               />
             </div>
+
+            {/* Start date */}
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.startDate", "Start date")}</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !cycleEditData.startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {cycleEditData.startDate
+                      ? format(cycleEditData.startDate, "PPP", { locale: dateFnsLocale })
+                      : t("scheduleOverview.startDate", "Start date")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={cycleEditData.startDate}
+                    onSelect={(date) => setCycleEditData((prev) => ({ ...prev, startDate: date || undefined }))}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Number of weeks */}
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.repeatCount", "Number of weeks")}</Label>
+              <Input
+                type="number"
+                min="1"
+                value={cycleEditData.repeatCount}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, repeatCount: e.target.value }))}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label>{t("scheduleOverview.pricePerSession", "Price per session")}</Label>
               <div className="relative">
@@ -825,6 +867,71 @@ export default function TrainerScheduleOverview() {
                 />
               </div>
             </div>
+
+            {/* Extra costs */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t("scheduleOverview.extraCosts", "Extra costs")}</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    setCycleEditData((prev) => ({
+                      ...prev,
+                      extraCosts: [...prev.extraCosts, { description: "", price: 0 }],
+                    }))
+                  }
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {t("scheduleOverview.addCost", "Add cost")}
+                </Button>
+              </div>
+              {cycleEditData.extraCosts.map((cost, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    placeholder={t("scheduleOverview.costDescription", "Description")}
+                    value={cost.description}
+                    onChange={(e) => {
+                      const updated = [...cycleEditData.extraCosts];
+                      updated[idx] = { ...updated[idx], description: e.target.value };
+                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                    }}
+                    className="flex-1"
+                  />
+                  <div className="relative w-24">
+                    <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="pl-6"
+                      value={cost.price}
+                      onChange={(e) => {
+                        const updated = [...cycleEditData.extraCosts];
+                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      const updated = cycleEditData.extraCosts.filter((_, i) => i !== idx);
+                      setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                    }}
+                    title={t("scheduleOverview.removeCost", "Remove")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
             <div className="space-y-2">
               <Label>{t("scheduleOverview.location", "Location")}</Label>
               <Select
