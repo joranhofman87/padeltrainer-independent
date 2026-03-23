@@ -1,60 +1,56 @@
 
 
-# Cycle Edit: Extra Costs, Start Date, and Number of Repeats
+# Extra Costs: One-Time vs Per-Session Type
 
 ## Summary
-Expand the cycle edit dialog with three new fields: extra costs editor, start date picker, and number of repeats (weeks). All changes apply in bulk to slots sharing the same `cyclus_id`.
+Add a `type` field to extra costs so trainers can specify whether a cost is **per session** (multiplied by number of weeks) or **one-time** (flat amount). Auto-calculate totals accordingly, and reflect this on invoices.
 
-## Concerns & How We Handle Them
-
-**Start date change**: Shifts all slots by the same time delta (new start minus old start). Slots with existing bookings are moved too — the bookings stay attached. This is safe because bookings reference slot IDs, not times.
-
-**Number of repeats (increasing)**: Creates new slots at the end of the cycle, copying the same day/time pattern, price, location, etc.
-
-**Number of repeats (decreasing)**: Removes slots from the end. Slots with active bookings will be protected — we only delete empty trailing slots. If not enough empty slots exist, we show a warning.
-
-**Extra costs**: Stored as JSON on each slot. Bulk-updated across all slots in the cycle.
+## Current State
+- `ExtraCost` is `{ description: string; price: number }` — always treated as per-session in pricing calculations
+- Used in: CycleForm, AddSlotDialog, TrainerScheduleOverview (cycle edit), and auto-create-invoice edge function
 
 ## Changes
 
-### 1. `src/pages/TrainerScheduleOverview.tsx`
+### 1. `src/lib/cycles.ts`
+Update the `ExtraCost` interface:
+```ts
+export interface ExtraCost {
+  description: string;
+  price: number;
+  type?: 'per_session' | 'one_time'; // defaults to 'per_session' for backwards compat
+}
+```
 
-**Expand `CycleEditData` type** to include:
-- `extraCosts: { description: string; price: number }[]`
-- `startDate: Date | undefined` (first slot's start date)
-- `repeatCount: string` (number of slots = weeks)
+### 2. `src/components/cycles/CycleForm.tsx`
+- Add a toggle/select per extra cost row to choose "Per session" or "One-time"
+- Update pricing breakdown: per-session costs multiply by weeks, one-time costs add once
+- Default new costs to `per_session`
 
-**Expand `SlotWithBookings` type** to include `extra_costs`.
+### 3. `src/components/trainer/AddSlotDialog.tsx`
+- Add the same type toggle per extra cost row
+- Update `autoCalcPricing`: per-session costs multiply by `recurrenceWeeks`, one-time costs divided by `recurrenceWeeks` for per-session display (or kept separate in total)
 
-**Update query** to fetch `extra_costs` from slots.
+### 4. `src/pages/TrainerScheduleOverview.tsx`
+- Add type selector in the cycle edit dialog's extra costs section
+- When repeat count changes, totals auto-recalculate (per-session scales, one-time stays fixed)
 
-**Update `openEditDialog`**: Pre-fill new fields from first slot's `extra_costs`, derive start date from earliest slot, count total slots for repeat count.
+### 5. `supabase/functions/auto-create-invoice/index.ts`
+- Read `ec.type` — if `one_time`, set `quantity: 1`; if `per_session` (or missing/default), set `quantity` to number of sessions being invoiced
+- This ensures invoices correctly reflect the cost type
 
-**Update `handleSaveCycleEdit`**:
-- Always bulk-update `extra_costs` on all slots
-- If start date changed: calculate time delta, shift all slot `start_time` and `end_time` by that delta
-- If repeat count increased: insert new slots copying the weekly pattern from the last existing slot
-- If repeat count decreased: delete trailing slots that have no active bookings; warn if slots with bookings would be affected
+### 6. Translation keys (`en/trainer.json`, `nl/trainer.json`, `en/cycles.json`, `nl/cycles.json`)
+- `perSession`: "Per session" / "Per sessie"
+- `oneTime`: "One-time" / "Eenmalig"
 
-**Extra costs UI**: Inline list of description + price rows with add/remove buttons (same pattern as CycleForm).
-
-**Start date UI**: Date picker (Popover + Calendar).
-
-**Repeat count UI**: Number input showing current count, editable.
-
-### 2. Translation keys (`en/trainer.json`, `nl/trainer.json`)
-
-Add under `scheduleOverview`:
-- `extraCosts` / `Extra costs` / `Extra kosten`
-- `addCost` / `Add cost` / `Kosten toevoegen`
-- `costDescription` / `Description` / `Omschrijving`
-- `costPrice` / `Price per session` / `Prijs per sessie`
-- `startDate` / `Start date` / `Startdatum`
-- `repeatCount` / `Number of weeks` / `Aantal weken`
-- `cannotRemoveBookedSlots` / `Cannot remove slots with active bookings` / `Kan sessies met actieve boekingen niet verwijderen`
+### Backwards Compatibility
+- Existing extra costs without `type` default to `per_session` (current behavior preserved)
 
 ## Files
-- `src/pages/TrainerScheduleOverview.tsx` — Expand edit dialog with extra costs, start date, repeat count
-- `src/i18n/locales/en/trainer.json` — Add translation keys
-- `src/i18n/locales/nl/trainer.json` — Add translation keys
+- `src/lib/cycles.ts` — Update ExtraCost interface
+- `src/components/cycles/CycleForm.tsx` — Add type toggle, update pricing calc
+- `src/components/trainer/AddSlotDialog.tsx` — Add type toggle, update pricing calc
+- `src/pages/TrainerScheduleOverview.tsx` — Add type toggle in cycle edit
+- `supabase/functions/auto-create-invoice/index.ts` — Handle type in invoice line items
+- `src/i18n/locales/en/trainer.json` + `nl/trainer.json` — Translation keys
+- `src/i18n/locales/en/cycles.json` + `nl/cycles.json` — Translation keys
 
