@@ -418,6 +418,8 @@
     "generating": "Generating...",
     "backfillSuccess": "{{count}} draft invoices created",
     "backfillNone": "All bookings are already invoiced",
-    "backfillError": "Failed to generate invoices"
+    "backfillError": "Failed to generate invoices",
+    "shareLink": "Share",
+    "shareLinkCopied": "Invoice link copied to clipboard"
   }
 }

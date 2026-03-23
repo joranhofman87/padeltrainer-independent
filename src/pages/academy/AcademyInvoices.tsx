@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
@@ -32,6 +32,7 @@ interface Invoice {
   subtotal: number;
   vat_amount: number;
   vat_rate: number;
+  public_token: string;
 }
 
 export default function AcademyInvoices() {
@@ -293,18 +294,22 @@ export default function AcademyInvoices() {
                           <TableCell>{getStatusBadge(inv)}</TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-1">
-                              {!inv.sent_at && inv.status !== "paid" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => markSentMutation.mutate([inv.id])}
-                                  disabled={markSentMutation.isPending}
-                                >
-                                  <Send className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {inv.sent_at && inv.status !== "paid" && (
+                              {inv.status !== "paid" && (
                                 <>
+                                  {/* Share public invoice link */}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const url = `${window.location.origin}/pay/${inv.public_token}`;
+                                      navigator.clipboard.writeText(url);
+                                      toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
+                                    }}
+                                    title={t("invoices.shareLink", "Share invoice link")}
+                                  >
+                                    <Share2 className="h-4 w-4" />
+                                  </Button>
+                                  {/* Generate Mollie payment link */}
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -314,28 +319,27 @@ export default function AcademyInvoices() {
                                   >
                                     <LinkIcon className="h-4 w-4" />
                                   </Button>
-                                  {inv.mollie_payment_url && (
+                                  {!inv.sent_at && (
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(inv.mollie_payment_url!);
-                                        toast.success(t("invoices.linkCopied", "Link copied"));
-                                      }}
-                                      title={t("invoices.copyLink", "Copy link")}
+                                      onClick={() => markSentMutation.mutate([inv.id])}
+                                      disabled={markSentMutation.isPending}
                                     >
-                                      <Copy className="h-4 w-4" />
+                                      <Send className="h-4 w-4" />
                                     </Button>
                                   )}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => markPaidMutation.mutate(inv.id)}
-                                    disabled={markPaidMutation.isPending}
-                                    title={t("invoices.markPaid", "Mark paid")}
-                                  >
-                                    <CheckCircle className="h-4 w-4" />
-                                  </Button>
+                                  {inv.sent_at && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => markPaidMutation.mutate(inv.id)}
+                                      disabled={markPaidMutation.isPending}
+                                      title={t("invoices.markPaid", "Mark paid")}
+                                    >
+                                      <CheckCircle className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                 </>
                               )}
                               {inv.pdf_url && (
@@ -376,19 +380,28 @@ export default function AcademyInvoices() {
                         <span className="font-bold text-lg">€{inv.total.toFixed(2)}</span>
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        {!inv.sent_at && inv.status !== "paid" && (
-                          <Button size="sm" variant="outline" onClick={() => markSentMutation.mutate([inv.id])}>
-                            <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
-                          </Button>
-                        )}
-                        {inv.sent_at && inv.status !== "paid" && (
+                        {inv.status !== "paid" && (
                           <>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              const url = `${window.location.origin}/pay/${inv.public_token}`;
+                              navigator.clipboard.writeText(url);
+                              toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
+                            }}>
+                              <Share2 className="h-4 w-4 mr-1" />{t("invoices.shareLink", "Share")}
+                            </Button>
                             <Button size="sm" variant="outline" onClick={() => generateLinkMutation.mutate(inv.id)} disabled={generateLinkMutation.isPending}>
                               <LinkIcon className="h-4 w-4 mr-1" />{t("invoices.paymentLink", "Payment link")}
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
-                              <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
-                            </Button>
+                            {!inv.sent_at && (
+                              <Button size="sm" variant="outline" onClick={() => markSentMutation.mutate([inv.id])}>
+                                <Send className="h-4 w-4 mr-1" />{t("invoices.send", "Send")}
+                              </Button>
+                            )}
+                            {inv.sent_at && (
+                              <Button size="sm" variant="outline" onClick={() => markPaidMutation.mutate(inv.id)}>
+                                <CheckCircle className="h-4 w-4 mr-1" />{t("invoices.markPaid", "Mark paid")}
+                              </Button>
+                            )}
                           </>
                         )}
                         {inv.pdf_url && (

@@ -429,7 +429,9 @@
     "generating": "Bezig met genereren...",
     "backfillSuccess": "{{count}} conceptfacturen aangemaakt",
     "backfillNone": "Alle boekingen zijn al gefactureerd",
-    "backfillError": "Facturen genereren mislukt"
+    "backfillError": "Facturen genereren mislukt",
+    "shareLink": "Delen",
+    "shareLinkCopied": "Factuurlink gekopieerd naar klembord"
   },
   "calendar": {
     "created": "Aangemaakt"

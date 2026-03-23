@@ -84,7 +84,7 @@ serve(async (req) => {
     // Fetch invoice
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url")
+      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url, public_token")
       .eq("id", invoiceId)
       .single();
 
@@ -139,7 +139,9 @@ serve(async (req) => {
     // Build redirect URL
     const baseUrl = supabaseUrl.replace(".supabase.co", "").replace("https://", "");
     const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.lovable.app`;
-    const redirectUrl = `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
+    const redirectUrl = invoice.public_token
+      ? `${appUrl}/pay/${invoice.public_token}?status=success`
+      : `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
     const webhookUrl = `${supabaseUrl}/functions/v1/mollie-webhook`;
 
     // Create Mollie payment

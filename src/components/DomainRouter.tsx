@@ -158,6 +158,9 @@ const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 const AcademyOpenSlots = lazy(() => import('@/pages/academy/AcademyOpenSlots'));
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 
+// Public pages
+const PublicInvoicePay = lazy(() => import('@/pages/PublicInvoicePay'));
+
 // Other
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -170,6 +173,9 @@ export function DomainRouter() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Public invoice payment page */}
+        <Route path="/pay/:token" element={<PublicInvoicePay />} />
+
         {/* API callback routes (legacy + new path) */}
         <Route path="/api/mollie-callback" element={<MollieCallback />} />
         <Route path="/app/api/mollie-callback" element={<MollieCallback />} />
