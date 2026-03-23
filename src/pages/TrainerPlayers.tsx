@@ -164,35 +164,46 @@ export default function TrainerPlayers() {
         // Fetch future bookings for guest players to determine active status
         const now = new Date().toISOString();
         if (allSlotIds.length > 0) {
-          const { data: futureBookings } = await supabase
-            .from("bookings")
-            .select("guest_player_id, availability_slots!inner(start_time)")
-            .in("slot_id", allSlotIds)
-            .not("guest_player_id", "is", null)
-            .neq("status", "cancelled")
-            .gte("availability_slots.start_time", now);
+          // Use two-step query to avoid deep type instantiation
+          const { data: futureSlotIds } = await supabase
+            .from("availability_slots")
+            .select("id")
+            .eq("trainer_id", trainerId)
+            .gte("start_time", now);
 
-          const activeIds = new Set<string>();
-          (futureBookings || []).forEach(b => {
-            if (b.guest_player_id) activeIds.add(b.guest_player_id);
-          });
-          setActiveGuestIds(activeIds);
+          const futureIds = (futureSlotIds || []).map(s => s.id);
+          if (futureIds.length > 0) {
+            const { data: futureBookings } = await supabase
+              .from("bookings")
+              .select("guest_player_id")
+              .in("slot_id", futureIds)
+              .not("guest_player_id", "is", null)
+              .neq("status", "cancelled");
+
+            const activeIds = new Set<string>();
+            (futureBookings || []).forEach(b => {
+              if (b.guest_player_id) activeIds.add(b.guest_player_id);
+            });
+            setActiveGuestIds(activeIds);
+          }
         }
 
-        // Check waiting list entries for guest players
-        const guestEmails = (guestData as GuestPlayer[]).filter(g => g.email).map(g => g.email!);
-        if (guestEmails.length > 0) {
+        // Check waiting list entries linked to guest players via linked_profile_id
+        const linkedGuests = (guestData as GuestPlayer[]).filter(g => (g as any).linked_profile_id);
+        if (linkedGuests.length > 0) {
+          const linkedProfileIds = linkedGuests.map(g => (g as any).linked_profile_id as string);
           const { data: waitingEntries } = await supabase
             .from("waiting_list_entries")
-            .select("email")
-            .eq("trainer_id", trainerId)
+            .select("player_id")
+            .eq("owner_id", trainerId)
+            .eq("owner_type", "trainer")
             .eq("status", "active")
-            .in("email", guestEmails);
+            .in("player_id", linkedProfileIds);
 
-          const waitingEmails = new Set((waitingEntries || []).map(w => (w as any).email));
+          const waitingProfileIds = new Set((waitingEntries || []).map(w => w.player_id));
           const wlIds = new Set<string>();
-          (guestData as GuestPlayer[]).forEach(g => {
-            if (g.email && waitingEmails.has(g.email)) wlIds.add(g.id);
+          linkedGuests.forEach(g => {
+            if (waitingProfileIds.has((g as any).linked_profile_id)) wlIds.add(g.id);
           });
           setWaitingListGuestIds(wlIds);
         }
