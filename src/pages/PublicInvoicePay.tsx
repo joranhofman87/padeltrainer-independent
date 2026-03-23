@@ -109,6 +109,7 @@ export default function PublicInvoicePay() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
+        <SEO title="Invoice" description="Invoice payment" noIndex={true} />
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
