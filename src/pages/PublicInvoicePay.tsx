@@ -34,6 +34,7 @@ interface PublicInvoiceData {
     lineItems: LineItem[];
     status: string;
     hasMolliePayment: boolean;
+    hasMollieAccount: boolean;
   };
   academy: {
     name: string;
