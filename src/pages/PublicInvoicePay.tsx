@@ -35,6 +35,7 @@ interface PublicInvoiceData {
   };
   academy: {
     name: string;
+    slug: string | null;
     logoUrl: string | null;
     bannerColor: string | null;
     contactEmail: string | null;
