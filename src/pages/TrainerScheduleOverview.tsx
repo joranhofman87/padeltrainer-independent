@@ -525,7 +525,7 @@ export default function TrainerScheduleOverview() {
                                 {unpaid} {t("scheduleOverview.unpaid", "unpaid")}
                               </Badge>
                             )}
-                            {!slot.is_public && (
+                            {slot.is_marked_full && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                 {t("scheduleOverview.private", "Private")}
                               </Badge>
