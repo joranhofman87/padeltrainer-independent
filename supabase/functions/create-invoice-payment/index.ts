@@ -84,7 +84,7 @@ serve(async (req) => {
     // Fetch invoice
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
-      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url")
+      .select("id, invoice_number, total, player_name, player_id, trainer_id, academy_profile_id, status, mollie_payment_id, mollie_payment_url, public_token")
       .eq("id", invoiceId)
       .single();
 
