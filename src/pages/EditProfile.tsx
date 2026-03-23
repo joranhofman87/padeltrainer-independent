@@ -610,7 +610,7 @@ export default function EditProfile() {
               
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t('editProfile.phone')}</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
