@@ -173,6 +173,9 @@ export function DomainRouter() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Public invoice payment page */}
+        <Route path="/pay/:token" element={<PublicInvoicePay />} />
+
         {/* API callback routes (legacy + new path) */}
         <Route path="/api/mollie-callback" element={<MollieCallback />} />
         <Route path="/app/api/mollie-callback" element={<MollieCallback />} />
