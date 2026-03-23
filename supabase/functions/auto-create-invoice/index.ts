@@ -68,6 +68,18 @@ serve(async (req) => {
     const slot = bookings[0].availability_slots as any;
     const trainerId = slot.trainer_id;
 
+    // Check if trainer belongs to an academy
+    let academyProfileId: string | null = null;
+    const { data: academyTrainer } = await supabase
+      .from("academy_trainers")
+      .select("academy_profile_id")
+      .eq("trainer_profile_id", trainerId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (academyTrainer?.academy_profile_id) {
+      academyProfileId = academyTrainer.academy_profile_id;
+    }
+
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
