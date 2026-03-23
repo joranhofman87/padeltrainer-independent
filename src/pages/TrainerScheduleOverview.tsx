@@ -133,7 +133,7 @@ export default function TrainerScheduleOverview() {
       const { data, error } = await supabase
         .from("availability_slots")
         .select(`
-          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id,
+          id, start_time, end_time, cyclus_id, cyclus_name, max_participants, is_public, location_id, price_per_session,
           locations:location_id (name, city),
           bookings (id, status, payment_status, player_id, guest_player_id,
             profiles:player_id (full_name),
