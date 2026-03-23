@@ -1059,7 +1059,7 @@ export default function EditProfile() {
                       {tTrainer('editProfile.teachingLocations')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
+                      {tTrainer('editProfile.teachingLocationsDescription')}
                     </p>
                     <TrainerLocationPicker
                       selectedLocations={trainerLocations}
