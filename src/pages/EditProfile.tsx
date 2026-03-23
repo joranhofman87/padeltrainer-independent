@@ -487,7 +487,7 @@ export default function EditProfile() {
             <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <span className="font-bold text-xl">Edit Profile</span>
+            <span className="font-bold text-xl">{t('editProfile.title')}</span>
           </div>
           <Button onClick={handleSubmit} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
