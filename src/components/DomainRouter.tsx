@@ -227,7 +227,7 @@ export function DomainRouter() {
           <Route path="subscription" element={<TrainerSubscription />} />
           <Route path="earnings" element={<TrainerEarnings />} />
           <Route path="analytics" element={<TrainerAnalytics />} />
-          <Route path="bookings" element={<TrainerBookings />} />
+          
           <Route path="get-started" element={<TrainerGetStarted />} />
         </Route>
 
