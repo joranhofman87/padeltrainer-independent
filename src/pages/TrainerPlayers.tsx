@@ -499,19 +499,21 @@ export default function TrainerPlayers() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {player.type === "registered" ? (
-                          <Badge variant="default">
-                            {t("players.registered", "Registered")}
-                          </Badge>
-                        ) : player.has_trained === false ? (
-                          <Badge variant="outline">
-                            {t("players.prospect")}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {t("players.active")}
-                          </Badge>
-                        )}
+                        {(() => {
+                          const statusConfig: Record<PlayerStatus, { variant: "default" | "secondary" | "outline" | "destructive"; className?: string }> = {
+                            active: { variant: "default" },
+                            registered: { variant: "default" },
+                            available: { variant: "outline", className: "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400" },
+                            waiting_list: { variant: "outline", className: "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400" },
+                            prospect: { variant: "outline" },
+                          };
+                          const cfg = statusConfig[player.computedStatus];
+                          return (
+                            <Badge variant={cfg.variant} className={cfg.className}>
+                              {t(`players.statuses.${player.computedStatus}`)}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {format(new Date(player.created_at), "MMM d, yyyy")}
