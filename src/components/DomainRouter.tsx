@@ -158,6 +158,9 @@ const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 const AcademyOpenSlots = lazy(() => import('@/pages/academy/AcademyOpenSlots'));
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 
+// Public pages
+const PublicInvoicePay = lazy(() => import('@/pages/PublicInvoicePay'));
+
 // Other
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
