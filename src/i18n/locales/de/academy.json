@@ -352,6 +352,7 @@
   "invoices": {
     "title": "Rechnungen",
     "description": "Rechnungen deiner Akademie verwalten",
+    "searchPlaceholder": "Spielername suchen...",
     "editSettings": "Rechnungseinstellungen",
     "totalUnpaid": "Unbezahlt",
     "draft": "Entwurf",

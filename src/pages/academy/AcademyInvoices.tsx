@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
@@ -40,6 +41,7 @@ export default function AcademyInvoices() {
   const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
   const formatEuro = (amount: number) =>
@@ -87,11 +89,15 @@ export default function AcademyInvoices() {
   const sentInvoices = invoices.filter((i) => i.sent_at && i.status !== "paid");
   const paidInvoices = invoices.filter((i) => i.status === "paid");
 
-  const filteredInvoices =
+  const tabFiltered =
     activeTab === "draft" ? draftInvoices :
     activeTab === "sent" ? sentInvoices :
     activeTab === "paid" ? paidInvoices :
     invoices;
+
+  const filteredInvoices = tabFiltered.filter(i =>
+    !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const totalUnpaid = sentInvoices.reduce((sum, i) => sum + i.total, 0) + draftInvoices.reduce((sum, i) => sum + i.total, 0);
 
@@ -250,12 +256,23 @@ export default function AcademyInvoices() {
 
       {/* Tabs + Table */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <TabsList>
+            <TabsTrigger value="all">{t("invoices.all", "All")} ({invoices.length})</TabsTrigger>
           <TabsTrigger value="draft">{t("invoices.draft", "Draft")} ({draftInvoices.length})</TabsTrigger>
           <TabsTrigger value="sent">{t("invoices.sentOverdue", "Sent / Overdue")} ({sentInvoices.length})</TabsTrigger>
-          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
-        </TabsList>
+            <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
+          </TabsList>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t("invoices.searchPlaceholder", "Search player name...")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-64"
+            />
+          </div>
+        </div>
 
         <TabsContent value={activeTab} className="mt-4">
           {isLoading ? (
