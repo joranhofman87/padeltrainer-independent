@@ -117,13 +117,39 @@ export function TrainerCalendarGrid({
     return occupied;
   }, [slots]);
 
+  // Map slots to half-hour keys for the grid
+  const slotsByDayAndHalfHour = useMemo(() => {
+    const map: Record<string, Record<number, SlotWithBookings[]>> = {};
+    
+    weekDays.forEach((day) => {
+      const dayKey = format(day, "yyyy-MM-dd");
+      map[dayKey] = {};
+      HALF_HOURS.forEach((hh) => {
+        map[dayKey][hh] = [];
+      });
+    });
+
+    slots.forEach((slot) => {
+      const slotDate = new Date(slot.start_time);
+      const dayKey = format(slotDate, "yyyy-MM-dd");
+      const halfHourKey = getSlotHalfHourKey(slot);
+      
+      if (map[dayKey] && map[dayKey][halfHourKey] !== undefined) {
+        map[dayKey][halfHourKey].push(slot);
+      }
+    });
+
+    return map;
+  }, [slots, weekDays]);
+
+  // Also keep full-hour map for mobile view
   const slotsByDayAndHour = useMemo(() => {
     const map: Record<string, Record<number, SlotWithBookings[]>> = {};
     
     weekDays.forEach((day) => {
       const dayKey = format(day, "yyyy-MM-dd");
       map[dayKey] = {};
-      HOURS.forEach((hour) => {
+      FULL_HOURS.forEach((hour) => {
         map[dayKey][hour] = [];
       });
     });
