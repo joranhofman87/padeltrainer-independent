@@ -80,6 +80,7 @@ type SlotWithBookings = {
   is_marked_full: boolean;
   location_id: string | null;
   price_per_session: number | null;
+  prices_include_vat: boolean;
   extra_costs: ExtraCost[] | null;
   locations?: { name: string; city: string } | null;
   bookings: {
