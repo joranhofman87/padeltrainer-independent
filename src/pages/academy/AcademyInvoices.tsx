@@ -36,7 +36,7 @@ interface Invoice {
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
-  const { activeAcademy } = useAcademy();
+  const { activeAcademy } = useAcademyContext();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("all");
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
