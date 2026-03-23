@@ -336,8 +336,8 @@ export default function EditProfile() {
     } catch (error: any) {
       logger.error('Avatar upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
       toast({
-        title: 'Upload failed',
-        description: error.message || 'Failed to upload avatar',
+        title: t('editProfile.uploadFailed'),
+        description: error.message || t('editProfile.uploadFailed'),
         variant: 'destructive',
       });
     } finally {
