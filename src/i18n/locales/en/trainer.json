@@ -82,7 +82,14 @@
     "noPlayersInCycle": "No players in this cycle",
     "addedToCycle": "Player added to all sessions",
     "removedFromCycle": "Player removed from all sessions",
-    "sessionsLabel": "{{count}} sessions"
+    "sessionsLabel": "{{count}} sessions",
+    "allDays": "All days",
+    "allLocations": "All locations",
+    "allTimes": "All times",
+    "morning": "Morning",
+    "afternoon": "Afternoon",
+    "evening": "Evening",
+    "clearFilters": "Clear filters"
   },
   "profile": {
     "shareProfile": "Share Profile",

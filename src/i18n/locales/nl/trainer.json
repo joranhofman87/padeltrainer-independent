@@ -82,7 +82,14 @@
     "noPlayersInCycle": "Geen spelers in deze cyclus",
     "addedToCycle": "Speler toegevoegd aan alle sessies",
     "removedFromCycle": "Speler verwijderd uit alle sessies",
-    "sessionsLabel": "{{count}} sessies"
+    "sessionsLabel": "{{count}} sessies",
+    "allDays": "Alle dagen",
+    "allLocations": "Alle locaties",
+    "allTimes": "Alle tijden",
+    "morning": "Ochtend",
+    "afternoon": "Middag",
+    "evening": "Avond",
+    "clearFilters": "Filters wissen"
   },
   "profile": {
     "shareProfile": "Profiel Delen",
