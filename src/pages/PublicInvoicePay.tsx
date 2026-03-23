@@ -275,7 +275,7 @@ export default function PublicInvoicePay() {
             )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
               <span>Total</span>
-              <span>€{invoice.total.toFixed(2)}</span>
+              <span>€{formatEuro(invoice.total)}</span>
             </div>
           </div>
 
