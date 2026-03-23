@@ -82,7 +82,8 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
   );
   const [scheduleOpen, setScheduleOpen] = useState(
     location.pathname.startsWith("/trainer/calendar") ||
-    location.pathname.startsWith("/trainer/open-slots")
+    location.pathname.startsWith("/trainer/open-slots") ||
+    location.pathname.startsWith("/trainer/schedule-overview")
   );
   const [registrationOpen, setRegistrationOpen] = useState(
     location.pathname.startsWith("/trainer/cycles") ||
