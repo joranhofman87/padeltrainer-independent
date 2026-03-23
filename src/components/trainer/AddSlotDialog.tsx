@@ -414,11 +414,14 @@ export function BulkCreateSheet({
   const fetchTrainerHourlyRate = async (tId: string) => {
     const { data } = await supabase
       .from("trainer_profiles")
-      .select("id, hourly_rate")
+      .select("id, hourly_rate, prices_include_vat")
       .eq("id", tId)
       .maybeSingle();
     if (data?.hourly_rate) {
       setTrainerHourlyRates(prev => new Map(prev).set(tId, data.hourly_rate));
+    }
+    if (data?.prices_include_vat !== undefined && data.prices_include_vat !== null) {
+      setPricesIncludeVat(data.prices_include_vat);
     }
   };
 
