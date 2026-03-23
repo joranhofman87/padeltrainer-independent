@@ -1,31 +1,36 @@
 
 
-# Show End Date Below Weeks Input in Cyclus Creation
+# Add Search to Player Dropdown in Cycle Creation
 
-## What
-Add a calculated end date label below the "Repeat for X weeks" input in both the Trainer/Academy and Club BulkCreateSheet components. The end date is already calculated in the summary text at the bottom — this just surfaces it more prominently next to the weeks input.
+## Problem
+When creating a cyclus in `AddSlotDialog.tsx`, the player selection uses a plain `<Select>` dropdown with no search/filter capability. With many players, finding the right one is slow.
+
+## Solution
+Replace the `<Select>` component with a searchable `Popover` + `Command` (combobox pattern) for each of the 4 player slots. This is the same pattern used across shadcn/ui projects for searchable selects.
 
 ## Changes
 
-### 1. `src/components/trainer/AddSlotDialog.tsx` (line ~961, after the weeks span)
+### File: `src/components/trainer/AddSlotDialog.tsx`
 
-After the weeks `<span>`, add a small text showing the calculated end date:
+**Lines ~1290-1322** — Replace the `<Select>` per player slot with a `Popover` + `Command` combobox:
 
-```tsx
-<p className="text-xs text-muted-foreground mt-1">
-  → {format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy")}
-</p>
+- Import `Popover`, `PopoverTrigger`, `PopoverContent` from `@/components/ui/popover`
+- Import `Command`, `CommandInput`, `CommandList`, `CommandEmpty`, `CommandGroup`, `CommandItem` from `@/components/ui/command`
+- Import `Check`, `ChevronsUpDown` from `lucide-react`
+
+Each player slot becomes:
+```
+Popover > PopoverTrigger (styled like SelectTrigger)
+        > PopoverContent > Command > CommandInput (search box)
+                                   > CommandList > CommandEmpty ("No player found")
+                                                 > CommandGroup > CommandItem per player
 ```
 
-This goes inside the recurrence `<div className="space-y-1">` block, right after the flex row with the input and "weeks" label (line 961).
+- The "none" option (clear) is kept as the first `CommandItem`
+- Already-selected players in other slots are visually dimmed (same `disabled` logic)
+- Selecting a player closes the popover and updates `selectedPlayers` array
+- Display shows `player.full_name` or placeholder text
 
-### 2. `src/components/club/ClubAddSlotDialog.tsx` (line ~600, same position)
-
-Same change — add the end date text after the weeks input.
-
-Both files already import `addWeeks` and `format` from date-fns, so no new imports needed.
-
-## Files
-- `src/components/trainer/AddSlotDialog.tsx` — 1 line addition
-- `src/components/club/ClubAddSlotDialog.tsx` — 1 line addition
+### Files
+- `src/components/trainer/AddSlotDialog.tsx` — Replace Select with searchable combobox (~30 line change in one location)
 
