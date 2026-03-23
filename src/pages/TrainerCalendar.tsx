@@ -70,7 +70,7 @@ export default function TrainerCalendar() {
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bookForPlayerOpen, setBookForPlayerOpen] = useState(false);
-  const [duplicateCyclusOpen, setDuplicateCyclusOpen] = useState(false);
+  
   const [deleteSlotOpen, setDeleteSlotOpen] = useState(false);
   const [editBookingOpen, setEditBookingOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithBookings | null>(null);
