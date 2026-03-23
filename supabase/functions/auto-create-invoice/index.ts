@@ -22,6 +22,7 @@ serve(async (req) => {
 
     const body = await req.json();
     const bookingIds: string[] = body.bookingIds || (body.bookingId ? [body.bookingId] : []);
+    const asDraft: boolean = body.asDraft === true;
 
     if (bookingIds.length === 0) {
       logStep("No booking IDs provided");
@@ -31,7 +32,7 @@ serve(async (req) => {
       });
     }
 
-    logStep("Processing bookings", { bookingIds });
+    logStep("Processing bookings", { bookingIds, asDraft });
 
     // Fetch all bookings with details
     const { data: bookings, error: bookingsError } = await supabase
@@ -39,6 +40,7 @@ serve(async (req) => {
       .select(`
         id,
         player_id,
+        guest_player_id,
         slot_id,
         payment_amount,
         payment_status,
@@ -95,13 +97,46 @@ serve(async (req) => {
       });
     }
 
+    // If academy exists, try to use academy business info for invoicing
+    let invoiceProfile: {
+      business_name: string | null;
+      business_address: string | null;
+      kvk_number: string | null;
+      btw_number: string | null;
+      iban: string | null;
+      bic: string | null;
+      payment_terms_days: number | null;
+      default_vat_rate: number | null;
+      invoice_forward_emails: string[] | null;
+      invoice_prefix: string | null;
+      invoice_next_number: number | null;
+    } = trainerProfile;
+    let invoiceProfileTable = "trainer_profiles";
+    let invoiceProfileId = trainerId;
+
+    if (academyProfileId) {
+      const { data: academyProfile } = await supabase
+        .from("academy_profiles")
+        .select("business_name, business_address, kvk_number, btw_number, iban, bic, payment_terms_days, default_vat_rate, invoice_forward_emails, invoice_prefix, invoice_next_number")
+        .eq("id", academyProfileId)
+        .single();
+
+      if (academyProfile?.business_name && academyProfile?.kvk_number && academyProfile?.iban) {
+        invoiceProfile = academyProfile;
+        invoiceProfileTable = "academy_profiles";
+        invoiceProfileId = academyProfileId;
+        logStep("Using academy business info for invoice", { academyProfileId });
+      }
+    }
+
     // Check if business info is complete enough for invoicing
-    if (!trainerProfile.business_name || !trainerProfile.kvk_number || !trainerProfile.iban) {
-      logStep("Trainer business info incomplete, skipping invoice", {
-        trainerId,
-        hasBusinessName: !!trainerProfile.business_name,
-        hasKvk: !!trainerProfile.kvk_number,
-        hasIban: !!trainerProfile.iban,
+    if (!invoiceProfile.business_name || !invoiceProfile.kvk_number || !invoiceProfile.iban) {
+      logStep("Business info incomplete, skipping invoice", {
+        profileTable: invoiceProfileTable,
+        profileId: invoiceProfileId,
+        hasBusinessName: !!invoiceProfile.business_name,
+        hasKvk: !!invoiceProfile.kvk_number,
+        hasIban: !!invoiceProfile.iban,
       });
       return new Response(JSON.stringify({ skipped: true, reason: "incomplete_business_info" }), {
         status: 200,
@@ -109,12 +144,14 @@ serve(async (req) => {
       });
     }
 
-    // Get player info including default billing details
+    // Get player info — support both player_id and guest_player_id
     const playerId = bookings[0].player_id;
+    const guestPlayerId = bookings[0].guest_player_id;
     let playerName = "Unknown Player";
     let playerBusinessName: string | null = null;
     let playerAddress: string | null = null;
     let playerBtwNumber: string | null = null;
+
     if (playerId) {
       const { data: playerProfile } = await supabase
         .from("profiles")
@@ -127,10 +164,19 @@ serve(async (req) => {
       playerBusinessName = playerProfile?.billing_business_name || null;
       playerAddress = playerProfile?.billing_address || null;
       playerBtwNumber = playerProfile?.billing_btw_number || null;
+    } else if (guestPlayerId) {
+      const { data: guestPlayer } = await supabase
+        .from("guest_players")
+        .select("full_name, email")
+        .eq("id", guestPlayerId)
+        .single();
+      if (guestPlayer?.full_name) {
+        playerName = guestPlayer.full_name;
+      }
     }
 
     // Build line items from bookings
-    const vatRate = trainerProfile.default_vat_rate ?? 21;
+    const vatRate = invoiceProfile.default_vat_rate ?? 21;
 
     // Check if all bookings belong to the same cyclus — bundle them
     const firstSlot = bookings[0].availability_slots as any;
@@ -140,7 +186,6 @@ serve(async (req) => {
     let lineItems: { description: string; quantity: number; unit_price: number; date?: string }[];
 
     if (allSameCyclus) {
-      // Bundle cyclus bookings into a single line item
       const cyclusName = firstSlot.cyclus_name || "Training cyclus";
       const pricePerSession = bookings[0].payment_amount || firstSlot.price_per_session || 0;
 
@@ -150,7 +195,6 @@ serve(async (req) => {
         unit_price: pricePerSession,
       }];
     } else {
-      // Individual line items per booking (original behavior)
       lineItems = bookings.map((b) => {
         const bSlot = b.availability_slots as any;
         const startTime = new Date(bSlot.start_time);
@@ -193,7 +237,7 @@ serve(async (req) => {
       }
     }
 
-    // Determine if prices include VAT — check slot-level flag, fall back to true (legacy default)
+    // Determine if prices include VAT
     const slotPricesIncludeVat = (bookings[0].availability_slots as any).prices_include_vat ?? true;
 
     // Calculate totals based on VAT inclusion
@@ -203,19 +247,17 @@ serve(async (req) => {
     let totalInclusive: number;
 
     if (slotPricesIncludeVat) {
-      // Prices already include VAT — back-calculate
       totalInclusive = lineItemTotal;
       subtotal = totalInclusive / (1 + vatRate / 100);
       vatAmount = totalInclusive - subtotal;
     } else {
-      // Prices exclude VAT — add VAT on top
       subtotal = lineItemTotal;
       vatAmount = subtotal * (vatRate / 100);
       totalInclusive = subtotal + vatAmount;
     }
 
-    // Generate invoice number using trainer's custom prefix
-    const prefix = trainerProfile.invoice_prefix || "INV";
+    // Generate invoice number using profile's custom prefix
+    const prefix = invoiceProfile.invoice_prefix || "INV";
     const year = new Date().getFullYear();
     const { data: lastInvoice } = await supabase
       .from("invoices")
@@ -226,7 +268,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    let sequence = trainerProfile.invoice_next_number || 1;
+    let sequence = invoiceProfile.invoice_next_number || 1;
     if (lastInvoice?.invoice_number) {
       const lastSeq = parseInt(lastInvoice.invoice_number.split("-")[2] || "0");
       if (lastSeq >= sequence) {
@@ -235,20 +277,30 @@ serve(async (req) => {
     }
     const invoiceNumber = `${prefix}-${year}-${sequence.toString().padStart(4, "0")}`;
 
-    // Update next number for trainer
+    // Update next number on the profile table
     await supabase
-      .from("trainer_profiles")
+      .from(invoiceProfileTable)
       .update({ invoice_next_number: sequence + 1 })
-      .eq("id", trainerId);
+      .eq("id", invoiceProfileId);
 
     // Calculate due date
-    const paymentTermsDays = trainerProfile.payment_terms_days || 14;
+    const paymentTermsDays = invoiceProfile.payment_terms_days || 14;
     const invoiceDate = new Date();
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + paymentTermsDays);
 
     // Check if bookings are already paid (e.g. Mollie)
     const allPaid = bookings.every((b) => b.payment_status === "paid");
+
+    // Determine invoice status
+    let invoiceStatus: string;
+    if (allPaid) {
+      invoiceStatus = "paid";
+    } else if (asDraft) {
+      invoiceStatus = "draft";
+    } else {
+      invoiceStatus = "sent";
+    }
 
     // Insert invoice
     const { data: invoice, error: insertError } = await supabase
@@ -260,6 +312,7 @@ serve(async (req) => {
         invoice_date: invoiceDate.toISOString().split("T")[0],
         due_date: dueDate.toISOString().split("T")[0],
         player_id: playerId,
+        guest_player_id: guestPlayerId || null,
         player_name: playerName,
         player_business_name: playerBusinessName,
         player_address: playerAddress,
@@ -269,10 +322,10 @@ serve(async (req) => {
         vat_rate: vatRate,
         vat_amount: Math.round(vatAmount * 100) / 100,
         total: Math.round(totalInclusive * 100) / 100,
-        status: allPaid ? "paid" : "sent",
+        status: invoiceStatus,
         booking_ids: bookingIds,
-        sent_at: new Date().toISOString(),
-        ...(allPaid ? { paid_at: new Date().toISOString() } : {}),
+        ...(invoiceStatus === "sent" ? { sent_at: new Date().toISOString() } : {}),
+        ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
       })
       .select()
       .single();
@@ -282,20 +335,22 @@ serve(async (req) => {
       throw new Error(`Failed to create invoice: ${insertError.message}`);
     }
 
-    logStep("Invoice created", { invoiceId: invoice.id, invoiceNumber });
+    logStep("Invoice created", { invoiceId: invoice.id, invoiceNumber, status: invoiceStatus });
 
-    // Generate PDF
-    try {
-      await supabase.functions.invoke("generate-invoice", {
-        body: { invoiceId: invoice.id },
-      });
-      logStep("PDF generated");
-    } catch (pdfErr) {
-      logStep("PDF generation failed (non-fatal)", { error: String(pdfErr) });
+    // Generate PDF (skip for drafts to save resources — can be generated on demand)
+    if (invoiceStatus !== "draft") {
+      try {
+        await supabase.functions.invoke("generate-invoice", {
+          body: { invoiceId: invoice.id },
+        });
+        logStep("PDF generated");
+      } catch (pdfErr) {
+        logStep("PDF generation failed (non-fatal)", { error: String(pdfErr) });
+      }
     }
 
     // Auto-forward invoice to configured bookkeeping emails
-    const forwardEmails = (trainerProfile as any).invoice_forward_emails;
+    const forwardEmails = invoiceProfile.invoice_forward_emails;
     if (allPaid && forwardEmails && forwardEmails.length > 0) {
       try {
         const forwardRes = await supabase.functions.invoke("forward-invoice", {
