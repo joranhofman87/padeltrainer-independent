@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { format, isPast, isFuture, parseISO, addDays, differenceInCalendarDays } from "date-fns";
+import { format, isPast, isFuture, parseISO } from "date-fns";
 import { nl, enUS, de, fr, es } from "date-fns/locale";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
