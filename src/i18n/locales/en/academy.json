@@ -410,8 +410,5 @@
     "linkError": "Failed to generate payment link",
     "downloadPdf": "Download PDF",
     "noPdf": "No PDF available"
-  },
-  "nav": {
-    "invoices": "Invoices"
   }
 }
