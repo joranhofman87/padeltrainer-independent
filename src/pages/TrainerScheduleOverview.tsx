@@ -311,6 +311,7 @@ export default function TrainerScheduleOverview() {
       originalStartDate: earliestStart,
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
+      pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
     });
 
     // Collect unique players from all bookings across cycle slots
