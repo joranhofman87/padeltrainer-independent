@@ -35,6 +35,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
     invoice_next_number: 1,
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [bannerColor, setBannerColor] = useState<string>('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [forwardEmails, setForwardEmails] = useState<string[]>([]);
