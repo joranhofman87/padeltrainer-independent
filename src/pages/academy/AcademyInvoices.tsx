@@ -89,11 +89,15 @@ export default function AcademyInvoices() {
   const sentInvoices = invoices.filter((i) => i.sent_at && i.status !== "paid");
   const paidInvoices = invoices.filter((i) => i.status === "paid");
 
-  const filteredInvoices =
+  const tabFiltered =
     activeTab === "draft" ? draftInvoices :
     activeTab === "sent" ? sentInvoices :
     activeTab === "paid" ? paidInvoices :
     invoices;
+
+  const filteredInvoices = tabFiltered.filter(i =>
+    !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const totalUnpaid = sentInvoices.reduce((sum, i) => sum + i.total, 0) + draftInvoices.reduce((sum, i) => sum + i.total, 0);
 
