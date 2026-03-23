@@ -1056,7 +1056,7 @@ export default function EditProfile() {
                   <div className="space-y-2 pt-4 border-t">
                     <Label className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
-                      Teaching Locations
+                      {tTrainer('editProfile.teachingLocations')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
                       Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.
