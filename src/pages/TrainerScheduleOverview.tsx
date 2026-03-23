@@ -710,6 +710,18 @@ export default function TrainerScheduleOverview() {
                 onChange={(e) => setCycleEditData((prev) => ({ ...prev, maxParticipants: e.target.value }))}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="cycle-private-toggle">
+                {t("scheduleOverview.cyclePrivate", "Private (hidden from players)")}
+              </Label>
+              <Switch
+                id="cycle-private-toggle"
+                checked={cycleEditData.isPrivate}
+                onCheckedChange={(checked) =>
+                  setCycleEditData((prev) => ({ ...prev, isPrivate: checked }))
+                }
+              />
+            </div>
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription className="text-sm text-muted-foreground">

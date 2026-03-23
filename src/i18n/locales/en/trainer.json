@@ -59,7 +59,10 @@
     "removePlayerConfirm": "Are you sure you want to remove this player from the session?",
     "playerRemoved": "Player removed from session",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "markAsPrivate": "Marked as private",
+    "markAsPublic": "Marked as public",
+    "cyclePrivate": "Private (hidden from players)"
   },
   "profile": {
     "shareProfile": "Share Profile",
