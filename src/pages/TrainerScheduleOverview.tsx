@@ -106,6 +106,7 @@ type CycleEditData = {
   originalStartDate: Date | undefined;
   repeatCount: string;
   originalRepeatCount: number;
+  pricesIncludeVat: boolean;
 };
 
 type TrainerLocationOption = {
