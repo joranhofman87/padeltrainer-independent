@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2, Check, ChevronsUpDown } from "lucide-react";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { type ExtraCost } from "@/lib/cycles";
