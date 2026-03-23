@@ -757,5 +757,19 @@
     "enableDescription": "When enabled, players can sign up for your waiting list on your public profile. You'll be notified when someone joins.",
     "enabled": "Waiting list is now active on your profile",
     "disabled": "Waiting list has been turned off"
+  },
+  "editProfile": {
+    "trainerDetails": "Trainer Details",
+    "trainerDetailsDescription": "Your professional information",
+    "hourlyRate": "Hourly Rate (€)",
+    "coachingSince": "Coaching Since (year)",
+    "yourPadelRating": "Your Padel Rating",
+    "ratingSystem": "Rating System",
+    "rating": "Rating",
+    "certifications": "Certifications",
+    "specializations": "Specializations",
+    "teachingLocations": "Teaching Locations",
+    "teachingLocationsDescription": "Where do you offer training? Mark yourself as 'Club Trainer' if you're employed by the club.",
+    "levelRange": "Level range:"
   }
 }

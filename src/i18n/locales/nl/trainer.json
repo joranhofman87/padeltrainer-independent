@@ -763,5 +763,19 @@
     "enableDescription": "Wanneer ingeschakeld kunnen spelers zich op je wachtlijst zetten via je publieke profiel. Je wordt op de hoogte gebracht wanneer iemand zich aanmeldt.",
     "enabled": "Wachtlijst is nu actief op je profiel",
     "disabled": "Wachtlijst is uitgeschakeld"
+  },
+  "editProfile": {
+    "trainerDetails": "Trainer Details",
+    "trainerDetailsDescription": "Je professionele informatie",
+    "hourlyRate": "Uurtarief (€)",
+    "coachingSince": "Trainer sinds (jaar)",
+    "yourPadelRating": "Je Padel Rating",
+    "ratingSystem": "Beoordelingssysteem",
+    "rating": "Rating",
+    "certifications": "Certificeringen",
+    "specializations": "Specialisaties",
+    "teachingLocations": "Leslocaties",
+    "teachingLocationsDescription": "Waar bied je training aan? Markeer jezelf als 'Clubtrainer' als je in dienst bent van de club.",
+    "levelRange": "Niveaubereik:"
   }
 }
