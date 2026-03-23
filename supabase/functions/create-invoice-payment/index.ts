@@ -139,7 +139,9 @@ serve(async (req) => {
     // Build redirect URL
     const baseUrl = supabaseUrl.replace(".supabase.co", "").replace("https://", "");
     const appUrl = Deno.env.get("APP_URL") || `https://padeltrainer.lovable.app`;
-    const redirectUrl = `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
+    const redirectUrl = invoice.public_token
+      ? `${appUrl}/pay/${invoice.public_token}?status=success`
+      : `${appUrl}/app/booking-success?invoice=${invoice.invoice_number}`;
     const webhookUrl = `${supabaseUrl}/functions/v1/mollie-webhook`;
 
     // Create Mollie payment
