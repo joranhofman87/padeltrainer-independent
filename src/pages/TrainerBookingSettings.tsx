@@ -89,6 +89,22 @@ export default function TrainerBookingSettings() {
     setSavingWelcome(false);
   };
 
+  const handleToggleVat = async (value: boolean) => {
+    setSavingVat(true);
+    const { error } = await supabase
+      .from('trainer_profiles')
+      .update({ prices_include_vat: value } as any)
+      .eq('user_id', user!.id);
+
+    if (error) {
+      toast({ title: t('common:error'), description: error.message, variant: 'destructive' });
+    } else {
+      setPricesIncludeVat(value);
+      toast({ title: t('common:success'), description: t('bookingSettings.vatSaved') });
+    }
+    setSavingVat(false);
+  };
+
   if (loading || loadingSettings) {
     return (
       <div className="flex items-center justify-center py-16">
