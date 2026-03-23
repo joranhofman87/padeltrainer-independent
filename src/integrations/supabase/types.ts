@@ -321,6 +321,7 @@ export type Database = {
           general_terms: string | null
           iban: string | null
           id: string
+          invoice_banner_color: string | null
           invoice_forward_emails: string[] | null
           invoice_logo_url: string | null
           invoice_next_number: number | null
@@ -367,6 +368,7 @@ export type Database = {
           general_terms?: string | null
           iban?: string | null
           id?: string
+          invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
@@ -413,6 +415,7 @@ export type Database = {
           general_terms?: string | null
           iban?: string | null
           id?: string
+          invoice_banner_color?: string | null
           invoice_forward_emails?: string[] | null
           invoice_logo_url?: string | null
           invoice_next_number?: number | null
