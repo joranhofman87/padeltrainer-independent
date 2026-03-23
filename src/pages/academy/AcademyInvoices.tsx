@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Link as LinkIcon, Download, Copy, Loader2, AlertCircle, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
