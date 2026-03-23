@@ -1,34 +1,23 @@
 
 
-# Block Platform Fallback for Invoice Payments + Show Pay Button Only When Mollie Connected
+# Fix Line Item Display on Public Invoice Page
 
 ## Problem
-When an academy hasn't connected Mollie, the `create-invoice-payment` function falls back to the platform's `MOLLIE_API_KEY`, routing payments to Reditus Software Holding BV. Invoices should still be generated (they have IBAN for manual payment), but the online "Pay" button should only appear when the academy/trainer has a connected Mollie account.
+The line item amount shows €0,00 because the code uses `item.total` which may not be stored per line item. The actual price is in `item.unit_price`. Additionally, the unit price column is missing — the HTML invoice template shows 4 columns (Description, Qty, Price, Amount) but the public page only shows 3.
 
 ## Changes
 
-### 1. Edge function: Return Mollie connection status
-**File: `supabase/functions/get-public-invoice/index.ts`**
+### File: `src/pages/PublicInvoicePay.tsx`
 
-- After fetching the invoice, check if the academy (or trainer) has a connected Mollie account (`onboarding_complete = true` and `charges_enabled = true`)
-- Return a `hasMollieAccount: boolean` field in the response (alongside the existing `hasMolliePayment`)
+1. **Add unit price column** to the line items table — match the HTML invoice layout with Description, Qty, Price, Amount
+2. **Fix amount calculation** — use `item.total ?? (item.quantity * item.unit_price)` as fallback since `total` may not be stored per line item
+3. Show unit price per item: `€{formatEuro(item.unit_price)}`
+4. Show computed total: `€{formatEuro(item.total ?? item.quantity * item.unit_price)}`
 
-### 2. Edge function: Block platform key fallback
-**File: `supabase/functions/create-invoice-payment/index.ts`**
+The table header becomes:
+```
+Description | Qty | Price | Amount
+```
 
-- After resolving `accessToken`, if it's still `null`, return `{ error: "no_mollie_account" }` with status 400 instead of falling back to `mollieApiKey`
-- Remove the `const authToken = accessToken || mollieApiKey` fallback — use `accessToken` directly
-
-### 3. Frontend: Conditionally show Pay button
-**File: `src/pages/PublicInvoicePay.tsx`**
-
-- Update `PublicInvoiceData` interface to include `hasMollieAccount: boolean`
-- Only show the "Pay €X" button when `hasMollieAccount` is true
-- When no Mollie account, show the bank details (IBAN) more prominently as the primary payment method with a message like "Please transfer the amount to the bank account below"
-- Handle the `no_mollie_account` error gracefully in `handlePay` (edge case fallback)
-
-### Files
-- `supabase/functions/get-public-invoice/index.ts` — Check Mollie connection, return `hasMollieAccount`
-- `supabase/functions/create-invoice-payment/index.ts` — Remove platform key fallback
-- `src/pages/PublicInvoicePay.tsx` — Conditionally show pay button vs bank transfer info
+Single file change, ~10 lines modified in the table section (lines 303-321).
 
