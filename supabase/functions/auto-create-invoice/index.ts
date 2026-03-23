@@ -50,6 +50,7 @@ serve(async (req) => {
           price_per_session,
           cyclus_id,
           cyclus_name,
+          prices_include_vat,
           locations(name, city)
         )
       `)
