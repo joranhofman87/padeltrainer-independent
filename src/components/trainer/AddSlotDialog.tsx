@@ -974,8 +974,8 @@ export function BulkCreateSheet({
                         />
                         <span className="text-sm text-muted-foreground">{t("calendar.weeks")}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        → {format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "MMM d, yyyy")}
+                      <p className="text-xs text-muted-foreground mt-1 font-medium">
+                        📅 {t("cycles:form.endsOn", { date: format(addWeeks(slot.startDate, slot.recurrenceWeeks - 1), "PPP") })}
                       </p>
                     </div>
                   </div>
