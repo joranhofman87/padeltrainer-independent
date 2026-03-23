@@ -1004,7 +1004,7 @@ export default function EditProfile() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">Rating</Label>
+                        <Label htmlFor="trainer_rating" className="text-xs text-muted-foreground">{tTrainer('editProfile.rating')}</Label>
                         {(() => {
                           return (
                             <>
