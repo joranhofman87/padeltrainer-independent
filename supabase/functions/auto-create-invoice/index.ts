@@ -180,10 +180,26 @@ serve(async (req) => {
       }
     }
 
-    // Calculate totals - prices are VAT-inclusive
-    const totalInclusive = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-    const subtotal = totalInclusive / (1 + vatRate / 100);
-    const vatAmount = totalInclusive - subtotal;
+    // Determine if prices include VAT — check slot-level flag, fall back to true (legacy default)
+    const slotPricesIncludeVat = (bookings[0].availability_slots as any).prices_include_vat ?? true;
+
+    // Calculate totals based on VAT inclusion
+    const lineItemTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+    let subtotal: number;
+    let vatAmount: number;
+    let totalInclusive: number;
+
+    if (slotPricesIncludeVat) {
+      // Prices already include VAT — back-calculate
+      totalInclusive = lineItemTotal;
+      subtotal = totalInclusive / (1 + vatRate / 100);
+      vatAmount = totalInclusive - subtotal;
+    } else {
+      // Prices exclude VAT — add VAT on top
+      subtotal = lineItemTotal;
+      vatAmount = subtotal * (vatRate / 100);
+      totalInclusive = subtotal + vatAmount;
+    }
 
     // Generate invoice number using trainer's custom prefix
     const prefix = trainerProfile.invoice_prefix || "INV";
