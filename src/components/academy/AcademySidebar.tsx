@@ -81,7 +81,8 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
   const [businessOpen, setBusinessOpen] = useState(
     location.pathname.includes("/app/academy/settings") ||
     location.pathname.includes("/app/academy/subscription") ||
-    location.pathname.includes("/app/academy/earnings")
+    location.pathname.includes("/app/academy/earnings") ||
+    location.pathname.includes("/app/academy/invoices")
   );
 
   const handleLogout = async () => {
