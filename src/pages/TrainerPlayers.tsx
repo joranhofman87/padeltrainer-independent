@@ -84,11 +84,14 @@ export default function TrainerPlayers() {
   const [isLoading, setIsLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PlayerStatus | "all">("all");
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<GuestPlayer | null>(null);
   const [deletingPlayer, setDeletingPlayer] = useState<GuestPlayer | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeGuestIds, setActiveGuestIds] = useState<Set<string>>(new Set());
+  const [waitingListGuestIds, setWaitingListGuestIds] = useState<Set<string>>(new Set());
 
   // Auth is now handled by TrainerLayout
 
