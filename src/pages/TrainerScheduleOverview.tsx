@@ -128,6 +128,9 @@ export default function TrainerScheduleOverview() {
   const { toast } = useToast();
   const [tab, setTab] = useState<TabValue>("current");
   const [search, setSearch] = useState("");
+  const [filterDay, setFilterDay] = useState("all");
+  const [filterLocation, setFilterLocation] = useState("all");
+  const [filterTime, setFilterTime] = useState("all");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
 
