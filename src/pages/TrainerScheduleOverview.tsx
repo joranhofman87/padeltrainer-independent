@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,8 @@ import {
   Loader2,
   X,
   AlertTriangle,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
