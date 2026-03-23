@@ -127,6 +127,7 @@ export function AcademyInvoiceSettingsCard({ academyId }: AcademyInvoiceSettings
         invoice_logo_url: logoUrl || null,
         invoice_prefix: formData.invoice_prefix || 'INV',
         invoice_next_number: formData.invoice_next_number || 1,
+        invoice_banner_color: bannerColor || null,
       } as any)
       .eq('id', academyId);
 
