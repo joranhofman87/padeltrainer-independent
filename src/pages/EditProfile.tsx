@@ -938,8 +938,8 @@ export default function EditProfile() {
               {/* Trainer Details Card */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Trainer Details</CardTitle>
-                  <CardDescription>Your professional information</CardDescription>
+                  <CardTitle>{tTrainer('editProfile.trainerDetails')}</CardTitle>
+                  <CardDescription>{tTrainer('editProfile.trainerDetailsDescription')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
