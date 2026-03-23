@@ -382,6 +382,7 @@ export function BulkCreateSheet({
   onSlotsCreated,
   availableLocations,
   availableTrainers,
+  prefillFromCyclusId,
 }: BulkCreateSheetProps) {
   const { t } = useTranslation("trainer");
   const { toast } = useToast();
