@@ -93,7 +93,7 @@ const TrainerGetStarted = lazy(() => import('@/pages/TrainerGetStarted'));
 const TrainerSettings = lazy(() => import('@/pages/TrainerSettings'));
 const TrainerBookingSettings = lazy(() => import('@/pages/TrainerBookingSettings'));
 const TrainerTerms = lazy(() => import('@/pages/TrainerTerms'));
-const TrainerBookings = lazy(() => import('@/pages/TrainerBookings'));
+
 const TrainerEarnings = lazy(() => import('@/pages/TrainerEarnings'));
 const TrainerSubscription = lazy(() => import('@/pages/TrainerSubscription'));
 const TrainerAnalytics = lazy(() => import('@/pages/TrainerAnalytics'));
