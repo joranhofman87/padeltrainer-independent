@@ -133,6 +133,31 @@ export default function PublicInvoicePay() {
     );
   }
 
+  // Show processing state when redirected from Mollie but payment not yet confirmed
+  if (isSuccessRedirect && data && data.invoice.status !== "paid") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="py-12 text-center space-y-4">
+            <CheckCircle className="h-16 w-16 text-primary mx-auto" />
+            <h1 className="text-2xl font-bold">Payment Processing</h1>
+            <p className="text-muted-foreground">
+              Your payment for {data.invoice.invoiceNumber} is being processed. You'll receive a confirmation shortly.
+            </p>
+            <div className="pt-4">
+              <Link to="/app/signup/player">
+                <Button variant="outline">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create account to view your invoices
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (error || !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
