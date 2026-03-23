@@ -369,15 +369,7 @@ export default function AcademyCalendar() {
               <Plus className="h-4 w-4" />
               {t("calendar.new", "New")}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDuplicateCyclusOpen(true)}
-              className="gap-2"
-            >
-              <Copy className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("calendar.duplicateCyclus", "Cyclus Dupliceren")}</span>
-            </Button>
+            
           </div>
         </div>
       </div>
