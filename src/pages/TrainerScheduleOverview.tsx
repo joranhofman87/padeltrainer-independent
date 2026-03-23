@@ -448,7 +448,7 @@ export default function TrainerScheduleOverview() {
                 rating_system: lastSlot.rating_system,
                 training_level: lastSlot.training_level,
                 total_price: lastSlot.total_price,
-                prices_include_vat: lastSlot.prices_include_vat,
+                prices_include_vat: cycleEditData.pricesIncludeVat,
               });
             }
             await supabase.from("availability_slots").insert(newSlots);
