@@ -443,6 +443,18 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
                           </NavLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink
+                            to="/app/academy/invoices"
+                            className="flex items-center gap-2"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                          >
+                            <FileText className="h-4 w-4" />
+                            {t("nav.invoices", "Invoices")}
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
