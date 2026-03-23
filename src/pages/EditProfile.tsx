@@ -440,8 +440,8 @@ export default function EditProfile() {
       await refreshAuth();
       
       toast({
-        title: 'Profile updated',
-        description: 'Your changes have been saved.',
+        title: t('editProfile.profileUpdated'),
+        description: t('editProfile.profileUpdatedDescription'),
       });
       
       navigate(role === 'trainer' ? '/trainer' : '/player');
