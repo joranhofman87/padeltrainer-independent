@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
+import { SEO } from "@/components/SEO";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,6 +109,7 @@ export default function PublicInvoicePay() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
+        <SEO title="Invoice" description="Invoice payment" noIndex={true} />
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -116,12 +118,13 @@ export default function PublicInvoicePay() {
   if (isPaid) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Invoice Paid" description="This invoice has been paid." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
             <h1 className="text-2xl font-bold">Payment Received</h1>
             <p className="text-muted-foreground">
-              Invoice {paidInvoiceNumber} has already been paid. Thank you!
+              This invoice has been paid. Thank you!
             </p>
             <div className="pt-4">
               <Link to="/app/signup/player">
@@ -141,12 +144,13 @@ export default function PublicInvoicePay() {
   if (isSuccessRedirect && data && data.invoice.status !== "paid") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Payment Processing" description="Your payment is being processed." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle className="h-16 w-16 text-primary mx-auto" />
             <h1 className="text-2xl font-bold">Payment Processing</h1>
             <p className="text-muted-foreground">
-              Your payment for {data.invoice.invoiceNumber} is being processed. You'll receive a confirmation shortly.
+              Your payment is being processed. You'll receive a confirmation shortly.
             </p>
             <div className="pt-4">
               <Link to="/app/signup/player">
@@ -165,6 +169,7 @@ export default function PublicInvoicePay() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title="Invoice Not Found" description="Invoice not found." noIndex={true} />
         <Card className="max-w-md w-full">
           <CardContent className="py-12 text-center space-y-4">
             <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto" />
@@ -184,6 +189,7 @@ export default function PublicInvoicePay() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <SEO title="Invoice Payment" description="Pay your invoice online." noIndex={true} />
       <Card className="max-w-lg w-full overflow-hidden">
         {/* Banner header */}
         {(academy?.logoUrl || bannerColor) && (
