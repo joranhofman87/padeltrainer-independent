@@ -390,15 +390,34 @@ export default function TrainerPlayers() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("players.searchPlayers")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        {/* Search + Filter */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={t("players.searchPlayers")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {(["all", "active", "available", "prospect", "waiting_list", "registered"] as const).map(status => {
+              const count = status === "all" ? allPlayers.length : allPlayers.filter(p => p.computedStatus === status).length;
+              if (status !== "all" && count === 0) return null;
+              return (
+                <Button
+                  key={status}
+                  variant={statusFilter === status ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter(status)}
+                  className="text-xs"
+                >
+                  {t(`players.statuses.${status}`)} ({count})
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Players Table */}
