@@ -306,6 +306,7 @@ export default function PublicInvoicePay() {
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-medium">Description</th>
                   <th className="text-right p-3 font-medium">Qty</th>
+                  <th className="text-right p-3 font-medium">Price</th>
                   <th className="text-right p-3 font-medium">Amount</th>
                 </tr>
               </thead>
@@ -314,7 +315,8 @@ export default function PublicInvoicePay() {
                   <tr key={idx} className="border-b last:border-0">
                     <td className="p-3">{item.description}</td>
                     <td className="text-right p-3">{item.quantity}</td>
-                    <td className="text-right p-3">€{formatEuro(item.total)}</td>
+                    <td className="text-right p-3">€{formatEuro(item.unit_price)}</td>
+                    <td className="text-right p-3">€{formatEuro(item.total ?? item.quantity * item.unit_price)}</td>
                   </tr>
                 ))}
               </tbody>
