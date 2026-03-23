@@ -1073,7 +1073,7 @@ export default function EditProfile() {
           )}
 
           <Button type="submit" className="w-full" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? t('editProfile.saving') : t('editProfile.saveChanges')}
           </Button>
         </form>
       </main>
