@@ -321,7 +321,7 @@ export default function AcademyInvoices() {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => {
-                                      const url = `${window.location.origin}/pay/${inv.public_token}`;
+                                      const url = `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
                                       navigator.clipboard.writeText(url);
                                       toast.success(t("invoices.shareLinkCopied", "Invoice link copied"));
                                     }}
