@@ -22,7 +22,25 @@
     "lessons": "Sessions",
     "getStarted": "Get Started",
     "waitingList": "Waiting List",
-    "registrations": "Registrations"
+    "registrations": "Registrations",
+    "scheduleOverview": "Overview"
+  },
+  "scheduleOverview": {
+    "title": "Schedule Overview",
+    "description": "All your sessions grouped by cycle with payment status.",
+    "current": "Current",
+    "future": "Future",
+    "past": "Past",
+    "search": "Search cycle or player...",
+    "cycle": "Cycle",
+    "individualSessions": "Individual Sessions",
+    "sessions": "sessions",
+    "paid": "paid",
+    "unpaid": "unpaid",
+    "private": "Private",
+    "edit": "Edit",
+    "noResults": "No sessions found.",
+    "unknownPlayer": "Unknown"
   },
   "profile": {
     "shareProfile": "Share Profile",
