@@ -377,7 +377,7 @@ export default function AcademyInvoices() {
                         <span className="text-muted-foreground">
                           {format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}
                         </span>
-                        <span className="font-bold text-lg">€{inv.total.toFixed(2)}</span>
+                        <span className="font-bold text-lg">€{formatEuro(inv.total)}</span>
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         {inv.status !== "paid" && (
