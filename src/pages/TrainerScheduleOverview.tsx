@@ -547,6 +547,91 @@ export default function TrainerScheduleOverview() {
     }
   };
 
+  // Add player to all cycle slots
+  const handleAddPlayerToCycle = async (guestPlayerId: string) => {
+    if (!editCycleId) return;
+    setAddingPlayerToCycle(true);
+    try {
+      const { data: cycleSlots } = await supabase
+        .from("availability_slots")
+        .select("id")
+        .eq("cyclus_id", editCycleId);
+
+      if (!cycleSlots || cycleSlots.length === 0) return;
+
+      // Check which slots already have this guest player booked
+      const { data: existingBookings } = await supabase
+        .from("bookings")
+        .select("slot_id")
+        .eq("guest_player_id", guestPlayerId)
+        .in("slot_id", cycleSlots.map(s => s.id))
+        .neq("status", "cancelled");
+
+      const alreadyBookedSlotIds = new Set((existingBookings || []).map(b => b.slot_id));
+      const slotsToBook = cycleSlots.filter(s => !alreadyBookedSlotIds.has(s.id));
+
+      if (slotsToBook.length > 0) {
+        const newBookings = slotsToBook.map(s => ({
+          slot_id: s.id,
+          guest_player_id: guestPlayerId,
+          status: 'confirmed',
+          payment_status: 'pending',
+        }));
+        await supabase.from("bookings").insert(newBookings);
+      }
+
+      // Update local player list
+      const guest = availableGuestPlayers.find(g => g.id === guestPlayerId);
+      if (guest) {
+        setEditCyclePlayers(prev => [...prev, {
+          id: guestPlayerId,
+          name: guest.full_name,
+          type: 'guest',
+          bookingCount: cycleSlots.length,
+        }]);
+      }
+
+      toast({ title: t("scheduleOverview.addedToCycle", "Player added to all sessions") });
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setAddingPlayerToCycle(false);
+    }
+  };
+
+  // Remove player from all cycle slots
+  const handleRemovePlayerFromCycle = async () => {
+    if (!confirmRemoveCyclePlayer || !editCycleId) return;
+    const player = confirmRemoveCyclePlayer;
+    setRemovingPlayerFromCycle(player.id);
+    try {
+      const { data: cycleSlots } = await supabase
+        .from("availability_slots")
+        .select("id")
+        .eq("cyclus_id", editCycleId);
+
+      if (cycleSlots && cycleSlots.length > 0) {
+        const field = player.type === 'guest' ? 'guest_player_id' : 'player_id';
+        await supabase
+          .from("bookings")
+          .update({ status: 'cancelled' })
+          .eq(field, player.id)
+          .in("slot_id", cycleSlots.map(s => s.id))
+          .neq("status", "cancelled");
+      }
+
+      setEditCyclePlayers(prev => prev.filter(p => p.id !== player.id));
+      toast({ title: t("scheduleOverview.removedFromCycle", "Player removed from all sessions") });
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setRemovingPlayerFromCycle(null);
+      setConfirmRemoveCyclePlayer(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
