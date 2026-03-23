@@ -389,14 +389,13 @@ export default function TrainerScheduleOverview() {
         updates.max_participants = parseInt(cycleEditData.maxParticipants, 10);
       }
 
-      // 2. Handle start date shift
-      if (
-        cycleEditData.startDate &&
-        cycleEditData.originalStartDate &&
-        cycleEditData.startDate.getTime() !== cycleEditData.originalStartDate.getTime()
-      ) {
-        const deltaMs = cycleEditData.startDate.getTime() - cycleEditData.originalStartDate.getTime();
-        // Fetch all slots for this cycle to shift them
+      // 2. Handle date/time shift
+      const dateChanged = cycleEditData.startDate && cycleEditData.originalStartDate &&
+        cycleEditData.startDate.getTime() !== cycleEditData.originalStartDate.getTime();
+      const timeChanged = cycleEditData.startTime !== cycleEditData.originalStartTime ||
+        cycleEditData.endTime !== cycleEditData.originalEndTime;
+
+      if (dateChanged || timeChanged) {
         const { data: cycleSlots } = await supabase
           .from("availability_slots")
           .select("id, start_time, end_time")
@@ -405,16 +404,38 @@ export default function TrainerScheduleOverview() {
 
         if (cycleSlots) {
           for (const cs of cycleSlots) {
-            const newStart = new Date(new Date(cs.start_time).getTime() + deltaMs).toISOString();
-            const newEnd = new Date(new Date(cs.end_time).getTime() + deltaMs).toISOString();
+            const oldStart = new Date(cs.start_time);
+            const oldEnd = new Date(cs.end_time);
+            let newStart = new Date(oldStart);
+            let newEnd = new Date(oldEnd);
+
+            // Apply date shift
+            if (dateChanged) {
+              const deltaMs = cycleEditData.startDate!.getTime() - cycleEditData.originalStartDate!.getTime();
+              newStart = new Date(newStart.getTime() + deltaMs);
+              newEnd = new Date(newEnd.getTime() + deltaMs);
+            }
+
+            // Apply time change (set new hours/minutes on each slot)
+            if (timeChanged) {
+              const [startH, startM] = cycleEditData.startTime.split(":").map(Number);
+              const [endH, endM] = cycleEditData.endTime.split(":").map(Number);
+              newStart.setHours(startH, startM, 0, 0);
+              newEnd.setHours(endH, endM, 0, 0);
+              // Handle end time crossing midnight
+              if (newEnd <= newStart) {
+                newEnd.setDate(newEnd.getDate() + 1);
+              }
+            }
+
             await supabase
               .from("availability_slots")
-              .update({ ...updates, start_time: newStart, end_time: newEnd })
+              .update({ ...updates, start_time: newStart.toISOString(), end_time: newEnd.toISOString() })
               .eq("id", cs.id);
           }
         }
       } else {
-        // No date shift — just bulk update
+        // No date/time shift — just bulk update
         await supabase
           .from("availability_slots")
           .update(updates)
