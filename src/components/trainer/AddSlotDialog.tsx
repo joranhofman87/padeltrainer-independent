@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
+import { CalendarIcon, Plus, Repeat, UserPlus, MapPin, Lock, GraduationCap, User, Euro, Users, Trash2, Check, ChevronsUpDown } from "lucide-react";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { type ExtraCost } from "@/lib/cycles";
@@ -1287,39 +1295,62 @@ export function BulkCreateSheet({
                             <Label className="text-xs w-16 shrink-0">
                               {t("calendar.player")} {playerIndex + 1}:
                             </Label>
-                            <Select
-                              value={slot.selectedPlayers[playerIndex] || "none"}
-                              onValueChange={(v) => {
-                                const newPlayers = [...slot.selectedPlayers];
-                                if (v === "none") {
-                                  newPlayers[playerIndex] = "";
-                                } else {
-                                  newPlayers[playerIndex] = v;
-                                }
-                                updateBulkSlot(index, { 
-                                  selectedPlayers: newPlayers 
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="h-8 flex-1">
-                                <SelectValue placeholder={t("calendar.selectPlayer")} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">-</SelectItem>
-                                {players.map((player) => (
-                                  <SelectItem
-                                    key={player.id}
-                                    value={player.id}
-                                    disabled={
-                                      slot.selectedPlayers.includes(player.id) &&
-                                      slot.selectedPlayers[playerIndex] !== player.id
-                                    }
-                                  >
-                                    {player.full_name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className="h-8 flex-1 justify-between font-normal"
+                                >
+                                  <span className="truncate">
+                                    {slot.selectedPlayers[playerIndex]
+                                      ? players.find(p => p.id === slot.selectedPlayers[playerIndex])?.full_name ?? t("calendar.selectPlayer")
+                                      : t("calendar.selectPlayer")}
+                                  </span>
+                                  <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[250px] p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder={t("calendar.selectPlayer")} />
+                                  <CommandList>
+                                    <CommandEmpty>No player found.</CommandEmpty>
+                                    <CommandGroup>
+                                      <CommandItem
+                                        value="none"
+                                        onSelect={() => {
+                                          const newPlayers = [...slot.selectedPlayers];
+                                          newPlayers[playerIndex] = "";
+                                          updateBulkSlot(index, { selectedPlayers: newPlayers });
+                                        }}
+                                      >
+                                        -
+                                      </CommandItem>
+                                      {players.map((player) => {
+                                        const isSelected = slot.selectedPlayers[playerIndex] === player.id;
+                                        const isUsedElsewhere = slot.selectedPlayers.includes(player.id) && !isSelected;
+                                        return (
+                                          <CommandItem
+                                            key={player.id}
+                                            value={player.full_name}
+                                            disabled={isUsedElsewhere}
+                                            onSelect={() => {
+                                              const newPlayers = [...slot.selectedPlayers];
+                                              newPlayers[playerIndex] = player.id;
+                                              updateBulkSlot(index, { selectedPlayers: newPlayers });
+                                            }}
+                                            className={cn(isUsedElsewhere && "opacity-50")}
+                                          >
+                                            <Check className={cn("mr-2 h-3 w-3", isSelected ? "opacity-100" : "opacity-0")} />
+                                            {player.full_name}
+                                          </CommandItem>
+                                        );
+                                      })}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                             <Button
                               type="button"
                               variant="outline"
