@@ -944,7 +944,7 @@ export default function EditProfile() {
                 <CardContent className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="hourly_rate">Hourly Rate (€)</Label>
+                      <Label htmlFor="hourly_rate">{tTrainer('editProfile.hourlyRate')}</Label>
                       <Input
                         id="hourly_rate"
                         type="number"
