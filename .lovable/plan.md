@@ -1,41 +1,29 @@
 
 
-# Fix Public Invoice Page Crash + Academy-Scoped URLs
+# Secure Public Invoice Pages: No-Index + PII Protection
 
 ## Problem
-1. **Crash**: `Cannot read properties of undefined (reading 'toFixed')` — line item `total`, `subtotal`, `vatAmount` etc. can be null/undefined, causing the page to crash.
-2. **URL structure**: Current `/pay/:token` doesn't fit the site's SEO/branding pattern. User wants `/:lang/academies/:slug/pay/:token` for consistency.
+1. Payment links (`/nl/academies/slug/pay/token`) could be indexed by search engines, exposing them publicly.
+2. Once paid, the page still shows player name, line item details, and amounts — unnecessary PII exposure.
 
 ## Plan
 
-### Step 1: Fix the crash — null-safe number formatting
-In `PublicInvoicePay.tsx`, add a `formatEuro` helper (same European style as invoices page) with null safety:
-```typescript
-const formatEuro = (amount: number | null | undefined) =>
-  (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-```
-Replace all `.toFixed(2)` calls with `formatEuro()` — covers line items, subtotal, vatAmount, total, and the pay button.
+### 1. Add `noindex` meta tag to `PublicInvoicePay.tsx`
+- Import the existing `SEO` component and render it with `noIndex={true}` at the top of every render path (loading, paid, error, and active invoice views).
+- This adds `<meta name="robots" content="noindex, nofollow">` preventing all search engine indexing.
 
-### Step 2: Add academy-scoped route
-In `DomainRouter.tsx`, add a new route under the language routes:
-```
-/:lang/academies/:slug/pay/:token → PublicInvoicePay
-```
-Keep the existing `/pay/:token` route as a fallback/legacy redirect.
+### 2. Block payment URLs in `robots.txt`
+- Add `Disallow: /*/pay/` to block crawlers that don't respect meta tags.
 
-### Step 3: Update edge function to return academy slug
-In `get-public-invoice/index.ts`, also select `slug` from `academy_profiles` and return it in the response so the frontend can build canonical URLs.
+### 3. Strip PII from the "already paid" state
+- **Edge function** (`get-public-invoice`): When status is `paid`, only return `invoiceNumber` and `status` — no player name, amounts, or line items (already partially done, just verify).
+- **Frontend** (`PublicInvoicePay.tsx`): The paid state already shows a generic "Invoice X has been paid" message without details — confirm no PII leaks. Remove the invoice number display too, showing only "This invoice has been paid. Thank you!"
 
-### Step 4: Update share link generation
-In `AcademyInvoices.tsx`, update the "Copy payment link" to generate the new academy-scoped URL format: `/{lang}/academies/{slug}/pay/{token}`.
-
-### Step 5: Update Mollie redirect URL
-In `create-invoice-payment/index.ts`, update the redirect URL to use the academy-scoped format when academy data is available.
+### 4. Strip PII from the "processing" redirect state
+- After Mollie redirects with `?status=success`, show only "Your payment is being processed" without the invoice number.
 
 ## Files
-- `src/pages/PublicInvoicePay.tsx` — Fix null-safe formatting, accept slug param
-- `src/components/DomainRouter.tsx` — Add `/:lang/academies/:slug/pay/:token` route
-- `supabase/functions/get-public-invoice/index.ts` — Return academy slug
-- `supabase/functions/create-invoice-payment/index.ts` — Update redirect URL with academy slug
-- `src/pages/academy/AcademyInvoices.tsx` — Update share link format
+- `src/pages/PublicInvoicePay.tsx` — Add `<SEO noIndex />`, sanitize paid/processing messages
+- `public/robots.txt` — Add `Disallow: /*/pay/`
+- `supabase/functions/get-public-invoice/index.ts` — Verify paid state returns minimal data (already correct)
 
