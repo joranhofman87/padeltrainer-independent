@@ -2028,6 +2028,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          academy_profile_id: string | null
           booking_ids: string[] | null
           created_at: string
           due_date: string
@@ -2036,6 +2037,8 @@ export type Database = {
           invoice_date: string
           invoice_number: string
           line_items: Json
+          mollie_payment_id: string | null
+          mollie_payment_url: string | null
           notes: string | null
           paid_at: string | null
           pdf_url: string | null
@@ -2054,6 +2057,7 @@ export type Database = {
           vat_rate: number
         }
         Insert: {
+          academy_profile_id?: string | null
           booking_ids?: string[] | null
           created_at?: string
           due_date: string
@@ -2062,6 +2066,8 @@ export type Database = {
           invoice_date?: string
           invoice_number: string
           line_items?: Json
+          mollie_payment_id?: string | null
+          mollie_payment_url?: string | null
           notes?: string | null
           paid_at?: string | null
           pdf_url?: string | null
@@ -2080,6 +2086,7 @@ export type Database = {
           vat_rate?: number
         }
         Update: {
+          academy_profile_id?: string | null
           booking_ids?: string[] | null
           created_at?: string
           due_date?: string
@@ -2088,6 +2095,8 @@ export type Database = {
           invoice_date?: string
           invoice_number?: string
           line_items?: Json
+          mollie_payment_id?: string | null
+          mollie_payment_url?: string | null
           notes?: string | null
           paid_at?: string | null
           pdf_url?: string | null
@@ -2106,6 +2115,27 @@ export type Database = {
           vat_rate?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_guest_player_id_fkey"
             columns: ["guest_player_id"]
