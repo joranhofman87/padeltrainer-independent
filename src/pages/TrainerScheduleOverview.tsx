@@ -135,6 +135,11 @@ export default function TrainerScheduleOverview() {
     locationId: "",
     maxParticipants: "",
     isPrivate: false,
+    extraCosts: [],
+    startDate: undefined,
+    originalStartDate: undefined,
+    repeatCount: "0",
+    originalRepeatCount: 0,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
