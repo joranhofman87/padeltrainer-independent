@@ -34,6 +34,7 @@ import {
   type AcademyConnectStatus 
 } from '@/lib/academyPayments';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
+import { AcademyInvoiceSettingsCard } from '@/components/academy/AcademyInvoiceSettingsCard';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
@@ -396,6 +397,9 @@ export default function AcademySettings() {
             )}
           </CardContent>
         </Card>
+
+        {/* Invoice Settings */}
+        <AcademyInvoiceSettingsCard academyId={activeAcademy.id} />
 
         {/* General Terms */}
         <Card>

@@ -308,19 +308,31 @@ export type Database = {
       academy_profiles: {
         Row: {
           banner_url: string | null
+          bic: string | null
+          btw_number: string | null
+          business_address: string | null
+          business_name: string | null
           contact_email: string | null
           country: string
           created_at: string
           created_by: string | null
+          default_vat_rate: number | null
           description: string | null
           general_terms: string | null
+          iban: string | null
           id: string
+          invoice_forward_emails: string[] | null
+          invoice_logo_url: string | null
+          invoice_next_number: number | null
+          invoice_prefix: string | null
           is_public: boolean
           is_verified: boolean
+          kvk_number: string | null
           last_processed_payment_id: string | null
           logo_url: string | null
           mollie_customer_id: string | null
           name: string
+          payment_terms_days: number | null
           phone: string | null
           platform_fee_override: number | null
           slug: string
@@ -342,19 +354,31 @@ export type Database = {
         }
         Insert: {
           banner_url?: string | null
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
           contact_email?: string | null
           country?: string
           created_at?: string
           created_by?: string | null
+          default_vat_rate?: number | null
           description?: string | null
           general_terms?: string | null
+          iban?: string | null
           id?: string
+          invoice_forward_emails?: string[] | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
           is_public?: boolean
           is_verified?: boolean
+          kvk_number?: string | null
           last_processed_payment_id?: string | null
           logo_url?: string | null
           mollie_customer_id?: string | null
           name: string
+          payment_terms_days?: number | null
           phone?: string | null
           platform_fee_override?: number | null
           slug: string
@@ -376,19 +400,31 @@ export type Database = {
         }
         Update: {
           banner_url?: string | null
+          bic?: string | null
+          btw_number?: string | null
+          business_address?: string | null
+          business_name?: string | null
           contact_email?: string | null
           country?: string
           created_at?: string
           created_by?: string | null
+          default_vat_rate?: number | null
           description?: string | null
           general_terms?: string | null
+          iban?: string | null
           id?: string
+          invoice_forward_emails?: string[] | null
+          invoice_logo_url?: string | null
+          invoice_next_number?: number | null
+          invoice_prefix?: string | null
           is_public?: boolean
           is_verified?: boolean
+          kvk_number?: string | null
           last_processed_payment_id?: string | null
           logo_url?: string | null
           mollie_customer_id?: string | null
           name?: string
+          payment_terms_days?: number | null
           phone?: string | null
           platform_fee_override?: number | null
           slug?: string
