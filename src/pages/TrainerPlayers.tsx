@@ -51,6 +51,9 @@ import { AddPlayerDialog, GuestPlayer } from "@/components/trainer/AddPlayerDial
 import { EditPlayerDialog } from "@/components/trainer/EditPlayerDialog";
 import { ImportPlayersDialog } from "@/components/trainer/ImportPlayersDialog";
 
+// Computed player status
+type PlayerStatus = "waiting_list" | "active" | "available" | "prospect" | "registered";
+
 // Unified player type for the list
 type UnifiedPlayer = {
   id: string;
@@ -63,6 +66,7 @@ type UnifiedPlayer = {
   notes: string | null;
   created_at: string;
   type: "guest" | "registered";
+  computedStatus: PlayerStatus;
   // Only for guest players
   originalGuest?: GuestPlayer;
 };
