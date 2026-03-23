@@ -280,8 +280,8 @@ export default function EditProfile() {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select an image file',
+        title: t('editProfile.invalidFileType'),
+        description: t('editProfile.invalidFileTypeDescription'),
         variant: 'destructive',
       });
       return;
