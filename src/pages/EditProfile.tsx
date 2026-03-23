@@ -447,8 +447,8 @@ export default function EditProfile() {
       navigate(role === 'trainer' ? '/trainer' : '/player');
     } catch (error: any) {
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to update profile',
+        title: t('editProfile.error'),
+        description: error.message || t('editProfile.uploadFailed'),
         variant: 'destructive',
       });
     }
