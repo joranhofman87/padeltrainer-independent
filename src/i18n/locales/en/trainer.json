@@ -62,7 +62,15 @@
     "cancel": "Cancel",
     "markAsPrivate": "Marked as private",
     "markAsPublic": "Marked as public",
-    "cyclePrivate": "Private (hidden from players)"
+    "cyclePrivate": "Private (hidden from players)",
+    "extraCosts": "Extra costs",
+    "addCost": "Add cost",
+    "costDescription": "Description",
+    "costPrice": "Price",
+    "startDate": "Start date",
+    "repeatCount": "Number of weeks",
+    "cannotRemoveBookedSlots": "Cannot remove {{count}} session(s) with active bookings",
+    "removeCost": "Remove"
   },
   "profile": {
     "shareProfile": "Share Profile",

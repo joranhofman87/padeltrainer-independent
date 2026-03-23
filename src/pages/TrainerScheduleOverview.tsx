@@ -101,6 +101,11 @@ type CycleEditData = {
   locationId: string;
   maxParticipants: string;
   isPrivate: boolean;
+  extraCosts: ExtraCost[];
+  startDate: Date | undefined;
+  originalStartDate: Date | undefined;
+  repeatCount: string;
+  originalRepeatCount: number;
 };
 
 type TrainerLocationOption = {
