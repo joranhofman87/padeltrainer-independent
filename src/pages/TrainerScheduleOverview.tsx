@@ -87,6 +87,7 @@ type CycleEditData = {
   pricePerSession: string;
   locationId: string;
   maxParticipants: string;
+  isPrivate: boolean;
 };
 
 type TrainerLocationOption = {
