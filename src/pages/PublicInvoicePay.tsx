@@ -8,6 +8,9 @@ import { Loader2, CheckCircle, FileText, AlertCircle, CreditCard, UserPlus } fro
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+const formatEuro = (amount: number | null | undefined) =>
+  (amount ?? 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 interface LineItem {
   description: string;
   quantity: number;
