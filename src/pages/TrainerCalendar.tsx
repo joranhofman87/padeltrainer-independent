@@ -647,19 +647,8 @@ export default function TrainerCalendar() {
         />
       )}
 
-      {/* Duplicate Cyclus Dialog */}
-      <DuplicateCyclusDialog
-        open={duplicateCyclusOpen}
-        onOpenChange={(open) => {
-          setDuplicateCyclusOpen(open);
-          if (!open) {
-            setPreselectedCyclusId(undefined);
-          }
-        }}
-        trainerId={trainerId || ""}
-        preselectedCyclusId={preselectedCyclusId}
-        onCyclusCreated={handleSlotsCreated}
-      />
+
+
 
       {/* Delete Slot Dialog */}
       <DeleteSlotDialog
