@@ -976,7 +976,7 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-4">
-                    <Label>Your Padel Rating</Label>
+                    <Label>{tTrainer('editProfile.yourPadelRating')}</Label>
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="trainer_rating_system" className="text-xs text-muted-foreground">Rating System</Label>
