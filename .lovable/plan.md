@@ -1,46 +1,58 @@
 
 
-# Cycle Details Editing in Schedule Overview + Day Name Fix
+# Expand Cycle Edit Dialog with Bulk Fields
 
 ## What
-1. Add inline editing capabilities to cycle groups in the overview: rename cycle, toggle payment status per booking, view/manage players
-2. Fix Dutch day abbreviation from "maa" to "ma" by using `EEEEEE` format token instead of `EEE`
+Expand the pencil-icon dialog on cycle groups in the Schedule Overview to allow editing **name**, **price per session**, **location**, and **max group size** in bulk across all slots in that cycle. VAT is already global (trainer profile level), so it's not included here.
+
+## Layout
+
+```text
+┌─────────────────────────────────┐
+│  Edit Cycle                     │
+│                                 │
+│  Name:  [Monday Beginners    ]  │
+│  Price per session:  [€ 35   ]  │
+│  Location:  [Select location ▼] │
+│  Max players:  [4            ]  │
+│                                 │
+│  ⚠️ Changes apply to all X     │
+│     sessions in this cycle.     │
+│                                 │
+│         [Cancel]  [Save]        │
+└─────────────────────────────────┘
+```
 
 ## Changes
 
 ### 1. `src/pages/TrainerScheduleOverview.tsx`
 
-**Day name fix (line 290)**
-- Change `format(startDate, "EEE d MMM", ...)` to `format(startDate, "EEEEEE d MMM", ...)` — this gives 2-letter abbreviations ("Ma", "Di", "Wo" in Dutch)
+**Expand query** to also fetch `price_per_session`, `location_id` on slots (already have `max_participants`, `location_id`). Add `price_per_session` to the `SlotWithBookings` type.
 
-**Cycle header editing**
-- Add a pencil icon next to cycle group names that opens an inline edit (or small dialog) to rename the `cyclus_name` on all slots in that group
-- On save, update `availability_slots.cyclus_name` for all slots with that `cyclus_id`
-- Invalidate query to refresh
+**Expand rename dialog → "Edit Cycle" dialog** with additional fields:
+- `cyclus_name` (existing)
+- `price_per_session` (number input, €)
+- `location_id` (Select dropdown, fetched from trainer's locations)
+- `max_participants` (number input)
 
-**Payment status toggle per player**
-- In the expanded player list, make the paid/unpaid badge clickable
-- Clicking toggles `bookings.payment_status` between "paid" and "pending"
-- Update `paid_at` and `paid_externally` fields accordingly
-- Show a small loading spinner during the update
+Pre-fill from first slot in the cycle. On save, bulk-update all slots with matching `cyclus_id`. Show warning: "Changes apply to all X sessions in this cycle."
 
-**Player management per slot**
-- In expanded view, add a remove button (X) per player to cancel a booking
-- Show confirmation before cancelling
+**Add location query**: fetch trainer's locations for the dropdown (reuse pattern from AddSlotDialog).
 
-### 2. New imports needed
-- `useQueryClient` from react-query for invalidation
-- Dialog/Popover components for cycle rename
-- `useToast` for feedback
+**State changes**: Replace single `renameCycleName` state with a `cycleEditData` object holding all four fields.
 
-### 3. Translation keys (`en/trainer.json`, `nl/trainer.json`)
-- `scheduleOverview.renameCycle` / `scheduleOverview.renameCycleTitle`
-- `scheduleOverview.markAsPaid` / `scheduleOverview.markAsUnpaid`
-- `scheduleOverview.removePlayer` / `scheduleOverview.removePlayerConfirm`
-- `scheduleOverview.cycleSaved`
+### 2. Translation keys (`en/trainer.json`, `nl/trainer.json`)
+
+Add under `scheduleOverview`:
+- `editCycleTitle`: "Edit Cycle" / "Cyclus bewerken"
+- `bulkWarning`: "Changes apply to all {{count}} sessions in this cycle." / "Wijzigingen gelden voor alle {{count}} sessies in deze cyclus."
+- `pricePerSession`: "Price per session" / "Prijs per sessie"
+- `maxPlayers`: "Max players" / "Max spelers"
+- `location`: "Location" / "Locatie"
+- `selectLocation`: "Select location" / "Selecteer locatie"
 
 ## Files
-- `src/pages/TrainerScheduleOverview.tsx` — Add editing features + fix day format
+- `src/pages/TrainerScheduleOverview.tsx` — Expand edit dialog with bulk fields
 - `src/i18n/locales/en/trainer.json` — Add translation keys
 - `src/i18n/locales/nl/trainer.json` — Add translation keys
 
