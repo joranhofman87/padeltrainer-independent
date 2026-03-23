@@ -280,24 +280,25 @@ export default function TrainerPlayers() {
       ...registeredPlayers,
     ].sort((a, b) => a.full_name.localeCompare(b.full_name));
     setAllPlayers(unified);
-  }, [guestPlayers, registeredPlayers]);
+  }, [guestPlayers, registeredPlayers, activeGuestIds, waitingListGuestIds]);
 
-  // Filter
+  // Filter by search + status
   useEffect(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) {
-      setFilteredPlayers(allPlayers);
-    } else {
-      setFilteredPlayers(
-        allPlayers.filter(
-          (player) =>
-            player.full_name.toLowerCase().includes(query) ||
-            player.email.toLowerCase().includes(query) ||
-            player.phone.includes(query)
-        )
+    let result = allPlayers;
+    if (query) {
+      result = result.filter(
+        (player) =>
+          player.full_name.toLowerCase().includes(query) ||
+          player.email.toLowerCase().includes(query) ||
+          player.phone.includes(query)
       );
     }
-  }, [searchQuery, allPlayers]);
+    if (statusFilter !== "all") {
+      result = result.filter(p => p.computedStatus === statusFilter);
+    }
+    setFilteredPlayers(result);
+  }, [searchQuery, allPlayers, statusFilter]);
 
   const handlePlayerCreated = (player: GuestPlayer) => {
     setGuestPlayers(prev => [...prev, player].sort((a, b) =>
