@@ -1096,7 +1096,7 @@ export function BulkCreateSheet({
                     {slot.hasExtraCosts && (
                       <div className="space-y-2 pl-6 border-l-2 border-primary/20">
                         {slot.extraCosts.map((cost, costIndex) => (
-                          <div key={costIndex} className="flex items-center gap-2">
+                          <div key={costIndex} className="space-y-1.5">
                             <Input
                               value={cost.description}
                               onChange={(e) => {
@@ -1105,36 +1105,38 @@ export function BulkCreateSheet({
                                 updateBulkSlot(index, { extraCosts: newCosts });
                               }}
                               placeholder={t("calendar.costDescription", "e.g. Court rental")}
-                              className="h-8 flex-1"
+                              className="h-8 w-full"
                             />
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground">€</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min={0}
-                                value={cost.price || ""}
-                                onChange={(e) => {
-                                  const newCosts = [...slot.extraCosts];
-                                  newCosts[costIndex] = { ...newCosts[costIndex], price: parseFloat(e.target.value) || 0 };
-                                  updateBulkSlot(index, { extraCosts: newCosts });
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground">€</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min={0}
+                                  value={cost.price || ""}
+                                  onChange={(e) => {
+                                    const newCosts = [...slot.extraCosts];
+                                    newCosts[costIndex] = { ...newCosts[costIndex], price: parseFloat(e.target.value) || 0 };
+                                    updateBulkSlot(index, { extraCosts: newCosts });
+                                  }}
+                                  placeholder="0.00"
+                                  className="h-8 w-24"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  const newCosts = slot.extraCosts.filter((_, i) => i !== costIndex);
+                                  updateBulkSlot(index, { extraCosts: newCosts.length > 0 ? newCosts : [], hasExtraCosts: newCosts.length > 0 });
                                 }}
-                                placeholder="0.00"
-                                className="h-8 w-20"
-                              />
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                              onClick={() => {
-                                const newCosts = slot.extraCosts.filter((_, i) => i !== costIndex);
-                                updateBulkSlot(index, { extraCosts: newCosts.length > 0 ? newCosts : [], hasExtraCosts: newCosts.length > 0 });
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
                           </div>
                         ))}
                         <Button
