@@ -1015,6 +1015,26 @@ export default function TrainerScheduleOverview() {
               </Popover>
             </div>
 
+            {/* Time */}
+            <div className="space-y-2">
+              <Label>{t("scheduleOverview.time", "Time")}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="time"
+                  value={cycleEditData.startTime}
+                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, startTime: e.target.value }))}
+                  className="flex-1"
+                />
+                <span className="text-muted-foreground">—</span>
+                <Input
+                  type="time"
+                  value={cycleEditData.endTime}
+                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, endTime: e.target.value }))}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+
             {/* Number of weeks */}
             <div className="space-y-2">
               <Label>{t("scheduleOverview.repeatCount", "Number of weeks")}</Label>
