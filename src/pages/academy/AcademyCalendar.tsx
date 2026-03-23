@@ -33,7 +33,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { logger } from "@/lib/logger";
 import { SlotTypeChoiceDialog } from "@/components/trainer/SlotTypeChoiceDialog";
 import { AddSlotDialog, BulkCreateSheet } from "@/components/trainer/AddSlotDialog";
-import { DuplicateCyclusDialog } from "@/components/trainer/DuplicateCyclusDialog";
+
 import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/components/trainer/CalendarSlotCard";
 
