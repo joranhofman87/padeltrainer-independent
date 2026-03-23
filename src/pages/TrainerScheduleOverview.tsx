@@ -143,6 +143,15 @@ export default function TrainerScheduleOverview() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Cycle player management
+  type CyclePlayer = { id: string; name: string; type: 'player' | 'guest'; bookingCount: number };
+  type GuestPlayerOption = { id: string; full_name: string };
+  const [editCyclePlayers, setEditCyclePlayers] = useState<CyclePlayer[]>([]);
+  const [availableGuestPlayers, setAvailableGuestPlayers] = useState<GuestPlayerOption[]>([]);
+  const [addingPlayerToCycle, setAddingPlayerToCycle] = useState(false);
+  const [removingPlayerFromCycle, setRemovingPlayerFromCycle] = useState<string | null>(null);
+  const [confirmRemoveCyclePlayer, setConfirmRemoveCyclePlayer] = useState<CyclePlayer | null>(null);
+
   // Remove player confirm
   const [removeBookingId, setRemoveBookingId] = useState<string | null>(null);
   const [removingBooking, setRemovingBooking] = useState(false);
@@ -282,7 +291,7 @@ export default function TrainerScheduleOverview() {
     queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
 
   // Edit cycle
-  const openEditDialog = (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
+  const openEditDialog = async (cycleId: string, group: { name: string; slots: SlotWithBookings[] }) => {
     const firstSlot = group.slots[0];
     const sortedSlots = [...group.slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
     const earliestStart = sortedSlots[0] ? parseISO(sortedSlots[0].start_time) : undefined;
@@ -301,6 +310,42 @@ export default function TrainerScheduleOverview() {
       repeatCount: String(group.slots.length),
       originalRepeatCount: group.slots.length,
     });
+
+    // Collect unique players from all bookings across cycle slots
+    const playerMap = new Map<string, CyclePlayer>();
+    for (const slot of group.slots) {
+      for (const b of slot.bookings) {
+        if (b.status === 'cancelled') continue;
+        const id = b.guest_player_id || b.player_id || '';
+        if (!id) continue;
+        const existing = playerMap.get(id);
+        if (existing) {
+          existing.bookingCount++;
+        } else {
+          playerMap.set(id, {
+            id,
+            name: b.profiles?.full_name || b.guest_players?.full_name || t("scheduleOverview.unknownPlayer", "Unknown"),
+            type: b.guest_player_id ? 'guest' : 'player',
+            bookingCount: 1,
+          });
+        }
+      }
+    }
+    setEditCyclePlayers(Array.from(playerMap.values()));
+
+    // Fetch trainer's guest players
+    if (user) {
+      const tp = await getTrainerProfile(user.id);
+      if (tp) {
+        const { data: guests } = await supabase
+          .from("guest_players")
+          .select("id, full_name")
+          .eq("trainer_id", tp.id)
+          .order("full_name");
+        setAvailableGuestPlayers(guests || []);
+      }
+    }
+
     setEditDialogOpen(true);
   };
 
@@ -499,6 +544,91 @@ export default function TrainerScheduleOverview() {
           : t("scheduleOverview.markAsPublic", "Mark as public"),
       });
       invalidate();
+    }
+  };
+
+  // Add player to all cycle slots
+  const handleAddPlayerToCycle = async (guestPlayerId: string) => {
+    if (!editCycleId) return;
+    setAddingPlayerToCycle(true);
+    try {
+      const { data: cycleSlots } = await supabase
+        .from("availability_slots")
+        .select("id")
+        .eq("cyclus_id", editCycleId);
+
+      if (!cycleSlots || cycleSlots.length === 0) return;
+
+      // Check which slots already have this guest player booked
+      const { data: existingBookings } = await supabase
+        .from("bookings")
+        .select("slot_id")
+        .eq("guest_player_id", guestPlayerId)
+        .in("slot_id", cycleSlots.map(s => s.id))
+        .neq("status", "cancelled");
+
+      const alreadyBookedSlotIds = new Set((existingBookings || []).map(b => b.slot_id));
+      const slotsToBook = cycleSlots.filter(s => !alreadyBookedSlotIds.has(s.id));
+
+      if (slotsToBook.length > 0) {
+        const newBookings = slotsToBook.map(s => ({
+          slot_id: s.id,
+          guest_player_id: guestPlayerId,
+          status: 'confirmed',
+          payment_status: 'pending',
+        }));
+        await supabase.from("bookings").insert(newBookings);
+      }
+
+      // Update local player list
+      const guest = availableGuestPlayers.find(g => g.id === guestPlayerId);
+      if (guest) {
+        setEditCyclePlayers(prev => [...prev, {
+          id: guestPlayerId,
+          name: guest.full_name,
+          type: 'guest',
+          bookingCount: cycleSlots.length,
+        }]);
+      }
+
+      toast({ title: t("scheduleOverview.addedToCycle", "Player added to all sessions") });
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setAddingPlayerToCycle(false);
+    }
+  };
+
+  // Remove player from all cycle slots
+  const handleRemovePlayerFromCycle = async () => {
+    if (!confirmRemoveCyclePlayer || !editCycleId) return;
+    const player = confirmRemoveCyclePlayer;
+    setRemovingPlayerFromCycle(player.id);
+    try {
+      const { data: cycleSlots } = await supabase
+        .from("availability_slots")
+        .select("id")
+        .eq("cyclus_id", editCycleId);
+
+      if (cycleSlots && cycleSlots.length > 0) {
+        const field = player.type === 'guest' ? 'guest_player_id' : 'player_id';
+        await supabase
+          .from("bookings")
+          .update({ status: 'cancelled' })
+          .eq(field, player.id)
+          .in("slot_id", cycleSlots.map(s => s.id))
+          .neq("status", "cancelled");
+      }
+
+      setEditCyclePlayers(prev => prev.filter(p => p.id !== player.id));
+      toast({ title: t("scheduleOverview.removedFromCycle", "Player removed from all sessions") });
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setRemovingPlayerFromCycle(null);
+      setConfirmRemoveCyclePlayer(null);
     }
   };
 
@@ -997,6 +1127,78 @@ export default function TrainerScheduleOverview() {
                 onChange={(e) => setCycleEditData((prev) => ({ ...prev, maxParticipants: e.target.value }))}
               />
             </div>
+
+            {/* Players section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t("scheduleOverview.players", "Players")}</Label>
+              </div>
+              {editCyclePlayers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("scheduleOverview.noPlayersInCycle", "No players in this cycle")}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {editCyclePlayers.map((player) => (
+                    <div key={player.id} className="flex items-center justify-between text-sm py-1 group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{player.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {t("scheduleOverview.sessionsLabel", "{{count}} sessions", { count: player.bookingCount })}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={() => setConfirmRemoveCyclePlayer(player)}
+                        disabled={removingPlayerFromCycle === player.id}
+                        title={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+                      >
+                        {removingPlayerFromCycle === player.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Add player dropdown */}
+              {(() => {
+                const enrolledIds = new Set(editCyclePlayers.map(p => p.id));
+                const available = availableGuestPlayers.filter(g => !enrolledIds.has(g.id));
+                if (available.length === 0) return null;
+                return (
+                  <Select
+                    value=""
+                    onValueChange={(val) => handleAddPlayerToCycle(val)}
+                    disabled={addingPlayerToCycle}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      {addingPlayerToCycle ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>{t("scheduleOverview.addPlayerToCycle", "Add player")}</span>
+                        </div>
+                      ) : (
+                        <SelectValue placeholder={t("scheduleOverview.addPlayerToCycle", "Add player")} />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {available.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              })()}
+            </div>
+
             <div className="flex items-center justify-between">
               <Label htmlFor="cycle-private-toggle">
                 {t("scheduleOverview.cyclePrivate", "Private (hidden from players)")}
@@ -1046,6 +1248,29 @@ export default function TrainerScheduleOverview() {
             <AlertDialogAction onClick={handleRemovePlayer} disabled={removingBooking}>
               {removingBooking && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {t("scheduleOverview.removePlayer", "Remove player")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Player from Cycle Confirm */}
+      <AlertDialog open={!!confirmRemoveCyclePlayer} onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!removingPlayerFromCycle}>
+              {t("scheduleOverview.cancel", "Cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemovePlayerFromCycle} disabled={!!removingPlayerFromCycle}>
+              {removingPlayerFromCycle && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -72,7 +72,15 @@
     "cannotRemoveBookedSlots": "Cannot remove {{count}} session(s) with active bookings",
     "removeCost": "Remove",
     "perSession": "Per session",
-    "oneTime": "One-time"
+    "oneTime": "One-time",
+    "players": "Players",
+    "addPlayerToCycle": "Add player",
+    "removeFromCycle": "Remove from all sessions",
+    "removeFromCycleConfirm": "Remove {{name}} from all sessions in this cycle?",
+    "noPlayersInCycle": "No players in this cycle",
+    "addedToCycle": "Player added to all sessions",
+    "removedFromCycle": "Player removed from all sessions",
+    "sessionsLabel": "{{count}} sessions"
   },
   "profile": {
     "shareProfile": "Share Profile",
