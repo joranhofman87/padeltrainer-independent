@@ -168,7 +168,8 @@ export function AddSlotDialog({
         rating_system: slotRatingSystem,
         min_rating: slotMinRating,
         max_rating: slotMaxRating,
-      });
+        prices_include_vat: pricesIncludeVat,
+      } as any);
 
       if (error) throw error;
 
@@ -413,11 +414,14 @@ export function BulkCreateSheet({
   const fetchTrainerHourlyRate = async (tId: string) => {
     const { data } = await supabase
       .from("trainer_profiles")
-      .select("id, hourly_rate")
+      .select("id, hourly_rate, prices_include_vat")
       .eq("id", tId)
       .maybeSingle();
     if (data?.hourly_rate) {
       setTrainerHourlyRates(prev => new Map(prev).set(tId, data.hourly_rate));
+    }
+    if (data?.prices_include_vat !== undefined && data.prices_include_vat !== null) {
+      setPricesIncludeVat(data.prices_include_vat);
     }
   };
 
@@ -716,7 +720,8 @@ export function BulkCreateSheet({
             extra_costs: (config.hasExtraCosts && config.extraCosts.length > 0 
               ? config.extraCosts.filter(c => c.description || c.price > 0) 
               : []) as unknown as Json,
-          });
+            prices_include_vat: pricesIncludeVat,
+          } as any);
 
           // Add to existing times to prevent duplicates within same batch
           trainerExistingTimes.add(currentSlotStart.toISOString());

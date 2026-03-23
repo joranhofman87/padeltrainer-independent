@@ -691,6 +691,7 @@ export type Database = {
           min_participants: number | null
           min_rating: number | null
           price_per_session: number | null
+          prices_include_vat: boolean
           rating_system: string | null
           recurrence_rule: string | null
           start_time: string
@@ -717,6 +718,7 @@ export type Database = {
           min_participants?: number | null
           min_rating?: number | null
           price_per_session?: number | null
+          prices_include_vat?: boolean
           rating_system?: string | null
           recurrence_rule?: string | null
           start_time: string
@@ -743,6 +745,7 @@ export type Database = {
           min_participants?: number | null
           min_rating?: number | null
           price_per_session?: number | null
+          prices_include_vat?: boolean
           rating_system?: string | null
           recurrence_rule?: string | null
           start_time?: string
@@ -3659,6 +3662,7 @@ export type Database = {
           preferred_max_rating: number | null
           preferred_min_rating: number | null
           preferred_rating_system: string | null
+          prices_include_vat: boolean
           require_booking_approval: boolean | null
           schedule_weeks_ahead: number
           slot_duration_minutes: number
@@ -3716,6 +3720,7 @@ export type Database = {
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
+          prices_include_vat?: boolean
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
@@ -3773,6 +3778,7 @@ export type Database = {
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
+          prices_include_vat?: boolean
           require_booking_approval?: boolean | null
           schedule_weeks_ahead?: number
           slot_duration_minutes?: number
