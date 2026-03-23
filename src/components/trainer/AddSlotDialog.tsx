@@ -880,6 +880,38 @@ export function BulkCreateSheet({
                 if (config.selectedPlayers.length > 0) {
                   await supabase.from("guest_players").update({ has_trained: true }).in("id", config.selectedPlayers.filter(Boolean));
                 }
+
+                // Auto-create draft invoices for non-externally-paid bookings
+                if (!config.markAsPaid) {
+                  // Group bookings by guest player for individual invoices
+                  const playerBookingMap = new Map<string, string[]>();
+                  // We need to fetch the inserted booking IDs
+                  const { data: insertedBookings } = await supabase
+                    .from("bookings")
+                    .select("id, guest_player_id")
+                    .in("slot_id", configSlots.map(s => s.id))
+                    .in("guest_player_id", config.selectedPlayers.filter(Boolean))
+                    .eq("status", "confirmed");
+
+                  if (insertedBookings) {
+                    for (const b of insertedBookings) {
+                      if (!b.guest_player_id) continue;
+                      const existing = playerBookingMap.get(b.guest_player_id) || [];
+                      existing.push(b.id);
+                      playerBookingMap.set(b.guest_player_id, existing);
+                    }
+
+                    for (const [, bIds] of playerBookingMap) {
+                      try {
+                        await supabase.functions.invoke("auto-create-invoice", {
+                          body: { bookingIds: bIds, asDraft: true },
+                        });
+                      } catch (invoiceErr) {
+                        logger.warn("Draft invoice creation failed (non-blocking)", { error: invoiceErr, component: 'AddSlotDialog' });
+                      }
+                    }
+                  }
+                }
               }
             }
           }
