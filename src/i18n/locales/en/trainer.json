@@ -64,6 +64,7 @@
     "markAsPublic": "Marked as public",
     "cyclePrivate": "Private (hidden from players)",
     "extraCosts": "Extra costs",
+    "pricesIncludeVat": "Prices include VAT",
     "addCost": "Add cost",
     "costDescription": "Description",
     "costPrice": "Price",
