@@ -288,7 +288,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       tooltip={t("nav.schedule")}
-                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots")
+                      className={isActive("/trainer/calendar") || isActive("/trainer/open-slots") || isActive("/trainer/schedule-overview")
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""}
                     >
