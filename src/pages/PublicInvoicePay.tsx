@@ -41,6 +41,8 @@ interface PublicInvoiceData {
 export default function PublicInvoicePay() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<PublicInvoiceData | null>(null);
+  const [searchParams] = useSearchParams();
+  const isSuccessRedirect = searchParams.get("status") === "success";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaid, setIsPaid] = useState(false);
