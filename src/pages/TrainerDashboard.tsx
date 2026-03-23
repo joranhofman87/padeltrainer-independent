@@ -370,7 +370,7 @@ export default function TrainerDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('dashboard.recentBookings', 'Recent Bookings')}</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/bookings')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/app/trainer/schedule-overview')}>
                 {t('dashboard.viewAll', 'View all')} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>

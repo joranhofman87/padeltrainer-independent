@@ -93,7 +93,7 @@ const TrainerGetStarted = lazy(() => import('@/pages/TrainerGetStarted'));
 const TrainerSettings = lazy(() => import('@/pages/TrainerSettings'));
 const TrainerBookingSettings = lazy(() => import('@/pages/TrainerBookingSettings'));
 const TrainerTerms = lazy(() => import('@/pages/TrainerTerms'));
-const TrainerBookings = lazy(() => import('@/pages/TrainerBookings'));
+
 const TrainerEarnings = lazy(() => import('@/pages/TrainerEarnings'));
 const TrainerSubscription = lazy(() => import('@/pages/TrainerSubscription'));
 const TrainerAnalytics = lazy(() => import('@/pages/TrainerAnalytics'));
@@ -227,7 +227,7 @@ export function DomainRouter() {
           <Route path="subscription" element={<TrainerSubscription />} />
           <Route path="earnings" element={<TrainerEarnings />} />
           <Route path="analytics" element={<TrainerAnalytics />} />
-          <Route path="bookings" element={<TrainerBookings />} />
+          
           <Route path="get-started" element={<TrainerGetStarted />} />
         </Route>
 
